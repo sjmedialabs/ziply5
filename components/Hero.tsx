@@ -26,7 +26,7 @@ export default function Hero() {
         
         <Image
           src={slides[currentSlide]}
-          alt="Hero"
+          alt="Hero Image"
           fill
           className="object-cover transition-opacity duration-700"
           priority
