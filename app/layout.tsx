@@ -1,6 +1,21 @@
 import type React from "react"
 import type { Metadata } from "next"
+import { Inter, Baloo_2 } from "next/font/google"
 import "./globals.css"
+import Header from "../components/Header"
+import Footer from "../components/Footer"
+
+const inter = Inter({
+  subsets: ["latin"],
+  variable: "--font-inter",
+  display: "swap",
+})
+
+const baloo = Baloo_2({
+  subsets: ["latin"],
+  variable: "--font-baloo",
+  display: "swap",
+})
 
 export const metadata: Metadata = {
   title: "ZIPLY5 - Nothing Artificial. Everything Delicious.",
@@ -32,20 +47,12 @@ export default function RootLayout({
   children: React.ReactNode
 }>) {
   return (
-    <html lang="en">
-      <head>
-        {/* General Sans alternative - using Inter as similar clean sans-serif */}
-        <link
-          href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
-          rel="stylesheet"
-        />
-        {/* Melon Pop alternative - using Baloo 2 for playful rounded headings */}
-        <link
-          href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@400;500;600;700;800&display=swap"
-          rel="stylesheet"
-        />
-      </head>
-      <body>{children}</body>
+    <html lang="en" className={`${inter.variable} ${baloo.variable}`}>
+      <body className="font-sans antialiased min-h-screen flex flex-col">
+        <Header />
+        <main className="flex-1 flex flex-col">{children}</main>
+        <Footer />
+      </body>
     </html>
   )
 }
