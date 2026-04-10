@@ -20,22 +20,22 @@ export default function BestSellers() {
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 md:gap-8 justify-items-center">
           {bestSellers.map((product) => (
-            <div key={product.id} className="w-full max-w-sm group cursor-pointer">
+            <div key={product.id} className="w-full max-w-sm group cursor-pointer font-melon">
               <div className="rounded-2xl px-8  relative overflow-hidden transition-all duration-300 group-hover:ring-4 group-hover:ring-[#F36E21] group-hover:shadow-xl h-full flex flex-col" style={{ backgroundColor: product.bgColor }}>
                 {product.isNonVeg && (
-                  <span className="absolute top-4 right-0 bg-[#F97316] text-white text-[11px] font-semibold px-3 py-1 rounded-l-sm border border-white z-10">Non-veg</span>
+                  <span className="absolute top-4 right-0 bg-[#F97316] text-white text-[11px] font-medium px-3 py-1 rounded-l-sm border border-white z-10">Non-veg</span>
                 )}
                 {!product.isNonVeg && (
-                  <span className="absolute top-4 right-0 bg-[#10B981] text-white text-[11px] font-semibold px-3 py-1 border border-white rounded-l-sm z-10">Pure-Veg</span>
+                  <span className="absolute top-4 right-0 bg-[#10B981] text-white text-[11px] font-medium px-3 py-1 border border-white rounded-l-sm z-10">Pure-Veg</span>
                 )}
                 <div className="relative h-full flex items-center justify-center py-4">
                   <Image src={product.image} alt={product.name} width={180} height={220} className="w-auto h-full object-contain drop-shadow-lg group-hover:scale-105 transition-transform duration-300" />
                 </div>
-                <div className="text-center">
-                  <h3 className="font-bold text-white text-[15px] md:text-xl leading-tight tracking-wide">
+                <div className="text-center ">
+                  <h3 className="font-medium text-white text-[15px] md:text-xl leading-tight tracking-wide">
                     {product.name}
                   </h3>
-                  <p className="text-[#FFF5C5] text-[11px] md:text-[12px] uppercase tracking-wide">
+                  <p className="text-[#FFF5C5]  text-[11px]  uppercase tracking-wide">
                     {product.subtitle}
                   </p>
 
@@ -44,7 +44,7 @@ export default function BestSellers() {
 
                     <button
                       onClick={(e) => e.stopPropagation()}
-                      className="w-full border border-white text-white py-2.5 rounded-lg text-[13px] font-semibold 
+                      className="w-full border border-white text-white py-2.5 rounded-lg text-[13px] font-medium
                       opacity-0 translate-y-3 
                       group-hover:opacity-100 group-hover:-translate-y-0 
                       transition-all duration-300 hover:bg-[#3a1517]"

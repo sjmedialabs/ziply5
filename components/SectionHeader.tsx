@@ -17,7 +17,7 @@ export default function SectionHeader({ title, linkHref, linkText = "view all" }
          <div>
         <Link
           href={linkHref}
-          className="flex items-center gap-2 bg-[#51282B] text-white px-2 py-3 rounded-lg font-bold text-[14px] hover:bg-[#3a1517] transition-colors"
+          className="flex items-center gap-2 bg-[#51282B] font-melon text-white px-2 py-3 rounded-lg font-medium text-[14px] hover:bg-[#3a1517] transition-colors"
         >
           {linkText}
           <span className="w-5 h-5 rounded-full border border-white bg-white text-primary flex items-center justify-center">

@@ -30,7 +30,7 @@ export default function TrendingFood() {
   const isLg = useIsLg();
 
 const visibleProducts = isLg
-  ? trendingProducts.slice(0, 3) // 👈 only 3 on lg
+  ? trendingProducts.slice(0, 3) //  only 3 on lg
   : trendingProducts;
   return (
     <section id="trending" className="bg-[#F3F4F6] py-12 md:py-16 lg:py-20">
@@ -76,18 +76,18 @@ const visibleProducts = isLg
                 </div>
 
                 {/* CONTENT SECTION */}
-                <div className="flex flex-col px-4 py-4">
+                <div className="flex flex-col px-4 font-melon  py-4">
                 <div className="flex flex-row justify-between items-center">
 
                   <div>
                     {/* TITLE */}
-                    <h3 className="font-bold uppercase text-primary text-[14px] mb-1 truncate">
+                    <h3 className="font-medium uppercase text-primary  text-[14px] mb-1 truncate">
                       {product.name}
                     </h3>
 
                     {/* SUBTITLE */}
                     <p
-                      className={`text-[12px] font-semibold capitalize truncate bg-gradient-to-r ${product.gradient} bg-clip-text text-transparent`}
+                      className={`text-[12px] font-medium capitalize truncate bg-gradient-to-r ${product.gradient} bg-clip-text text-transparent`}
                     >
                       {product.subtitle}
                     </p>
@@ -97,7 +97,7 @@ const visibleProducts = isLg
                     <button
                       onClick={(e) => e.preventDefault()}
                       className="border-2 border-[#EF4444] 
-        px-3 py-1 rounded-lg text-[12px] font-semibold 
+        px-3 py-1 rounded-lg text-[12px] font-medium 
         hover:bg-[#EF4444] hover:text-white transition-colors"
                     >
                       ADD
@@ -115,7 +115,7 @@ const visibleProducts = isLg
                         </span>
                       )}
 
-                      <span className="font-bold text-[#F97316] text-[16px]">
+                      <span className="font-medium text-[#F97316] text-[16px]">
                         Rs. {product.price}
                       </span>
 
