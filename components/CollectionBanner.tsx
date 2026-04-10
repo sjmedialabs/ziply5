@@ -63,7 +63,7 @@ export default function CollectionBanner() {
           <div className="relative justify-between lg:col-span-5 xl:col-span-4 col-span-12 flex flex-col h-full">
           <div>
             {/* HEADING */}
-            <h2 className="text-4xl md:text-5xl font-extrabold text-[#4B1E1E] leading-tight">
+            <h2 className="text-4xl md:text-5xl font-extrabold font-melon text-[#4B1E1E] leading-tight">
               OUR VEG <br /> NON VEG <br /> COLLECTION
             </h2>
             </div>

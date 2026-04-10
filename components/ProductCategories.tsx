@@ -22,7 +22,7 @@ export default function ProductCategories() {
     <section className="w-full bg-[#F97316] py-12 relative">
       <div className="max-w-7xl mx-auto px-4 relative">
 
-        <h2 className="text-center text-white text-3xl font-extrabold mb-8">
+        <h2 className="text-center font-melon text-white text-3xl font-extrabold mb-8">
           OUR PRODUCTS
         </h2>
 
