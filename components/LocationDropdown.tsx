@@ -44,7 +44,7 @@ export default function LocationDropdown() {
       {/* BUTTON */}
       <button
         onClick={() => setOpen(!open)}
-        className="flex items-center gap-2 cursor-pointer rounded-full px-4 py-2 text-sm text-black hover:text-gray-800 transition"
+        className="flex items-center gap-2 cursor-pointer rounded-full px-4 py-2 text-sm text-black hover:text-[#f97316] transition"
       >
         <MapPin size={16} />
         <span>{selected}</span>

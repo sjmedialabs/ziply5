@@ -216,19 +216,19 @@ const total = 3770
               onClick={() => setSearchOpen(!searchOpen)} 
               className="p-2 hover:bg-zinc-50 cursor-pointer rounded-full transition-colors"
             >
-              <Search size={20} className="text-zinc-700" />
+              <Search size={20} className="text-zinc-700 hover:text-[#f97316]" />
             </button>
 
             <div className="hidden md:flex items-center gap-6">
 
               <Link href="/profile" className="p-2 hover:bg-zinc-50 rounded-full transition-colors">
-                <User size={20} className="text-zinc-700" />
+                <User size={20} className="text-zinc-700 hover:text-[#f97316]" />
               </Link>
 
               {/* CART WITH DROPDOWN */}
               <div className="relative group">
                 <Link href="/cart" className="p-2 hover:bg-zinc-50 rounded-full transition-colors">
-                  <ShoppingCart size={20} className="text-zinc-700" />
+                  <ShoppingCart size={20} className="text-zinc-700 hover:text-[#f97316]" />
                 </Link>
 
                 <CartDropdown items={cartItems} total={total} />
