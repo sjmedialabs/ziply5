@@ -39,7 +39,7 @@ export default function Hero() {
                 Nothing Artificial.<br />Everything Delicious.
               </h1>
               <p
-              className="font-heading text-4xl md:text-5xl font-extrabold uppercase text-primary leading-[1.05] mb-4 whitespace-nowrap"
+              className="font-heading text-4xl md:text-5xl font-extrabold uppercase text-primary leading-[1.05] mb-3 whitespace-nowrap"
                 // className="text-base md:text-lg lg:text-xl text-amber-100 font-semibold uppercase tracking-wide max-w-md italic"
                 style={{ textShadow: "1px 1px 2px rgba(0,0,0,0.3)" }}
               >
