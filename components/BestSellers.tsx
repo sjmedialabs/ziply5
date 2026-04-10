@@ -15,7 +15,7 @@ const bestSellers = [
 export default function BestSellers() {
   return (
     <section id="best-sellers" className="bg-[#F5F0E1] py-12 md:py-16 lg:py-20">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div className="max-w-7xl mx-auto px-4">
         <SectionHeader title="BEST SELLERS" linkHref="/#best-sellers" />
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 md:gap-8 justify-items-center">
