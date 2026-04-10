@@ -1,13 +1,19 @@
 "use client"
 
 import Link from "next/link"
+import { Menu, X } from "lucide-react"
+import { useState } from "react"
+import Image from "next/image"
 import { useSearch } from "../hooks/useSearch"
+import LocationDropdown from "./LocationDropdown"
+import { Search, User, ShoppingCart } from "lucide-react"
 
 export default function Header() {
+  const [menuOpen, setMenuOpen] = useState(false)
   const { searchOpen, setSearchOpen, searchQuery, setSearchQuery, handleSearch } = useSearch()
 
   return (
-    <header>
+    <header className="sticky top-0 z-50">
       {/* Top Marquee Bar */}
       <div className="bg-yellow-400 py-2.5 overflow-hidden">
         <div className="marquee-container">
@@ -38,45 +44,74 @@ export default function Header() {
 
       {/* Navigation */}
       <nav className="bg-white py-4 w-full">
-      <div className="w-full px-4 md:px-8 lg:px-12 flex items-center justify-between">
+      <div className="w-full px-4 max-w-7xl mx-auto flex items-center justify-between">
+
+        {/* MOBILE MENU BUTTON */}
+        <button 
+          className="md:hidden p-2"
+          onClick={() => setMenuOpen(!menuOpen)}
+        >
+          {menuOpen ? <X size={24} /> : <Menu size={24} />}
+        </button>
+
           <div className="hidden md:flex items-center gap-8">
-            <Link href="/#products" className="font-semibold text-amber-900 hover:text-amber-700 transition-colors text-[15px]">
+            <Link href="/#products" className="font-bold text-black hover:text-gray-700 transition-colors text-[15px]">
               Products
             </Link>
-            <Link href="/#best-sellers" className="font-semibold text-amber-900 hover:text-amber-700 transition-colors text-[15px]">
+            <Link href="/#best-sellers" className="font-bold text-black hover:text-gray-700 transition-colors text-[15px]">
               Best Sellers
             </Link>
-            <Link href="/#combos" className="font-semibold text-amber-900 hover:text-amber-700 transition-colors text-[15px]">
+            <Link href="/#combos" className="font-bold text-black hover:text-gray-700 transition-colors text-[15px]">
               Combos
             </Link>
           </div>
             
             <div className="flex-1 md:flex-none flex justify-center">
             <Link href="/" className="flex items-center">
-              <span className="font-heading text-3xl md:text-4xl font-extrabold text-amber-900 tracking-tight">
-                Z<span className="text-amber-900">i</span>PLY<span className="text-amber-900">5</span>
-              </span>
-            </Link>
+            <Image
+              src="/primaryLogo.png"
+              alt="ZiPLY5 Logo"
+              width={160}
+              height={60}
+              priority
+              className="object-contain"
+            />
+          </Link>
           </div>
 
           <div className="flex items-center gap-3 md:gap-5">
-            <button className="hidden lg:flex items-center gap-2 text-sm font-medium text-zinc-600 hover:text-amber-900 border border-zinc-200 rounded-full px-4 py-2">
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
-              Select Location
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
-            </button>
-            <button onClick={() => setSearchOpen(!searchOpen)} className="p-2 hover:bg-zinc-50 rounded-full transition-colors">
-              <svg className="w-5 h-5 text-zinc-700" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
+
+            <LocationDropdown />
+            
+            <button 
+              onClick={() => setSearchOpen(!searchOpen)} 
+              className="p-2 hover:bg-zinc-50 cursor-pointer rounded-full transition-colors"
+            >
+              <Search size={20} className="text-zinc-700" />
             </button>
             <Link href="/profile" className="p-2 hover:bg-zinc-50 rounded-full transition-colors">
-              <svg className="w-5 h-5 text-zinc-700" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>
+              <User size={20} className="text-zinc-700" />
             </Link>
             <Link href="/cart" className="p-2 hover:bg-zinc-50 rounded-full transition-colors">
-              <svg className="w-5 h-5 text-zinc-700" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15.75 10.5V6a3.75 3.75 0 10-7.5 0v4.5m11.356-1.993l1.263 12c.07.665-.45 1.243-1.119 1.243H4.25a1.125 1.125 0 01-1.12-1.243l1.264-12A1.125 1.125 0 015.513 7.5h12.974c.576 0 1.059.435 1.119 1.007zM8.625 10.5a.375.375 0 11-.75 0 .375.375 0 01.75 0zm7.5 0a.375.375 0 11-.75 0 .375.375 0 01.75 0z" /></svg>
+              <ShoppingCart size={20} className="text-zinc-700" />
             </Link>
           </div>
         </div>
       </nav>
+
+      {menuOpen && (
+        <div className="md:hidden bg-white border-t px-6 py-4 space-y-4 shadow-md">
+          <Link href="/#products" onClick={() => setMenuOpen(false)} className="block font-semibold text-black">
+            Products
+          </Link>
+          <Link href="/#best-sellers" onClick={() => setMenuOpen(false)} className="block font-semibold text-black">
+            Best Sellers
+          </Link>
+          <Link href="/#combos" onClick={() => setMenuOpen(false)} className="block font-semibold text-black">
+            Combos
+          </Link>
+        </div>
+      )}
 
       {/* Search Overlay */}
       {searchOpen && (
