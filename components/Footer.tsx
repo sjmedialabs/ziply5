@@ -3,6 +3,9 @@
 import Image from "next/image";
 import Link from "next/link";
 import { Button } from "./ui/button";
+import { useState, useEffect } from "react";
+import { validateEmail } from "@/hooks/validations";
+import { toast } from "@/lib/toast";
 
 /* ===============================
    Static Navigation Links
@@ -12,7 +15,6 @@ const ABOUT_LINKS = [
   { label: "About ziply5", href: "/about" },
   { label: "Special Dish", href: "/special-dish" },
   { label: "Book now", href: "/book" },
-  { label: "Contact", href: "/contact" },
 ];
 
 const MENU_LINKS = [
@@ -26,7 +28,6 @@ const MENU_LINKS = [
 const QUICK_LINKS = [
   { label: "About ziply5", href: "/about" },
   { label: "Special Dish", href: "/special-dish" },
-  { label: "Book now", href: "/book" },
   { label: "Contact", href: "/contact" },
 ];
 
@@ -52,21 +53,39 @@ const fallbackCMSData = {
 };
 
 export default function Footer() {
+
+  const [email, setEmail] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  const handleSubscribe = () => {
+    if (!email) {
+      toast.error("Please enter an email");
+      return;
+    }
+    if (!validateEmail(email)) {
+      toast.error("Please enter a valid email");
+      return;
+    }
+
+
+  }
   const cmsData = fallbackCMSData;
 
   return (
     <footer className="relative overflow-hidden">
 
-      {/* Background Image */}
+      {/* Layer 1: Solid base color — exact #5ECFDB as in Figma */}
+      <div className="absolute inset-0" style={{ backgroundColor: "#5ECFDB" }} />
+
+      {/* Layer 2: Cityscape image as a subtle watermark on top at low opacity */}
       <div
         className="absolute inset-0 bg-cover bg-center"
         style={{
           backgroundImage: "url('/footerBackground.png')",
+          opacity: 0.35,
         }}
       />
-
-      {/* Overlay Layer */}
-      <div className="absolute inset-0 bg-[#5ECFDB]/50" />
 
       {/* Content Layer */}
       <div className="relative z-10 pt-6">
@@ -90,18 +109,18 @@ export default function Footer() {
                 />
 
                 {/* Timings */}
-                <p className="text-sm font-medium leading-snug mb-4 text-[#4A1D1F]">
+                <p className="text-sm font-medium font-melon leading-snug mb-4 text-[#4A1D1F]">
                   Monday – Sunday:<br />
                   {cmsData?.timings.split("\n")[1] ?? "10:00am – 23:00pm"}
                 </p>
 
                 {/* Phone */}
-                <p className="font-extrabold text-sm text-[#4A1D1F] leading-snug">
+                <p className="font-medium font-melon text-sm text-[#4A1D1F] leading-snug">
                   {cmsData?.phone || "91 9901233213"}
                 </p>
 
                 {/* Email */}
-                <p className="font-extrabold text-sm text-[#4A1D1F] leading-snug mb-5">
+                <p className="font-medium font-melon text-sm text-[#4A1D1F] leading-snug mb-5">
                   {cmsData?.email || "support@ziply5.com"}
                 </p>
 
@@ -168,11 +187,14 @@ export default function Footer() {
               <input
                 type="email"
                 placeholder="Email Address"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
                 className="w-full bg-white rounded-lg px-4 py-3 text-sm mb-1 outline-none"
               />
 
               {/* Double Border Button */}
-              <Button className="relative cursor-pointer bg-white h-[40px] rounded-lg font-semibold text-[var(--primary-color)] border-2 border-yellow-400 hover:bg-yellow-400 transition">
+              <Button className="relative cursor-pointer bg-white h-[40px] rounded-lg font-semibold text-[var(--primary-color)] border-2 border-yellow-400 hover:bg-yellow-400 transition"
+                onClick={() => handleSubscribe()}>
 
                 {/* <span className="absolute inset-1 border border-yellow-400 rounded-lg"></span> */}
 
@@ -231,10 +253,11 @@ function FooterColumn({
 
             <Link
               href={link.href}
-              className="flex items-center gap-2 text-[var(--primary-color)] hover:text-yellow-400 transition text-xs"
+              className="group flex items-center gap-2 text-[#000] hover:text-[#f97316] transition-all duration-300 ease-in-out hover:translate-x-1 text-xs"
             >
 
-              <span className="text-yellow-400">
+              {/* Arrow color follows the group hover, not its own hover */}
+              <span className="text-[#000] group-hover:text-[#f97316] transition-colors duration-300">
                 ›
               </span>
 
