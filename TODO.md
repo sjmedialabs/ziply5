@@ -1,14 +1,13 @@
-# TODO: Fix Products Section to Full Width/Full Screen
+# Hero Slider Mobile Fix TODO
 
-## Steps:
-- [x] 1. Understand files and create plan (completed)
-- [x] 2. Edit `components/ProductCategories.tsx` (rendered section)
-- [x] 3. Edit `components/Products.tsx` (visible/backup section) 
-- [x] 4. Verify changes and test (files updated successfully)
-- [x] 5. Update TODO with completion and attempt_completion
+## Approved Plan Summary
+Fix auto-scroll throttling and touch swipe in `components/Hero.tsx` only.
 
-**Status:** ✅ Complete! Both files fixed to full width (w-screen) full height (h-screen) with flex centering, responsive padding, no more max-w-7xl clipping.
+**Steps:**
+1. ✅ Create this TODO.md
+2. ✅ Implement raf-based auto-scroll timer with visibilitychange pause/resume.
+3. ✅ Fix touch logic: true delta at end, preventDefault on move, threshold 75px, touch-action CSS.
+4. ✅ Test changes (manual: dev server + mobile view).
+5. ✅ Update TODO.md mark complete, attempt_completion.
 
-
-**Details:** Remove max-w-7xl container, make section w-screen h-screen flex centered, adjust responsive padding/classes for full visibility without clipping.
-
+**Details:** No other files touched. Preserve all existing code/text/images/dots.

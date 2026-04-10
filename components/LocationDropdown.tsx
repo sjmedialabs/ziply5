@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useRef, useEffect } from "react"
-import { MapPin, ChevronDown } from "lucide-react"
+import { MapPin, ChevronDown, } from "lucide-react"
 
 const locations = [
   "Hyderabad",
@@ -44,7 +44,7 @@ export default function LocationDropdown() {
       {/* BUTTON */}
       <button
         onClick={() => setOpen(!open)}
-        className="flex items-center gap-2 cursor-pointer rounded-full px-4 py-2 text-sm text-zinc-700 hover:border-amber-500 transition"
+        className="flex items-center gap-2 cursor-pointer rounded-full px-4 py-2 text-sm text-black hover:text-gray-800 transition"
       >
         <MapPin size={16} />
         <span>{selected}</span>
@@ -62,7 +62,7 @@ export default function LocationDropdown() {
               placeholder="Search location..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:border-amber-500"
+              className="w-full  px-3 py-2 border rounded-lg text-sm focus:outline-none focus:border-amber-500"
             />
           </div>
 
@@ -77,7 +77,7 @@ export default function LocationDropdown() {
                     setOpen(false)
                     setSearch("")
                   }}
-                  className="w-full text-left px-4 py-2 text-sm hover:bg-amber-50 transition"
+                  className="w-full text-left px-4 py-2 text-sm hover:bg-[#51282b] cursor-pointer hover:text-white transition"
                 >
                   {loc}
                 </button>
