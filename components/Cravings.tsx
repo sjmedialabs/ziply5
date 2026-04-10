@@ -14,8 +14,8 @@ export default function Cravings() {
   return (
     <section className="bg-amber-50 py-12 md:py-16">
       <div className="container mx-auto px-4">
-        <div className="flex items-center justify-between mb-10">
-          <h2 className="font-heading text-3xl md:text-4xl font-extrabold text-zinc-900">FUEL YOUR CRAVINGS</h2>
+        <div className="flex items-center justify-between ">
+          <h2 className="font-heading text-3xl md:text-4xl  font-extrabold text-zinc-900">FUEL YOUR CRAVINGS</h2>
           <Link href="https://instagram.com" target="_blank" className="flex items-center gap-2 bg-gradient-to-r from-purple-500 via-pink-500 to-orange-500 text-white px-4 py-2 rounded-full font-semibold text-sm hover:opacity-90 transition-opacity">FOLLOW @ZIPLY5</Link>
         </div>
 
