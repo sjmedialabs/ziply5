@@ -90,9 +90,9 @@ export default function Footer() {
       />
 
       {/* Content Layer */}
-      <div className="relative z-10 pt-6">
+      <div className="relative z-10 pt-10">
 
-        <div className="max-w-7xl mx-auto px-6 lg:px-8">
+        <div className="max-w-7xl mx-auto px-4">
 
           {/* Grid */}
           <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-5 gap-5 lg:gap-10">

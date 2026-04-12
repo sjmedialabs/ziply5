@@ -13,8 +13,8 @@ const cravingsGallery = [
 
 export default function CravingsGallery() {
   return (
-    <section className="bg-[#fff] section-padding">
-      <div className="section-container">
+    <section className="bg-[#fff]">
+      <div className="max-w-7xl mx-auto px-4">
         <div className="flex flex-col sm:flex-row items-start justify-center sm:justify-between gap-2 sm:gap-4 mb-4">
           <h2 className="font-heading text-3xl md:text-4xl lg:text-5xl font-extrabold text-primary text-center sm:text-left">FUEL YOUR CRAVINGS</h2>
           <Button className="bg-primary text-[#fff] h-[40px] rounded-[10px] font-bold cursor-pointer 

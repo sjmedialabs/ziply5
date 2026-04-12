@@ -84,18 +84,18 @@ const total = 3770
       </div>
 
       {/* Navigation */}
-      <nav className="bg-white py-4 w-full relative z-10">
+      <nav className="bg-white w-full relative z-10">
         <div className="w-full px-4 max-w-7xl mx-auto flex items-center justify-between">
 
           {/* MOBILE MENU BUTTON */}
           <button 
-            className="md:hidden p-3 z-40"
+            className="lg:hidden z-40"
             onClick={() => setMenuOpen(!menuOpen)}
           >
             {menuOpen ? <X size={24} /> : <Menu size={24} />}
           </button>
 
-          <div className="hidden md:flex items-center gap-8">
+          <div className="hidden lg:flex items-center gap-8">
 
             {/* PRODUCTS WITH DROPDOWN */}
             <div
@@ -193,7 +193,7 @@ const total = 3770
             </Link>
           </div>
           
-          <div className="flex-1 md:flex-none flex justify-center">
+          <div className="flex-1 lg:flex-none flex justify-center">
             <Link href="/" className="flex items-center">
               <Image
                 src="/primaryLogo.png"
@@ -208,7 +208,7 @@ const total = 3770
 
           <div className="flex items-center gap-3 md:gap-5">
 
-            <div className="hidden md:block">
+            <div className="hidden lg:block">
               <LocationDropdown />
             </div>
             
@@ -219,7 +219,7 @@ const total = 3770
               <Search size={20} className="text-zinc-700 hover:text-[#f97316]" />
             </button>
 
-            <div className="hidden md:flex items-center gap-6">
+            <div className="hidden lg:flex items-center gap-6">
 
               <Link href="/profile" className="p-2 hover:bg-zinc-50 rounded-full transition-colors">
                 <User size={20} className="text-zinc-700 hover:text-[#f97316]" />
@@ -242,7 +242,7 @@ const total = 3770
       </nav>
 
       {menuOpen && (
-        <div className="md:hidden bg-white border-t px-6 py-4 space-y-4 shadow-md">
+        <div className="lg:hidden bg-white border-t px-6 py-4 space-y-4 shadow-md">
           <div className="pb-4 border-b">
             <LocationDropdown />
           </div>

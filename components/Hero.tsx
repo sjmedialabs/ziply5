@@ -81,7 +81,7 @@ const handleTouchEnd = () => {
         />
 
         <div className="absolute inset-0 flex items-start mt-15">
-          <div className="w-full max-w-7xl mx-auto px-1">
+          <div className="w-full max-w-7xl mx-auto px-4">
             <div className="max-w-7xl">
               <h1 className="font-heading text-3xl md:text-5xl lg:text-7xl font-extrabold text-primary leading-[1.05] mb-4 whitespace-nowrap">
                 Nothing Artificial.<br />Everything Delicious.
