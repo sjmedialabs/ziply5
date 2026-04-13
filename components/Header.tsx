@@ -2,16 +2,18 @@
 
 import Link from "next/link"
 import { Menu, X } from "lucide-react"
-import { useState, useRef } from "react"
+import { useState, useRef, useEffect } from "react"
 import Image from "next/image"
 import CartDropdown from "./CartDropdown"
 import { useSearch } from "../hooks/useSearch"
 import LocationDropdown from "./LocationDropdown"
 import { Search, User, ShoppingCart } from "lucide-react"
+import { getCartCount } from "@/lib/cart"
 
 export default function Header() {
   const [menuOpen, setMenuOpen] = useState(false)
   const { searchOpen, setSearchOpen, searchQuery, setSearchQuery, handleSearch } = useSearch()
+  const [cartCount, setCartCount] = useState(0)
 
   const productRef = useRef<HTMLDivElement>(null)
   const [arrowLeft, setArrowLeft] = useState(0)
@@ -52,6 +54,18 @@ export default function Header() {
   ]
 
   const total = 3770
+
+  useEffect(() => {
+    const syncCount = () => setCartCount(getCartCount())
+    syncCount()
+
+    window.addEventListener("ziply5:cart-updated", syncCount)
+    window.addEventListener("storage", syncCount)
+    return () => {
+      window.removeEventListener("ziply5:cart-updated", syncCount)
+      window.removeEventListener("storage", syncCount)
+    }
+  }, [])
 
   return (
     <header className="sticky top-0 z-[100]">
@@ -108,7 +122,7 @@ export default function Header() {
                 }
               }}
             >
-              <Link href="/#products" className="font-extrabold text-black hover:text-[#f97316] transition-colors text-[15px]">
+              <Link href="/products" className="font-extrabold text-black hover:text-[#f97316] transition-colors text-[15px]">
                 Products
               </Link>
 
@@ -230,9 +244,14 @@ export default function Header() {
               <div className="relative group">
                 <Link
                   href="/cart"
-                  className="flex items-center justify-center w-8 h-8 rounded-full hover:bg-zinc-50 transition-colors"
+                  className="relative flex items-center justify-center w-8 h-8 rounded-full hover:bg-zinc-50 transition-colors"
                 >
                   <ShoppingCart size={20} className="text-zinc-700 hover:text-[#f97316]" />
+                  {cartCount > 0 && (
+                    <span className="absolute -top-1.5 -right-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-[#f97316] px-1 text-[10px] font-bold text-white">
+                      {cartCount}
+                    </span>
+                  )}
                 </Link>
 
                 <CartDropdown items={cartItems} total={total} />
@@ -251,7 +270,7 @@ export default function Header() {
             <LocationDropdown />
           </div>
 
-          <Link href="/#products" onClick={() => setMenuOpen(false)} className="block font-semibold text-black">
+          <Link href="/products" onClick={() => setMenuOpen(false)} className="block font-semibold text-black">
             Products
           </Link>
           <Link href="/#best-sellers" onClick={() => setMenuOpen(false)} className="block font-semibold text-black">

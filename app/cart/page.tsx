@@ -1,40 +1,32 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
+import { getCartItems, setCartItems, type CartItem } from "@/lib/cart"
 
 export default function CartPage() {
   const router = useRouter()
   const [searchOpen, setSearchOpen] = useState(false)
-  const [cartItems, setCartItems] = useState([
-    {
-      id: 1,
-      name: "Oversized Graffiti Tee",
-      price: 28.0,
-      quantity: 1,
-      size: "M",
-      image: "https://images.unsplash.com/photo-1562157873-818bc0726f68?ixlib=rb-4.0.3&auto=format&fit=crop&w=400&q=80",
-    },
-    {
-      id: 2,
-      name: "Chunky Skate Shoes",
-      price: 65.0,
-      quantity: 1,
-      size: "10",
-      image:
-        "https://images.unsplash.com/photo-1525966222134-fcfa99b8ae77?ixlib=rb-4.0.3&auto=format&fit=crop&w=400&q=80",
-    },
-  ])
+  const [cartItems, setLocalCartItems] = useState<CartItem[]>([])
 
-  const updateQuantity = (id: number, delta: number) => {
-    setCartItems(
-      cartItems.map((item) => (item.id === id ? { ...item, quantity: Math.max(1, item.quantity + delta) } : item)),
-    )
+  useEffect(() => {
+    setLocalCartItems(getCartItems())
+  }, [])
+
+  const persistCart = (next: CartItem[]) => {
+    setLocalCartItems(next)
+    setCartItems(next)
   }
 
-  const removeItem = (id: number) => {
-    setCartItems(cartItems.filter((item) => item.id !== id))
+  const updateQuantity = (slug: string, delta: number) => {
+    const next = cartItems.map((item) => (item.slug === slug ? { ...item, quantity: Math.max(1, item.quantity + delta) } : item))
+    persistCart(next)
+  }
+
+  const removeItem = (slug: string) => {
+    const next = cartItems.filter((item) => item.slug !== slug)
+    persistCart(next)
   }
 
   const subtotal = cartItems.reduce((sum, item) => sum + item.price * item.quantity, 0)
@@ -162,24 +154,24 @@ export default function CartPage() {
               {/* Cart Items */}
               <div className="cart-items">
                 {cartItems.map((item) => (
-                  <div key={item.id} className="cart-item">
+                  <div key={item.slug} className="cart-item">
                     <img src={item.image || "/placeholder.svg"} alt={item.name} className="cart-item-image" />
                     <div className="cart-item-details">
                       <h3>{item.name}</h3>
-                      <p>Size: {item.size}</p>
+                      <p>Weight: {item.weight}</p>
                       <p className="cart-item-price">${item.price.toFixed(2)}</p>
                     </div>
                     <div className="cart-item-controls">
                       <div className="quantity-controls">
-                        <button className="quantity-btn" onClick={() => updateQuantity(item.id, -1)}>
+                        <button className="quantity-btn" onClick={() => updateQuantity(item.slug, -1)}>
                           −
                         </button>
                         <span className="quantity-value">{item.quantity}</span>
-                        <button className="quantity-btn" onClick={() => updateQuantity(item.id, 1)}>
+                        <button className="quantity-btn" onClick={() => updateQuantity(item.slug, 1)}>
                           +
                         </button>
                       </div>
-                      <button className="remove-btn" onClick={() => removeItem(item.id)}>
+                      <button className="remove-btn" onClick={() => removeItem(item.slug)}>
                         REMOVE
                       </button>
                     </div>
