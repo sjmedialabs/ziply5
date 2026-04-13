@@ -222,7 +222,7 @@ export default function Header() {
 
             <div className="hidden lg:flex items-center gap-6">
 
-              <Link href="/profile" className="p-2 hover:bg-zinc-50 rounded-full transition-colors">
+              <Link href="/login" className="p-2 hover:bg-zinc-50 rounded-full transition-colors">
                 <User size={20} className="text-zinc-700 hover:text-[#f97316]" />
               </Link>
 
@@ -260,7 +260,7 @@ export default function Header() {
           <Link href="/#combos" onClick={() => setMenuOpen(false)} className="block font-semibold text-black">
             Combos
           </Link>
-          <Link href="/profile" onClick={() => setMenuOpen(false)} className="block font-semibold text-black">
+          <Link href="/login" onClick={() => setMenuOpen(false)} className="block font-semibold text-black">
             Profile
           </Link>
           <Link href="/cart" onClick={() => setMenuOpen(false)} className="block font-semibold text-black">
