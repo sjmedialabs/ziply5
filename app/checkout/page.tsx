@@ -4,6 +4,7 @@ import BannerSection from "@/components/BannerSection";
 import { ArrowLeft } from "lucide-react";
 import Link from "next/link";
 import { useLocation } from "@/hooks/useLocation";
+import { getCartItems, type CartItem } from "@/lib/cart";
 import {
   Select,
   SelectContent,
@@ -15,10 +16,10 @@ import {
   RadioGroup,
   RadioGroupItem,
 } from "@/components/ui/radio-group";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 export default function CheckoutPage() {
-      const {
+  const {
     state,
     setState,
     city,
@@ -26,15 +27,23 @@ export default function CheckoutPage() {
     states,
     cities,
   } = useLocation();
-    const [method, setMethod] = useState("card");
-  const items = [
-    { name: "Dal Makhana Rice", price: 750 },
-    { name: "Spl Veg Rice", price: 1500 },
-    { name: "Sambar Rice", price: 1000 },
-    { name: "Palak Prawn Rice", price: 500 },
-  ];
+  const [method, setMethod] = useState("card");
+  const [items, setItems] = useState<CartItem[]>([]);
 
-  const total = items.reduce((acc, item) => acc + item.price, 0);
+  useEffect(() => {
+    const syncCart = () => setItems(getCartItems());
+    syncCart();
+    window.addEventListener("ziply5:cart-updated", syncCart);
+    window.addEventListener("storage", syncCart);
+    return () => {
+      window.removeEventListener("ziply5:cart-updated", syncCart);
+      window.removeEventListener("storage", syncCart);
+    };
+  }, []);
+
+  const subTotal = items.reduce((acc, item) => acc + item.price * item.quantity, 0);
+  const shipping = items.length === 0 ? 0 : 20;
+  const total = subTotal + shipping;
 
   return (
     <div>
@@ -54,10 +63,12 @@ export default function CheckoutPage() {
 
             {/* Back Button */}
             <div>
-            <button className="flex items-center gap-2 bg-gray-200 text-[#656565] font-semibold px-5 py-2 rounded-full text-sm">
-              <ArrowLeft size={16} />
-              Back To Shopping Cart
-            </button>
+              <Link href="/cart">
+                <button className="flex items-center gap-2 bg-gray-200 text-[#656565] font-semibold px-5 py-2 rounded-full text-sm">
+                  <ArrowLeft size={16} />
+                  Back To Shopping Cart
+                </button>
+              </Link>
             </div>
             {/* Billing */}
   <div>
@@ -283,29 +294,40 @@ export default function CheckoutPage() {
             </div>
             <div className="w-full h-0.5 bg-black mt-4"></div>
             <div className="space-y-4 py-8">
-              {items.map((item, i) => (
-                <>
-                <div key={i} className="flex justify-between text-sm pb-2">
+              {items.map((item) => (
+                <div key={item.slug}>
+                <div className="flex justify-between text-sm pb-2">
                   <div>
                     <p className="font-medium font-melon text-[#C03621] tracking-wide">{item.name}</p>
                     <p className="text-xs text-[#646464]">
-                      Creamy vanilla ice cream
+                      Qty: {item.quantity} | Net wt. {item.weight}
                     </p>
                   </div>
 
                   <span className="text-[#C03621] font-medium font-melon tracking-wide">
-                    Rs.{item.price}.00
+                    Rs.{(item.price * item.quantity).toFixed(2)}
                   </span>
                 </div>
                 <div className="w-full h-0.5 bg-black"></div>
-                </>
+                </div>
               ))}
+              {items.length === 0 && (
+                <p className="text-sm text-[#646464] text-center py-4">No items in cart.</p>
+              )}
             </div>
 
             {/* Total */}
             <div className="flex justify-between text-[#C03621] font-medium font-melon tracking-wide">
+              <span>Sub Total</span>
+              <span>Rs.{subTotal.toFixed(2)}</span>
+            </div>
+            <div className="flex justify-between text-[#C03621] font-medium font-melon tracking-wide mt-2">
+              <span>Shipping</span>
+              <span>Rs.{shipping.toFixed(2)}</span>
+            </div>
+            <div className="flex justify-between text-[#C03621] font-medium font-melon tracking-wide mt-2">
               <span>Grand Total</span>
-              <span>Rs.{total}.00</span>
+              <span>Rs.{total.toFixed(2)}</span>
             </div>
 
           </div>

@@ -10,8 +10,8 @@ export default function Hero() {
 
   const slides = [
     "/hero-banner.png",
-    "/hero2.png",
-    "/hero3.png",
+    "/hero-banner.png",
+    "/hero-banner.png",
   ]
 
   const handleTouchStart = (e: any) => {
