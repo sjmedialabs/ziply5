@@ -30,19 +30,19 @@ export default function CartDropdown({ items, total }: CartDropdownProps) {
 
         <div className="px-6 py-6">
 
-    {/* ITEMS */}
-    <div className="space-y-6">
-      {items.map((item) => (
-        <div key={item.id} className="flex items-center justify-between gap-4">
-          <div className="flex items-center gap-12">
-          <div className="w-16 h-16 relative  rounded-lg flex-shrink-0">
-            <Image
-              src={item.image}
-              alt={item.name}
-              fill
-              className="object-contain p-2"
-            />
-          </div>
+  {/* ITEMS */}
+  <div className="space-y-6">
+    {items.map((item) => (
+      <div key={item.id} className="flex items-center justify-between gap-4">
+        <div className="flex items-center gap-12">
+        <div className="w-16 h-16 relative  rounded-lg shrink-0">
+          <Image
+            src={item.image}
+            alt={item.name}
+            fill
+            className="object-contain p-2"
+          />
+        </div>
 
           <div className="flex-1">
             <p className="font-medium text-xs font-melon mb-2 text-black">

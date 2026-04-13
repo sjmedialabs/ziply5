@@ -40,6 +40,8 @@ const fallbackCMSData = {
 
   timings: "Monday - Sunday:\n10:00am - 23:00pm",
 
+  copyWrightMsg: "2025 ziply5 All Rights Reserved",
+
   phone: "+91 9901233213",
 
   email: "support@ziply5.com",
