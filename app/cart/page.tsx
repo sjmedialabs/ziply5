@@ -1,237 +1,220 @@
-"use client"
+"use client";
 
-import { useState } from "react"
-import Link from "next/link"
-import { useRouter } from "next/navigation"
+import BannerSection from "@/components/BannerSection";
+import { ArrowLeft, Minus, Plus, X } from "lucide-react";
+import Link from "next/link";
 
 export default function CartPage() {
-  const router = useRouter()
-  const [searchOpen, setSearchOpen] = useState(false)
-  const [cartItems, setCartItems] = useState([
+  const cartItems = [
     {
       id: 1,
-      name: "Oversized Graffiti Tee",
-      price: 28.0,
-      quantity: 1,
-      size: "M",
-      image: "https://images.unsplash.com/photo-1562157873-818bc0726f68?ixlib=rb-4.0.3&auto=format&fit=crop&w=400&q=80",
+      name: "Dal Makhana Rice",
+      price: 250,
+      quantity: 2,
+      weight: "500g",
+      img: "assets/cartpage/dalMakhaniRice.png",
     },
     {
       id: 2,
-      name: "Chunky Skate Shoes",
-      price: 65.0,
-      quantity: 1,
-      size: "10",
-      image:
-        "https://images.unsplash.com/photo-1525966222134-fcfa99b8ae77?ixlib=rb-4.0.3&auto=format&fit=crop&w=400&q=80",
+      name: "Spl Veg Rice",
+      price: 250,
+      quantity: 4,
+      weight: "250g",
+      img: "assets/cartpage/specialVegRice.png",
     },
-  ])
+    {
+      id: 3,
+      name: "Sambar Rice",
+      price: 250,
+      quantity: 4,
+      weight: "250g",
+      img: "assets/cartpage/sambharRice.png",
+    },
+    {
+      id: 4,
+      name: "Palki Prawn Rice",
+      price: 250,
+      quantity: 2,
+      weight: "500g",
+      img: "assets/cartpage/palakPrawanRice.png",
+    },
+  ];
 
-  const updateQuantity = (id: number, delta: number) => {
-    setCartItems(
-      cartItems.map((item) => (item.id === id ? { ...item, quantity: Math.max(1, item.quantity + delta) } : item)),
-    )
-  }
+  const subTotal = cartItems.reduce(
+    (acc, item) => acc + item.price * item.quantity,
+    0
+  );
 
-  const removeItem = (id: number) => {
-    setCartItems(cartItems.filter((item) => item.id !== id))
-  }
-
-  const subtotal = cartItems.reduce((sum, item) => sum + item.price * item.quantity, 0)
-  const shipping = subtotal > 75 ? 0 : 8.99
-  const total = subtotal + shipping
-
-  const handleCheckout = () => {
-    console.log("Processing checkout:", { items: cartItems, total })
-    alert("Checkout coming soon! Total: $" + total.toFixed(2))
-  }
+  const shipping = 20;
+  const total = subTotal + shipping;
 
   return (
-    <>
-      {/* Top Marquee Bar */}
-      <div className="marquee-bar">
-        <div className="marquee-container">
-          <div className="marquee-content">
-            FREE SHIPPING ON ORDERS OVER $75 • NEW DROP: SKATER BOY VOL. 2 • WORLDWIDE SHIPPING • JOIN THE DISCORD FOR
-            EARLY ACCESS • FREE SHIPPING ON ORDERS OVER $75 • NEW DROP: SKATER BOY VOL. 2 • WORLDWIDE SHIPPING • JOIN
-            THE DISCORD FOR EARLY ACCESS •
-          </div>
-        </div>
+    <div>
+      {/* Banner */}
+      <BannerSection
+        title="Shopping Cart"
+        subtitle="Some of the queries you want to know about us."
+        gradient="linear-gradient(to right, #EFD7EF 0%, #F5F9FC 30%, #F8EAE1 60%, #EAF8F9 100%)"
+      />
+
+      {/* Cart Section */}
+      <section className="py-16 bg-[#F5F1E6]">
+        <div className="max-w-7xl mx-auto px-4 grid lg:grid-cols-3 items-center gap-10">
+
+<div className="lg:col-span-2 overflow-x-auto">
+
+  {/* 🔙 Back Button */}
+  <button className="flex items-center gap-2 bg-gray-200 px-5 py-2 rounded-full text-sm mb-6 hover:bg-gray-300 transition">
+    <ArrowLeft size={16} />
+    Back To Products Details
+  </button>
+
+  {/* 🧾 Title Row */}
+  <div className="flex justify-between items-center border-b pb-3 mb-4 font-melon tracking-wide">
+    <h2 className="font-medium text-black text-lg">
+      Shopping Cart
+    </h2>
+
+    <span className="font-medium text-black">
+      ({cartItems.length.toString().padStart(2, "0")} Items)
+    </span>
+  </div>
+
+  {/* ✅ SCROLL WRAPPER */}
+  <div className="overflow-x-auto">
+    <div className="min-w-[700px]">
+
+      {/* 📊 Table Header */}
+      <div className="grid grid-cols-4 text-center text-sm text-[#787878] border-b pb-3 mb-6 font-melon tracking-wide">
+        <span>Product Details</span>
+        <span>Price</span>
+        <span>Quantity</span>
+        <span>Total</span>
       </div>
 
-      {/* Navigation */}
-      <nav className="navigation">
-        <div className="logo">
-          <Link href="/">
-            GZ<span>.</span>STORE
-          </Link>
-          <div className="beta-badge">BETA</div>
-        </div>
+      {/* 📦 Items */}
+      {cartItems.map((item) => (
+        <div
+          key={item.id}
+          className="grid grid-cols-4 items-center text-center py-6 border-b"
+        >
+          {/* Product */}
+          <div className="flex items-center text-start gap-4">
+            <div className="w-20 h-20 border border-[#E0E0E0] rounded-xl flex items-center justify-center shadow-sm">
+              <img
+                src={item.img}
+                className="w-16 h-16 rounded-lg object-contain"
+              />
+            </div>
 
-        <div className="nav-links">
-          <Link href="/#trending" className="nav-link">
-            LATEST DROPS
-          </Link>
-          <Link href="/#trending" className="nav-link">
-            CLOTHING
-          </Link>
-          <Link href="/#trending" className="nav-link">
-            SNEAKERS
-          </Link>
-          <Link href="/#trending" className="nav-link">
-            ACCESSORIES
-          </Link>
-        </div>
-
-        <div className="nav-actions">
-          <div className="nav-icon" onClick={() => setSearchOpen(!searchOpen)}>
-            <svg
-              width="24"
-              height="24"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2.5"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <circle cx="11" cy="11" r="8"></circle>
-              <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
-            </svg>
+            <div>
+              <p className="font-medium text-black font-melon tracking-wide">
+                {item.name}
+              </p>
+              <p className="text-xs text-[#787878]">
+                Weight: <span className="text-black font-medium">{item.weight}</span>
+              </p>
+              <p className="text-xs text-[#787878]">
+                Qty: <span className="text-black font-medium">{item.quantity}</span>
+              </p>
+            </div>
           </div>
-          <Link href="/profile" className="nav-icon">
-            <svg
-              width="24"
-              height="24"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2.5"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
-              <circle cx="12" cy="7" r="4"></circle>
-            </svg>
-          </Link>
-          <Link href="/cart" className="nav-icon">
-            <svg
-              width="24"
-              height="24"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2.5"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <circle cx="9" cy="21" r="1"></circle>
-              <circle cx="20" cy="21" r="1"></circle>
-              <path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"></path>
-            </svg>
-            <span className="cart-badge">{cartItems.length}</span>
-          </Link>
-        </div>
-      </nav>
 
-      {searchOpen && (
-        <div className="search-overlay" onClick={() => setSearchOpen(false)}>
-          <div className="search-container" onClick={(e) => e.stopPropagation()}>
-            <input type="text" placeholder="Search for products..." className="search-input" autoFocus />
-            <button className="search-close" onClick={() => setSearchOpen(false)}>
-              ✕
+          {/* Price */}
+          <div>
+            <p className="text-primary font-melon tracking-wide font-medium">
+              Rs.{item.price}
+            </p>
+          </div>
+
+          {/* Quantity */}
+          <div className="flex items-center border rounded-full w-fit overflow-hidden">
+            <button className="px-3 py-1 border-r">
+              <Minus size={14} />
+            </button>
+
+            <span className="px-4">{item.quantity}</span>
+
+            <button className="px-3 py-1 border-l">
+              <Plus size={14} />
+            </button>
+          </div>
+
+          {/* Total */}
+          <div className="flex items-center justify-between">
+            <span className="text-black font-melon tracking-wide font-medium">
+              Rs.{item.price * item.quantity}.00
+            </span>
+
+            <button className="w-8 h-8 border border-red-400 text-red-500 rounded-full flex items-center justify-center">
+              <X size={14} />
             </button>
           </div>
         </div>
-      )}
+      ))}
 
-      {/* Cart Section */}
-      <main className="cart-section">
-        <div className="cart-container">
-          <h1 className="cart-title">YOUR CART</h1>
+    </div>
+  </div>
 
-          {cartItems.length === 0 ? (
-            <div className="cart-empty">
-              <p>Your cart is empty</p>
-              <Link href="/" className="btn-primary hover-lift">
-                CONTINUE SHOPPING
-              </Link>
+  {/* Continue Shopping */}
+  <button className="mt-8 flex items-center gap-2 text-primary text-sm font-bold border border-gray-200 px-5 py-1 rounded-full">
+    <ArrowLeft size={16} />
+    Continue Shopping
+  </button>
+
+</div>
+
+          {/* RIGHT: Summary Card */}
+          <div className="bg-[#FFC222] rounded-3xl p-6 shadow-md h-fit">
+            <h3 className="font-melon text-xl text-center mb-6">
+              Order Summary
+            </h3>
+
+            {/* Coupon */}
+            <div className="flex justify-between items-center mb-6">
+              <p className="text-sm">Apply Coupons</p>
+              <button className="bg-black text-white text-xs px-3 py-1 rounded-full">
+                Apply
+              </button>
             </div>
-          ) : (
-            <div className="cart-layout">
-              {/* Cart Items */}
-              <div className="cart-items">
-                {cartItems.map((item) => (
-                  <div key={item.id} className="cart-item">
-                    <img src={item.image || "/placeholder.svg"} alt={item.name} className="cart-item-image" />
-                    <div className="cart-item-details">
-                      <h3>{item.name}</h3>
-                      <p>Size: {item.size}</p>
-                      <p className="cart-item-price">${item.price.toFixed(2)}</p>
-                    </div>
-                    <div className="cart-item-controls">
-                      <div className="quantity-controls">
-                        <button className="quantity-btn" onClick={() => updateQuantity(item.id, -1)}>
-                          −
-                        </button>
-                        <span className="quantity-value">{item.quantity}</span>
-                        <button className="quantity-btn" onClick={() => updateQuantity(item.id, 1)}>
-                          +
-                        </button>
-                      </div>
-                      <button className="remove-btn" onClick={() => removeItem(item.id)}>
-                        REMOVE
-                      </button>
-                    </div>
-                  </div>
-                ))}
+
+            {/* Details */}
+            <div className="space-y-3 text-sm">
+              <div className="flex justify-between">
+                <span>Sub Total</span>
+                <span>INR {subTotal}</span>
               </div>
 
-              {/* Cart Summary */}
-              <div className="cart-summary">
-                <h2 className="summary-title">ORDER SUMMARY</h2>
-                <div className="summary-line">
-                  <span>Subtotal</span>
-                  <span>${subtotal.toFixed(2)}</span>
-                </div>
-                <div className="summary-line">
-                  <span>Shipping</span>
-                  <span>{shipping === 0 ? "FREE" : `$${shipping.toFixed(2)}`}</span>
-                </div>
-                {subtotal < 75 && <p className="shipping-note">Add ${(75 - subtotal).toFixed(2)} for free shipping!</p>}
-                <div className="summary-total">
-                  <span>Total</span>
-                  <span>${total.toFixed(2)}</span>
-                </div>
-                <button onClick={handleCheckout} className="btn-primary hover-lift checkout-btn">
-                  CHECKOUT
-                </button>
+              <div className="flex justify-between">
+                <span>Shipping</span>
+                <span>INR {shipping}</span>
               </div>
             </div>
-          )}
-        </div>
-      </main>
 
-      {/* Footer */}
-      <footer className="footer">
-        <div className="footer-content">
-          <Link href="/" className="footer-logo">
-            GZ.STORE
-          </Link>
-          <div className="footer-copyright">© 2023 Gen Z Store. All rights reserved. No Cap.</div>
-          <div className="footer-links">
-            <a href="https://instagram.com" target="_blank" rel="noopener noreferrer">
-              Instagram
-            </a>
-            <a href="https://tiktok.com" target="_blank" rel="noopener noreferrer">
-              TikTok
-            </a>
-            <a href="https://discord.com" target="_blank" rel="noopener noreferrer">
-              Discord
-            </a>
+            {/* Divider */}
+            <div className="border-t my-4" />
+
+            {/* Total */}
+            <div className="flex justify-between font-semibold">
+              <span>Grand Total</span>
+              <span>₹{total}</span>
+            </div>
+
+            {/* Button */}
+            <Link href="/checkout">
+              <button className="mt-6 w-full bg-primary text-white py-3 rounded-xl font-medium font-melon tracking-wide">
+                Proceed to checkout →
+              </button>
+            </Link>
+
+            {/* Note */}
+            <p className="text-xs text-gray-700 mt-4">
+              Safe and Secure Payments. Easy Returns. 100% Authentic Products.
+            </p>
           </div>
+
         </div>
-      </footer>
-    </>
-  )
+      </section>
+    </div>
+  );
 }

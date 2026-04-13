@@ -26,9 +26,10 @@ const MENU_LINKS = [
 ];
 
 const QUICK_LINKS = [
-  { label: "About ziply5", href: "/about" },
-  { label: "Special Dish", href: "/special-dish" },
-  { label: "Contact", href: "/contact" },
+  { label: "Privacy Policy", href: "/privacy-policy" },
+  { label: "Terms & Conditions", href: "/terms" },
+  { label: "Returns", href: "/returns" },
+  { label: "Shipping Info", href: "/shipping" },
 ];
 
 /* ===============================
