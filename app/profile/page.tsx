@@ -6,7 +6,6 @@ import { User, Star, Package } from "lucide-react"
 
 export default function ProfilePage() {
   const [activeTab, setActiveTab] = useState("about")
-  const [menuOpen, setMenuOpen] = useState(false)
 
   const socialLinks = [
     { icon: Facebook, link: "https://facebook.com" },
@@ -16,51 +15,24 @@ export default function ProfilePage() {
   ]
 
   return (
-    <div className="min-h-screen bg-[#f6f0dc] py-16 px-4">
+    <div className="min-h-screen bg-[#f6f0dc] py-10 md:py-16 px-4">
       <div className="max-w-5xl mx-auto md:flex gap-30">
-
-        {/* MOBILE MENU BUTTON */}
-        <div className="md:hidden mb-4">
-          <button
-            onClick={() => setMenuOpen(true)}
-            className="px-4 py-2 bg-[#7a1e0e] text-white rounded-md"
-          >
-            ☰
-          </button>
-        </div>
-
-        {/* OVERLAY */}
-        {menuOpen && (
-          <div
-            className="fixed inset-0 bg-black/40 z-40 md:hidden"
-            onClick={() => setMenuOpen(false)}
-          />
-        )}
 
         {/* LEFT SIDEBAR */}
         <div
-          className={`
-            fixed md:static top-0 left-0 h-full md:h-auto
-            w-[260px] bg-white font-melon overflow-hidden border
-            z-50 transition-transform duration-300
-            ${menuOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"}
-          `}
+          className="
+            w-full md:w-[260px]
+            bg-white font-melon overflow-hidden border
+            flex md:block
+          "
         >
-
-          {/* CLOSE BUTTON (MOBILE) */}
-          <div className="md:hidden flex justify-end p-3">
-            <button onClick={() => setMenuOpen(false)}>✕</button>
-          </div>
 
           {/* TAB ITEM */}
           <div
-            onClick={() => {
-              setActiveTab("about")
-              setMenuOpen(false)
-            }}
-            className={`flex items-center gap-3 px-5 py-4 cursor-pointer border-b ${
+            onClick={() => setActiveTab("about")}
+            className={`flex-1 md:flex-none flex items-center justify-center md:justify-start gap-3 px-3 md:px-5 py-4 cursor-pointer border-b md:border-b ${
               activeTab === "about"
-                ? "bg-white text-orange-500 border-r-4 shadow-[inset_-4px_0_6px_rgba(0,0,0,0.1)] border-orange-500"
+                ? "bg-white text-orange-500 md:border-r-4 shadow-[inset_-4px_0_6px_rgba(0,0,0,0.1)] border-orange-500"
                 : "text-gray-400"
             }`}
           >
@@ -69,13 +41,10 @@ export default function ProfilePage() {
           </div>
 
           <div
-            onClick={() => {
-              setActiveTab("favorite")
-              setMenuOpen(false)
-            }}
-            className={`flex items-center gap-3 px-5 py-4 cursor-pointer border-b ${
+            onClick={() => setActiveTab("favorite")}
+            className={`flex-1 md:flex-none flex items-center justify-center md:justify-start gap-3 px-3 md:px-5 py-4 cursor-pointer border-b md:border-b ${
               activeTab === "favorite"
-                ? "bg-white text-orange-500 border-r-4 shadow-[inset_-4px_0_6px_rgba(0,0,0,0.1)] border-orange-500"
+                ? "bg-white text-orange-500 md:border-r-4 shadow-[inset_-4px_0_6px_rgba(0,0,0,0.1)] border-orange-500"
                 : "text-gray-400"
             }`}
           >
@@ -84,13 +53,10 @@ export default function ProfilePage() {
           </div>
 
           <div
-            onClick={() => {
-              setActiveTab("orders")
-              setMenuOpen(false)
-            }}
-            className={`flex items-center gap-3 px-5 py-4 cursor-pointer ${
+            onClick={() => setActiveTab("orders")}
+            className={`flex-1 md:flex-none flex items-center justify-center md:justify-start gap-3 px-3 md:px-5 py-4 cursor-pointer ${
               activeTab === "orders"
-                ? "bg-white text-orange-500 border-r-4 shadow-[inset_-4px_0_6px_rgba(0,0,0,0.1)] border-orange-500"
+                ? "bg-white text-orange-500 md:border-r-4 shadow-[inset_-4px_0_6px_rgba(0,0,0,0.1)] border-orange-500"
                 : "text-gray-400"
             }`}
           >
@@ -100,7 +66,7 @@ export default function ProfilePage() {
         </div>
 
         {/* RIGHT CONTENT */}
-        <div className="flex-1">
+        <div className="flex-1 mt-6 md:mt-0">
 
           {activeTab === "about" && (
             <div className="space-y-6 text-sm gap-2">

@@ -35,7 +35,7 @@ export default function CartDropdown({ items, total }: CartDropdownProps) {
     {items.map((item) => (
       <div key={item.id} className="flex items-center justify-between gap-4">
         <div className="flex items-center gap-12">
-        <div className="w-16 h-16 relative  rounded-lg flex-shrink-0">
+        <div className="w-16 h-16 relative  rounded-lg shrink-0">
           <Image
             src={item.image}
             alt={item.name}
