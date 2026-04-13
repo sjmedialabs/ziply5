@@ -171,15 +171,16 @@ export default function CartPage() {
             </h3>
 
             {/* Coupon */}
-            <div className="flex justify-between items-center mb-6">
+            <div className="flex justify-between items-center py-6 border-y border-white font-melon tracking-wide">
               <p className="text-sm">Apply Coupons</p>
-              <button className="bg-black text-white text-xs px-3 py-1 rounded-full">
+              <button className="bg-black text-xs px-3 py-1 rounded-full text-[#FFC222]">
                 Apply
               </button>
             </div>
 
             {/* Details */}
-            <div className="space-y-3 text-sm">
+            <p className="pt-6 text-sm pb-2 font-melon tracking-wide">Product Deails:</p>
+            <div className="space-y-3 text-lg font-melon tracking-wide text-[#C03621]">
               <div className="flex justify-between">
                 <span>Sub Total</span>
                 <span>INR {subTotal}</span>
@@ -195,14 +196,14 @@ export default function CartPage() {
             <div className="border-t my-4" />
 
             {/* Total */}
-            <div className="flex justify-between font-semibold">
+            <div className="flex justify-between font-medium text-lg font-melon tracking-wide text-[#C03621]">
               <span>Grand Total</span>
-              <span>₹{total}</span>
+              <span>{total}</span>
             </div>
 
             {/* Button */}
             <Link href="/checkout">
-              <button className="mt-6 w-full bg-primary text-white py-3 rounded-xl font-medium font-melon tracking-wide">
+              <button className="mt-6 w-full bg-[#7B3010] text-[#FFC222] py-3 rounded-full font-medium font-melon tracking-wide">
                 Proceed to checkout →
               </button>
             </Link>
