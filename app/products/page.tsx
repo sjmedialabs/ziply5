@@ -3,26 +3,30 @@
 import { useEffect, useMemo, useState } from "react"
 import Image from "next/image"
 import Link from "next/link"
+import { useSearchParams } from "next/navigation"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import { products } from "@/lib/products"
 import { getCartItems, setCartItemQuantity } from "@/lib/cart"
 import { getFavoriteSlugs, toggleFavoriteSlug } from "@/lib/favorites"
 
-const filterItems = [
-  { id: "all", label: "All" },
-  { id: "veg", label: "Veg" },
-  { id: "non-veg", label: "Non-Veg / Meat Meals" },
-  { id: "ready-to-eat", label: "Ready To Eat Meals" },
-  { id: "ready-to-cook", label: "Ready To Cook Meals" },
-] as const
-
-type FilterType = (typeof filterItems)[number]["id"]
+type CategoryFilter = "all" | "ready-to-eat" | "ready-to-cook"
+type MealTypeFilter = "all" | "veg" | "non-veg"
 type SortType = "popular" | "name-asc" | "name-desc"
 
 export default function ProductsPage() {
-  const [activeFilter, setActiveFilter] = useState<FilterType>("all")
+  const searchParams = useSearchParams()
+  const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>("all")
+  const [mealTypeFilter, setMealTypeFilter] = useState<MealTypeFilter>("all")
   const [sortBy, setSortBy] = useState<SortType>("popular")
   const [favoriteSlugs, setFavoriteSlugs] = useState<string[]>([])
   const [cartQtyBySlug, setCartQtyBySlug] = useState<Record<string, number>>({})
+  const searchTerm = (searchParams.get("search") || "").trim().toLowerCase()
 
   useEffect(() => {
     const syncFavorites = () => setFavoriteSlugs(getFavoriteSlugs())
@@ -55,48 +59,101 @@ export default function ProductsPage() {
   }, [])
 
   const filteredProducts = useMemo(() => {
-    const items =
-      activeFilter === "all"
-        ? products
-        : products.filter((item) => item.type === activeFilter || item.category === activeFilter)
+    const items = products.filter((item) => {
+      const categoryMatch = categoryFilter === "all" || item.category === categoryFilter
+      const typeMatch = mealTypeFilter === "all" || item.type === mealTypeFilter
+      return categoryMatch && typeMatch
+    })
+
+    const searched = searchTerm ? items.filter((item) => item.name.toLowerCase().includes(searchTerm)) : items
 
     if (sortBy === "name-asc") {
-      return [...items].sort((a, b) => a.name.localeCompare(b.name))
+      return [...searched].sort((a, b) => a.name.localeCompare(b.name))
     }
 
     if (sortBy === "name-desc") {
-      return [...items].sort((a, b) => b.name.localeCompare(a.name))
+      return [...searched].sort((a, b) => b.name.localeCompare(a.name))
     }
 
-    return items
-  }, [activeFilter, sortBy])
+    return searched
+  }, [categoryFilter, mealTypeFilter, sortBy, searchTerm])
 
   return (
     <section className="w-full bg-[#F3F0DC] py-8 md:py-10">
       <div className="mx-auto w-full max-w-7xl px-4 sm:px-6 lg:px-8">
         <div className="mb-6 flex flex-col gap-4">
-          <div className="flex flex-wrap items-center gap-2 md:gap-3">
-            {filterItems.map((item) => {
-              const isActive = activeFilter === item.id
-              return (
-                <button
-                  key={item.id}
-                  onClick={() => setActiveFilter(item.id)}
-                  className={`rounded-full border px-4 py-2 text-xs font-semibold tracking-wide transition-all md:px-5 ${
-                    isActive
-                      ? "border-[#7A2B19] bg-[#7A2B19] text-white"
-                      : "border-[#DADAD6] bg-white text-[#6B6B66] hover:border-[#7A2B19] hover:text-[#7A2B19]"
-                  }`}
+          {searchTerm && (
+            <p className="text-sm font-medium text-[#5A272A]">
+              Search results for "<span className="font-bold">{searchTerm}</span>" ({filteredProducts.length})
+            </p>
+          )}
+
+          <div className="rounded-2xl border border-[#E6DFC4] bg-white/70 p-3 md:p-4">
+            <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+              <p className="text-xs font-bold uppercase tracking-wide text-[#1F1F1C]">Filter Products</p>
+              <div className="grid grid-cols-1 gap-2 md:grid-cols-3">
+                <Select value={categoryFilter} onValueChange={(value) => setCategoryFilter(value as CategoryFilter)}>
+                  <SelectTrigger className="h-10 w-full min-w-[190px] rounded-full border-[#D9D9D1] bg-white px-4 text-sm font-medium text-[#494944]">
+                    <SelectValue placeholder="Category" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Categories</SelectItem>
+                    <SelectItem value="ready-to-eat">Ready To Eat</SelectItem>
+                    <SelectItem value="ready-to-cook">Ready To Cook</SelectItem>
+                  </SelectContent>
+                </Select>
+
+                <Select value={mealTypeFilter} onValueChange={(value) => setMealTypeFilter(value as MealTypeFilter)}>
+                  <SelectTrigger className="h-10 w-full min-w-[190px] rounded-full border-[#D9D9D1] bg-white px-4 text-sm font-medium text-[#494944]">
+                    <SelectValue placeholder="Meal Type" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Types</SelectItem>
+                    <SelectItem value="veg">Veg</SelectItem>
+                    <SelectItem value="non-veg">Non-Veg</SelectItem>
+                  </SelectContent>
+                </Select>
+
+                <Select
+                  value={sortBy}
+                  onValueChange={(value) => setSortBy(value as SortType)}
                 >
-                  {item.label}
-                </button>
-              )
-            })}
+                  <SelectTrigger className="h-10 w-full min-w-[190px] rounded-full border-[#D9D9D1] bg-white px-4 text-sm font-medium text-[#494944]">
+                    <SelectValue placeholder="Sort by" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="popular">Popular</SelectItem>
+                    <SelectItem value="name-asc">Name: A-Z</SelectItem>
+                    <SelectItem value="name-desc">Name: Z-A</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="mt-3 flex flex-wrap gap-2 text-xs">
+              <span className="rounded-full bg-[#F3EADF] px-3 py-1 text-[#5A272A]">
+                Category: {categoryFilter === "all" ? "All" : categoryFilter.replaceAll("-", " ")}
+              </span>
+              <span className="rounded-full bg-[#F3EADF] px-3 py-1 text-[#5A272A]">
+                Type: {mealTypeFilter === "all" ? "All" : mealTypeFilter}
+              </span>
+              <button
+                onClick={() => {
+                  setCategoryFilter("all")
+                  setMealTypeFilter("all")
+                  setSortBy("popular")
+                }}
+                className="rounded-full bg-[#7A2B19] px-3 py-1 text-white"
+              >
+                Reset
+              </button>
+            </div>
           </div>
 
           <div className="flex items-center justify-between">
-            <p className="text-xs font-bold uppercase tracking-wide text-[#1F1F1C]">Filtered By</p>
-            <div className="flex items-center gap-2 text-xs">
+            <p className="text-xs font-bold uppercase tracking-wide text-[#1F1F1C]">
+              Showing {filteredProducts.length} products
+            </p>
+            <div className="hidden items-center gap-2 text-xs md:flex">
               <span className="font-semibold text-[#7F7F7A]">Sort by</span>
               <select
                 value={sortBy}

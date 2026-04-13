@@ -1,12 +1,26 @@
-import { useState, FormEvent } from "react"
+import { products } from "@/lib/products"
+import { useRouter } from "next/navigation"
+import { useMemo, useState, FormEvent } from "react"
 
 export function useSearch() {
+  const router = useRouter()
   const [searchOpen, setSearchOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState("")
 
+  const normalizedQuery = searchQuery.trim().toLowerCase()
+  const searchResults = useMemo(() => {
+    if (!normalizedQuery) return products
+    return products.filter((item) => item.name.toLowerCase().includes(normalizedQuery))
+  }, [normalizedQuery])
+
   const handleSearch = (e: FormEvent) => {
     e.preventDefault()
-    console.log("Searching for:", searchQuery)
+    const params = new URLSearchParams()
+    if (searchQuery.trim()) {
+      params.set("search", searchQuery.trim())
+    }
+    const queryString = params.toString()
+    router.push(queryString ? `/products?${queryString}` : "/products")
     setSearchOpen(false)
   }
 
@@ -15,6 +29,7 @@ export function useSearch() {
     setSearchOpen,
     searchQuery,
     setSearchQuery,
-    handleSearch
+    searchResults,
+    handleSearch,
   }
 }

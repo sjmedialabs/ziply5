@@ -9,6 +9,7 @@ type BannerProps = {
   bgImage?: string;
   bgColor?: string;
   overlayColor?: string;
+  gradient?: string;
 };
 
 export default function BannerSection({
@@ -17,6 +18,7 @@ export default function BannerSection({
   bgImage,
   bgColor = "#000",
   overlayColor = "rgba(0,0,0,0.5)",
+  gradient,
 }: BannerProps) {
   const pathname = usePathname();
 
@@ -26,15 +28,17 @@ export default function BannerSection({
   // Helper: format text
   const formatLabel = (text: string) =>
     text.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
-
+  const isAboutPage = pathname === "/about";
   return (
     <section
       className="relative w-full flex items-center justify-center text-white h-[70vh]"
-      style={{
-        background: bgImage
-          ? `url(${bgImage}) center/cover no-repeat`
-          : bgColor,
-      }}
+  style={{
+    background: bgImage
+      ? `url(${bgImage}) center/cover no-repeat`
+      : gradient
+      ? gradient
+      : bgColor,
+  }}
     >
       {/* Overlay */}
       {bgImage && (
@@ -47,10 +51,12 @@ export default function BannerSection({
       <div className="relative z-10 text-center max-w-7xl mx-auto px-4 flex flex-col items-center justify-center gap-2">
         <div>
         {title && (
-          <h1 className="3xl md:5xl lg:text-7xl font-bold font-melon tracking-wider">{title}</h1>
+          <h1   className={`text-3xl md:text-5xl lg:text-7xl font-medium font-melon tracking-wide ${
+    isAboutPage ? "text-white" : "text-primary"
+  }`}>{title}</h1>
         )}
 
-        {subtitle && <p className="mt-2">{subtitle}</p>}
+        {subtitle && <p className={`mt-2 text-2xl font-light ${isAboutPage ? "text-white" : "text-[#646464]"}`}>{subtitle}</p>}
            </div>
         {/* ✅ Auto Breadcrumb */}
         <div className="mt-4 flex items-center justify-center gap-2 text-sm bg-white text-black px-8 py-2 rounded-full">

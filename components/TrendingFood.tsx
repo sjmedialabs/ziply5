@@ -1,47 +1,84 @@
 "use client"
 
+import Link from "next/link"
 import Image from "next/image"
 import SectionHeader from "./SectionHeader"
-
-const trendingProducts = [
-  { id: 1, name: "ZIPLY5 PLAIN WHITE RICE", subtitle: "loream ipsum dummy text", price: 299, originalPrice: 350, discount: "17% off", image: "assets/Homepage/plainWhiteRice.png", badge: null, gradient: "from-[#5B9BD5] to-[#3A7FC2]", featured: false },
-  { id: 2, name: "SPCL DAL MAKHANI RICE", subtitle: "All Dressed Up", price: 349, originalPrice: 399, discount: "10% off", image: "assets/Homepage/dalMakhaniRice.png", badge: null, gradient: "from-[#A78BDA] to-[#8B6FC0]", featured: false },
-  { id: 3, name: "ZIPLY5 SPCL VEG RICE", subtitle: "Jalapeo Cheddar Blaze", price: 229, originalPrice: 290, discount: "5% off", image: "assets/Homepage/specialVegRice.png", badge: null, gradient: "from-[#8BC34A] to-[#689F38]", featured: true },
-  { id: 4, name: "ZIPLY5 PONGAL", subtitle: "Rockin' Ranch", price: 279, originalPrice: 329, discount: "12% off", image: "assets/Homepage/pongal.png", badge: null, gradient: "from-[#4A90D9] to-[#2E6EB5]", featured: false },
-]
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react"
+import { products } from "@/lib/products"
+import { getCartItems, setCartItemQuantity } from "@/lib/cart"
+import { getFavoriteSlugs, toggleFavoriteSlug } from "@/lib/favorites"
 
 function useIsLg() {
-  const [isLg, setIsLg] = useState(false);
+  const [isLg, setIsLg] = useState(false)
 
   useEffect(() => {
     const check = () => {
-      setIsLg(window.innerWidth >= 1024 && window.innerWidth < 1280);
-    };
+      setIsLg(window.innerWidth >= 1024 && window.innerWidth < 1280)
+    }
 
-    check();
-    window.addEventListener("resize", check);
-    return () => window.removeEventListener("resize", check);
-  }, []);
+    check()
+    window.addEventListener("resize", check)
+    return () => window.removeEventListener("resize", check)
+  }, [])
 
-  return isLg;
+  return isLg
 }
-export default function TrendingFood() {
-  const isLg = useIsLg();
 
-const visibleProducts = isLg
-  ? trendingProducts.slice(0, 3) //  only 3 on lg
-  : trendingProducts;
+const cardGradients = [
+  "from-[#5B9BD5] to-[#3A7FC2]",
+  "from-[#A78BDA] to-[#8B6FC0]",
+  "from-[#8BC34A] to-[#689F38]",
+  "from-[#4A90D9] to-[#2E6EB5]",
+]
+
+export default function TrendingFood() {
+  const isLg = useIsLg()
+  const [favoriteSlugs, setFavoriteSlugs] = useState<string[]>([])
+  const [cartQtyBySlug, setCartQtyBySlug] = useState<Record<string, number>>({})
+
+  useEffect(() => {
+    const syncFavorites = () => setFavoriteSlugs(getFavoriteSlugs())
+    syncFavorites()
+    window.addEventListener("ziply5:favorites-updated", syncFavorites)
+    window.addEventListener("storage", syncFavorites)
+    return () => {
+      window.removeEventListener("ziply5:favorites-updated", syncFavorites)
+      window.removeEventListener("storage", syncFavorites)
+    }
+  }, [])
+
+  useEffect(() => {
+    const syncCartQty = () => {
+      const items = getCartItems()
+      const qtyMap = items.reduce<Record<string, number>>((acc, item) => {
+        acc[item.slug] = item.quantity
+        return acc
+      }, {})
+      setCartQtyBySlug(qtyMap)
+    }
+
+    syncCartQty()
+    window.addEventListener("ziply5:cart-updated", syncCartQty)
+    window.addEventListener("storage", syncCartQty)
+    return () => {
+      window.removeEventListener("ziply5:cart-updated", syncCartQty)
+      window.removeEventListener("storage", syncCartQty)
+    }
+  }, [])
+
+  const trendingProducts = useMemo(() => products.slice(0, 4), [])
+  const visibleProducts = isLg ? trendingProducts.slice(0, 3) : trendingProducts
+
   return (
     <section id="trending" className="bg-[#F3F4F6] py-12 md:py-16 lg:py-20">
       <div className="max-w-7xl mx-auto px-4">
         <SectionHeader title="FOOD THAT'S TRENDING" linkHref="/#trending" />
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 md:gap-8 justify-items-center">
-          {visibleProducts.map((product) => (
+          {visibleProducts.map((product, index) => (
             <div
               key={product.id}
-              className="w-full max-w-sm h-90 group bg-white rounded-[16px] overflow-hidden 
+              className="w-full max-w-sm group bg-white rounded-[16px] overflow-hidden 
               transition-all duration-300 
               shadow-[0_10px_25px_rgba(0,0,0,0.08)] 
               hover:shadow-[0_15px_35px_rgba(0,0,0,0.12)]
@@ -52,25 +89,27 @@ const visibleProducts = isLg
 
                 {/* IMAGE SECTION */}
                 <div
-                  className={`relative bg-gradient-to-b ${product.gradient} 
+                  className={`relative bg-gradient-to-b ${cardGradients[index % cardGradients.length]} 
                   flex items-center justify-center 
-                  transition-all duration-300 
-                  h-full group-hover:h-[65%]`}
+                  h-[280px]`}
                 >
                   {/* veg icon */}
                   <div className="absolute top-3 z-20 right-3 w-5 h-5 bg-white rounded-sm flex items-center justify-center">
-                    <div className="w-3 h-3 border-2 border-green-600 rounded-sm flex items-center justify-center">
-                      <div className="w-1.5 h-1.5 bg-green-600 rounded-full"></div>
+                    <div
+                      className={`w-3 h-3 rounded-sm flex items-center justify-center border-2 ${
+                        product.type === "veg" ? "border-green-600" : "border-red-600"
+                      }`}
+                    >
+                      <div className={`w-1.5 h-1.5 rounded-full ${product.type === "veg" ? "bg-green-600" : "bg-red-600"}`}></div>
                     </div>
                   </div>
-                  <div
-                    className={`relative w-full h-full flex items-center justify-center `}
-                  >
+                  <div className="relative h-full w-full">
                     <Image
-                      src={`/${product.image}`}
+                      src={product.image}
                       alt={product.name}
                       fill
-                      className="h-full w-auto p-0"
+                      className="object-contain p-4"
+                      sizes="(max-width: 768px) 100vw, 320px"
                     />
                   </div>
                 </div>
@@ -87,45 +126,52 @@ const visibleProducts = isLg
 
                     {/* SUBTITLE */}
                     <p
-                      className={`text-[12px] font-medium capitalize truncate bg-gradient-to-r ${product.gradient} bg-clip-text text-transparent`}
+                      className={`text-[12px] font-medium capitalize truncate bg-gradient-to-r ${cardGradients[index % cardGradients.length]} bg-clip-text text-transparent`}
                     >
-                      {product.subtitle}
+                      {product.description}
                     </p>
                   </div>
-                  <div>
-                    {/* BUTTON */}
-                    <button
-                      onClick={(e) => e.preventDefault()}
-                      className="border-2 border-[#EF4444] 
-        px-3 py-1 rounded-lg text-[12px] font-medium 
-        hover:bg-[#EF4444] hover:text-white transition-colors"
-                    >
-                      ADD
-                    </button></div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      toggleFavoriteSlug(product.slug)
+                      setFavoriteSlugs(getFavoriteSlugs())
+                    }}
+                    className="border-2 border-[#EF4444] px-2.5 py-1 rounded-lg text-[12px] font-medium hover:bg-[#EF4444] hover:text-white transition-colors"
+                  >
+                    {favoriteSlugs.includes(product.slug) ? "♥" : "♡"}
+                  </button>
                 </div>
-                                    {/* PRICE (hidden → reveal) */}
-                    <div
-                      className="mt-2 hidden translate-y-2 flex-col 
-          group-hover:flex group-hover:translate-y-0 
-          transition-all duration-300"
+
+                <div className="mt-2 flex max-h-0 flex-col gap-2 overflow-hidden opacity-0 transition-all duration-300 group-hover:max-h-24 group-hover:opacity-100">
+                  <span className="font-medium text-[#F97316] text-[16px]">Rs. {product.price.toFixed(2)}</span>
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center rounded-md border border-[#d5c4b8] px-1 py-0.5">
+                      <button
+                        type="button"
+                        onClick={() => setCartItemQuantity(product, Math.max(0, (cartQtyBySlug[product.slug] ?? 0) - 1))}
+                        className="h-6 w-6 rounded text-sm font-bold text-[#5A272A] hover:bg-[#f4efec]"
+                      >
+                        -
+                      </button>
+                      <span className="min-w-5 text-center text-xs font-bold text-[#5A272A]">{cartQtyBySlug[product.slug] ?? 0}</span>
+                      <button
+                        type="button"
+                        onClick={() => setCartItemQuantity(product, (cartQtyBySlug[product.slug] ?? 0) + 1)}
+                        className="h-6 w-6 rounded text-sm font-bold text-[#5A272A] hover:bg-[#f4efec]"
+                      >
+                        +
+                      </button>
+                    </div>
+                    <Link
+                      href="/checkout"
+                      className="rounded-md bg-[#4A1D1F] px-3 py-1.5 text-[12px] font-semibold text-white hover:bg-[#3a1517]"
                     >
-                      {product.originalPrice && (
-                        <span className="text-[#9CA3AF] text-[11px] block">
-                          Rs. {product.originalPrice}
-                        </span>
-                      )}
-
-                      <span className="font-medium text-[#F97316] text-[16px]">
-                        Rs. {product.price}
-                      </span>
-
-                      {product.discount && (
-                        <span className="text-green-600 text-[10px] font-medium block">
-                          {product.discount}
-                        </span>
-                      )}
-                    </div>
-                    </div>
+                      Buy Now
+                    </Link>
+                  </div>
+                </div>
+              </div>
               </div>
             </div>
           ))}

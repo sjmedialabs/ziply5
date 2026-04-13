@@ -8,64 +8,70 @@ import CartDropdown from "./CartDropdown"
 import { useSearch } from "../hooks/useSearch"
 import LocationDropdown from "./LocationDropdown"
 import { Search, User, ShoppingCart } from "lucide-react"
-import { getCartCount } from "@/lib/cart"
+import { getCartItems, setCartItems, type CartItem } from "@/lib/cart"
 
 export default function Header() {
   const [menuOpen, setMenuOpen] = useState(false)
-  const { searchOpen, setSearchOpen, searchQuery, setSearchQuery, handleSearch } = useSearch()
-  const [cartCount, setCartCount] = useState(0)
+  const { searchOpen, setSearchOpen, searchQuery, setSearchQuery, searchResults, handleSearch } = useSearch()
+  const [cartItems, setLocalCartItems] = useState<CartItem[]>([])
+  const [cartOpen, setCartOpen] = useState(false)
+  const closeCartTimeoutRef = useRef<number | null>(null)
 
   const productRef = useRef<HTMLDivElement>(null)
   const [arrowLeft, setArrowLeft] = useState(0)
 
-  const cartItems = [
-    {
-      id: 1,
-      name: "Dal Makhana Rice",
-      qty: 3,
-      weight: "500g",
-      price: 250,
-      image: "https://picsum.photos/100?1",
-    },
-    {
-      id: 2,
-      name: "Spcl Veg Rice",
-      qty: 6,
-      weight: "250g",
-      price: 250,
-      image: "https://picsum.photos/100?2",
-    },
-    {
-      id: 3,
-      name: "Sambar Rice",
-      qty: 4,
-      weight: "250g",
-      price: 250,
-      image: "https://picsum.photos/100?3",
-    },
-    {
-      id: 4,
-      name: "Palak Prawn Rice",
-      qty: 2,
-      weight: "500g",
-      price: 250,
-      image: "https://picsum.photos/100?4",
-    },
-  ]
+  const persistCart = (next: CartItem[]) => {
+    setLocalCartItems(next)
+    setCartItems(next)
+  }
 
-  const total = 3770
+  const updateCartQuantity = (slug: string, delta: number) => {
+    const current = cartItems.find((item) => item.slug === slug)
+    if (!current) return
+
+    const nextQty = current.quantity + delta
+    const next =
+      nextQty <= 0
+        ? cartItems.filter((item) => item.slug !== slug)
+        : cartItems.map((item) => (item.slug === slug ? { ...item, quantity: nextQty } : item))
+
+    persistCart(next)
+  }
+
+  const openCart = () => {
+    if (closeCartTimeoutRef.current) {
+      window.clearTimeout(closeCartTimeoutRef.current)
+      closeCartTimeoutRef.current = null
+    }
+    setCartOpen(true)
+  }
+
+  const closeCartWithDelay = () => {
+    if (closeCartTimeoutRef.current) {
+      window.clearTimeout(closeCartTimeoutRef.current)
+    }
+    closeCartTimeoutRef.current = window.setTimeout(() => {
+      setCartOpen(false)
+    }, 180)
+  }
 
   useEffect(() => {
-    const syncCount = () => setCartCount(getCartCount())
-    syncCount()
+    const syncCart = () => setLocalCartItems(getCartItems())
+    syncCart()
 
-    window.addEventListener("ziply5:cart-updated", syncCount)
-    window.addEventListener("storage", syncCount)
+    window.addEventListener("ziply5:cart-updated", syncCart)
+    window.addEventListener("storage", syncCart)
     return () => {
-      window.removeEventListener("ziply5:cart-updated", syncCount)
-      window.removeEventListener("storage", syncCount)
+      if (closeCartTimeoutRef.current) {
+        window.clearTimeout(closeCartTimeoutRef.current)
+      }
+      window.removeEventListener("ziply5:cart-updated", syncCart)
+      window.removeEventListener("storage", syncCart)
     }
   }, [])
+
+  const cartCount = cartItems.reduce((sum, item) => sum + item.quantity, 0)
+  const total = cartItems.reduce((sum, item) => sum + item.price * item.quantity, 0)
 
   return (
     <header className="sticky top-0 z-[100]">
@@ -241,7 +247,7 @@ export default function Header() {
               </Link>
 
               {/* CART WITH DROPDOWN */}
-              <div className="relative group">
+              <div className="relative" onMouseEnter={openCart} onMouseLeave={closeCartWithDelay}>
                 <Link
                   href="/cart"
                   className="relative flex items-center justify-center w-8 h-8 rounded-full hover:bg-zinc-50 transition-colors"
@@ -254,7 +260,13 @@ export default function Header() {
                   )}
                 </Link>
 
-                <CartDropdown items={cartItems} total={total} />
+                <CartDropdown
+                  items={cartItems}
+                  total={total}
+                  open={cartOpen}
+                  onIncrement={(slug) => updateCartQuantity(slug, 1)}
+                  onDecrement={(slug) => updateCartQuantity(slug, -1)}
+                />
 
               </div>
 
@@ -304,6 +316,22 @@ export default function Header() {
                 Search
               </button>
             </form>
+            <div className="mt-4 max-h-80 overflow-auto rounded-xl border border-orange-100">
+              {searchResults.map((item) => (
+                <Link
+                  key={item.slug}
+                  href={`/product/${item.slug}`}
+                  onClick={() => setSearchOpen(false)}
+                  className="flex items-center justify-between border-b border-orange-50 px-4 py-3 last:border-b-0 hover:bg-orange-50"
+                >
+                  <span className="text-sm font-medium text-zinc-800">{item.name}</span>
+                  <span className="text-xs font-semibold text-zinc-500">Rs.{item.price.toFixed(2)}</span>
+                </Link>
+              ))}
+              {searchResults.length === 0 && (
+                <p className="px-4 py-5 text-center text-sm text-zinc-500">No products found for "{searchQuery}"</p>
+              )}
+            </div>
           </div>
         </div>
       )}
