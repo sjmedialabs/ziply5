@@ -267,9 +267,10 @@ export default function CheckoutPage() {
             </p>
             </div>
             {/* Button */}
+            <Link href="/payment">
             <button className=" bg-[#7B3010] shadow-2xl tracking-wide font-medium text-white w-full py-4 rounded-full font-melon">
               Place Order Now →
-            </button>
+            </button></Link>
             </div>
           </div>
 

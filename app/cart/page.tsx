@@ -202,7 +202,7 @@ export default function CartPage() {
 
             {/* Button */}
             <Link href="/checkout">
-              <button className="mt-6 w-full bg-primary text-white py-3 rounded-xl font-medium">
+              <button className="mt-6 w-full bg-primary text-white py-3 rounded-xl font-medium font-melon tracking-wide">
                 Proceed to checkout →
               </button>
             </Link>
