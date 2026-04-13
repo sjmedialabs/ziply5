@@ -227,7 +227,7 @@ const total = 3770
 
               {/* CART WITH DROPDOWN */}
               <div className="relative group">
-                <Link href="/cart" className="p-2 hover:bg-zinc-50 rounded-full transition-colors">
+                <Link href="/cart" className="p-2 rounded-full transition-colors">
                   <ShoppingCart size={20} className="text-zinc-700 hover:text-[#f97316]" />
                 </Link>
 
