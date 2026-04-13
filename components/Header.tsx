@@ -17,41 +17,41 @@ export default function Header() {
   const [arrowLeft, setArrowLeft] = useState(0)
 
   const cartItems = [
-  {
-    id: 1,
-    name: "Dal Makhana Rice",
-    qty: 3,
-    weight: "500g",
-    price: 250,
-    image: "https://picsum.photos/100?1",
-  },
-  {
-    id: 2,
-    name: "Spcl Veg Rice",
-    qty: 6,
-    weight: "250g",
-    price: 250,
-    image: "https://picsum.photos/100?2",
-  },
-  {
-    id: 3,
-    name: "Sambar Rice",
-    qty: 4,
-    weight: "250g",
-    price: 250,
-    image: "https://picsum.photos/100?3",
-  },
-  {
-    id: 4,
-    name: "Palak Prawn Rice",
-    qty: 2,
-    weight: "500g",
-    price: 250,
-    image: "https://picsum.photos/100?4",
-  },
-]
+    {
+      id: 1,
+      name: "Dal Makhana Rice",
+      qty: 3,
+      weight: "500g",
+      price: 250,
+      image: "https://picsum.photos/100?1",
+    },
+    {
+      id: 2,
+      name: "Spcl Veg Rice",
+      qty: 6,
+      weight: "250g",
+      price: 250,
+      image: "https://picsum.photos/100?2",
+    },
+    {
+      id: 3,
+      name: "Sambar Rice",
+      qty: 4,
+      weight: "250g",
+      price: 250,
+      image: "https://picsum.photos/100?3",
+    },
+    {
+      id: 4,
+      name: "Palak Prawn Rice",
+      qty: 2,
+      weight: "500g",
+      price: 250,
+      image: "https://picsum.photos/100?4",
+    },
+  ]
 
-const total = 3770
+  const total = 3770
 
   return (
     <header className="sticky top-0 z-[100]">
@@ -85,10 +85,10 @@ const total = 3770
 
       {/* Navigation */}
       <nav className="bg-white w-full relative z-10">
-        <div className="w-full px-4 max-w-7xl mx-auto flex items-center justify-between">
+        <div className="w-full px-4 max-w-7xl mx-auto flex items-center justify-between py-2">
 
           {/* MOBILE MENU BUTTON */}
-          <button 
+          <button
             className="lg:hidden z-40"
             onClick={() => setMenuOpen(!menuOpen)}
           >
@@ -129,7 +129,7 @@ const total = 3770
                   /> */}
 
                   <div className="bg-[#7a1e0e] text-white rounded-2xl shadow-xl py-10 px-8">
-                    
+
                     <div className="grid grid-cols-4 gap-10">
 
                       <div>
@@ -192,14 +192,14 @@ const total = 3770
               Combos
             </Link>
           </div>
-          
+
           <div className="flex-1 lg:flex-none flex justify-center">
             <Link href="/" className="flex items-center">
               <Image
                 src="/primaryLogo.png"
                 alt="ZiPLY5 Logo"
-                width={160}
-                height={60}
+                width={180}
+                height={80}
                 priority
                 className="object-contain"
               />
@@ -211,10 +211,11 @@ const total = 3770
             <div className="hidden lg:block">
               <LocationDropdown />
             </div>
-            
-            <button 
-              onClick={() => setSearchOpen(!searchOpen)} 
+
+            <button
+              onClick={() => setSearchOpen(!searchOpen)}
               className="p-2 hover:bg-zinc-50 cursor-pointer rounded-full transition-colors"
+              title="Click and Search For Delicious meals.."
             >
               <Search size={20} className="text-zinc-700 hover:text-[#f97316]" />
             </button>
@@ -227,7 +228,10 @@ const total = 3770
 
               {/* CART WITH DROPDOWN */}
               <div className="relative group">
-                <Link href="/cart" className="p-2 hover:bg-zinc-50 rounded-full transition-colors">
+                <Link
+                  href="/cart"
+                  className="flex items-center justify-center w-8 h-8 rounded-full hover:bg-zinc-50 transition-colors"
+                >
                   <ShoppingCart size={20} className="text-zinc-700 hover:text-[#f97316]" />
                 </Link>
 
@@ -236,7 +240,7 @@ const total = 3770
               </div>
 
             </div>
-            
+
           </div>
         </div>
       </nav>
@@ -269,13 +273,13 @@ const total = 3770
         <div className="fixed inset-0 bg-black/60 z-50 flex items-start justify-center pt-24" onClick={() => setSearchOpen(false)}>
           <div className="bg-white rounded-2xl p-6 w-[90%] max-w-xl shadow-2xl" onClick={(e) => e.stopPropagation()}>
             <form onSubmit={handleSearch} className="flex gap-3">
-              <input 
-                type="text" 
-                placeholder="Search for delicious meals..." 
-                className="flex-1 px-4 py-3 border-2 border-orange-200 rounded-xl focus:outline-none focus:border-orange-500 font-medium" 
-                value={searchQuery} 
-                onChange={(e) => setSearchQuery(e.target.value)} 
-                autoFocus 
+              <input
+                type="text"
+                placeholder="Search for delicious meals..."
+                className="flex-1 px-4 py-3 border-2 border-orange-200 rounded-xl focus:outline-none focus:border-orange-500 font-medium"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                autoFocus
               />
               <button type="submit" className="px-6 py-3 bg-orange-500 text-white font-bold rounded-xl hover:bg-orange-600 transition-colors">
                 Search
