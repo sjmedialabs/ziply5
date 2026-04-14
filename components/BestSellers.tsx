@@ -51,6 +51,11 @@ export default function BestSellers() {
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 md:gap-8 justify-items-center">
           {bestSellers.map((product) => (
             <div key={product.id} className="w-full max-w-sm group cursor-pointer font-melon">
+              <Link
+                href={`/product/${product.name
+                  .toLowerCase()
+                  .replace(/\s+/g, "-")}`}
+              >
               <div
                 className="rounded-2xl px-8 relative overflow-hidden transition-all duration-300 group-hover:ring-4 group-hover:ring-[#F36E21] group-hover:shadow-xl h-full flex flex-col"
                 style={{ backgroundColor: product.bgColor }}
@@ -85,36 +90,49 @@ export default function BestSellers() {
                   <h3 className="font-medium text-white text-[15px] md:text-xl leading-tight tracking-wide">
                     {product.name}
                   </h3>
-                  <p className="text-[#FFF5C5]  text-[11px]  uppercase tracking-wide">
+                  <p className="text-[#FFF5C5] text-[11px] uppercase tracking-wide line-clamp-1">
                     {product.description}
                   </p>
 
                   <div className="mt-3 flex items-center justify-between gap-2">
-                    <div className="flex items-center rounded-md border border-[#d5c4b8] bg-white/95 px-1 py-0.5">
+                    {(cartQtyBySlug[product.slug] ?? 0) > 0 ? (
+                      <div className="flex items-center rounded-md border border-[#d5c4b8] bg-white/95 px-1 py-0.5">
+                        <button
+                          type="button"
+                          onClick={() => setCartItemQuantity(product, Math.max(0, (cartQtyBySlug[product.slug] ?? 0) - 1))}
+                          className="h-6 w-6 rounded text-sm font-bold text-[#5A272A] hover:bg-[#f4efec]"
+                        >
+                          -
+                        </button>
+                        <span className="min-w-5 text-center text-xs font-bold text-[#5A272A]">
+                          {cartQtyBySlug[product.slug] ?? 0}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setCartItemQuantity(product, (cartQtyBySlug[product.slug] ?? 0) + 1)}
+                          className="h-6 w-6 rounded text-sm font-bold text-[#5A272A] hover:bg-[#f4efec]"
+                        >
+                          +
+                        </button>
+                      </div>  
+                    ) : (
                       <button
                         type="button"
-                        onClick={() => setCartItemQuantity(product, Math.max(0, (cartQtyBySlug[product.slug] ?? 0) - 1))}
-                        className="h-6 w-6 rounded text-sm font-bold text-[#5A272A] hover:bg-[#f4efec]"
+                        onClick={() => setCartItemQuantity(product, 1)}
+                        className="rounded-lg border border-white tracking-wide px-4 py-1.5 text-[12px] font-light text-white hover:bg-primary hover:text-white transition-all "
                       >
-                        -
+                        Add to Cart
                       </button>
-                      <span className="min-w-5 text-center text-xs font-bold text-[#5A272A]">{cartQtyBySlug[product.slug] ?? 0}</span>
-                      <button
-                        type="button"
-                        onClick={() => setCartItemQuantity(product, (cartQtyBySlug[product.slug] ?? 0) + 1)}
-                        className="h-6 w-6 rounded text-sm font-bold text-[#5A272A] hover:bg-[#f4efec]"
-                      >
-                        +
-                      </button>
-                    </div>
-                    <Link href="/checkout" className="rounded-md bg-[#3a1517] px-3 py-1.5 text-[12px] font-semibold text-white hover:bg-[#2d1011]">
+                    )}
+                    <Link href="/checkout" className="rounded-lg bg-primary tracking-wide px-3 py-1.5 text-[12px] font-light text-white hover:bg-[#2d1011]">
                       Buy Now
                     </Link>
                   </div>
 
-                  <p className="mt-2 text-sm font-semibold text-[#FFF5C5]">Rs. {product.price.toFixed(2)}</p>
+                  <p className="mt-2 text-sm font-medium text-[#FFF5C5]">Rs. {product.price.toFixed(2)}</p>
                 </div>
               </div>
+              </Link>
             </div>
           ))}
         </div>

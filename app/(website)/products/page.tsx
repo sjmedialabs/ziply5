@@ -88,10 +88,10 @@ function ProductsPageContent() {
             </p>
           )}
 
-          <div className="rounded-2xl border border-[#E6DFC4] bg-white/70 p-3 md:p-4">
-            <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-              <p className="text-xs font-bold uppercase tracking-wide text-[#1F1F1C]">Filter Products</p>
-              <div className="grid grid-cols-1 gap-2 md:grid-cols-3">
+          <div className="p-3 md:p-4">
+            <div className="flex flex-col gap-3">
+              <p className="text-xs font-bold uppercase tracking-wide text-[#1F1F1C]">Filtered Products By</p>
+              <div className="flex flex-row gap-4 items-center">
                 <Select value={categoryFilter} onValueChange={(value) => setCategoryFilter(value as CategoryFilter)}>
                   <SelectTrigger className="h-10 w-full min-w-[190px] rounded-full border-[#D9D9D1] bg-white px-4 text-sm font-medium text-[#494944]">
                     <SelectValue placeholder="Category" />
@@ -127,15 +127,7 @@ function ProductsPageContent() {
                     <SelectItem value="name-desc">Name: Z-A</SelectItem>
                   </SelectContent>
                 </Select>
-              </div>
-            </div>
-            <div className="mt-3 flex flex-wrap gap-2 text-xs">
-              <span className="rounded-full bg-[#F3EADF] px-3 py-1 text-[#5A272A]">
-                Category: {categoryFilter === "all" ? "All" : categoryFilter.replaceAll("-", " ")}
-              </span>
-              <span className="rounded-full bg-[#F3EADF] px-3 py-1 text-[#5A272A]">
-                Type: {mealTypeFilter === "all" ? "All" : mealTypeFilter}
-              </span>
+                            <div className="mt-3 flex flex-wrap gap-2 text-xs">
               <button
                 onClick={() => {
                   setCategoryFilter("all")
@@ -147,13 +139,15 @@ function ProductsPageContent() {
                 Reset
               </button>
             </div>
+              </div>
+            </div>
           </div>
 
           <div className="flex items-center justify-between">
             <p className="text-xs font-bold uppercase tracking-wide text-[#1F1F1C]">
               Showing {filteredProducts.length} products
             </p>
-            <div className="hidden items-center gap-2 text-xs md:flex">
+            {/* <div className="hidden items-center gap-2 text-xs md:flex">
               <span className="font-semibold text-[#7F7F7A]">Sort by</span>
               <select
                 value={sortBy}
@@ -164,7 +158,7 @@ function ProductsPageContent() {
                 <option value="name-asc">Name: A-Z</option>
                 <option value="name-desc">Name: Z-A</option>
               </select>
-            </div>
+            </div> */}
           </div>
         </div>
 
@@ -172,7 +166,7 @@ function ProductsPageContent() {
           {filteredProducts.map((product) => (
             <article
               key={product.id}
-              className="group relative rounded-2xl border-2 border-transparent p-4 pb-12 transition-all duration-300 hover:border-[#F0E4A3] hover:shadow-[0_14px_28px_rgba(34,26,18,0.18)]"
+              className="group relative rounded-2xl border-2 border-transparent p-4 transition-all duration-300 hover:ring-4 hover:ring-[#F36E21] hover:shadow-xl]"
               style={{ backgroundColor: product.bgColor }}
             >
               <button
@@ -201,40 +195,55 @@ function ProductsPageContent() {
                   </span>
                 </div>
 
-                <div className="relative mx-auto h-[280px] w-full max-w-[190px] transition-transform duration-300 group-hover:scale-90">
+                <div className="relative mx-auto h-[280px] w-full max-w-[190px] transition-transform duration-300 hover:scale-90">
                   <Image src={product.image} alt={product.name} fill className="object-contain" />
                 </div>
 
-                <div className="mt-2 text-center">
-                  <h3 className="text-[18px] font-black uppercase leading-tight text-white drop-shadow-[0_1px_0_rgba(0,0,0,0.2)]">
+                <div className="mt-2 text-center tracking-wide font-light font-melon">
+                  <h3 className="text-[18px] uppercase leading-tight text-white drop-shadow-[0_1px_0_rgba(0,0,0,0.2)]">
                     {product.name}
                   </h3>
-                  <p className="mt-1 text-[10px] font-semibold uppercase tracking-wide text-white/90">
+                  <p className="mt-1 text-[10px] uppercase tracking-wide text-white/90">
                     Home style rice | Net wt. {product.weight}
                   </p>
+                   <p className="mt-1 text-sm font-melon text-[#FFF5C5]">Rs. {product.price.toFixed(2)}</p>
                 </div>
               </Link>
 
-              <div className="absolute bottom-3 left-4 right-4 rounded-md bg-white/85 px-2 py-1 opacity-0 transition-opacity duration-300 group-hover:opacity-100">
-                <p className="text-center text-[9px] font-semibold uppercase text-[#5A272A]">Add to cart</p>
-                <div className="mt-1 flex items-center justify-between rounded-md border border-[#d5c4b8] bg-white px-1 py-0.5">
-                  <button
-                    type="button"
-                    onClick={() => setCartItemQuantity(product, Math.max(0, (cartQtyBySlug[product.slug] ?? 0) - 1))}
-                    className="h-5 w-5 rounded text-sm font-bold text-[#5A272A] hover:bg-[#f4efec]"
-                  >
-                    -
-                  </button>
-                  <span className="text-xs font-bold text-[#5A272A]">{cartQtyBySlug[product.slug] ?? 0}</span>
-                  <button
-                    type="button"
-                    onClick={() => setCartItemQuantity(product, (cartQtyBySlug[product.slug] ?? 0) + 1)}
-                    className="h-5 w-5 rounded text-sm font-bold text-[#5A272A] hover:bg-[#f4efec]"
-                  >
-                    +
-                  </button>
-                </div>
-              </div>
+              <div className="mt-3 flex items-center justify-between gap-2 font-melon tracking-wide font-light">
+                    {(cartQtyBySlug[product.slug] ?? 0) > 0 ? (
+                      <div className="flex items-center rounded-md border border-[#d5c4b8] bg-white/95 px-1 py-0.5">
+                        <button
+                          type="button"
+                          onClick={() => setCartItemQuantity(product, Math.max(0, (cartQtyBySlug[product.slug] ?? 0) - 1))}
+                          className="h-6 w-6 rounded text-sm  text-[#5A272A] hover:bg-[#f4efec]"
+                        >
+                          -
+                        </button>
+                        <span className="min-w-5 text-center text-xs text-[#5A272A]">
+                          {cartQtyBySlug[product.slug] ?? 0}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setCartItemQuantity(product, (cartQtyBySlug[product.slug] ?? 0) + 1)}
+                          className="h-6 w-6 rounded text-sm text-[#5A272A] hover:bg-[#f4efec]"
+                        >
+                          +
+                        </button>
+                      </div>  
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => setCartItemQuantity(product, 1)}
+                        className="rounded-lg border border-white tracking-wide px-4 py-1.5 text-[12px] font-light text-white hover:bg-primary hover:text-white transition-all "
+                      >
+                        Add to Cart
+                      </button>
+                    )}
+                    <Link href="/checkout" className="rounded-lg bg-primary tracking-wide px-3 py-1.5 text-[12px] font-light text-white hover:bg-[#2d1011]">
+                      Buy Now
+                    </Link>
+                  </div>
             </article>
           ))}
         </div>

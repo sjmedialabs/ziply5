@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react"
 import Image from "next/image"
 import { useParams, useRouter } from "next/navigation"
-import { ChevronLeft, ChevronRight } from "lucide-react"
+import { ArrowLeft, ChevronLeft, ChevronRight } from "lucide-react"
 import { getProductBySlug, products } from "@/lib/products"
 import { getFavoriteSlugs, toggleFavoriteSlug } from "@/lib/favorites"
 import { addToCart, getCartQuantityForSlug, setCartItemQuantity } from "@/lib/cart"
@@ -58,15 +58,15 @@ export default function ProductPage() {
 
   const productGallery = useMemo(
     () => [
-      "/assets/Product details/pdp-main.png",
-      "/assets/Product details/pdp-thumb-1.png",
-      "/assets/Product details/pdp-thumb-2.png",
-      "/assets/Product details/pdp-thumb-3.png",
+      "/assets/Productdetails/selected.png",
+      "/assets/Productdetails/pdp-thumb-1.png",
+      "/assets/Productdetails/pdp-thumb-2.png",
+      "/assets/Productdetails/pdp-thumb-3.png",
     ],
     [],
   )
 
-  const [selectedImage, setSelectedImage] = useState("/assets/Product details/pdp-main.png")
+  const [selectedImage, setSelectedImage] = useState("/assets/Productdetails/selected.png")
 
   const visibleRelated = useMemo(() => {
     if (relatedProducts.length === 0) return []
@@ -80,7 +80,7 @@ export default function ProductPage() {
   const salePercent = Math.max(1, Math.round(((product.oldPrice - product.price) / product.oldPrice) * 100))
 
   useEffect(() => {
-    setSelectedImage("/assets/Product details/pdp-main.png")
+    setSelectedImage("/assets/Productdetails/selected.png")
     setSelectedSize("250g")
     setQuantity(getCartQuantityForSlug(product.slug))
     setOpenSection(null)
@@ -126,12 +126,12 @@ export default function ProductPage() {
   ]
 
   const featureItems = [
-    { label: "Home Made", icon: "/assets/Product details/Icon.png" },
-    { label: "Favorite", icon: "/assets/Product details/ListItem/Button/Image.png" },
-    { label: "Travel Friendly", icon: "/assets/Product details/ListItem/Button/Image-1.png" },
-    { label: "No MSG, Preservatives", icon: "/assets/Product details/ListItem/Button/Image-2.png" },
-    { label: "FREE Shipping", icon: "/assets/Product details/free-shipping.png" },
-    { label: "Easy Return 30 Days", icon: "/assets/Product details/delivery_svgrepo.com.png" },
+    { label: "Home Made", icon: "/assets/Productdetails/home.png" },
+    { label: "Flavourful", icon: "/assets/Productdetails/flavourful.png" },
+    { label: "Travel Friendly", icon: "/assets/Productdetails/travelFriendly.png" },
+    { label: "No MSG, Preservatives", icon: "/assets/Productdetails/noPreservative.png" },
+    { label: "FREE Shipping", icon: "/assets/Productdetails/free-shipping.png" },
+    { label: "Easy Return 30 Days", icon: "/assets/Productdetails/easyReturn.png" },
   ]
 
   return (
@@ -139,8 +139,8 @@ export default function ProductPage() {
       <div className="mx-auto w-full max-w-7xl px-4 sm:px-6 lg:px-8">
         <div className="grid grid-cols-1 gap-10 md:grid-cols-[420px_1fr]">
           <div>
-            <div className="rounded-xl border border-[#E2E2E2] bg-[#ECECEC] p-8">
-              <div className="relative mx-auto h-[340px] w-full max-w-[320px]">
+            <div className="rounded-xl border border-[#E2E2E2] bg-[#ECECEC]">
+              <div className="relative mx-auto h-90 w-full">
                 <Image src={selectedImage} alt={product.name} fill className="object-contain" />
               </div>
             </div>
@@ -151,7 +151,7 @@ export default function ProductPage() {
                   type="button"
                   key={thumb}
                   onClick={() => setSelectedImage(thumb)}
-                  className={`relative h-[72px] w-[104px] flex-shrink-0 overflow-hidden rounded-md border ${
+                  className={`relative h-40 w-40 flex-shrink-0 overflow-hidden rounded-md border ${
                     selectedImage === thumb ? "border-[#50272A]" : "border-[#E0E0E0]"
                   }`}
                 >
@@ -165,9 +165,10 @@ export default function ProductPage() {
             <button
               type="button"
               onClick={() => router.push("/products")}
-              className="inline-flex items-center rounded-full border border-[#D6D6D6] bg-white px-3 py-1 text-[11px] font-semibold text-[#6B6B6B]"
+              className="inline-flex items-center gap-1 rounded-full border border-[#D6D6D6] bg-white px-3 py-1 text-[11px] font-semibold text-[#6B6B6B]"
             >
-              Back To Products List
+              <ArrowLeft size={14} />
+               Back To Products List
             </button>
 
             <h1 className="font-heading mt-3 text-6xl leading-none text-[#201A1A]">{product.name}</h1>
@@ -194,7 +195,7 @@ export default function ProductPage() {
             <p className="mt-2 max-w-2xl text-sm leading-6 text-[#595959]">{product.description}</p>
 
             <div className="mt-5 flex items-center gap-2">
-              <span className="text-xs font-bold text-[#272727]">Size (Wt)</span>
+              <span className="text-xs font-light font-melon tracking-wide text-[#272727]">Size (Wt)</span>
               {["250g", "500g", "1 kg"].map((size) => (
                 <button
                   type="button"
@@ -212,7 +213,7 @@ export default function ProductPage() {
             </div>
 
             <div className="mt-4 flex items-center gap-4">
-              <span className="text-xs font-bold text-[#272727]">Add to cart</span>
+              <span className="text-xs font-light font-melon tracking-wide text-[#272727]">Add to cart</span>
               <div className="flex items-center overflow-hidden rounded-2xl border border-[#FF8A00] bg-[#5A272A] text-white">
                 <button
                   type="button"
@@ -239,7 +240,7 @@ export default function ProductPage() {
                 </button>
               </div>
             </div>
-            <p className="mt-4 text-sm font-semibold text-[#272727]">Shelf Life: <span className="font-normal">12 months</span></p>
+            <p className="mt-4 text-sm font-bold text-[#272727]"><span className="font-light font-melon tracking-wide">Shelf Life:</span> <span className="font-bo;d">12 months</span></p>
 
             <div className="mt-5 flex items-center gap-3">
               <button
@@ -248,9 +249,10 @@ export default function ProductPage() {
                   addToCart(product, Math.max(1, quantity))
                   router.push("/cart")
                 }}
-                className="font-heading rounded-2xl border border-[#FF8A00] bg-[#F58B2E] px-6 py-2.5 text-xl leading-none text-white transition hover:bg-[#e97819]"
+                className="font-heading rounded-2xl border border-[#FF8A00] bg-primary flex items-center px-6 py-2.5 text-xl leading-none text-white transition hover:bg-[#e97819]"
               >
                 Buy now
+                <img src="/assets/Productdetails/rightArrow.png" alt="Buy Now" className="inline-block h-4 w-4 ml-2 object-contain" />
               </button>
               <button
                 type="button"
@@ -268,7 +270,7 @@ export default function ProductPage() {
             <div className="mt-8 grid grid-cols-3 gap-4 border-t border-[#DEDEDE] pt-5">
               {featureItems.map((item) => (
                 <div key={item.label} className="flex flex-col items-center gap-2 text-center">
-                  <div className="relative h-8 w-8">
+                  <div className="relative h-10 w-10">
                     <Image src={item.icon} alt={item.label} fill className="object-contain" />
                   </div>
                   <p className="text-[11px] font-semibold text-[#333]">{item.label}</p>
@@ -288,7 +290,7 @@ export default function ProductPage() {
                   onClick={() => setOpenSection(isOpen ? null : section.id)}
                   className="flex w-full items-center justify-between py-5 text-left"
                 >
-                  <span className="text-sm font-semibold text-[#262626]">{section.title}</span>
+                  <span className="text-sm font-light font-melon tracking-wide text-[#262626]">{section.title}</span>
                   <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-[#F58B2E] text-sm font-bold text-white">
                     {isOpen ? "-" : "+"}
                   </span>

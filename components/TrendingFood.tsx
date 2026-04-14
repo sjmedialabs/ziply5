@@ -79,7 +79,7 @@ export default function TrendingFood() {
             <div
               key={product.id}
               className="w-full max-w-sm group bg-white rounded-[16px] overflow-hidden 
-              transition-all duration-300 
+              transition-all duration-300  h-85
               shadow-[0_10px_25px_rgba(0,0,0,0.08)] 
               hover:shadow-[0_15px_35px_rgba(0,0,0,0.12)]
               hover:ring-2 hover:ring-[#EF4444]"
@@ -91,14 +91,13 @@ export default function TrendingFood() {
                 <div
                   className={`relative bg-gradient-to-b ${cardGradients[index % cardGradients.length]} 
                   flex items-center justify-center 
-                  h-[280px]`}
+                  h-[280px] group-hover:-mt-10`}
                 >
                   {/* veg icon */}
                   <div className="absolute top-3 z-20 right-3 w-5 h-5 bg-white rounded-sm flex items-center justify-center">
                     <div
-                      className={`w-3 h-3 rounded-sm flex items-center justify-center border-2 ${
-                        product.type === "veg" ? "border-green-600" : "border-red-600"
-                      }`}
+                      className={`w-3 h-3 rounded-sm flex items-center justify-center border-2 ${product.type === "veg" ? "border-green-600" : "border-red-600"
+                        }`}
                     >
                       <div className={`w-1.5 h-1.5 rounded-full ${product.type === "veg" ? "bg-green-600" : "bg-red-600"}`}></div>
                     </div>
@@ -116,62 +115,73 @@ export default function TrendingFood() {
 
                 {/* CONTENT SECTION */}
                 <div className="flex flex-col px-4 font-melon  py-4">
-                <div className="flex flex-row justify-between items-center">
+                  <div className="flex flex-row justify-between items-center">
 
-                  <div>
-                    {/* TITLE */}
-                    <h3 className="font-medium uppercase text-primary  text-[14px] mb-1 truncate">
-                      {product.name}
-                    </h3>
+                    <div className="px-2 overflow-hidden">
+                      {/* TITLE */}
+                      <h3 className="font-medium uppercase text-primary  text-[14px] mb-1 truncate">
+                        {product.name}
+                      </h3>
 
-                    {/* SUBTITLE */}
-                    <p
-                      className={`text-[12px] font-medium capitalize truncate bg-gradient-to-r ${cardGradients[index % cardGradients.length]} bg-clip-text text-transparent`}
-                    >
-                      {product.description}
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      toggleFavoriteSlug(product.slug)
-                      setFavoriteSlugs(getFavoriteSlugs())
-                    }}
-                    className="border-2 border-[#EF4444] px-2.5 py-1 rounded-lg text-[12px] font-medium hover:bg-[#EF4444] hover:text-white transition-colors"
-                  >
-                    {favoriteSlugs.includes(product.slug) ? "♥" : "♡"}
-                  </button>
-                </div>
-
-                <div className="mt-2 flex max-h-0 flex-col gap-2 overflow-hidden opacity-0 transition-all duration-300 group-hover:max-h-24 group-hover:opacity-100">
-                  <span className="font-medium text-[#F97316] text-[16px]">Rs. {product.price.toFixed(2)}</span>
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="flex items-center rounded-md border border-[#d5c4b8] px-1 py-0.5">
-                      <button
-                        type="button"
-                        onClick={() => setCartItemQuantity(product, Math.max(0, (cartQtyBySlug[product.slug] ?? 0) - 1))}
-                        className="h-6 w-6 rounded text-sm font-bold text-[#5A272A] hover:bg-[#f4efec]"
+                      {/* SUBTITLE */}
+                      <p
+                        className={`text-[12px] font-medium capitalize truncate bg-gradient-to-r ${cardGradients[index % cardGradients.length]} bg-clip-text text-transparent`}
                       >
-                        -
-                      </button>
-                      <span className="min-w-5 text-center text-xs font-bold text-[#5A272A]">{cartQtyBySlug[product.slug] ?? 0}</span>
-                      <button
-                        type="button"
-                        onClick={() => setCartItemQuantity(product, (cartQtyBySlug[product.slug] ?? 0) + 1)}
-                        className="h-6 w-6 rounded text-sm font-bold text-[#5A272A] hover:bg-[#f4efec]"
-                      >
-                        +
-                      </button>
+                        {product.description}
+                      </p>
                     </div>
-                    <Link
-                      href="/checkout"
-                      className="rounded-md bg-[#4A1D1F] px-3 py-1.5 text-[12px] font-semibold text-white hover:bg-[#3a1517]"
+                    <button
+                      type="button"
+                      onClick={() => {
+                        toggleFavoriteSlug(product.slug)
+                        setFavoriteSlugs(getFavoriteSlugs())
+                      }}
+                      className="border-2 border-[#EF4444] px-2.5 py-1 rounded-lg text-[12px] font-medium hover:bg-[#EF4444] hover:text-white transition-colors"
                     >
-                      Buy Now
-                    </Link>
+                      {favoriteSlugs.includes(product.slug) ? "♥" : "♡"}
+                    </button>
+                  </div>
+
+                  <div className="mt-2 flex max-h-0 flex-col gap-2 overflow-hidden opacity-0 transition-all duration-300 group-hover:max-h-24 group-hover:opacity-100">
+                    <span className="font-medium text-[#F97316] text-[16px]">Rs. {product.price.toFixed(2)}</span>
+                    <div className="flex items-center justify-between gap-2">
+
+                      {(cartQtyBySlug[product.slug] ?? 0) > 0 ? (
+                        <div className="flex items-center rounded-md border border-[#d5c4b8] px-1 py-0.5">
+                          <button
+                            type="button"
+                            onClick={() => setCartItemQuantity(product, Math.max(0, (cartQtyBySlug[product.slug] ?? 0) - 1))}
+                            className="h-6 w-6 rounded text-sm font-bold text-[#5A272A] hover:bg-[#f4efec]"
+                          >
+                            -
+                          </button>
+                          <span className="min-w-5 text-center text-xs font-bold text-[#5A272A]">{cartQtyBySlug[product.slug] ?? 0}</span>
+                          <button
+                            type="button"
+                            onClick={() => setCartItemQuantity(product, (cartQtyBySlug[product.slug] ?? 0) + 1)}
+                            className="h-6 w-6 rounded text-sm font-bold text-[#5A272A] hover:bg-[#f4efec]"
+                          >
+                            +
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => setCartItemQuantity(product, 1)}
+                          className="rounded-lg border border-primary tracking-wide px-4 py-1.5 text-[12px] font-light text-primary hover:bg-primary hover:text-white transition-all "
+                        >
+                          Add to Cart
+                        </button>
+                      )}
+                      <Link
+                        href="/checkout"
+                        className="rounded-md bg-primary px-3 tracking-wide py-1.5 text-[12px] font-light text-white hover:bg-[#3a1517]"
+                      >
+                        Buy Now
+                      </Link>
+                    </div>
                   </div>
                 </div>
-              </div>
               </div>
             </div>
           ))}

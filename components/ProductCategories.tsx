@@ -51,9 +51,9 @@ export default function ProductCategories() {
                   .toLowerCase()
                   .replace(/\s+/g, "-")}`}
               >
-                <div className="bg-white rounded-full h-[300px] flex flex-col justify-between pt-4 pb-8 items-center px-2 shadow-md transition hover:scale-105">
+                <div className="bg-white rounded-full h-75 flex flex-col justify-between pt-4 pb-8 items-center px-2 shadow-md transition hover:scale-105">
 
-                  <div className="w-[120px] h-[120px] rounded-full overflow-hidden mb-4">
+                  <div className="w-30 h-30 rounded-full overflow-hidden mb-4">
                     <Image
                       src={category.image}
                       alt={category.name}
