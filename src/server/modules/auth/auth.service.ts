@@ -9,6 +9,8 @@ import {
   verifyRefreshToken,
 } from "@/src/server/core/security/jwt"
 import { ROLE_KEYS } from "@/src/server/core/rbac/permissions"
+import { smsService } from "@/src/server/integrations/sms/sms.service"
+import { enqueueEmail, emailTemplates } from "@/src/server/modules/notifications/email.service"
 
 type SignupInput = {
   name: string
@@ -44,7 +46,50 @@ export const signup = async (input: SignupInput) => {
     },
   })
 
+  try {
+    const mail = emailTemplates.welcome(user.name)
+    await enqueueEmail({ to: user.email, ...mail })
+  } catch {
+    // Non-blocking: account creation must not fail on email queue issues.
+  }
+
   return user
+}
+
+const issueAuthTokens = async (input: {
+  userId: string
+  email: string
+  role: string
+  name: string
+}) => {
+  const accessToken = signAccessToken({
+    sub: input.userId,
+    email: input.email,
+    role: input.role,
+  })
+  const refreshToken = signRefreshToken({
+    sub: input.userId,
+    role: input.role,
+  })
+
+  await prisma.refreshToken.create({
+    data: {
+      userId: input.userId,
+      tokenHash: sha256(refreshToken),
+      expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+    },
+  })
+
+  return {
+    user: {
+      id: input.userId,
+      email: input.email,
+      name: input.name,
+      role: input.role,
+    },
+    accessToken,
+    refreshToken,
+  }
 }
 
 export const login = async (email: string, password: string) => {
@@ -58,34 +103,12 @@ export const login = async (email: string, password: string) => {
   if (!valid) throw new Error("Invalid credentials")
 
   const role = user.roles[0]?.role.key ?? ROLE_KEYS.CUSTOMER
-  const accessToken = signAccessToken({
-    sub: user.id,
+  return issueAuthTokens({
+    userId: user.id,
     email: user.email,
     role,
+    name: user.name,
   })
-  const refreshToken = signRefreshToken({
-    sub: user.id,
-    role,
-  })
-
-  await prisma.refreshToken.create({
-    data: {
-      userId: user.id,
-      tokenHash: sha256(refreshToken),
-      expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
-    },
-  })
-
-  return {
-    user: {
-      id: user.id,
-      email: user.email,
-      name: user.name,
-      role,
-    },
-    accessToken,
-    refreshToken,
-  }
 }
 
 export const assertPortalAccess = (
@@ -170,5 +193,133 @@ export const resetPasswordWithToken = async (token: string, newPassword: string)
   await prisma.passwordReset.update({
     where: { tokenHash },
     data: { usedAt: new Date() },
+  })
+}
+
+const normalizePhone = (phone: string) => {
+  const digits = phone.replace(/[^\d+]/g, "")
+  if (!digits) throw new Error("Invalid phone")
+  if (digits.startsWith("+")) return digits
+  return `+${digits}`
+}
+
+const generateOtpCode = () => String(Math.floor(100000 + Math.random() * 900000))
+
+const getOtpConfig = () => ({
+  ttlSec: Number(env.OTP_TTL_SECONDS ?? "300"),
+  maxAttempts: Number(env.OTP_MAX_ATTEMPTS ?? "5"),
+  resendCooldownSec: Number(env.OTP_RESEND_COOLDOWN_SECONDS ?? "45"),
+})
+
+export const requestLoginOtp = async (phoneRaw: string) => {
+  const phone = normalizePhone(phoneRaw)
+  const cfg = getOtpConfig()
+
+  const previous = await prisma.otpChallenge.findFirst({
+    where: { phone, purpose: "login", consumedAt: null },
+    orderBy: { createdAt: "desc" },
+  })
+
+  if (previous) {
+    const ageMs = Date.now() - previous.createdAt.getTime()
+    const minAgeMs = cfg.resendCooldownSec * 1000
+    if (ageMs < minAgeMs) {
+      const waitSeconds = Math.ceil((minAgeMs - ageMs) / 1000)
+      throw new Error(`Please wait ${waitSeconds}s before requesting another OTP`)
+    }
+  }
+
+  const code = generateOtpCode()
+  const expiresAt = new Date(Date.now() + cfg.ttlSec * 1000)
+  await prisma.otpChallenge.create({
+    data: {
+      phone,
+      purpose: "login",
+      codeHash: sha256(code),
+      expiresAt,
+      maxAttempts: cfg.maxAttempts,
+      resendCount: (previous?.resendCount ?? 0) + 1,
+    },
+  })
+
+  await smsService.send({
+    to: phone,
+    body: `Your Ziply5 OTP is ${code}. It expires in ${Math.floor(cfg.ttlSec / 60)} minutes.`,
+  })
+
+  const includeOtp = process.env.OTP_RETURN_CODE === "true"
+  return {
+    phone,
+    expiresAt,
+    ...(includeOtp ? { otp: code } : {}),
+  }
+}
+
+export const verifyLoginOtp = async (phoneRaw: string, code: string) => {
+  const phone = normalizePhone(phoneRaw)
+  const challenge = await prisma.otpChallenge.findFirst({
+    where: { phone, purpose: "login", consumedAt: null },
+    orderBy: { createdAt: "desc" },
+  })
+  if (!challenge) throw new Error("OTP not found")
+  if (challenge.expiresAt < new Date()) throw new Error("OTP expired")
+  if (challenge.attempts >= challenge.maxAttempts) throw new Error("OTP attempts exceeded")
+
+  if (challenge.codeHash !== sha256(code.trim())) {
+    await prisma.otpChallenge.update({
+      where: { id: challenge.id },
+      data: { attempts: { increment: 1 } },
+    })
+    throw new Error("Invalid OTP")
+  }
+
+  await prisma.otpChallenge.update({
+    where: { id: challenge.id },
+    data: { consumedAt: new Date() },
+  })
+
+  let profile = await prisma.userProfile.findFirst({
+    where: { phone },
+    include: { user: { include: { roles: { include: { role: true } } } } },
+  })
+
+  if (!profile) {
+    const role = await prisma.role.upsert({
+      where: { key: ROLE_KEYS.CUSTOMER },
+      update: { name: "customer" },
+      create: { key: ROLE_KEYS.CUSTOMER, name: "customer" },
+    })
+    const syntheticEmail = `phone_${phone.replace(/\D/g, "")}_${Date.now()}@ziply5.local`
+    const randomPasswordHash = await hashPassword(crypto.randomBytes(24).toString("hex"))
+    const created = await prisma.user.create({
+      data: {
+        email: syntheticEmail,
+        name: `User ${phone.slice(-4)}`,
+        passwordHash: randomPasswordHash,
+        roles: { create: [{ roleId: role.id }] },
+        profile: { create: { phone } },
+      },
+      include: {
+        profile: true,
+        roles: { include: { role: true } },
+      },
+    })
+    profile = {
+      id: created.profile!.id,
+      userId: created.id,
+      phone: created.profile!.phone,
+      avatarUrl: created.profile!.avatarUrl,
+      createdAt: created.profile!.createdAt,
+      updatedAt: created.profile!.updatedAt,
+      user: created,
+    }
+  }
+
+  const role = profile.user.roles[0]?.role.key ?? ROLE_KEYS.CUSTOMER
+  return issueAuthTokens({
+    userId: profile.user.id,
+    email: profile.user.email,
+    role,
+    name: profile.user.name,
   })
 }

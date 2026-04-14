@@ -1,9 +1,10 @@
-import { products } from "@/lib/products"
 import { useRouter } from "next/navigation"
 import { useMemo, useState, FormEvent } from "react"
+import { useStorefrontProducts } from "@/hooks/useStorefrontProducts"
 
 export function useSearch() {
   const router = useRouter()
+  const { products } = useStorefrontProducts(120)
   const [searchOpen, setSearchOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState("")
 

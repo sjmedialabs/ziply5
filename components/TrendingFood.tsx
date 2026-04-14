@@ -4,9 +4,9 @@ import Link from "next/link"
 import Image from "next/image"
 import SectionHeader from "./SectionHeader"
 import { useEffect, useMemo, useState } from "react"
-import { products } from "@/lib/products"
 import { getCartItems, setCartItemQuantity } from "@/lib/cart"
 import { getFavoriteSlugs, toggleFavoriteSlug } from "@/lib/favorites"
+import { useStorefrontProducts } from "@/hooks/useStorefrontProducts"
 
 function useIsLg() {
   const [isLg, setIsLg] = useState(false)
@@ -33,6 +33,7 @@ const cardGradients = [
 
 export default function TrendingFood() {
   const isLg = useIsLg()
+  const { products } = useStorefrontProducts(40)
   const [favoriteSlugs, setFavoriteSlugs] = useState<string[]>([])
   const [cartQtyBySlug, setCartQtyBySlug] = useState<Record<string, number>>({})
 

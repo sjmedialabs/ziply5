@@ -78,7 +78,7 @@ export function DashboardChrome({
             className={`flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors ${
               active
                 ? "bg-[#FFC222] text-[#4A1D1F] shadow-sm"
-                : "text-[#F5F1E6]/90 hover:bg-white/10 hover:text-white"
+                : "text-[#2A1810] hover:bg-[#F5F1E6]"
             }`}
           >
             <Icon className="h-4 w-4 shrink-0 opacity-90" strokeWidth={2} />
@@ -101,31 +101,31 @@ export function DashboardChrome({
       )}
 
       <aside
-        className={`fixed inset-y-0 left-0 z-50 flex w-64 flex-col border-r border-[#3D1518] bg-[#4A1D1F] shadow-xl transition-transform duration-200 lg:static lg:z-0 lg:translate-x-0 lg:shadow-none ${
+        className={`fixed inset-y-0 left-0 z-50 flex w-64 flex-col border-r border-[#E0D5C8] bg-white shadow-xl transition-transform duration-200 lg:static lg:z-0 lg:translate-x-0 lg:shadow-none ${
           sidebarOpen ? "translate-x-0" : "-translate-x-full"
         }`}
       >
-        <div className="flex items-center justify-between gap-2 border-b border-white/10 px-4 py-4">
+        <div className="flex items-center justify-between gap-2 border-b border-[#E0D5C8] px-4 py-4">
           <Link href={navItems[0]?.href ?? websiteHref} className="flex items-center gap-2" onClick={() => setSidebarOpen(false)}>
             <Image src="/primaryLogo.png" alt="ZiPLY5" width={120} height={44} className="h-9 w-auto object-contain" />
           </Link>
           <button
             type="button"
-            className="rounded-lg p-2 text-white/80 hover:bg-white/10 lg:hidden"
+            className="rounded-lg p-2 text-[#4A1D1F] hover:bg-[#F5F1E6] lg:hidden"
             onClick={() => setSidebarOpen(false)}
             aria-label="Close sidebar"
           >
             <X className="h-5 w-5" />
           </button>
         </div>
-        <p className="px-4 pt-3 font-melon text-xs font-bold uppercase tracking-[0.2em] text-[#FFC222]">
+        <p className="px-4 pt-3 font-melon text-xs font-bold uppercase tracking-[0.2em] text-[#7B3010]">
           {portalLabel}
         </p>
         <div className="flex-1 overflow-y-auto">
           <NavList onNavigate={() => setSidebarOpen(false)} />
         </div>
-        <div className="border-t border-white/10 p-3 text-xs text-[#F5F1E6]/70">
-          <Link href={websiteHref} className="block rounded-lg px-3 py-2 hover:bg-white/10" onClick={() => setSidebarOpen(false)}>
+        <div className="border-t border-[#E0D5C8] p-3 text-xs text-[#646464]">
+          <Link href={websiteHref} className="block rounded-lg px-3 py-2 hover:bg-[#F5F1E6]" onClick={() => setSidebarOpen(false)}>
             ← Back to store website
           </Link>
         </div>

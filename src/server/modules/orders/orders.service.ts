@@ -2,6 +2,7 @@ import type { Prisma } from "@prisma/client"
 import { prisma } from "@/src/server/db/prisma"
 import { computeCouponDiscount } from "@/src/server/modules/coupons/coupons.service"
 import { logActivity } from "@/src/server/modules/activity/activity.service"
+import { emailTemplates, enqueueEmail } from "@/src/server/modules/notifications/email.service"
 
 export const createOrderFromCheckout = async (input: {
   items: { slug: string; quantity: number }[]
@@ -86,6 +87,18 @@ export const createOrderFromCheckout = async (input: {
     metadata: { itemCount: lines.length, total },
   })
 
+  if (input.userId) {
+    const user = await prisma.user.findUnique({ where: { id: input.userId }, select: { email: true } })
+    if (user?.email) {
+      try {
+        const mail = emailTemplates.orderPlaced(order.id)
+        await enqueueEmail({ to: user.email, ...mail })
+      } catch {
+        // Non-blocking side effect
+      }
+    }
+  }
+
   return order
 }
 
@@ -163,6 +176,18 @@ export const updateOrderStatus = async (
     entityId: id,
     metadata: { status },
   })
+
+  if (order.userId) {
+    const user = await prisma.user.findUnique({ where: { id: order.userId }, select: { email: true } })
+    if (user?.email) {
+      try {
+        const mail = emailTemplates.orderStatus(id, status)
+        await enqueueEmail({ to: user.email, ...mail })
+      } catch {
+        // Non-blocking side effect
+      }
+    }
+  }
 
   return order
 }

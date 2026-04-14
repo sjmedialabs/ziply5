@@ -11,11 +11,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { products } from "@/lib/products"
-import { getCartItems, setCartItemQuantity, setCartItems } from "@/lib/cart"
+import { getCartItems, setCartItemQuantity } from "@/lib/cart"
 import { getFavoriteSlugs, toggleFavoriteSlug } from "@/lib/favorites"
+import { toStorefrontProduct, type StorefrontProduct } from "@/lib/storefront-products"
 
-type CategoryFilter = "all" | "ready-to-eat" | "ready-to-cook"
+type CategoryFilter = "all" | string
 type MealTypeFilter = "all" | "veg" | "non-veg"
 type SortType = "popular" | "newest" | "price-low-high" | "price-high-low" | "name-asc" | "name-desc"
 type PackFilter = "all" | "combo-pack" | "limited-offers"
@@ -24,7 +24,9 @@ type AvailabilityFilter = "all" | "in-stock" | "out-of-stock"
 
 function ProductsPageContent() {
   const searchParams = useSearchParams()
-  const router = useRouter()
+  const [products, setProducts] = useState<StorefrontProduct[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState("")
   const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>("all")
   const [mealTypeFilter, setMealTypeFilter] = useState<MealTypeFilter>("all")
   const [packFilter, setPackFilter] = useState<PackFilter>("all")
@@ -34,7 +36,33 @@ function ProductsPageContent() {
   const [favoriteSlugs, setFavoriteSlugs] = useState<string[]>([])
   const [cartQtyBySlug, setCartQtyBySlug] = useState<Record<string, number>>({})
   const searchTerm = (searchParams.get("search") || "").trim().toLowerCase()
-  const [priceRange, setPriceRange] = useState<[number, number]>([0, 1000])
+
+  useEffect(() => {
+    let cancelled = false
+    setLoading(true)
+    setError("")
+    fetch("/api/v1/products?page=1&limit=200")
+      .then((r) => r.json())
+      .then((json: { success?: boolean; message?: string; data?: { items: unknown[] } }) => {
+        if (cancelled) return
+        if (json.success === false) {
+          setError(json.message ?? "Could not load products")
+          return
+        }
+        const rows = json.data?.items ?? []
+        setProducts(rows.map((item) => toStorefrontProduct(item as never)))
+      })
+      .catch(() => {
+        if (!cancelled) setError("Could not load products")
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
   useEffect(() => {
     const syncFavorites = () => setFavoriteSlugs(getFavoriteSlugs())
     syncFavorites()
@@ -65,6 +93,10 @@ function ProductsPageContent() {
     }
   }, [])
 
+  const categories = useMemo(() => {
+    return Array.from(new Set(products.map((p) => p.category).filter(Boolean)))
+  }, [products])
+
   const filteredProducts = useMemo(() => {
     const items = products.filter((item) => {
       const categoryMatch = categoryFilter === "all" || item.category === categoryFilter
@@ -78,31 +110,28 @@ function ProductsPageContent() {
         availabilityFilter === "all" ||
         (availabilityFilter === "in-stock" && (item as any).inStock !== false) ||
         (availabilityFilter === "out-of-stock" && (item as any).inStock === false)
-      const priceMatch =
-        item.price >= priceRange[0] && item.price <= priceRange[1]
-      return categoryMatch && typeMatch && packMatch && mealTimeMatch && availabilityMatch && priceMatch
+      // const priceMatch =
+        // item.price >= priceRange[0] && item.price <= priceRange[1]
+      return categoryMatch && typeMatch && packMatch && mealTimeMatch && availabilityMatch
     })
 
     const searched = searchTerm ? items.filter((item) => item.name.toLowerCase().includes(searchTerm)) : items
 
-    let sorted = [...searched]
-    if (sortBy === "name-asc") sorted.sort((a, b) => a.name.localeCompare(b.name))
-    else if (sortBy === "name-desc") sorted.sort((a, b) => b.name.localeCompare(a.name))
-    else if (sortBy === "newest") sorted.sort((a, b) => (b.id || 0) - (a.id || 0))
-    else if (sortBy === "price-low-high") sorted.sort((a, b) => a.price - b.price)
-    else if (sortBy === "price-high-low") sorted.sort((a, b) => b.price - a.price)
+    if (sortBy === "name-asc") {
+      return [...searched].sort((a, b) => a.name.localeCompare(b.name))
+    }
 
-    return sorted
-  }, [categoryFilter, mealTypeFilter, packFilter, mealTimeFilter, availabilityFilter, sortBy, searchTerm])
+    if (sortBy === "name-desc") {
+      return [...searched].sort((a, b) => b.name.localeCompare(a.name))
+    }
 
-  const handleBuyNow = (product: any) => {
-    setCartItems([{ ...product, quantity: 1 }])
-    router.push("/checkout")
-  }
+    return searched
+  }, [products, categoryFilter, mealTypeFilter, sortBy, searchTerm])
 
   return (
     <section className="w-full bg-[#F3F0DC] py-8 md:py-10">
       <div className="mx-auto w-full max-w-7xl px-4 sm:px-6 lg:px-8">
+        {error && <p className="mb-4 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-800">{error}</p>}
         <div className="mb-6 flex flex-col gap-4">
           {searchTerm && (
             <p className="text-sm font-medium text-[#5A272A]">
@@ -121,8 +150,11 @@ function ProductsPageContent() {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">All Categories</SelectItem>
-                    <SelectItem value="ready-to-eat">Ready to eat meals</SelectItem>
-                    <SelectItem value="ready-to-cook">Ready-to-cook meals</SelectItem>
+                    {categories.map((cat, idx) => (
+                      <SelectItem key={`${cat || "cat"}-${idx}`} value={cat}>
+                        {cat.replace(/-/g, " ")}
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
                 {/* Sort by type  */}
@@ -184,7 +216,7 @@ function ProductsPageContent() {
                     <SelectItem value="price-high-low">Price: High to Low</SelectItem>
                   </SelectContent>
                 </Select>
-                {sortBy === "price-low-high" || sortBy === "price-high-low" && (<div className="flex gap-2 mt-1 items-center">
+                {/* {sortBy === "price-low-high" || sortBy === "price-high-low" && (<div className="flex gap-2 mt-1 items-center">
                   <input
                     type="number"
                     placeholder="Min"
@@ -197,7 +229,7 @@ function ProductsPageContent() {
                     className="w-20 rounded-full border px-2 py-1"
                     onChange={(e) => setPriceRange([priceRange[0], Number(e.target.value)])}
                   />
-                </div>)}
+                </div>)} */}
                 </div>
                 <div className="flex flex-wrap items-center gap-2 text-xs">
                   <button
@@ -222,33 +254,27 @@ function ProductsPageContent() {
           </div>
         </div>
 
+        {loading && <p className="mb-4 text-sm text-[#646464]">Loading products...</p>}
+        {!loading && filteredProducts.length === 0 && (
+          <p className="mb-4 rounded-lg bg-white px-4 py-3 text-sm text-[#646464]">No published products found.</p>
+        )}
         <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
-          {filteredProducts.length === 0 ? (
-            <div className="col-span-full text-center py-20">
-              <h2 className="text-xl font-semibold text-[#5A272A]">
-                No products available
-              </h2>
-              <p className="text-sm text-gray-500 mt-2">
-                Try changing filters or search
-              </p>
-            </div>
-          ) : (
-            filteredProducts.map((product) => (
-              <article
-                key={product.id}
-                className="group relative rounded-2xl border-2 border-transparent p-4 transition-all duration-300 hover:ring-4 hover:ring-[#F36E21] hover:shadow-xl]"
-                style={{ backgroundColor: product.bgColor }}
+          {filteredProducts.map((product, idx) => (
+            <article
+              key={`${product.id || product.slug || "product"}-${idx}`}
+              className="group relative rounded-2xl border-2 border-transparent p-4 transition-all duration-300 hover:ring-4 hover:ring-[#F36E21] hover:shadow-xl]"
+              style={{ backgroundColor: "#3EA6CF" }}
+            >
+              <button
+                type="button"
+                onClick={() => {
+                  toggleFavoriteSlug(product.slug)
+                  setFavoriteSlugs(getFavoriteSlugs())
+                }}
+                className="absolute left-3 top-3 z-20 text-lg text-white"
               >
-                <button
-                  type="button"
-                  onClick={() => {
-                    toggleFavoriteSlug(product.slug)
-                    setFavoriteSlugs(getFavoriteSlugs())
-                  }}
-                  className="absolute left-3 top-3 z-20 text-lg text-white"
-                >
-                  {favoriteSlugs.includes(product.slug) ? "♥" : "♡"}
-                </button>
+                {favoriteSlugs.includes(product.slug) ? "♥" : "♡"}
+              </button>
 
                 <Link href={`/product/${product.slug}`} className="block">
                   <div className="absolute right-3 top-3">
@@ -267,16 +293,16 @@ function ProductsPageContent() {
                     <Image src={product.image} alt={product.name} fill className="object-contain" />
                   </div>
 
-                  <div className="mt-2 text-center tracking-wide font-light font-melon">
-                    <h3 className="text-[18px] uppercase leading-tight text-white drop-shadow-[0_1px_0_rgba(0,0,0,0.2)]">
-                      {product.name}
-                    </h3>
-                    <p className="mt-1 text-[10px] uppercase tracking-wide text-white/90">
-                      Home style rice | Net wt. {product.weight}
-                    </p>
-                    <p className="mt-1 text-sm font-melon text-[#FFF5C5]">Rs. {product.price.toFixed(2)}</p>
-                  </div>
-                </Link>
+                <div className="mt-2 text-center tracking-wide font-light font-melon">
+                  <h3 className="text-[18px] uppercase leading-tight text-white drop-shadow-[0_1px_0_rgba(0,0,0,0.2)]">
+                    {product.name}
+                  </h3>
+                  <p className="mt-1 text-[10px] uppercase tracking-wide text-white/90">
+                    Home style meal | Net wt. {product.weight}
+                  </p>
+                   <p className="mt-1 text-sm font-melon text-[#FFF5C5]">Rs. {product.price.toFixed(2)}</p>
+                </div>
+              </Link>
 
                 <div className="mt-3 flex items-center justify-between gap-2 font-melon tracking-wide font-light">
                   {(cartQtyBySlug[product.slug] ?? 0) > 0 ? (
@@ -309,14 +335,14 @@ function ProductsPageContent() {
                     </button>
                   )}
                   <button
-                    onClick={() => handleBuyNow(product)}
+                    // onClick={() => handleBuyNow(product)}
                     className="rounded-lg bg-primary tracking-wide px-3 py-1.5 text-[12px] font-light text-white hover:bg-[#2d1011]"
                   >
                     Buy Now
                   </button>
                 </div>
               </article>
-            )))}
+            ))}
         </div>
       </div>
     </section>

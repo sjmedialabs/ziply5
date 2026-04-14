@@ -1,4 +1,5 @@
 import { fail, ok } from "@/src/server/core/http/response"
+import { checkRateLimit } from "@/src/server/middleware/rateLimit"
 import { resetPasswordWithToken } from "@/src/server/modules/auth/auth.service"
 import { z } from "zod"
 
@@ -8,6 +9,8 @@ const schema = z.object({
 })
 
 export async function POST(request: Request) {
+  const blocked = checkRateLimit(request, "auth:reset", { limit: 8, windowMs: 60_000 })
+  if (blocked) return blocked
   try {
     const body = await request.json()
     const parsed = schema.safeParse(body)

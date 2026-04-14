@@ -3,71 +3,82 @@
 import { useEffect, useMemo, useState } from "react"
 import Image from "next/image"
 import { useParams, useRouter } from "next/navigation"
-import { ArrowLeft, ChevronLeft, ChevronRight} from "lucide-react"
-import { getProductBySlug, products } from "@/lib/products"
+import { ArrowLeft, ChevronLeft, ChevronRight } from "lucide-react"
 import { getFavoriteSlugs, toggleFavoriteSlug } from "@/lib/favorites"
-import { addToCart, getCartItems, getCartQuantityForSlug, setCartItemQuantity } from "@/lib/cart"
-import Link from "next/link"
+import { addToCart, getCartQuantityForSlug, setCartItemQuantity } from "@/lib/cart"
+import { toStorefrontProduct, type StorefrontProduct } from "@/lib/storefront-products"
 
 export default function ProductPage() {
   const params = useParams()
   const router = useRouter()
   const slugParam = params?.slug
   const slug = Array.isArray(slugParam) ? slugParam[0] : slugParam
-  const product = useMemo(() => {
-    const found = slug ? getProductBySlug(slug) : undefined
-    if (found) return found
-  const [cartQtyBySlug, setCartQtyBySlug] = useState<Record<string, number>>({})
-    const fallbackName = slug
-      ? slug
-          .split("-")
-          .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-          .join(" ")
-      : "Product"
-
-    return {
-      id: 0,
-      name: fallbackName,
-      slug: slug || "product",
-      price: 229.25,
-      oldPrice: 310,
-      serving: "440 calories serving",
-      weight: "95 g",
-      description:
-        "A balanced home-style meal made for convenience and flavor. Prepared with quality ingredients and crafted for everyday comfort.",
-      type: "non-veg" as const,
-      category: "ready-to-eat" as const,
-      image: "/assets/product listing/Ziply5 - Pouch - Butter Chk Rice 3.png",
-      detailImage: "/assets/Product details/image 69.png",
-      bgColor: "#3EA6CF",
-      gallery: [
-        "/assets/Product details/Rectangle.png",
-        "/assets/Product details/Rectangle-1.png",
-        "/assets/Product details/Rectangle-2.png",
-        "/assets/Product details/Frame 341.png",
-      ],
-    }
-  }, [slug])
+  const [product, setProduct] = useState<StorefrontProduct | null>(null)
+  const [relatedProducts, setRelatedProducts] = useState<StorefrontProduct[]>([])
+  const [error, setError] = useState("")
+  const [loading, setLoading] = useState(true)
 
   const [quantity, setQuantity] = useState(1)
-  const [selectedSize, setSelectedSize] = useState("250g")
+  const [selectedSize, setSelectedSize] = useState("")
   const [openSection, setOpenSection] = useState<string | null>(null)
   const [favorite, setFavorite] = useState(false)
   const [relatedStart, setRelatedStart] = useState(0)
-  const [cartQtyBySlug, setCartQtyBySlug] = useState<Record<string, number>>({})
-  const relatedProducts = useMemo(() => products.filter((item) => item.id !== product.id), [product])
+  const [selectedImage, setSelectedImage] = useState("")
+  const [thumbStart, setThumbStart] = useState(0)
 
-  const productGallery = useMemo(
-    () => [
-      "/assets/Productdetails/selected.png",
-      "/assets/Productdetails/pdp-thumb-1.png",
-      "/assets/Productdetails/pdp-thumb-2.png",
-      "/assets/Productdetails/pdp-thumb-3.png",
-    ],
-    [],
-  )
+  const galleryImages = useMemo(() => {
+    if (!product) return []
+    const cleaned = (product.gallery ?? []).map((img) => img.trim()).filter(Boolean)
+    const fallback = product.image.trim()
+    return cleaned.length ? cleaned : fallback ? [fallback] : []
+  }, [product])
 
-  const [selectedImage, setSelectedImage] = useState("/assets/Productdetails/selected.png")
+  const displayImage = useMemo(() => {
+    const current = selectedImage.trim()
+    if (current) return current
+    return galleryImages[0] ?? null
+  }, [galleryImages, selectedImage])
+
+  const visibleThumbs = useMemo(() => {
+    if (galleryImages.length <= 4) return galleryImages
+    return Array.from({ length: 4 }).map((_, idx) => galleryImages[(thumbStart + idx) % galleryImages.length])
+  }, [galleryImages, thumbStart])
+
+  useEffect(() => {
+    if (!slug) return
+    let cancelled = false
+    setLoading(true)
+    setError("")
+    Promise.all([
+      fetch(`/api/v1/products/by-slug/${encodeURIComponent(slug)}`).then((r) => r.json()),
+      fetch("/api/v1/products?page=1&limit=20").then((r) => r.json()),
+    ])
+      .then(([single, list]: Array<{ success?: boolean; data?: unknown; message?: string }>) => {
+        if (cancelled) return
+        if (single.success === false || !single.data) {
+          setError(single.message ?? "Product not found")
+          return
+        }
+        const item = toStorefrontProduct(single.data as never)
+        setProduct(item)
+        const rel =
+          list.success === false
+            ? []
+            : ((list.data as { items?: unknown[] } | undefined)?.items ?? [])
+                .map((x) => toStorefrontProduct(x as never))
+                .filter((x) => x.id !== item.id)
+        setRelatedProducts(rel)
+      })
+      .catch(() => {
+        if (!cancelled) setError("Could not load product")
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [slug])
 
   const visibleRelated = useMemo(() => {
     if (relatedProducts.length === 0) return []
@@ -77,19 +88,29 @@ export default function ProductPage() {
     })
   }, [relatedProducts, relatedStart])
 
-  const sku = `SKU:${product.slug.replace(/-/g, "").slice(0, 6).toUpperCase()}`
-  const salePercent = Math.max(1, Math.round(((product.oldPrice - product.price) / product.oldPrice) * 100))
+  const activeVariant = useMemo(() => {
+    if (!product) return null
+    return product.variants.find((v) => v.name === selectedSize) ?? product.variants[0] ?? null
+  }, [product, selectedSize])
+
+  const currentPrice = activeVariant?.price ?? product?.price ?? 0
+  const sku = activeVariant?.sku ?? (product ? `SKU:${product.slug.replace(/-/g, "").slice(0, 6).toUpperCase()}` : "")
+  const salePercent =
+    product && product.oldPrice > 0 ? Math.max(1, Math.round(((product.oldPrice - currentPrice) / product.oldPrice) * 100)) : 0
 
   useEffect(() => {
-    setSelectedImage("/assets/Productdetails/selected.png")
-    setSelectedSize("250g")
+    if (!product) return
+    setSelectedImage((product.gallery[0] ?? product.image ?? "").trim())
+    setSelectedSize(product.variants[0]?.name ?? product.weight)
     setQuantity(getCartQuantityForSlug(product.slug))
     setOpenSection(null)
     setRelatedStart(0)
+    setThumbStart(0)
     setFavorite(getFavoriteSlugs().includes(product.slug))
-  }, [product.slug])
+  }, [product])
 
   useEffect(() => {
+    if (!product) return
     const syncQty = () => setQuantity(getCartQuantityForSlug(product.slug))
     window.addEventListener("ziply5:cart-updated", syncQty)
     window.addEventListener("storage", syncQty)
@@ -97,51 +118,18 @@ export default function ProductPage() {
       window.removeEventListener("ziply5:cart-updated", syncQty)
       window.removeEventListener("storage", syncQty)
     }
-        const syncCartQty = () => {
-          const items = getCartItems()
-          const qtyMap = items.reduce<Record<string, number>>((acc, item) => {
-            acc[item.slug] = item.quantity
-            return acc
-          }, {})
-          setCartQtyBySlug(qtyMap)
-        }
-  }, [product.slug])
+  }, [product])
 
-  const detailSections = [
-    {
-      id: "key-features",
-      title: "Key Features",
-      content:
-        "Authentic flavor profile, balanced spice blend, and quick preparation. Crafted to deliver home-style taste without compromise.",
-    },
-    {
-      id: "ingredients",
-      title: "Ingredients",
-      content:
-        "Rice, chicken, spices, dehydrated vegetables, salt, natural flavoring agents, and edible oil. No added preservatives.",
-    },
-    {
-      id: "nutrition-facts",
-      title: "Nutrition Facts",
-      content:
-        "Approximate values per serving: energy, protein, carbohydrates, and fats are optimized for a complete meal format.",
-    },
-    {
-      id: "storage",
-      title: "Storage Instructions",
-      content:
-        "Store in a cool, dry place away from direct sunlight. Keep pack tightly sealed after opening for best freshness.",
-    },
-  ]
-
-  const featureItems = [
-    { label: "Home Made", icon: "/assets/Productdetails/home.png" },
-    { label: "Flavourful", icon: "/assets/Productdetails/flavourful.png" },
-    { label: "Travel Friendly", icon: "/assets/Productdetails/travelFriendly.png" },
-    { label: "No MSG, Preservatives", icon: "/assets/Productdetails/noPreservative.png" },
-    { label: "FREE Shipping", icon: "/assets/Productdetails/free-shipping.png" },
-    { label: "Easy Return 30 Days", icon: "/assets/Productdetails/easyReturn.png" },
-  ]
+  if (loading) {
+    return <section className="flex min-h-[60vh] items-center justify-center bg-[#F3F3F3]">Loading...</section>
+  }
+  if (error || !product) {
+    return (
+      <section className="flex min-h-[60vh] items-center justify-center bg-[#F3F3F3]">
+        <p className="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-800">{error || "Product not found"}</p>
+      </section>
+    )
+  }
 
   return (
     <section className="w-full bg-[#F3F3F3] py-8 md:py-10">
@@ -150,24 +138,51 @@ export default function ProductPage() {
           <div>
             <div className="rounded-xl border border-[#E2E2E2] bg-[#ECECEC]">
               <div className="relative mx-auto h-90 w-full">
-                <Image src={selectedImage} alt={product.name} fill className="object-contain" />
+                {displayImage ? (
+                  <Image src={displayImage} alt={product.name} fill className="object-contain" />
+                ) : (
+                  <div className="flex h-full items-center justify-center text-xs text-[#666]">No image</div>
+                )}
               </div>
             </div>
 
-            <div className="mt-4 flex items-center gap-2 overflow-x-auto pb-1">
-              {productGallery.map((thumb) => (
+            <div className="mt-4 flex items-center gap-2">
+              <button
+                type="button"
+                disabled={galleryImages.length <= 4}
+                onClick={() => setThumbStart((prev) => (prev - 1 + galleryImages.length) % galleryImages.length)}
+                className="flex h-8 w-8 items-center justify-center rounded-full border border-[#D4D4D4] bg-white text-[#555] disabled:opacity-40"
+              >
+                <ChevronLeft size={14} />
+              </button>
+              <div className="flex items-center gap-2 overflow-x-auto pb-1">
+              {visibleThumbs.map((thumb, idx) => (
                 <button
                   type="button"
-                  key={thumb}
+                  key={`${thumb || "thumb"}-${idx}`}
                   onClick={() => setSelectedImage(thumb)}
-                  className={`relative h-40 w-40 flex-shrink-0 overflow-hidden rounded-md border ${
+                  className={`relative h-16 w-16 flex-shrink-0 overflow-hidden rounded-md border ${
                     selectedImage === thumb ? "border-[#50272A]" : "border-[#E0E0E0]"
                   }`}
                 >
                   <Image src={thumb} alt={`${product.name} preview`} fill className="object-cover" />
                 </button>
               ))}
+              </div>
+              <button
+                type="button"
+                disabled={galleryImages.length <= 4}
+                onClick={() => setThumbStart((prev) => (prev + 1) % galleryImages.length)}
+                className="flex h-8 w-8 items-center justify-center rounded-full border border-[#D4D4D4] bg-white text-[#555] disabled:opacity-40"
+              >
+                <ChevronRight size={14} />
+              </button>
             </div>
+            {product.videoUrl && (
+              <div className="mt-4 overflow-hidden rounded-xl border border-[#E2E2E2] bg-black">
+                <video src={product.videoUrl} controls className="w-full" />
+              </div>
+            )}
           </div>
 
           <div className="">
@@ -184,8 +199,17 @@ export default function ProductPage() {
 
             <div className="mt-2 flex items-center gap-2">
               <span className="rounded-full bg-[#F0ECE2] px-3 py-1 text-[12px] font-medium text-[#8D8D8D]">{sku}</span>
-              <span className="rounded-full bg-[#DFE8D8] px-3 py-1 text-[12px] font-medium text-[#86917B]">instock</span>
-              <span className="rounded-md bg-[#2E84CF] px-2 py-1 text-[11px] font-semibold text-white">SALE {salePercent}% Off</span>
+              <span className="rounded-full bg-[#DFE8D8] px-3 py-1 text-[12px] font-medium text-[#86917B]">
+                {(activeVariant?.stock ?? 0) > 0 ? "instock" : "out of stock"}
+              </span>
+              {salePercent > 0 && (
+                <span className="rounded-md bg-[#2E84CF] px-2 py-1 text-[11px] font-semibold text-white">SALE {salePercent}% Off</span>
+              )}
+              {product.labels.slice(0, 2).map((label, idx) => (
+                <span key={`${label.label || "label"}-${idx}`} className="rounded-md px-2 py-1 text-[11px] font-semibold text-white" style={{ backgroundColor: label.color ?? "#A32424" }}>
+                  {label.label}
+                </span>
+              ))}
               <span
                 className={`rounded-md px-2 py-1 text-[11px] font-semibold text-white ${
                   product.type === "veg" ? "bg-[#2EA852]" : "bg-[#A32424]"
@@ -196,7 +220,7 @@ export default function ProductPage() {
             </div>
 
             <div className="mt-3 flex items-end gap-2">
-              <p className="text-[28px] font-extrabold text-[#B44444]">₹{product.price.toFixed(2)}</p>
+              <p className="text-[28px] font-extrabold text-[#B44444]">₹{currentPrice.toFixed(2)}</p>
               <p className="pb-1 text-sm font-semibold text-[#B8B8B8] line-through">₹{product.oldPrice.toFixed(2)}</p>
             </div>
             <p className="text-sm text-[#8A8A8A]">Taxes included. Shipping calculated at checkout.</p>
@@ -204,11 +228,11 @@ export default function ProductPage() {
             <p className="mt-2 max-w-2xl text-sm leading-6 text-[#595959]">{product.description}</p>
 
             <div className="mt-5 flex items-center gap-2">
-              <span className="text-xs font-light font-melon tracking-wide text-[#272727]">Size (Wt) :</span>
-              {["250g", "500g", "1 kg"].map((size) => (
+              <span className="text-xs font-light font-melon tracking-wide text-[#272727]">Size (Wt)</span>
+              {(product.variants.length ? product.variants.map((v) => v.name) : [product.weight]).map((size, idx) => (
                 <button
                   type="button"
-                  key={size}
+                  key={`${size || "size"}-${idx}`}
                   onClick={() => setSelectedSize(size)}
                   className={`rounded-md border px-3 py-1 text-xs font-semibold ${
                     selectedSize === size
@@ -228,7 +252,7 @@ export default function ProductPage() {
                   type="button"
                   onClick={() => {
                     const nextQty = Math.max(0, quantity - 1)
-                    setCartItemQuantity(product, nextQty)
+                    setCartItemQuantity({ ...product, price: currentPrice, weight: selectedSize }, nextQty)
                     setQuantity(nextQty)
                   }}
                   className="h-10 w-9 text-lg font-bold transition hover:bg-[#6A3033]"
@@ -240,7 +264,7 @@ export default function ProductPage() {
                   type="button"
                   onClick={() => {
                     const nextQty = quantity + 1
-                    setCartItemQuantity(product, nextQty)
+                    setCartItemQuantity({ ...product, price: currentPrice, weight: selectedSize }, nextQty)
                     setQuantity(nextQty)
                   }}
                   className="h-10 w-9 text-lg font-bold transition hover:bg-[#6A3033]"
@@ -249,13 +273,13 @@ export default function ProductPage() {
                 </button>
               </div>
             </div>
-            <p className="mt-4 text-sm font-bold text-[#272727]"><span className="font-light font-melon tracking-wide">Shelf Life :</span> <span className="font-bo;d">12 months</span></p>
+            <p className="mt-4 text-sm font-bold text-[#272727]"><span className="font-light font-melon tracking-wide">Variant:</span> <span>{selectedSize}</span></p>
 
             <div className="mt-5 flex items-center gap-3">
               <button
                 type="button"
                 onClick={() => {
-                  addToCart(product, Math.max(1, quantity))
+                  addToCart({ ...product, price: currentPrice, weight: selectedSize }, Math.max(1, quantity))
                   router.push("/cart")
                 }}
                 className="font-medium font-melon tracking-wide rounded-2xl border border-[#FF8A00] bg-primary flex items-center px-6 py-2.5 text-xl leading-none text-white transition hover:bg-[#e97819]"
@@ -276,13 +300,19 @@ export default function ProductPage() {
               </button>
             </div>
 
-            <div className="mt-8 xl:grid grid-cols-3 gap-4 grid lg:hidden border-t border-[#DEDEDE] pt-5">
-              {featureItems.map((item) => (
-                <div key={item.label} className="flex flex-col border rounded-2xl py-2 border-[#DEDEDE]] items-center gap-2 text-center">
-                  <div className="relative h-10 w-10">
-                    <Image src={item.icon} alt={item.label} fill className="object-contain" />
-                  </div>
-                  <p className="text-[11px] font-semibold text-[#333]">{item.label}</p>
+            <div className="mt-8 grid grid-cols-3 gap-4 border-t border-[#DEDEDE] pt-5">
+              {(product.features.length ? product.features : [{ title: "Home Made", icon: null }]).map((item, idx) => (
+                <div key={`${item.title || "feature"}-${idx}`} className="flex flex-col items-center gap-2 text-center">
+                  {item.icon ? (
+                    <div className="relative h-10 w-10">
+                      <Image src={item.icon} alt={item.title} fill className="object-contain" />
+                    </div>
+                  ) : (
+                    <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#F0ECE2] text-[10px] font-semibold text-[#5A272A]">
+                      *
+                    </div>
+                  )}
+                  <p className="text-[11px] font-semibold text-[#333]">{item.title}</p>
                 </div>
               ))}
             </div>
@@ -299,13 +329,16 @@ export default function ProductPage() {
               ))}
             </div>
         <div className="mt-10 border-t border-[#DFDFDF]">
-          {detailSections.map((section) => {
-            const isOpen = openSection === section.id
+          {(product.details.length
+            ? product.details
+            : [{ title: "Description", content: product.description }]).map((section, idx) => {
+            const sectionId = section.title.toLowerCase().replace(/[^a-z0-9]+/g, "-") || `section-${idx}`
+            const isOpen = openSection === sectionId
             return (
-              <div key={section.id} className="border-b border-[#DFDFDF]">
+              <div key={sectionId} className="border-b border-[#DFDFDF]">
                 <button
                   type="button"
-                  onClick={() => setOpenSection(isOpen ? null : section.id)}
+                  onClick={() => setOpenSection(isOpen ? null : sectionId)}
                   className="flex w-full items-center justify-between py-5 text-left"
                 >
                   <span className="text-sm font-light font-melon tracking-wide text-[#262626]">{section.title}</span>
@@ -314,9 +347,10 @@ export default function ProductPage() {
                   </span>
                 </button>
                 {isOpen && (
-                  <p className="pb-5 pr-10 text-sm leading-6 text-[#606060]">
-                    {section.content}
-                  </p>
+                  <div
+                    className="pb-5 pr-10 text-sm leading-6 text-[#606060]"
+                    dangerouslySetInnerHTML={{ __html: section.content }}
+                  />
                 )}
               </div>
             )
@@ -333,15 +367,15 @@ export default function ProductPage() {
                 className="block text-left"
               >
                 <article
-                  className="group rounded-2xl border-2 border-transparent  p-3 transition-all duration-300 hover:ring-4 hover:ring-[#F36E21] hover:shadow-xl"
-                  style={{ backgroundColor: item.bgColor }}
+                  className="group rounded-2xl border-2 border-transparent p-3 transition-all duration-300 hover:border-[#F0E4A3]"
+                  style={{ backgroundColor: "#3EA6CF" }}
                 >
                   <div className="relative mx-auto h-[220px] w-full max-w-[140px]">
                     <Image src={item.image} alt={item.name} fill className="object-contain" />
                   </div>
-                  <h3 className="mt-2 text-center text-[20px] line-clamp-1 uppercase leading-tight text-white">{item.name}</h3>
-                  <p className="mt-1 text-center text-[10px] uppercase text-white/90">
-                    {item.serving} | Net wt. {item.weight}
+                  <h3 className="mt-2 text-center text-[22px] font-black uppercase leading-tight text-white">{item.name}</h3>
+                  <p className="mt-1 text-center text-[10px] font-semibold uppercase text-white/90">
+                    Home style meal | Net wt. {item.weight}
                   </p>
                                     <div className="mt-3 flex items-center justify-between gap-2">
                     {(cartQtyBySlug[product.slug] ?? 0) > 0 ? (
@@ -386,15 +420,17 @@ export default function ProductPage() {
           <div className="mt-6 flex justify-end gap-2">
             <button
               type="button"
+              disabled={relatedProducts.length === 0}
               onClick={() => setRelatedStart((prev) => (prev - 4 + relatedProducts.length) % relatedProducts.length)}
-              className="flex h-9 w-9 items-center justify-center rounded-full border border-[#D4D4D4] bg-white text-[#555]"
+              className="flex h-9 w-9 items-center justify-center rounded-full border border-[#D4D4D4] bg-white text-[#555] disabled:opacity-40"
             >
               <ChevronLeft size={16} />
             </button>
             <button
               type="button"
+              disabled={relatedProducts.length === 0}
               onClick={() => setRelatedStart((prev) => (prev + 4) % relatedProducts.length)}
-              className="flex h-9 w-9 items-center justify-center rounded-full border border-[#D4D4D4] bg-white text-[#555]"
+              className="flex h-9 w-9 items-center justify-center rounded-full border border-[#D4D4D4] bg-white text-[#555] disabled:opacity-40"
             >
               <ChevronRight size={16} />
             </button>

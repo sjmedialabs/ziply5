@@ -3,10 +3,11 @@
 import { useEffect, useMemo, useState } from "react"
 import Image from "next/image"
 import Link from "next/link"
-import { products } from "@/lib/products"
 import { getFavoriteSlugs } from "@/lib/favorites"
+import { useStorefrontProducts } from "@/hooks/useStorefrontProducts"
 
 export default function FavoritesPage() {
+  const { products } = useStorefrontProducts(200)
   const [favoriteSlugs, setFavoriteSlugs] = useState<string[]>([])
 
   useEffect(() => {
@@ -33,14 +34,16 @@ export default function FavoritesPage() {
         weight: "95 g",
         description: "Favourite product",
         type: "non-veg" as const,
-        category: "ready-to-eat" as const,
+        category: "all",
         image: "/assets/product listing/Ziply5 - Pouch - Butter Chk Rice 3.png",
-        detailImage: "/assets/Product details/pdp-main.png",
-        bgColor: "#3EA6CF",
         gallery: [],
+        labels: [],
+        features: [],
+        details: [],
+        variants: [],
       }
     })
-  }, [favoriteSlugs])
+  }, [favoriteSlugs, products])
 
   return (
     <section className="w-full bg-[#F3F0DC] py-10">
@@ -60,15 +63,13 @@ export default function FavoritesPage() {
               <Link key={product.id} href={`/product/${product.slug}`} className="block">
                 <article
                   className="rounded-2xl border-2 border-transparent p-4 transition-all duration-300 hover:border-[#F0E4A3]"
-                  style={{ backgroundColor: product.bgColor }}
+                  style={{ backgroundColor: "#3EA6CF" }}
                 >
                   <div className="relative mx-auto h-[240px] w-full max-w-[150px]">
                     <Image src={product.image} alt={product.name} fill className="object-contain" />
                   </div>
                   <h3 className="mt-2 text-center text-[22px] font-black uppercase leading-tight text-white">{product.name}</h3>
-                  <p className="mt-1 text-center text-[10px] font-semibold uppercase text-white/90">
-                    {product.serving} | Net wt. {product.weight}
-                  </p>
+                  <p className="mt-1 text-center text-[10px] font-semibold uppercase text-white/90">Home style meal | Net wt. {product.weight}</p>
                 </article>
               </Link>
             ))}

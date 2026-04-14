@@ -1,5 +1,3 @@
-import type { ProductItem } from "@/lib/products"
-
 export type CartItem = {
   slug: string
   name: string
@@ -34,7 +32,15 @@ export const setCartItems = (items: CartItem[]) => {
 
 export const getCartCount = (): number => getCartItems().reduce((sum, item) => sum + item.quantity, 0)
 
-export const addToCart = (product: ProductItem, quantity = 1) => {
+type CartProductInput = {
+  slug: string
+  name: string
+  price: number
+  image: string
+  weight: string
+}
+
+export const addToCart = (product: CartProductInput, quantity = 1) => {
   const existing = getCartItems()
   const index = existing.findIndex((item) => item.slug === product.slug)
 
@@ -59,7 +65,7 @@ export const getCartQuantityForSlug = (slug: string): number => {
   return item ? item.quantity : 0
 }
 
-export const setCartItemQuantity = (product: ProductItem, quantity: number) => {
+export const setCartItemQuantity = (product: CartProductInput, quantity: number) => {
   const existing = getCartItems()
   const nextQuantity = Math.max(0, quantity)
   const index = existing.findIndex((item) => item.slug === product.slug)

@@ -63,6 +63,10 @@ export async function PATCH(request: NextRequest, ctx: { params: Promise<{ id: s
   }
 }
 
+export async function PUT(request: NextRequest, ctx: { params: Promise<{ id: string }> }) {
+  return PATCH(request, ctx)
+}
+
 export async function DELETE(request: NextRequest, ctx: { params: Promise<{ id: string }> }) {
   const { id } = await ctx.params
   const auth = requireAuth(request)

@@ -12,6 +12,25 @@ type AppEnv = {
   REDIS_URL?: string
   STORAGE_LOCAL_PATH: string
   CDN_BASE_URL: string
+  PAYMENT_PROVIDER_DEFAULT?: string
+  PAYMENT_WEBHOOK_SECRET?: string
+  RAZORPAY_KEY_ID?: string
+  RAZORPAY_KEY_SECRET?: string
+  STRIPE_SECRET_KEY?: string
+  OTP_TTL_SECONDS?: string
+  OTP_MAX_ATTEMPTS?: string
+  OTP_RESEND_COOLDOWN_SECONDS?: string
+  SMS_PROVIDER?: string
+  SMS_FROM?: string
+  TWILIO_ACCOUNT_SID?: string
+  TWILIO_AUTH_TOKEN?: string
+  MSG91_AUTH_KEY?: string
+  MSG91_TEMPLATE_ID?: string
+  SMTP_HOST?: string
+  SMTP_PORT?: string
+  SMTP_USER?: string
+  SMTP_PASS?: string
+  SMTP_FROM?: string
 }
 
 const getEnv = (key: keyof AppEnv, fallback?: string) => {
@@ -35,4 +54,23 @@ export const env: AppEnv = {
   REDIS_URL: process.env.REDIS_URL,
   STORAGE_LOCAL_PATH: getEnv("STORAGE_LOCAL_PATH", "./storage/uploads"),
   CDN_BASE_URL: getEnv("CDN_BASE_URL", "https://cdn.ziply5.com"),
+  PAYMENT_PROVIDER_DEFAULT: process.env.PAYMENT_PROVIDER_DEFAULT,
+  PAYMENT_WEBHOOK_SECRET: process.env.PAYMENT_WEBHOOK_SECRET,
+  RAZORPAY_KEY_ID: process.env.RAZORPAY_KEY_ID,
+  RAZORPAY_KEY_SECRET: process.env.RAZORPAY_KEY_SECRET,
+  STRIPE_SECRET_KEY: process.env.STRIPE_SECRET_KEY,
+  OTP_TTL_SECONDS: process.env.OTP_TTL_SECONDS,
+  OTP_MAX_ATTEMPTS: process.env.OTP_MAX_ATTEMPTS,
+  OTP_RESEND_COOLDOWN_SECONDS: process.env.OTP_RESEND_COOLDOWN_SECONDS,
+  SMS_PROVIDER: process.env.SMS_PROVIDER,
+  SMS_FROM: process.env.SMS_FROM,
+  TWILIO_ACCOUNT_SID: process.env.TWILIO_ACCOUNT_SID,
+  TWILIO_AUTH_TOKEN: process.env.TWILIO_AUTH_TOKEN,
+  MSG91_AUTH_KEY: process.env.MSG91_AUTH_KEY,
+  MSG91_TEMPLATE_ID: process.env.MSG91_TEMPLATE_ID,
+  SMTP_HOST: process.env.SMTP_HOST,
+  SMTP_PORT: process.env.SMTP_PORT,
+  SMTP_USER: process.env.SMTP_USER,
+  SMTP_PASS: process.env.SMTP_PASS,
+  SMTP_FROM: process.env.SMTP_FROM,
 }
