@@ -1,0 +1,295 @@
+"use client";
+
+import { useCallback, useEffect, useState } from "react";
+import { authedFetch, authedPatch, authedPost } from "@/lib/dashboard-fetch";
+import { ConsoleTable, ConsoleTd } from "@/components/dashboard/ConsoleTable";
+
+type Summary = {
+  grossSales: string | number;
+  orderCount: number;
+  refundsTotal: string | number;
+  pendingWithdrawals: number;
+};
+
+type Withdrawal = {
+  id: string;
+  sellerId: string;
+  amount: string | number;
+  status: string;
+  note: string | null;
+  createdAt: string;
+  seller: { name: string | null; email: string | null };
+};
+
+type Refund = {
+  id: string;
+  orderId: string;
+  amount: string | number;
+  status: string;
+  reason: string | null;
+  createdAt: string;
+};
+
+const WD_STATUSES = ["pending", "approved", "paid", "rejected"] as const;
+const RF_STATUSES = ["pending", "completed", "rejected"] as const;
+
+export default function AdminFinancePage() {
+  const [summary, setSummary] = useState<Summary | null>(null);
+  const [withdrawals, setWithdrawals] = useState<Withdrawal[]>([]);
+  const [refunds, setRefunds] = useState<Refund[]>([]);
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [wdDraft, setWdDraft] = useState<Record<string, string>>({});
+  const [rfDraft, setRfDraft] = useState<Record<string, string>>({});
+  const [busy, setBusy] = useState<string | null>(null);
+  const [orderId, setOrderId] = useState("");
+  const [refundAmount, setRefundAmount] = useState("");
+  const [refundReason, setRefundReason] = useState("");
+
+  const load = useCallback(() => {
+    setLoading(true);
+    setError("");
+    Promise.all([
+      authedFetch<Summary>("/api/v1/finance/summary"),
+      authedFetch<Withdrawal[]>("/api/v1/finance/withdrawals"),
+      authedFetch<Refund[]>("/api/v1/finance/refunds"),
+    ])
+      .then(([s, w, r]) => {
+        setSummary(s);
+        setWithdrawals(w);
+        setRefunds(r);
+        const wd: Record<string, string> = {};
+        w.forEach((x) => {
+          wd[x.id] = x.status;
+        });
+        setWdDraft(wd);
+        const rf: Record<string, string> = {};
+        r.forEach((x) => {
+          rf[x.id] = x.status;
+        });
+        setRfDraft(rf);
+      })
+      .catch((e: Error) => setError(e.message))
+      .finally(() => setLoading(false));
+  }, []);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  const saveWd = async (id: string) => {
+    const status = wdDraft[id];
+    if (!status) return;
+    setBusy(`wd-${id}`);
+    setError("");
+    try {
+      await authedPatch(`/api/v1/finance/withdrawals/${id}`, { status });
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Update failed");
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const saveRf = async (id: string) => {
+    const status = rfDraft[id];
+    if (!status) return;
+    setBusy(`rf-${id}`);
+    setError("");
+    try {
+      await authedPatch(`/api/v1/finance/refunds/${id}`, { status });
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Update failed");
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const createRefund = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const amt = Number(refundAmount);
+    if (!orderId.trim() || !Number.isFinite(amt) || amt <= 0) return;
+    setBusy("create-refund");
+    setError("");
+    try {
+      await authedPost("/api/v1/finance/refunds", {
+        orderId: orderId.trim(),
+        amount: amt,
+        reason: refundReason.trim() || undefined,
+      });
+      setOrderId("");
+      setRefundAmount("");
+      setRefundReason("");
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Refund failed");
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  return (
+    <section className="mx-auto max-w-7xl space-y-6">
+      <div>
+        <h1 className="font-melon text-2xl font-bold text-[#4A1D1F]">Finance</h1>
+        <p className="text-sm text-[#646464]">Store totals, seller withdrawals, and order refunds.</p>
+      </div>
+
+      {error && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-800">{error}</p>}
+      {loading && <p className="text-sm text-[#646464]">Loading…</p>}
+
+      {!loading && summary && (
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          {[
+            { label: "Gross sales", v: `Rs.${Number(summary.grossSales).toFixed(2)}` },
+            { label: "Orders", v: String(summary.orderCount) },
+            { label: "Refunds (non-rejected)", v: `Rs.${Number(summary.refundsTotal).toFixed(2)}` },
+            { label: "Pending withdrawals", v: String(summary.pendingWithdrawals) },
+          ].map((c) => (
+            <div key={c.label} className="rounded-2xl border border-[#E8DCC8] bg-white p-4 shadow-sm">
+              <p className="text-xs font-semibold uppercase text-[#646464]">{c.label}</p>
+              <p className="mt-1 font-melon text-xl font-bold text-[#4A1D1F]">{c.v}</p>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div className="rounded-2xl border border-[#E8DCC8] bg-white p-4 shadow-sm">
+        <h2 className="font-melon text-lg font-semibold text-[#4A1D1F]">Record refund</h2>
+        <form onSubmit={createRefund} className="mt-3 flex flex-wrap items-end gap-3">
+          <label className="text-xs font-semibold uppercase text-[#646464]">
+            Order ID
+            <input
+              value={orderId}
+              onChange={(e) => setOrderId(e.target.value)}
+              className="mt-1 block rounded-lg border border-[#D9D9D1] px-3 py-2 text-sm font-mono"
+            />
+          </label>
+          <label className="text-xs font-semibold uppercase text-[#646464]">
+            Amount
+            <input
+              type="number"
+              step="0.01"
+              min="0"
+              value={refundAmount}
+              onChange={(e) => setRefundAmount(e.target.value)}
+              className="mt-1 block w-32 rounded-lg border border-[#D9D9D1] px-3 py-2 text-sm"
+            />
+          </label>
+          <label className="text-xs font-semibold uppercase text-[#646464]">
+            Reason
+            <input
+              value={refundReason}
+              onChange={(e) => setRefundReason(e.target.value)}
+              className="mt-1 block rounded-lg border border-[#D9D9D1] px-3 py-2 text-sm"
+            />
+          </label>
+          <button
+            type="submit"
+            disabled={busy === "create-refund"}
+            className="rounded-full bg-[#7B3010] px-5 py-2.5 text-xs font-semibold uppercase tracking-wide text-white disabled:opacity-50"
+          >
+            {busy === "create-refund" ? "Saving…" : "Create refund"}
+          </button>
+        </form>
+      </div>
+
+      {!loading && (
+        <>
+          <div>
+            <h2 className="mb-2 font-melon text-lg font-semibold text-[#4A1D1F]">Withdrawals</h2>
+            <ConsoleTable headers={["Seller", "Amount", "Status", "Created", ""]}>
+              {withdrawals.length === 0 ? (
+                <tr>
+                  <ConsoleTd className="py-6 text-center text-[#646464]" colSpan={5}>
+                    No withdrawal requests.
+                  </ConsoleTd>
+                </tr>
+              ) : (
+                withdrawals.map((w) => (
+                  <tr key={w.id} className="hover:bg-[#FFFBF3]/80">
+                    <ConsoleTd className="text-xs">
+                      <div>{w.seller?.name ?? "—"}</div>
+                      <div className="text-[11px] text-[#646464]">{w.seller?.email}</div>
+                    </ConsoleTd>
+                    <ConsoleTd>Rs.{Number(w.amount).toFixed(2)}</ConsoleTd>
+                    <ConsoleTd>
+                      <select
+                        value={wdDraft[w.id] ?? w.status}
+                        onChange={(e) => setWdDraft((d) => ({ ...d, [w.id]: e.target.value }))}
+                        className="rounded-lg border border-[#D9D9D1] bg-white px-2 py-1 text-xs capitalize"
+                      >
+                        {WD_STATUSES.map((s) => (
+                          <option key={s} value={s}>
+                            {s}
+                          </option>
+                        ))}
+                      </select>
+                    </ConsoleTd>
+                    <ConsoleTd className="text-xs">{new Date(w.createdAt).toLocaleString()}</ConsoleTd>
+                    <ConsoleTd>
+                      <button
+                        type="button"
+                        disabled={busy === `wd-${w.id}` || (wdDraft[w.id] ?? w.status) === w.status}
+                        onClick={() => saveWd(w.id)}
+                        className="rounded-full bg-[#7B3010] px-3 py-1.5 text-[11px] font-semibold uppercase text-white disabled:opacity-40"
+                      >
+                        {busy === `wd-${w.id}` ? "…" : "Apply"}
+                      </button>
+                    </ConsoleTd>
+                  </tr>
+                ))
+              )}
+            </ConsoleTable>
+          </div>
+
+          <div>
+            <h2 className="mb-2 font-melon text-lg font-semibold text-[#4A1D1F]">Refunds</h2>
+            <ConsoleTable headers={["Order", "Amount", "Status", "Created", ""]}>
+              {refunds.length === 0 ? (
+                <tr>
+                  <ConsoleTd className="py-6 text-center text-[#646464]" colSpan={5}>
+                    No refunds.
+                  </ConsoleTd>
+                </tr>
+              ) : (
+                refunds.map((r) => (
+                  <tr key={r.id} className="hover:bg-[#FFFBF3]/80">
+                    <ConsoleTd className="font-mono text-[11px]">{r.orderId.slice(0, 14)}…</ConsoleTd>
+                    <ConsoleTd>Rs.{Number(r.amount).toFixed(2)}</ConsoleTd>
+                    <ConsoleTd>
+                      <select
+                        value={rfDraft[r.id] ?? r.status}
+                        onChange={(e) => setRfDraft((d) => ({ ...d, [r.id]: e.target.value }))}
+                        className="rounded-lg border border-[#D9D9D1] bg-white px-2 py-1 text-xs capitalize"
+                      >
+                        {RF_STATUSES.map((s) => (
+                          <option key={s} value={s}>
+                            {s}
+                          </option>
+                        ))}
+                      </select>
+                    </ConsoleTd>
+                    <ConsoleTd className="text-xs">{new Date(r.createdAt).toLocaleString()}</ConsoleTd>
+                    <ConsoleTd>
+                      <button
+                        type="button"
+                        disabled={busy === `rf-${r.id}` || (rfDraft[r.id] ?? r.status) === r.status}
+                        onClick={() => saveRf(r.id)}
+                        className="rounded-full bg-[#7B3010] px-3 py-1.5 text-[11px] font-semibold uppercase text-white disabled:opacity-40"
+                      >
+                        {busy === `rf-${r.id}` ? "…" : "Apply"}
+                      </button>
+                    </ConsoleTd>
+                  </tr>
+                ))
+              )}
+            </ConsoleTable>
+          </div>
+        </>
+      )}
+    </section>
+  );
+}
