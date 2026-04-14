@@ -12,13 +12,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import {
-  RadioGroup,
-  RadioGroupItem,
-} from "@/components/ui/radio-group";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { setCartItems } from "@/lib/cart";
 
 export default function CheckoutPage() {
   const {
@@ -30,10 +25,17 @@ export default function CheckoutPage() {
     cities,
   } = useLocation();
   const router = useRouter();
-  const [method, setMethod] = useState("card");
   const [items, setItems] = useState<CartItem[]>([]);
   const [placing, setPlacing] = useState(false);
   const [orderError, setOrderError] = useState("");
+  const [billing, setBilling] = useState({
+    firstName: "",
+    lastName: "",
+    email: "",
+    line1: "",
+    postalCode: "",
+    phone: "",
+  });
 
   useEffect(() => {
     const syncCart = () => setItems(getCartItems());
@@ -50,7 +52,7 @@ export default function CheckoutPage() {
   const shipping = items.length === 0 ? 0 : 20;
   const total = subTotal + shipping;
 
-  const placeOrder = async () => {
+  const goToPayment = async () => {
     if (items.length === 0) {
       window.alert("Your cart is empty.");
       return;
@@ -58,29 +60,32 @@ export default function CheckoutPage() {
     setPlacing(true);
     setOrderError("");
     try {
-      const token =
-        typeof window !== "undefined" ? window.localStorage.getItem("ziply5_access_token") : null;
-      const res = await fetch("/api/v1/orders", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
-        body: JSON.stringify({
-          items: items.map((i) => ({ slug: i.slug, quantity: i.quantity })),
-          shipping,
-          gateway: method === "cod" ? "cod" : "card_pending",
-        }),
-      });
-      const payload = (await res.json()) as { success?: boolean; message?: string };
-      if (!res.ok || !payload.success) {
-        setOrderError(payload.message ?? "Could not place order.");
+      const fullName = `${billing.firstName} ${billing.lastName}`.trim();
+      const payload = {
+        fullName,
+        email: billing.email.trim(),
+        line1: billing.line1.trim(),
+        city: city.trim(),
+        state: state.trim(),
+        postalCode: billing.postalCode.trim(),
+        country: "India",
+        phone: billing.phone.trim(),
+      };
+      if (!payload.fullName || !payload.city || !payload.state || !payload.postalCode) {
+        setOrderError("Please complete billing address before payment.");
         return;
       }
-      setCartItems([]);
-      router.push("/profile?tab=orders");
+      window.localStorage.setItem("ziply5_checkout_billing_address", JSON.stringify(payload));
+
+      const token =
+        typeof window !== "undefined" ? window.localStorage.getItem("ziply5_access_token") : null;
+      if (!token) {
+        router.push(`/login?next=${encodeURIComponent("/payment")}`);
+        return;
+      }
+      router.push("/payment");
     } catch {
-      setOrderError("Unable to place order. Please try again.");
+      setOrderError("Unable to continue to payment. Please try again.");
     } finally {
       setPlacing(false);
     }
@@ -122,19 +127,45 @@ export default function CheckoutPage() {
         {/* First Name */}
         <div>
           <label className="text-[#646464] text-sm">First Name</label>
-          <input className="input mt-1" placeholder="First name" />
+          <input
+            className="input mt-1"
+            placeholder="First name"
+            value={billing.firstName}
+            onChange={(e) => setBilling((prev) => ({ ...prev, firstName: e.target.value }))}
+          />
         </div>
 
         {/* Last Name */}
         <div>
           <label className="text-[#646464] text-sm">Last Name</label>
-          <input className="input mt-1" placeholder="Last name" />
+          <input
+            className="input mt-1"
+            placeholder="Last name"
+            value={billing.lastName}
+            onChange={(e) => setBilling((prev) => ({ ...prev, lastName: e.target.value }))}
+          />
         </div>
 
         {/* Email */}
         <div className="">
           <label className="text-[#646464] text-sm">Email Address</label>
-          <input className="input mt-1" placeholder="Email address" />
+          <input
+            className="input mt-1"
+            placeholder="Email address"
+            value={billing.email}
+            onChange={(e) => setBilling((prev) => ({ ...prev, email: e.target.value }))}
+          />
+        </div>
+
+        {/* Address Line */}
+        <div className="">
+          <label className="text-[#646464] text-sm">Address Line</label>
+          <input
+            className="input mt-1"
+            placeholder="House no, street, area"
+            value={billing.line1}
+            onChange={(e) => setBilling((prev) => ({ ...prev, line1: e.target.value }))}
+          />
         </div>
 
         {/* State */}
@@ -186,6 +217,8 @@ export default function CheckoutPage() {
           <input
             className="input mt-1"
             placeholder="Enter pincode"
+            value={billing.postalCode}
+            onChange={(e) => setBilling((prev) => ({ ...prev, postalCode: e.target.value }))}
             onBlur={(e) => {
               const value = e.target.value;
 
@@ -196,117 +229,18 @@ export default function CheckoutPage() {
           />
         </div>
 
+        {/* Phone */}
+        <div className="">
+          <label className="text-[#646464] text-sm">Phone (optional)</label>
+          <input
+            className="input mt-1"
+            placeholder="Phone number"
+            value={billing.phone}
+            onChange={(e) => setBilling((prev) => ({ ...prev, phone: e.target.value }))}
+          />
+        </div>
+
       </div>
-    </div>
-            {/* Payment */}
- <div>
-      <h2 className="font-melon text-lg font-medium mb-4">
-        Payment Method:
-      </h2>
-
-      <RadioGroup
-        value={method}
-        onValueChange={setMethod}
-        className="space-y-4"
-      >
-
-        {/* CREDIT CARD */}
-        <div className="border rounded-xl p-4 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <RadioGroupItem value="card" id="card" />
-            <label htmlFor="card" className="text-[#646464]">
-              Credit Card
-            </label>
-          </div>
-
-          <div className="flex gap-2">
-            <img src="assets/cartpage/cardImages.png" className="h-4" />
-          </div>
-        </div>
-
-        {/* CARD FIELDS */}
-        {method === "card" && (
-          <div className="space-y-4">
-
-            {/* Card Number */}
-            <div>
-              <label className="text-[#646464] text-sm">
-                Card Number
-              </label>
-              <input
-                className="input mt-1"
-                placeholder="1234 5678 9012 3456"
-              />
-            </div>
-
-            {/* Expiry + CVV */}
-            <div className="grid grid-cols-3 gap-4">
-
-              {/* Month */}
-              <div>
-                <label className="text-[#646464] text-sm">
-                  Month
-                </label>
-                <Select>
-                  <SelectTrigger className="input mt-1">
-                    <SelectValue placeholder="MM" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {Array.from({ length: 12 }, (_, i) => (
-                      <SelectItem key={i} value={`${i + 1}`}>
-                        {String(i + 1).padStart(2, "0")}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              {/* Year */}
-              <div>
-                <label className="text-[#646464] text-sm">
-                  Year
-                </label>
-                <Select>
-                  <SelectTrigger className="input mt-1">
-                    <SelectValue placeholder="YYYY" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {Array.from({ length: 10 }, (_, i) => {
-                      const year = new Date().getFullYear() + i;
-                      return (
-                        <SelectItem key={year} value={`${year}`}>
-                          {year}
-                        </SelectItem>
-                      );
-                    })}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              {/* CVV */}
-              <div>
-                <label className="text-[#646464] text-sm">
-                  Security Code
-                </label>
-                <input
-                  className="input mt-1"
-                  placeholder="CVV"
-                />
-              </div>
-            </div>
-
-          </div>
-        )}
-
-        {/* CASH ON DELIVERY */}
-        <div className="border rounded-xl p-4 flex items-center gap-3">
-          <RadioGroupItem value="cod" id="cod" />
-          <label htmlFor="cod" className="text-[#646464]">
-            Cash on Delivery
-          </label>
-        </div>
-
-      </RadioGroup>
     </div>
     <div className="mt-4 flex flex-col gap-4">
             {/* Terms */}
@@ -324,11 +258,11 @@ export default function CheckoutPage() {
             {/* Button */}
             <button
               type="button"
-              onClick={() => void placeOrder()}
+              onClick={() => void goToPayment()}
               disabled={placing}
               className="bg-[#7B3010] shadow-2xl tracking-wide font-medium text-white w-full py-4 rounded-full font-melon disabled:opacity-60"
             >
-              {placing ? "Placing order…" : "Place Order Now →"}
+              {placing ? "Please wait…" : "Pay Now →"}
             </button>
             </div>
           </div>

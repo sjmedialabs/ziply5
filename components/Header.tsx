@@ -2,7 +2,7 @@
 
 import Link from "next/link"
 import { Menu, X } from "lucide-react"
-import { useState, useRef, useEffect } from "react"
+import { useState, useRef, useEffect, useCallback } from "react"
 import Image from "next/image"
 import CartDropdown from "./CartDropdown"
 import { useSearch } from "../hooks/useSearch"
@@ -10,16 +10,80 @@ import LocationDropdown from "./LocationDropdown"
 import { Search, User, ShoppingCart } from "lucide-react"
 import { getCartItems, setCartItems, type CartItem } from "@/lib/cart"
 
+type MenuCategory = {
+  id: string
+  name: string
+  slug: string
+  products: Array<{ id: string; name: string; slug: string }>
+}
+
+type ApiCategory = { id?: string; name?: string; slug?: string }
+type ApiProduct = {
+  id?: string
+  name?: string
+  slug?: string
+  categories?: Array<{ categoryId?: string; category?: { id?: string } }>
+}
+
 export default function Header() {
   const [menuOpen, setMenuOpen] = useState(false)
   const { searchOpen, setSearchOpen, searchQuery, setSearchQuery, searchResults, handleSearch } = useSearch()
   const [cartItems, setLocalCartItems] = useState<CartItem[]>([])
   const [cartOpen, setCartOpen] = useState(false)
   const [profileHref, setProfileHref] = useState("/login")
+  const [menuCategories, setMenuCategories] = useState<MenuCategory[]>([])
   const closeCartTimeoutRef = useRef<number | null>(null)
 
   const productRef = useRef<HTMLDivElement>(null)
   const [arrowLeft, setArrowLeft] = useState(0)
+
+  const loadMenuData = useCallback(async () => {
+    try {
+      const [catsRes, productsRes] = await Promise.all([
+        fetch("/api/v1/categories").then((r) => r.json()).catch(() => ({ data: [] })),
+        fetch("/api/v1/products?page=1&limit=200").then((r) => r.json()).catch(() => ({ data: { items: [] } })),
+      ])
+
+      const cats = ((catsRes as { data?: ApiCategory[] })?.data ?? [])
+        .filter((c) => c.id && c.name)
+        .map((c) => ({
+          id: c.id as string,
+          name: c.name as string,
+          slug: (c.slug ?? c.name ?? "").toString(),
+        }))
+
+      const products = ((productsRes as { data?: { items?: ApiProduct[] } })?.data?.items ?? [])
+        .filter((p) => p.id && p.name && p.slug)
+
+      let grouped = cats.map((cat) => ({
+        ...cat,
+        products: products
+          .filter((p) =>
+            p.categories?.some((x) => x.category?.id === cat.id || x.categoryId === cat.id),
+          )
+          .map((p) => ({ id: p.id as string, name: p.name as string, slug: p.slug as string })),
+      }))
+
+      const hasAnyMappedProducts = grouped.some((g) => g.products.length > 0)
+      if (!hasAnyMappedProducts && cats.length > 0 && products.length > 0) {
+        grouped = grouped.map((g, idx) => ({
+          ...g,
+          products:
+            idx === 0
+              ? products.map((p) => ({
+                  id: p.id as string,
+                  name: p.name as string,
+                  slug: p.slug as string,
+                }))
+              : [],
+        }))
+      }
+
+      setMenuCategories(grouped.filter((c) => c.products.length > 0).slice(0, 8))
+    } catch {
+      setMenuCategories([])
+    }
+  }, [])
 
   const persistCart = (next: CartItem[]) => {
     setLocalCartItems(next)
@@ -78,6 +142,7 @@ export default function Header() {
 
     syncCart()
     syncProfileHref()
+    void loadMenuData()
 
     window.addEventListener("ziply5:cart-updated", syncCart)
     window.addEventListener("storage", syncProfileHref)
@@ -90,7 +155,7 @@ export default function Header() {
       window.removeEventListener("storage", syncProfileHref)
       window.removeEventListener("storage", syncCart)
     }
-  }, [])
+  }, [loadMenuData])
 
   const cartCount = cartItems.reduce((sum, item) => sum + item.quantity, 0)
   const total = cartItems.reduce((sum, item) => sum + item.price * item.quantity, 0)
@@ -148,6 +213,9 @@ export default function Header() {
                   const rect = productRef.current.getBoundingClientRect()
                   setArrowLeft(rect.left + rect.width / 2)
                 }
+                if (menuCategories.length === 0) {
+                  void loadMenuData()
+                }
               }}
             >
               <Link href="/products" className="font-extrabold text-black hover:text-[#f97316] transition-colors text-[15px]">
@@ -171,55 +239,26 @@ export default function Header() {
                   /> */}
 
                   <div className="bg-[#7a1e0e] text-white rounded-2xl shadow-xl py-10 px-8">
-
                     <div className="grid grid-cols-4 gap-10">
-
-                      <div>
-                        <h3 className="text-lg font-bold mb-4">Breakfast</h3>
-                        <ul className="space-y-3">
-                          <li className="text-orange-400 font-semibold">Vegan Poha</li>
-                          <li>Vegetable Upma</li>
-                          <li>Idly Sambar</li>
-                          <li>Pongal</li>
-                          <li>Rice Kichidi</li>
-                          <li>Millet - Kichidi</li>
-                        </ul>
-                      </div>
-
-                      <div>
-                        <h3 className="text-lg font-bold mb-4">Vegetarian</h3>
-                        <ul className="space-y-3">
-                          <li>Sambar Rice</li>
-                          <li>Dal Rice</li>
-                          <li>Rasam Rice</li>
-                          <li>Lemon Rice</li>
-                          <li>Paneer Butter Masala</li>
-                          <li>Curd Rice</li>
-                        </ul>
-                      </div>
-
-                      <div>
-                        <h3 className="text-lg font-bold mb-4">Non-Vegetarian</h3>
-                        <ul className="space-y-3">
-                          <li>Exotic Meats (US Poultry)</li>
-                          <li>Chicken Curry Rice</li>
-                          <li>Chicken Biryani</li>
-                          <li>Thai Green Chicken Curry</li>
-                        </ul>
-                      </div>
-
-                      <div>
-                        <h3 className="text-lg font-bold mb-4">Combo</h3>
-                        <ul className="space-y-3">
-                          <li>Exotic Meats (US Poultry)</li>
-                          <li>Chicken Curry Rice</li>
-                          <li>Chicken Biryani</li>
-                          <li>Thai Green Chicken Curry</li>
-                        </ul>
-                      </div>
-
+                      {menuCategories.length === 0 ? (
+                        <div className="col-span-4 text-sm text-white/80">No categories with products yet.</div>
+                      ) : (
+                        menuCategories.map((category) => (
+                          <div key={category.id}>
+                            <h3 className="text-lg font-bold mb-4">{category.name}</h3>
+                            <ul className="space-y-3">
+                              {category.products.slice(0, 8).map((product, idx) => (
+                                <li key={product.id}>
+                                  <Link href={`/product/${product.slug}`} className={`${idx === 0 ? "text-orange-400 font-semibold" : "text-white"} hover:underline`}>
+                                    {product.name}
+                                  </Link>
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        ))
+                      )}
                     </div>
-
                   </div>
 
                 </div>

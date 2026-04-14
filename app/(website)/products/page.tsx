@@ -17,21 +17,24 @@ import { toStorefrontProduct, type StorefrontProduct } from "@/lib/storefront-pr
 
 type CategoryFilter = "all" | string
 type MealTypeFilter = "all" | "veg" | "non-veg"
-type SortType = "popular" | "newest" | "price-low-high" | "price-high-low" | "name-asc" | "name-desc"
-type PackFilter = "all" | "combo-pack" | "limited-offers"
-type MealTimeFilter = "all" | "breakfast" | "lunch" | "dinner"
-type AvailabilityFilter = "all" | "in-stock" | "out-of-stock"
+type SortType = "popular" | "name-asc" | "name-desc"
+type CategoryApi = { id: string; name: string; slug: string }
+type ProductApi = {
+  id: string
+  categories?: Array<{ category?: { slug?: string } }>
+}
 
 function ProductsPageContent() {
   const searchParams = useSearchParams()
   const [products, setProducts] = useState<StorefrontProduct[]>([])
+  const [categoryOptions, setCategoryOptions] = useState<Array<{ slug: string; name: string }>>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState("")
   const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>("all")
   const [mealTypeFilter, setMealTypeFilter] = useState<MealTypeFilter>("all")
-  const [packFilter, setPackFilter] = useState<PackFilter>("all")
-  const [mealTimeFilter, setMealTimeFilter] = useState<MealTimeFilter>("all")
-  const [availabilityFilter, setAvailabilityFilter] = useState<AvailabilityFilter>("all")
+  const [packFilter, setPackFilter] = useState<any>("all")
+  const [mealTimeFilter, setMealTimeFilter] = useState<MealTypeFilter>("all")
+  const [availabilityFilter, setAvailabilityFilter] = useState<any>("all")
   const [sortBy, setSortBy] = useState<SortType>("popular")
   const [favoriteSlugs, setFavoriteSlugs] = useState<string[]>([])
   const [cartQtyBySlug, setCartQtyBySlug] = useState<Record<string, number>>({})
@@ -41,16 +44,32 @@ function ProductsPageContent() {
     let cancelled = false
     setLoading(true)
     setError("")
-    fetch("/api/v1/products?page=1&limit=200")
-      .then((r) => r.json())
-      .then((json: { success?: boolean; message?: string; data?: { items: unknown[] } }) => {
+    Promise.all([
+      fetch("/api/v1/products?page=1&limit=200").then((r) => r.json()),
+      fetch("/api/v1/categories").then((r) => r.json()),
+    ])
+      .then(([productRes, categoryRes]: Array<{ success?: boolean; message?: string; data?: unknown }>) => {
         if (cancelled) return
-        if (json.success === false) {
-          setError(json.message ?? "Could not load products")
+        if (productRes.success === false) {
+          setError(productRes.message ?? "Could not load products")
           return
         }
-        const rows = json.data?.items ?? []
-        setProducts(rows.map((item) => toStorefrontProduct(item as never)))
+
+        const categories = ((categoryRes.data as CategoryApi[] | undefined) ?? [])
+          .filter((c) => c.slug && c.slug !== "all")
+          .map((c) => ({ slug: c.slug, name: c.name }))
+        setCategoryOptions(categories)
+
+        const rows = ((productRes.data as { items?: ProductApi[] } | undefined)?.items ?? [])
+        const normalized = rows.map((item) => {
+          const mapped = toStorefrontProduct(item as never)
+          if (mapped.category !== "all") return mapped
+          const linkedSlug = item.categories?.[0]?.category?.slug
+          if (linkedSlug) return { ...mapped, category: linkedSlug }
+          if (categories.length === 1) return { ...mapped, category: categories[0].slug }
+          return mapped
+        })
+        setProducts(normalized)
       })
       .catch(() => {
         if (!cancelled) setError("Could not load products")
@@ -94,8 +113,12 @@ function ProductsPageContent() {
   }, [])
 
   const categories = useMemo(() => {
-    return Array.from(new Set(products.map((p) => p.category).filter(Boolean)))
-  }, [products])
+    if (categoryOptions.length > 0) return categoryOptions
+    return Array.from(new Set(products.map((p) => p.category).filter((x) => x && x !== "all"))).map((slug) => ({
+      slug,
+      name: slug.replace(/-/g, " "),
+    }))
+  }, [categoryOptions, products])
 
   const filteredProducts = useMemo(() => {
     const items = products.filter((item) => {
@@ -151,8 +174,8 @@ function ProductsPageContent() {
                   <SelectContent>
                     <SelectItem value="all">All Categories</SelectItem>
                     {categories.map((cat, idx) => (
-                      <SelectItem key={`${cat || "cat"}-${idx}`} value={cat}>
-                        {cat.replace(/-/g, " ")}
+                      <SelectItem key={`${cat.slug || "cat"}-${idx}`} value={cat.slug}>
+                        {cat.name}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -169,7 +192,7 @@ function ProductsPageContent() {
                   </SelectContent>
                 </Select>
 
-                <Select value={packFilter} onValueChange={(value) => setPackFilter(value as PackFilter)}>
+                <Select value={packFilter} onValueChange={(value) => setPackFilter(value as any)}>
                   <SelectTrigger className="w-full rounded-full border-[#D9D9D1] bg-white px-4 text-sm font-medium text-[#494944]">
                     <SelectValue placeholder="Packs & Deals" />
                   </SelectTrigger>
@@ -179,7 +202,7 @@ function ProductsPageContent() {
                     <SelectItem value="limited-offers">Limited Offers</SelectItem>
                   </SelectContent>
                 </Select>
-                <Select value={mealTimeFilter} onValueChange={(value) => setMealTimeFilter(value as MealTimeFilter)}>
+                <Select value={mealTimeFilter} onValueChange={(value) => setMealTimeFilter(value as any)}>
                   <SelectTrigger className="w-full rounded-full border-[#D9D9D1] bg-white px-4 text-sm font-medium text-[#494944]">
                     <SelectValue placeholder="Meal Type" />
                   </SelectTrigger>
@@ -190,7 +213,7 @@ function ProductsPageContent() {
                     <SelectItem value="dinner">Dinner</SelectItem>
                   </SelectContent>
                 </Select>
-                <Select value={availabilityFilter} onValueChange={(value) => setAvailabilityFilter(value as AvailabilityFilter)}>
+                <Select value={availabilityFilter} onValueChange={(value) => setAvailabilityFilter(value as any)}>
                   <SelectTrigger className="w-full rounded-full border-[#D9D9D1] bg-white px-4 text-sm font-medium text-[#494944]">
                     <SelectValue placeholder="Availability" />
                   </SelectTrigger>
