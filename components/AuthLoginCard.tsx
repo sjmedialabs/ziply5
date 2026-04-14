@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useState } from "react";
 
 type Portal = "website" | "admin" | "seller";
@@ -31,6 +31,7 @@ export default function AuthLoginCard({
   backLinkHref?: string;
 }) {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -64,7 +65,12 @@ export default function AuthLoginCard({
       } else if (payload.data.user.role === "admin" || payload.data.user.role === "super_admin") {
         router.push("/admin/dashboard");
       } else {
-        router.push("/profile");
+        const next = searchParams.get("next");
+        if (portal === "website" && next && next.startsWith("/")) {
+          router.push(next);
+        } else {
+          router.push("/profile");
+        }
       }
     } catch {
       setError("Unable to login. Please try again.");

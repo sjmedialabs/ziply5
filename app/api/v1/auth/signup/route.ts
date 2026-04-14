@@ -34,7 +34,7 @@ export async function POST(request: Request) {
         email: user.email,
         name: user.name,
       },
-      "User registered",
+      "User registered. Welcome email from Ziply5 has been queued.",
       201,
     )
   } catch (error) {
