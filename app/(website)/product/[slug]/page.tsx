@@ -5,8 +5,9 @@ import Image from "next/image"
 import { useParams, useRouter } from "next/navigation"
 import { ArrowLeft, ChevronLeft, ChevronRight } from "lucide-react"
 import { getFavoriteSlugs, toggleFavoriteSlug } from "@/lib/favorites"
-import { addToCart, getCartQuantityForSlug, setCartItemQuantity } from "@/lib/cart"
+import { addToCart, getCartItems, getCartQuantityForSlug, setCartItemQuantity } from "@/lib/cart"
 import { toStorefrontProduct, type StorefrontProduct } from "@/lib/storefront-products"
+import Link from "next/link"
 
 export default function ProductPage() {
   const params = useParams()
@@ -17,7 +18,7 @@ export default function ProductPage() {
   const [relatedProducts, setRelatedProducts] = useState<StorefrontProduct[]>([])
   const [error, setError] = useState("")
   const [loading, setLoading] = useState(true)
-
+    const [cartQtyBySlug, setCartQtyBySlug] = useState<Record<string, number>>({})
   const [quantity, setQuantity] = useState(1)
   const [selectedSize, setSelectedSize] = useState("")
   const [openSection, setOpenSection] = useState<string | null>(null)
@@ -111,6 +112,14 @@ export default function ProductPage() {
 
   useEffect(() => {
     if (!product) return
+        const syncCartQty = () => {
+          const items = getCartItems()
+          const qtyMap = items.reduce<Record<string, number>>((acc, item) => {
+            acc[item.slug] = item.quantity
+            return acc
+          }, {})
+          setCartQtyBySlug(qtyMap)
+        }
     const syncQty = () => setQuantity(getCartQuantityForSlug(product.slug))
     window.addEventListener("ziply5:cart-updated", syncQty)
     window.addEventListener("storage", syncQty)
@@ -319,14 +328,14 @@ export default function ProductPage() {
           </div>
         </div>
          <div className="mt-8 xl:hidden grid-cols-6 gap-4 hidden lg:grid border-t border-[#DEDEDE] pt-5">
-              {featureItems.map((item) => (
-                <div key={item.label} className="flex flex-col border rounded-2xl py-2 border-[#DEDEDE]] items-center gap-2 text-center">
+              {product?.features?.length  && (product?.features?.map((item) => (
+                <div key={item.title} className="flex flex-col border rounded-2xl py-2 border-[#DEDEDE]] items-center gap-2 text-center">
                   <div className="relative h-10 w-10">
-                    <Image src={item.icon} alt={item.label} fill className="object-contain" />
+                    <Image src={item.icon || ""} alt={item.title} fill className="object-contain" />
                   </div>
-                  <p className="text-[11px] font-semibold text-[#333]">{item.label}</p>
+                  <p className="text-[11px] font-semibold text-[#333]">{item.title}</p>
                 </div>
-              ))}
+              )))}
             </div>
         <div className="mt-10 border-t border-[#DFDFDF]">
           {(product.details.length
