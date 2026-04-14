@@ -3,10 +3,11 @@
 import { useEffect, useMemo, useState } from "react"
 import Image from "next/image"
 import { useParams, useRouter } from "next/navigation"
-import { ArrowLeft, ChevronLeft, ChevronRight } from "lucide-react"
+import { ArrowLeft, ChevronLeft, ChevronRight} from "lucide-react"
 import { getProductBySlug, products } from "@/lib/products"
 import { getFavoriteSlugs, toggleFavoriteSlug } from "@/lib/favorites"
-import { addToCart, getCartQuantityForSlug, setCartItemQuantity } from "@/lib/cart"
+import { addToCart, getCartItems, getCartQuantityForSlug, setCartItemQuantity } from "@/lib/cart"
+import Link from "next/link"
 
 export default function ProductPage() {
   const params = useParams()
@@ -16,7 +17,7 @@ export default function ProductPage() {
   const product = useMemo(() => {
     const found = slug ? getProductBySlug(slug) : undefined
     if (found) return found
-
+  const [cartQtyBySlug, setCartQtyBySlug] = useState<Record<string, number>>({})
     const fallbackName = slug
       ? slug
           .split("-")
@@ -53,7 +54,7 @@ export default function ProductPage() {
   const [openSection, setOpenSection] = useState<string | null>(null)
   const [favorite, setFavorite] = useState(false)
   const [relatedStart, setRelatedStart] = useState(0)
-
+  const [cartQtyBySlug, setCartQtyBySlug] = useState<Record<string, number>>({})
   const relatedProducts = useMemo(() => products.filter((item) => item.id !== product.id), [product])
 
   const productGallery = useMemo(
@@ -96,6 +97,14 @@ export default function ProductPage() {
       window.removeEventListener("ziply5:cart-updated", syncQty)
       window.removeEventListener("storage", syncQty)
     }
+        const syncCartQty = () => {
+          const items = getCartItems()
+          const qtyMap = items.reduce<Record<string, number>>((acc, item) => {
+            acc[item.slug] = item.quantity
+            return acc
+          }, {})
+          setCartQtyBySlug(qtyMap)
+        }
   }, [product.slug])
 
   const detailSections = [
@@ -137,7 +146,7 @@ export default function ProductPage() {
   return (
     <section className="w-full bg-[#F3F3F3] py-8 md:py-10">
       <div className="mx-auto w-full max-w-7xl px-4 sm:px-6 lg:px-8">
-        <div className="grid grid-cols-1 gap-10 md:grid-cols-[420px_1fr]">
+        <div className="grid grid-cols-1 gap-10 lg:grid-cols-[420px_1fr]">
           <div>
             <div className="rounded-xl border border-[#E2E2E2] bg-[#ECECEC]">
               <div className="relative mx-auto h-90 w-full">
@@ -161,7 +170,7 @@ export default function ProductPage() {
             </div>
           </div>
 
-          <div className="pt-2">
+          <div className="">
             <button
               type="button"
               onClick={() => router.push("/products")}
@@ -195,7 +204,7 @@ export default function ProductPage() {
             <p className="mt-2 max-w-2xl text-sm leading-6 text-[#595959]">{product.description}</p>
 
             <div className="mt-5 flex items-center gap-2">
-              <span className="text-xs font-light font-melon tracking-wide text-[#272727]">Size (Wt)</span>
+              <span className="text-xs font-light font-melon tracking-wide text-[#272727]">Size (Wt) :</span>
               {["250g", "500g", "1 kg"].map((size) => (
                 <button
                   type="button"
@@ -240,7 +249,7 @@ export default function ProductPage() {
                 </button>
               </div>
             </div>
-            <p className="mt-4 text-sm font-bold text-[#272727]"><span className="font-light font-melon tracking-wide">Shelf Life:</span> <span className="font-bo;d">12 months</span></p>
+            <p className="mt-4 text-sm font-bold text-[#272727]"><span className="font-light font-melon tracking-wide">Shelf Life :</span> <span className="font-bo;d">12 months</span></p>
 
             <div className="mt-5 flex items-center gap-3">
               <button
@@ -249,7 +258,7 @@ export default function ProductPage() {
                   addToCart(product, Math.max(1, quantity))
                   router.push("/cart")
                 }}
-                className="font-heading rounded-2xl border border-[#FF8A00] bg-primary flex items-center px-6 py-2.5 text-xl leading-none text-white transition hover:bg-[#e97819]"
+                className="font-medium font-melon tracking-wide rounded-2xl border border-[#FF8A00] bg-primary flex items-center px-6 py-2.5 text-xl leading-none text-white transition hover:bg-[#e97819]"
               >
                 Buy now
                 <img src="/assets/Productdetails/rightArrow.png" alt="Buy Now" className="inline-block h-4 w-4 ml-2 object-contain" />
@@ -267,9 +276,9 @@ export default function ProductPage() {
               </button>
             </div>
 
-            <div className="mt-8 grid grid-cols-3 gap-4 border-t border-[#DEDEDE] pt-5">
+            <div className="mt-8 xl:grid grid-cols-3 gap-4 grid lg:hidden border-t border-[#DEDEDE] pt-5">
               {featureItems.map((item) => (
-                <div key={item.label} className="flex flex-col items-center gap-2 text-center">
+                <div key={item.label} className="flex flex-col border rounded-2xl py-2 border-[#DEDEDE]] items-center gap-2 text-center">
                   <div className="relative h-10 w-10">
                     <Image src={item.icon} alt={item.label} fill className="object-contain" />
                   </div>
@@ -279,7 +288,16 @@ export default function ProductPage() {
             </div>
           </div>
         </div>
-
+         <div className="mt-8 xl:hidden grid-cols-6 gap-4 hidden lg:grid border-t border-[#DEDEDE] pt-5">
+              {featureItems.map((item) => (
+                <div key={item.label} className="flex flex-col border rounded-2xl py-2 border-[#DEDEDE]] items-center gap-2 text-center">
+                  <div className="relative h-10 w-10">
+                    <Image src={item.icon} alt={item.label} fill className="object-contain" />
+                  </div>
+                  <p className="text-[11px] font-semibold text-[#333]">{item.label}</p>
+                </div>
+              ))}
+            </div>
         <div className="mt-10 border-t border-[#DFDFDF]">
           {detailSections.map((section) => {
             const isOpen = openSection === section.id
@@ -305,29 +323,64 @@ export default function ProductPage() {
           })}
         </div>
 
-        <div className="mt-10 rounded-2xl bg-[#ECECEC] p-5 sm:p-7">
+        <div className="mt-10 rounded-2xl bg-[#ECECEC] p-5 sm:p-7 font-melon tracking-wide font-medium">
           <h2 className="font-heading text-6xl uppercase text-[#4A1E1F]">Related Products</h2>
           <div className="mt-5 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
             {visibleRelated.map((item) => (
-              <button
+              <div
                 key={item.id}
-                type="button"
                 onClick={() => router.push(`/product/${item.slug}`)}
                 className="block text-left"
               >
                 <article
-                  className="group rounded-2xl border-2 border-transparent p-3 transition-all duration-300 hover:border-[#F0E4A3]"
+                  className="group rounded-2xl border-2 border-transparent  p-3 transition-all duration-300 hover:ring-4 hover:ring-[#F36E21] hover:shadow-xl"
                   style={{ backgroundColor: item.bgColor }}
                 >
                   <div className="relative mx-auto h-[220px] w-full max-w-[140px]">
                     <Image src={item.image} alt={item.name} fill className="object-contain" />
                   </div>
-                  <h3 className="mt-2 text-center text-[22px] font-black uppercase leading-tight text-white">{item.name}</h3>
-                  <p className="mt-1 text-center text-[10px] font-semibold uppercase text-white/90">
+                  <h3 className="mt-2 text-center text-[20px] line-clamp-1 uppercase leading-tight text-white">{item.name}</h3>
+                  <p className="mt-1 text-center text-[10px] uppercase text-white/90">
                     {item.serving} | Net wt. {item.weight}
                   </p>
+                                    <div className="mt-3 flex items-center justify-between gap-2">
+                    {(cartQtyBySlug[product.slug] ?? 0) > 0 ? (
+                      <div className="flex items-center rounded-md border border-[#d5c4b8] bg-white/95 px-1 py-0.5">
+                        <button
+                          type="button"
+                          onClick={() => setCartItemQuantity(product, Math.max(0, (cartQtyBySlug[product.slug] ?? 0) - 1))}
+                          className="h-6 w-6 rounded text-sm font-light text-[#5A272A] hover:bg-[#f4efec]"
+                        >
+                          -
+                        </button>
+                        <span className="min-w-5 text-center text-xs font-light text-[#5A272A]">
+                          {cartQtyBySlug[product.slug] ?? 0}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setCartItemQuantity(product, (cartQtyBySlug[product.slug] ?? 0) + 1)}
+                          className="h-6 w-6 rounded text-sm font-light text-[#5A272A] hover:bg-[#f4efec]"
+                        >
+                          +
+                        </button>
+                      </div>  
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => setCartItemQuantity(product, 1)}
+                        className="rounded-lg border border-white tracking-wide px-4 py-1.5 text-[12px] font-light text-white hover:bg-primary hover:text-white transition-all "
+                      >
+                        Add to Cart
+                      </button>
+                    )}
+                    <Link href="/checkout" className="rounded-lg bg-primary tracking-wide px-3 py-1.5 text-[12px] font-light text-white hover:bg-[#2d1011]">
+                      Buy Now
+                    </Link>
+                  </div>
+
+                  <p className="mt-2 text-sm font-medium text-[#FFF5C5]">Rs. {product.price.toFixed(2)}</p>
                 </article>
-              </button>
+              </div>
             ))}
           </div>
           <div className="mt-6 flex justify-end gap-2">

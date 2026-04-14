@@ -7,12 +7,13 @@ import SectionHeader from "./SectionHeader"
 import { products } from "@/lib/products"
 import { getCartItems, setCartItemQuantity } from "@/lib/cart"
 import { getFavoriteSlugs, toggleFavoriteSlug } from "@/lib/favorites"
+import { useRouter } from "next/navigation"
 
 export default function BestSellers() {
   const [favoriteSlugs, setFavoriteSlugs] = useState<string[]>([])
   const [cartQtyBySlug, setCartQtyBySlug] = useState<Record<string, number>>({})
   const bestSellers = useMemo(() => products.slice(0, 6), [])
-
+  const router = useRouter()
   useEffect(() => {
     const syncFavorites = () => setFavoriteSlugs(getFavoriteSlugs())
     syncFavorites()
@@ -44,18 +45,15 @@ export default function BestSellers() {
   }, [])
 
   return (
-    <section id="best-sellers" className="bg-[#F5F0E1] py-12 md:py-16 lg:py-20">
+    <section id="best-sellers" className="bg-[#FFF5C5] py-12 md:py-16 lg:py-20">
       <div className="max-w-7xl mx-auto px-4">
         <SectionHeader title="BEST SELLERS" linkHref="/#best-sellers" />
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 md:gap-8 justify-items-center">
           {bestSellers.map((product) => (
-            <div key={product.id} className="w-full max-w-sm group cursor-pointer font-melon">
-              <Link
-                href={`/product/${product.name
-                  .toLowerCase()
-                  .replace(/\s+/g, "-")}`}
-              >
+            <div key={product.id} className="w-full max-w-sm group cursor-pointer font-melon" onClick={() =>
+              router.push(`/product/${product.name.toLowerCase().replace(/\s+/g, "-")}`)
+            }>
               <div
                 className="rounded-2xl px-8 relative overflow-hidden transition-all duration-300 group-hover:ring-4 group-hover:ring-[#F36E21] group-hover:shadow-xl h-full flex flex-col"
                 style={{ backgroundColor: product.bgColor }}
@@ -99,40 +97,52 @@ export default function BestSellers() {
                       <div className="flex items-center rounded-md border border-[#d5c4b8] bg-white/95 px-1 py-0.5">
                         <button
                           type="button"
-                          onClick={() => setCartItemQuantity(product, Math.max(0, (cartQtyBySlug[product.slug] ?? 0) - 1))}
-                          className="h-6 w-6 rounded text-sm font-bold text-[#5A272A] hover:bg-[#f4efec]"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setCartItemQuantity(product, Math.max(0, (cartQtyBySlug[product.slug] ?? 0) - 1));
+                          }}
+                          className="h-6 w-6 rounded text-sm font-light text-[#5A272A] hover:bg-[#f4efec]"
                         >
                           -
                         </button>
-                        <span className="min-w-5 text-center text-xs font-bold text-[#5A272A]">
+                        <span className="min-w-5 text-center text-xs font-light text-[#5A272A]">
                           {cartQtyBySlug[product.slug] ?? 0}
                         </span>
                         <button
                           type="button"
-                          onClick={() => setCartItemQuantity(product, (cartQtyBySlug[product.slug] ?? 0) + 1)}
-                          className="h-6 w-6 rounded text-sm font-bold text-[#5A272A] hover:bg-[#f4efec]"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setCartItemQuantity(product, (cartQtyBySlug[product.slug] ?? 0) + 1);
+                          }}
+                          className="h-6 w-6 rounded text-sm font-light text-[#5A272A] hover:bg-[#f4efec]"
                         >
                           +
                         </button>
-                      </div>  
+                      </div>
                     ) : (
                       <button
                         type="button"
-                        onClick={() => setCartItemQuantity(product, 1)}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setCartItemQuantity(product, 1);
+                        }}
                         className="rounded-lg border border-white tracking-wide px-4 py-1.5 text-[12px] font-light text-white hover:bg-primary hover:text-white transition-all "
                       >
                         Add to Cart
                       </button>
                     )}
-                    <Link href="/checkout" className="rounded-lg bg-primary tracking-wide px-3 py-1.5 text-[12px] font-light text-white hover:bg-[#2d1011]">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        router.push("/checkout")
+                      }} className="rounded-lg bg-primary tracking-wide px-3 py-1.5 text-[12px] font-light text-white hover:bg-[#2d1011]">
                       Buy Now
-                    </Link>
+                    </button>
                   </div>
 
                   <p className="mt-2 text-sm font-medium text-[#FFF5C5]">Rs. {product.price.toFixed(2)}</p>
                 </div>
               </div>
-              </Link>
             </div>
           ))}
         </div>

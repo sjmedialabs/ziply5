@@ -70,7 +70,7 @@ export default function TrendingFood() {
   const visibleProducts = isLg ? trendingProducts.slice(0, 3) : trendingProducts
 
   return (
-    <section id="trending" className="bg-[#F3F4F6] py-12 md:py-16 lg:py-20">
+    <section id="trending" className="py-12 md:py-16 lg:py-20">
       <div className="max-w-7xl mx-auto px-4">
         <SectionHeader title="FOOD THAT'S TRENDING" linkHref="/#trending" />
 
