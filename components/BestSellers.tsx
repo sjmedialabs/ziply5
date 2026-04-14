@@ -4,11 +4,12 @@ import Link from "next/link"
 import Image from "next/image"
 import { useEffect, useMemo, useState } from "react"
 import SectionHeader from "./SectionHeader"
-import { products } from "@/lib/products"
 import { getCartItems, setCartItemQuantity } from "@/lib/cart"
 import { getFavoriteSlugs, toggleFavoriteSlug } from "@/lib/favorites"
+import { useStorefrontProducts } from "@/hooks/useStorefrontProducts"
 
 export default function BestSellers() {
+  const { products } = useStorefrontProducts(60)
   const [favoriteSlugs, setFavoriteSlugs] = useState<string[]>([])
   const [cartQtyBySlug, setCartQtyBySlug] = useState<Record<string, number>>({})
   const bestSellers = useMemo(() => products.slice(0, 6), [])
@@ -58,7 +59,7 @@ export default function BestSellers() {
               >
               <div
                 className="rounded-2xl px-8 relative overflow-hidden transition-all duration-300 group-hover:ring-4 group-hover:ring-[#F36E21] group-hover:shadow-xl h-full flex flex-col"
-                style={{ backgroundColor: product.bgColor }}
+                style={{ backgroundColor: "#3EA6CF" }}
               >
                 {product.type === "non-veg" && (
                   <span className="absolute top-4 right-0 bg-[#F97316] text-white text-[11px] font-medium px-3 py-1 rounded-l-sm border border-white z-10">

@@ -1,8 +1,11 @@
 import { loginSchema } from "@/src/server/modules/auth/auth.validator"
 import { assertPortalAccess, login } from "@/src/server/modules/auth/auth.service"
 import { fail, ok } from "@/src/server/core/http/response"
+import { checkRateLimit } from "@/src/server/middleware/rateLimit"
 
 export async function POST(request: Request) {
+  const blocked = checkRateLimit(request, "auth:login", { limit: 10, windowMs: 60_000 })
+  if (blocked) return blocked
   try {
     const body = await request.json()
     const parsed = loginSchema.safeParse(body)

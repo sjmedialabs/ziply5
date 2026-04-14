@@ -20,6 +20,16 @@ enum ProductStatus {
   archived
 }
 
+enum ProductType {
+  simple
+  variant
+}
+
+enum StockStatus {
+  in_stock
+  out_of_stock
+}
+
 enum OrderStatus {
   pending
   confirmed
@@ -60,11 +70,26 @@ model User {
 model UserProfile {
   id        String   @id @default(cuid())
   userId    String   @unique
-  phone     String?
+  phone     String?  @unique
   avatarUrl String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model OtpChallenge {
+  id          String   @id @default(cuid())
+  phone       String
+  purpose     String   @default("login")
+  codeHash    String
+  expiresAt   DateTime
+  attempts    Int      @default(0)
+  maxAttempts Int      @default(5)
+  resendCount Int      @default(0)
+  consumedAt  DateTime?
+  createdAt   DateTime @default(now())
+  @@index([phone, createdAt])
+  @@index([phone, consumedAt, expiresAt])
 }
 
 model Role {
@@ -298,6 +323,20 @@ model Product {
   name              String
   slug              String                   @unique
   description       String?
+  type              ProductType              @default(variant)
+  basePrice         Decimal?                 @db.Decimal(10, 2)
+  salePrice         Decimal?                 @db.Decimal(10, 2)
+  discountPercent   Decimal?                 @db.Decimal(5, 2)
+  taxIncluded       Boolean                  @default(true)
+  stockStatus       StockStatus              @default(in_stock)
+  totalStock        Int                      @default(0)
+  shelfLife         String?
+  isActive          Boolean                  @default(true)
+  isFeatured        Boolean                  @default(false)
+  isBestSeller      Boolean                  @default(false)
+  thumbnail         String?
+  metaTitle         String?
+  metaDescription   String?
   status            ProductStatus            @default(draft)
   sku               String                   @unique
   price             Decimal                  @db.Decimal(10, 2)
@@ -307,6 +346,10 @@ model Product {
   brand             Brand?                   @relation(fields: [brandId], references: [id])
   variants          ProductVariant[]
   images            ProductImage[]
+  features          ProductFeature[]
+  labels            ProductLabel[]
+  details           ProductDetailSection[]
+  sections          ProductSection[]
   seo               ProductSeo?
   categories        ProductCategory[]
   orderItems        OrderItem[]
@@ -317,14 +360,35 @@ model Product {
   promotions        Promotion[]
 }
 
+model ProductSection {
+  id          String   @id @default(uuid()) @db.Uuid
+  productId   String   @map("product_id")
+  title       String
+  description String
+  sortOrder   Int      @default(0) @map("sort_order")
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+  product     Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@index([productId])
+  @@index([productId, sortOrder])
+  @@map("product_sections")
+}
+
 model ProductVariant {
   id         String   @id @default(cuid())
   productId  String
   name       String
+  weight     String?
   sku        String   @unique
   price      Decimal  @db.Decimal(10, 2)
+  mrp        Decimal? @db.Decimal(10, 2)
+  discountPercent Decimal? @db.Decimal(5, 2)
   stock      Int      @default(0)
+  isDefault  Boolean  @default(false)
   createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
   product    Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
 }
 
@@ -334,6 +398,31 @@ model ProductImage {
   url       String
   alt       String?
   position  Int      @default(0)
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+}
+
+model ProductFeature {
+  id        String   @id @default(cuid())
+  productId String
+  title     String
+  icon      String?
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+}
+
+model ProductLabel {
+  id        String   @id @default(cuid())
+  productId String
+  label     String
+  color     String?
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+}
+
+model ProductDetailSection {
+  id        String   @id @default(cuid())
+  productId String
+  title     String
+  content   String
+  sortOrder Int      @default(0)
   product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
 }
 

@@ -3,6 +3,7 @@ import { fail, ok } from "@/src/server/core/http/response"
 import { requireAuth } from "@/src/server/middleware/auth"
 import { optionalAuth } from "@/src/server/middleware/optionalAuth"
 import { requirePermission } from "@/src/server/middleware/rbac"
+import { checkRateLimit } from "@/src/server/middleware/rateLimit"
 import { createOrderSchema } from "@/src/server/modules/orders/orders.validator"
 import { createOrderFromCheckout, listOrders } from "@/src/server/modules/orders/orders.service"
 
@@ -21,6 +22,8 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  const blocked = checkRateLimit(request, "orders:create", { limit: 15, windowMs: 60_000 })
+  if (blocked) return blocked
   try {
     const user = optionalAuth(request)
     const body = await request.json()

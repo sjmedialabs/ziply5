@@ -1,6 +1,7 @@
 import { signupSchema } from "@/src/server/modules/auth/auth.validator"
 import { signup } from "@/src/server/modules/auth/auth.service"
 import { fail, ok } from "@/src/server/core/http/response"
+import { checkRateLimit } from "@/src/server/middleware/rateLimit"
 
 export async function GET() {
   return ok({
@@ -17,6 +18,8 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
+  const blocked = checkRateLimit(request, "auth:signup", { limit: 5, windowMs: 60_000 })
+  if (blocked) return blocked
   try {
     const body = await request.json()
     const parsed = signupSchema.safeParse(body)

@@ -11,22 +11,51 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { products } from "@/lib/products"
 import { getCartItems, setCartItemQuantity } from "@/lib/cart"
 import { getFavoriteSlugs, toggleFavoriteSlug } from "@/lib/favorites"
+import { toStorefrontProduct, type StorefrontProduct } from "@/lib/storefront-products"
 
-type CategoryFilter = "all" | "ready-to-eat" | "ready-to-cook"
+type CategoryFilter = "all" | string
 type MealTypeFilter = "all" | "veg" | "non-veg"
 type SortType = "popular" | "name-asc" | "name-desc"
 
 function ProductsPageContent() {
   const searchParams = useSearchParams()
+  const [products, setProducts] = useState<StorefrontProduct[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState("")
   const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>("all")
   const [mealTypeFilter, setMealTypeFilter] = useState<MealTypeFilter>("all")
   const [sortBy, setSortBy] = useState<SortType>("popular")
   const [favoriteSlugs, setFavoriteSlugs] = useState<string[]>([])
   const [cartQtyBySlug, setCartQtyBySlug] = useState<Record<string, number>>({})
   const searchTerm = (searchParams.get("search") || "").trim().toLowerCase()
+
+  useEffect(() => {
+    let cancelled = false
+    setLoading(true)
+    setError("")
+    fetch("/api/v1/products?page=1&limit=200")
+      .then((r) => r.json())
+      .then((json: { success?: boolean; message?: string; data?: { items: unknown[] } }) => {
+        if (cancelled) return
+        if (json.success === false) {
+          setError(json.message ?? "Could not load products")
+          return
+        }
+        const rows = json.data?.items ?? []
+        setProducts(rows.map((item) => toStorefrontProduct(item as never)))
+      })
+      .catch(() => {
+        if (!cancelled) setError("Could not load products")
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   useEffect(() => {
     const syncFavorites = () => setFavoriteSlugs(getFavoriteSlugs())
@@ -58,6 +87,10 @@ function ProductsPageContent() {
     }
   }, [])
 
+  const categories = useMemo(() => {
+    return Array.from(new Set(products.map((p) => p.category).filter(Boolean)))
+  }, [products])
+
   const filteredProducts = useMemo(() => {
     const items = products.filter((item) => {
       const categoryMatch = categoryFilter === "all" || item.category === categoryFilter
@@ -76,11 +109,12 @@ function ProductsPageContent() {
     }
 
     return searched
-  }, [categoryFilter, mealTypeFilter, sortBy, searchTerm])
+  }, [products, categoryFilter, mealTypeFilter, sortBy, searchTerm])
 
   return (
     <section className="w-full bg-[#F3F0DC] py-8 md:py-10">
       <div className="mx-auto w-full max-w-7xl px-4 sm:px-6 lg:px-8">
+        {error && <p className="mb-4 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-800">{error}</p>}
         <div className="mb-6 flex flex-col gap-4">
           {searchTerm && (
             <p className="text-sm font-medium text-[#5A272A]">
@@ -98,8 +132,11 @@ function ProductsPageContent() {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">All Categories</SelectItem>
-                    <SelectItem value="ready-to-eat">Ready To Eat</SelectItem>
-                    <SelectItem value="ready-to-cook">Ready To Cook</SelectItem>
+                    {categories.map((cat, idx) => (
+                      <SelectItem key={`${cat || "cat"}-${idx}`} value={cat}>
+                        {cat.replace(/-/g, " ")}
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
 
@@ -162,12 +199,16 @@ function ProductsPageContent() {
           </div>
         </div>
 
+        {loading && <p className="mb-4 text-sm text-[#646464]">Loading products...</p>}
+        {!loading && filteredProducts.length === 0 && (
+          <p className="mb-4 rounded-lg bg-white px-4 py-3 text-sm text-[#646464]">No published products found.</p>
+        )}
         <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
-          {filteredProducts.map((product) => (
+          {filteredProducts.map((product, idx) => (
             <article
-              key={product.id}
+              key={`${product.id || product.slug || "product"}-${idx}`}
               className="group relative rounded-2xl border-2 border-transparent p-4 transition-all duration-300 hover:ring-4 hover:ring-[#F36E21] hover:shadow-xl]"
-              style={{ backgroundColor: product.bgColor }}
+              style={{ backgroundColor: "#3EA6CF" }}
             >
               <button
                 type="button"
@@ -204,7 +245,7 @@ function ProductsPageContent() {
                     {product.name}
                   </h3>
                   <p className="mt-1 text-[10px] uppercase tracking-wide text-white/90">
-                    Home style rice | Net wt. {product.weight}
+                    Home style meal | Net wt. {product.weight}
                   </p>
                    <p className="mt-1 text-sm font-melon text-[#FFF5C5]">Rs. {product.price.toFixed(2)}</p>
                 </div>

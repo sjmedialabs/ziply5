@@ -6,9 +6,9 @@ import Image from "next/image"
 import { Facebook, Twitter, Linkedin } from "lucide-react"
 import { User, Star, Package } from "lucide-react"
 import { useRouter, useSearchParams } from "next/navigation"
-import { products } from "@/lib/products"
 import { getFavoriteSlugs, toggleFavoriteSlug } from "@/lib/favorites"
 import { addToCart, getCartItems, setCartItemQuantity } from "@/lib/cart"
+import { useStorefrontProducts } from "@/hooks/useStorefrontProducts"
 
 type ApiOrderRow = {
   id: string
@@ -19,6 +19,7 @@ type ApiOrderRow = {
 }
 
 function ProfilePageContent() {
+  const { products } = useStorefrontProducts(200)
   const searchParams = useSearchParams()
   const router = useRouter()
   const initialTab = searchParams.get("tab")
@@ -142,18 +143,19 @@ function ProfilePageContent() {
         slug,
         price: 229.25,
         oldPrice: 310,
-        serving: "440 calories serving",
         weight: "95 g",
         description: "Favourite product",
         type: "non-veg" as const,
-        category: "ready-to-eat" as const,
+        category: "all",
         image: "/assets/product listing/Ziply5 - Pouch - Butter Chk Rice 3.png",
-        detailImage: "/assets/Product details/pdp-main.png",
-        bgColor: "#3EA6CF",
         gallery: [],
+        labels: [],
+        features: [],
+        details: [],
+        variants: [],
       }
     })
-  }, [favoriteSlugs])
+  }, [favoriteSlugs, products])
 
   const socialLinks = [
     { icon: Facebook, link: "https://facebook.com" },
@@ -339,7 +341,7 @@ function ProfilePageContent() {
                     <article
                       key={product.slug}
                       className="relative rounded-2xl border-2 border-transparent p-4 transition-all duration-300 hover:border-[#F0E4A3]"
-                      style={{ backgroundColor: product.bgColor }}
+                      style={{ backgroundColor: "#3EA6CF" }}
                     >
                       <span className="absolute right-3 top-3 text-lg text-white">♥</span>
                       <Link href={`/product/${product.slug}`} className="block">
@@ -347,9 +349,7 @@ function ProfilePageContent() {
                           <Image src={product.image} alt={product.name} fill className="object-contain" />
                         </div>
                         <h3 className="mt-2 text-center text-[18px] font-black uppercase leading-tight text-white">{product.name}</h3>
-                        <p className="mt-1 text-center text-[10px] font-semibold uppercase text-white/90">
-                          {product.serving} | Net wt. {product.weight}
-                        </p>
+                        <p className="mt-1 text-center text-[10px] font-semibold uppercase text-white/90">Home style meal | Net wt. {product.weight}</p>
                       </Link>
                       <div className="mt-3 grid grid-cols-3 gap-2">
                         <button

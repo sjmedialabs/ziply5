@@ -4,7 +4,7 @@ import { env } from "@/src/server/core/config/env"
 
 const toPublicUrl = (relativePath: string) => {
   const normalized = relativePath.replaceAll("\\", "/").replace(/^\/+/, "")
-  return `${env.CDN_BASE_URL.replace(/\/+$/, "")}/${normalized}`
+  return `/api/v1/uploads/${normalized}`
 }
 
 export const storageService = {

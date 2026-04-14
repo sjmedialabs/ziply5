@@ -16,3 +16,14 @@ export const loginSchema = z.object({
 export const refreshSchema = z.object({
   refreshToken: z.string().min(10),
 })
+
+export const requestOtpSchema = z.object({
+  phone: z.string().min(8),
+  purpose: z.enum(["login"]).default("login"),
+})
+
+export const verifyOtpSchema = z.object({
+  phone: z.string().min(8),
+  code: z.string().regex(/^\d{6}$/),
+  portal: z.enum(["website", "admin", "seller"]).optional(),
+})
