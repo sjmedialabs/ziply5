@@ -2,8 +2,6 @@ import type React from "react"
 import type { Metadata } from "next"
 import { Inter, Baloo_2 } from "next/font/google"
 import "./globals.css"
-import Header from "../components/Header"
-import Footer from "../components/Footer"
 
 const inter = Inter({
   subsets: ["latin"],
@@ -48,11 +46,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" className={`${inter.variable} ${baloo.variable}`}>
-      <body className="font-sans antialiased min-h-screen flex flex-col">
-        <Header />
-        <main className="flex-1 flex flex-col">{children}</main>
-        <Footer />
-      </body>
+      <body className="font-sans antialiased min-h-screen flex flex-col">{children}</body>
     </html>
   )
 }

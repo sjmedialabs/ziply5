@@ -15,6 +15,7 @@ export default function Header() {
   const { searchOpen, setSearchOpen, searchQuery, setSearchQuery, searchResults, handleSearch } = useSearch()
   const [cartItems, setLocalCartItems] = useState<CartItem[]>([])
   const [cartOpen, setCartOpen] = useState(false)
+  const [profileHref, setProfileHref] = useState("/login")
   const closeCartTimeoutRef = useRef<number | null>(null)
 
   const productRef = useRef<HTMLDivElement>(null)
@@ -57,15 +58,36 @@ export default function Header() {
 
   useEffect(() => {
     const syncCart = () => setLocalCartItems(getCartItems())
+    const syncProfileHref = () => {
+      const token = window.localStorage.getItem("ziply5_access_token")
+      const role = window.localStorage.getItem("ziply5_user_role")
+      if (!token) {
+        setProfileHref("/login")
+        return
+      }
+      if (role === "seller") {
+        setProfileHref("/seller/dashboard")
+        return
+      }
+      if (role === "admin" || role === "super_admin") {
+        setProfileHref("/admin/dashboard")
+        return
+      }
+      setProfileHref("/profile")
+    }
+
     syncCart()
+    syncProfileHref()
 
     window.addEventListener("ziply5:cart-updated", syncCart)
+    window.addEventListener("storage", syncProfileHref)
     window.addEventListener("storage", syncCart)
     return () => {
       if (closeCartTimeoutRef.current) {
         window.clearTimeout(closeCartTimeoutRef.current)
       }
       window.removeEventListener("ziply5:cart-updated", syncCart)
+      window.removeEventListener("storage", syncProfileHref)
       window.removeEventListener("storage", syncCart)
     }
   }, [])
@@ -242,7 +264,7 @@ export default function Header() {
 
             <div className="hidden lg:flex items-center gap-6">
 
-              <Link href="/login" className="p-2 hover:bg-zinc-50 rounded-full transition-colors">
+              <Link href={profileHref} className="p-2 hover:bg-zinc-50 rounded-full transition-colors">
                 <User size={20} className="text-zinc-700 hover:text-[#f97316]" />
               </Link>
 
@@ -291,7 +313,7 @@ export default function Header() {
           <Link href="/#combos" onClick={() => setMenuOpen(false)} className="block font-semibold text-black">
             Combos
           </Link>
-          <Link href="/login" onClick={() => setMenuOpen(false)} className="block font-semibold text-black">
+          <Link href={profileHref} onClick={() => setMenuOpen(false)} className="block font-semibold text-black">
             Profile
           </Link>
           <Link href="/cart" onClick={() => setMenuOpen(false)} className="block font-semibold text-black">
