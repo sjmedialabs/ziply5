@@ -76,15 +76,16 @@ export const toStorefrontProduct = (p: ApiProduct): StorefrontProduct => {
   const normalizedGallery = (p.images ?? [])
     .map((i) => normalizeMediaUrl(i.url))
     .filter((url): url is string => Boolean(url))
+    console.log("Normalized gallery returning data")
   return {
-    id: p.id,
-    name: p.name,
-    slug: p.slug,
-    price: sale,
-    oldPrice,
+    id: p.id || "0",
+    name: p.name || "Unknown Product",
+    slug: p.slug || `product-${p.id}`,
+    price: sale || 0,
+    oldPrice: oldPrice || 0,
     description: p.description ?? "Delicious ready meal.",
     image: normalizedThumb ?? normalizedGallery[0] ?? DEFAULT_IMAGE,
-    gallery: normalizedGallery,
+    gallery: normalizedGallery ?? [DEFAULT_IMAGE],
     videoUrl: p.videoUrl ?? null,
     weight: firstVariant?.weight ?? firstVariant?.name ?? "250g",
     type: isVeg ? "veg" : "non-veg",
@@ -101,6 +102,5 @@ export const toStorefrontProduct = (p: ApiProduct): StorefrontProduct => {
       price: Number(v.price ?? 0),
       sku: v.sku,
       stock: v.stock ?? 0,
-    })),
-  }
+    })) || [], } 
 }

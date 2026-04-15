@@ -14,6 +14,7 @@ import {
 import { getCartItems, setCartItemQuantity } from "@/lib/cart"
 import { getFavoriteSlugs, toggleFavoriteSlug } from "@/lib/favorites"
 import { toStorefrontProduct, type StorefrontProduct } from "@/lib/storefront-products"
+import { useStorefrontProducts } from "@/hooks/useStorefrontProducts"
 
 type CategoryFilter = "all" | string
 type MealTypeFilter = "all" | "veg" | "non-veg"
@@ -50,17 +51,18 @@ function ProductsPageContent() {
     ])
       .then(([productRes, categoryRes]: Array<{ success?: boolean; message?: string; data?: unknown }>) => {
         if (cancelled) return
-        if (productRes.success === false) {
-          setError(productRes.message ?? "Could not load products")
-          return
-        }
+        // if (productRes.success === false) {
+        //   setError(productRes.message ?? "Could not load products")
+        //   return
+        // }
 
         const categories = ((categoryRes.data as CategoryApi[] | undefined) ?? [])
           .filter((c) => c.slug && c.slug !== "all")
           .map((c) => ({ slug: c.slug, name: c.name }))
         setCategoryOptions(categories)
-
-        const rows = ((productRes.data as { items?: ProductApi[] } | undefined)?.items ?? [])
+         const { products } = useStorefrontProducts(40)
+        const prod = useMemo(() => products.slice(0, 4), [])
+        const rows = ((prod as { items?: ProductApi[] } | undefined)?.items ?? [])
         const normalized = rows.map((item) => {
           const mapped = toStorefrontProduct(item as never)
           if (mapped.category !== "all") return mapped

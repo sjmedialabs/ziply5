@@ -9,10 +9,11 @@ import { getFavoriteSlugs, toggleFavoriteSlug } from "@/lib/favorites"
 import { useStorefrontProducts } from "@/hooks/useStorefrontProducts"
 
 export default function BestSellers() {
-  const { products } = useStorefrontProducts(60)
+  const { products } = useStorefrontProducts(20)
   const [favoriteSlugs, setFavoriteSlugs] = useState<string[]>([])
   const [cartQtyBySlug, setCartQtyBySlug] = useState<Record<string, number>>({})
-  const bestSellers = useMemo(() => products.slice(0, 6), [])
+  const bestSellers = useMemo(() => products.slice(0, 6), [products])
+      console.log("Products on ui hook:", products)
   const router = useRouter()
   useEffect(() => {
     const syncFavorites = () => setFavoriteSlugs(getFavoriteSlugs())
