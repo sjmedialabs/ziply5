@@ -13,7 +13,6 @@ export default function BestSellers() {
   const [favoriteSlugs, setFavoriteSlugs] = useState<string[]>([])
   const [cartQtyBySlug, setCartQtyBySlug] = useState<Record<string, number>>({})
   const bestSellers = useMemo(() => products.slice(0, 6), [products])
-      console.log("Products on ui hook:", products)
   const router = useRouter()
   useEffect(() => {
     const syncFavorites = () => setFavoriteSlugs(getFavoriteSlugs())

@@ -43,13 +43,21 @@ const DEFAULT_IMAGE = "/assets/product listing/Ziply5 - Pouch - Butter Chk Rice 
 const normalizeMediaUrl = (value: string | null | undefined) => {
   const raw = (value ?? "").trim()
   if (!raw) return null
+  // If DB stores local proxy URLs but the runtime should serve from CDN,
+  // rewrite them to the CDN base.
+  if (raw.startsWith("/api/v1/uploads/")) {
+    const path = raw.replace(/^\/api\/v1\/uploads\//, "")
+    return path ? `https://cdn.ziply5.com/${path}` : null
+  }
+  // Local assets (or already-local paths) should be returned as-is.
   if (raw.startsWith("/")) return raw
   if (/^https?:\/\//i.test(raw)) {
     try {
       const parsed = new URL(raw)
       if (parsed.hostname === "cdn.ziply5.com") {
-        const cleanPath = parsed.pathname.replace(/^\/+/, "")
-        return cleanPath ? `/api/v1/uploads/${cleanPath}` : null
+        // Images are hosted on CDN; serve directly instead of rewriting to
+        // the local upload proxy (which expects files to exist in STORAGE_LOCAL_PATH).
+        return raw
       }
       return raw
     } catch {
@@ -76,7 +84,6 @@ export const toStorefrontProduct = (p: ApiProduct): StorefrontProduct => {
   const normalizedGallery = (p.images ?? [])
     .map((i) => normalizeMediaUrl(i.url))
     .filter((url): url is string => Boolean(url))
-    console.log("Normalized gallery returning data")
   return {
     id: p.id || "0",
     name: p.name || "Unknown Product",

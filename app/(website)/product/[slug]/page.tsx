@@ -369,9 +369,9 @@ export default function ProductPage() {
         <div className="mt-10 rounded-2xl bg-[#ECECEC] p-5 sm:p-7 font-melon tracking-wide font-medium">
           <h2 className="font-heading text-6xl uppercase text-[#4A1E1F]">Related Products</h2>
           <div className="mt-5 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            {visibleRelated.map((item) => (
+            {visibleRelated.map((item, idx) => (
               <div
-                key={item.id}
+                key={`${item.id}-${item.slug}-${idx}`}
                 onClick={() => router.push(`/product/${item.slug}`)}
                 className="block text-left"
               >

@@ -37,7 +37,6 @@ export default function TrendingFood() {
   const [favoriteSlugs, setFavoriteSlugs] = useState<string[]>([])
   const [cartQtyBySlug, setCartQtyBySlug] = useState<Record<string, number>>({})
     const trendingProducts = useMemo(() => products.slice(0, 4), [products])
-    console.log("Products on ui hook:", products)
   useEffect(() => {
     const syncFavorites = () => setFavoriteSlugs(getFavoriteSlugs())
     syncFavorites()
