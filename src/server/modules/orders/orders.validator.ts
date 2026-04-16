@@ -23,3 +23,29 @@ export const createOrderInvoiceSchema = z.object({
   gstin: z.string().max(30).optional(),
   taxRate: z.number().min(0).max(1).optional(),
 })
+
+export const createShipmentSchema = z.object({
+  shipmentNo: z.string().max(80).optional(),
+  carrier: z.string().min(1).max(120),
+  trackingNo: z.string().max(120).optional(),
+  itemAllocations: z
+    .array(
+      z.object({
+        orderItemId: z.string().min(1),
+        quantity: z.number().int().positive(),
+      }),
+    )
+    .min(1),
+})
+
+export const reconcileCodSchema = z.object({
+  collectedAmount: z.number().nonnegative(),
+  settledAmount: z.number().nonnegative().optional(),
+  status: z.enum(["pending", "partial", "settled", "failed"]).optional(),
+  notes: z.string().max(1000).optional(),
+})
+
+export const confirmDeliverySchema = z.object({
+  shipmentId: z.string().optional(),
+  note: z.string().max(1000).optional(),
+})
