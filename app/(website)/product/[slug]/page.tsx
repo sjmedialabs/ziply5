@@ -299,7 +299,7 @@ export default function ProductPage() {
                 {favorite ? "♥" : "♡"}
               </button>
             </div>
-
+              {/* box features with image */}
             <div className="mt-8 grid grid-cols-3 gap-4 border-t border-[#DEDEDE] pt-5">
               {(product.features.length ? product.features : [{ title: "Home Made", icon: null }]).map((item, idx) => (
                 <div key={`${item.title || "feature"}-${idx}`} className="flex flex-col items-center gap-2 text-center">
@@ -318,7 +318,7 @@ export default function ProductPage() {
             </div>
           </div>
         </div>
-
+              {/* Key features */}
         <div className="mt-10 border-t border-[#DFDFDF]">
           {(product.details.length
             ? product.details
@@ -347,7 +347,7 @@ export default function ProductPage() {
             )
           })}
         </div>
-
+          {/* related [roduct] */}
         <div className="mt-10 rounded-2xl bg-[#ECECEC] p-5 sm:p-7">
           <h2 className="font-heading text-6xl uppercase text-[#4A1E1F]">Related Products</h2>
           <div className="mt-5 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">

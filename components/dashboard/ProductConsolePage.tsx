@@ -6,8 +6,13 @@ import { useRouter } from "next/navigation"
 import { authedFetch, authedPatch, authedPost } from "@/lib/dashboard-fetch"
 import { ConsoleTable, ConsoleTd } from "@/components/dashboard/ConsoleTable"
 import { RichTextEditor } from "@/components/dashboard/RichTextEditor"
+import { Button } from "@/components/ui/button"
+import { Checkbox } from "@/components/ui/checkbox"
+import { Input } from "@/components/ui/input"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Textarea } from "@/components/ui/textarea"
 
-type Mode = "list" | "add" | "edit"
+type Mode = "list" | "add" | "edit" | "view"
 
 type ProductRow = {
   id: string
@@ -56,6 +61,15 @@ type ProductDetail = {
   details?: Array<{ title: string; content: string; sortOrder?: number }>
   sections?: Array<{ id: string; title: string; description: string; sortOrder: number; isActive: boolean }>
 }
+
+const ViewField = ({ label, value, className = "" }: { label: string; value: React.ReactNode; className?: string }) => (
+  <div className={`flex flex-col gap-1 rounded-lg border border-[#D9D9D1] bg-[#FDFDFD] px-3 py-2 text-sm ${className}`}>
+    <span className="text-[10px] font-bold uppercase text-[#646464]">{label}</span>
+    <div className="font-medium text-[#2A1810] break-words">
+      {value || <span className="text-gray-400 italic">No data</span>}
+    </div>
+  </div>
+)
 
 type CategoryRow = { id: string; name: string }
 const statuses = ["draft", "published", "archived"] as const
@@ -204,7 +218,7 @@ export function ProductConsolePage({
 
   useEffect(() => {
     if (mode === "list" || mode === "add") loadList()
-    if (mode === "edit") void loadEdit()
+    if (mode === "edit" || mode === "view") void loadEdit()
   }, [loadEdit, loadList, mode])
 
   const payload = useMemo(() => {
@@ -395,10 +409,10 @@ export function ProductConsolePage({
         {error && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-800">{error}</p>}
         {loading && <p className="text-sm text-[#646464]">Loading...</p>}
         {!loading && (
-          <ConsoleTable headers={adminView ? ["Name", "Slug", "SKU", "Status", "Price", "Seller", "", ""] : ["Name", "Slug", "SKU", "Status", "Price", "", ""]}>
+          <ConsoleTable headers={adminView ? ["Name", "Slug", "SKU", "Status", "Price", "Seller", "View", "Edit", ""] : ["Name", "Slug", "SKU", "Status", "Price", "View", "Edit", ""]}>
             {rows.length === 0 ? (
               <tr>
-                <ConsoleTd colSpan={adminView ? 8 : 7} className="py-8 text-center text-[#646464]">
+                <ConsoleTd colSpan={adminView ? 9 : 8} className="py-8 text-center text-[#646464]">
                   No products yet.
                 </ConsoleTd>
               </tr>
@@ -413,16 +427,26 @@ export function ProductConsolePage({
                     <code className="text-[11px]">{p.sku}</code>
                   </ConsoleTd>
                   <ConsoleTd>
-                    <select value={rowStatus[p.id] ?? p.status} onChange={(e) => setRowStatus((prev) => ({ ...prev, [p.id]: e.target.value }))} className="rounded-lg border border-[#D9D9D1] bg-white px-2 py-1 text-xs">
-                      {statuses.map((s) => (
-                        <option key={s} value={s}>
-                          {s}
-                        </option>
-                      ))}
-                    </select>
+                    <Select value={rowStatus[p.id] ?? p.status} onValueChange={(value) => setRowStatus((prev) => ({ ...prev, [p.id]: value }))}>
+                      <SelectTrigger className="rounded-lg border border-[#D9D9D1] bg-white px-2 py-1 text-xs w-auto">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {statuses.map((s) => (
+                          <SelectItem key={s} value={s}>
+                            {s}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </ConsoleTd>
                   <ConsoleTd className="font-semibold">Rs.{Number(p.price).toFixed(2)}</ConsoleTd>
                   {adminView && <ConsoleTd className="text-[12px] text-[#646464]">{p.seller?.email ?? "-"}</ConsoleTd>}
+                  <ConsoleTd>
+                    <Link href={`${basePath}/${p.id}`} className="rounded-full border border-[#7B3010] px-3 py-1.5 text-[11px] font-semibold uppercase text-[#7B3010]">
+                      View
+                    </Link>
+                  </ConsoleTd>
                   <ConsoleTd>
                     <Link href={`${basePath}/${p.id}/edit`} className="rounded-full border border-[#7B3010] px-3 py-1.5 text-[11px] font-semibold uppercase text-[#7B3010]">
                       Edit
@@ -445,7 +469,7 @@ export function ProductConsolePage({
   return (
     <section className="mx-auto max-w-7xl space-y-4">
       <div className="flex items-center justify-between">
-        <h1 className="font-melon text-2xl font-bold text-[#4A1D1F]">{mode === "edit" ? "Edit product" : "Add product"}</h1>
+        <h1 className="font-melon text-2xl font-bold text-[#4A1D1F]">{mode === "view" ? "View product" : mode === "edit" ? "Edit product" : "Add product"}</h1>
         <Link href={basePath} className="text-xs font-semibold uppercase text-[#7B3010] underline">
           Back to list
         </Link>
@@ -453,191 +477,316 @@ export function ProductConsolePage({
       {error && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-800">{error}</p>}
       {loading && mode === "edit" && <p className="text-sm text-[#646464]">Loading product...</p>}
       <form onSubmit={onSubmit} className="grid gap-3 rounded-2xl border border-[#E8DCC8] bg-white p-4 shadow-sm md:grid-cols-3">
-        <input placeholder="Name" value={name} onChange={(e) => setName(e.target.value)} className="rounded-lg border border-[#D9D9D1] px-3 py-2 text-sm" />
-        <input placeholder="Slug" value={slug} onChange={(e) => setSlug(e.target.value)} className="rounded-lg border border-[#D9D9D1] px-3 py-2 text-sm" />
-        <input placeholder="SKU" value={sku} onChange={(e) => setSku(e.target.value)} className="rounded-lg border border-[#D9D9D1] px-3 py-2 text-sm" />
-        <input placeholder="Sale Price" type="number" step="0.01" value={price} onChange={(e) => setPrice(e.target.value)} className="rounded-lg border border-[#D9D9D1] px-3 py-2 text-sm" />
-        <input placeholder="Base/MRP" type="number" step="0.01" value={basePrice} onChange={(e) => setBasePrice(e.target.value)} className="rounded-lg border border-[#D9D9D1] px-3 py-2 text-sm" />
-        <input placeholder="Discount %" type="number" step="0.01" value={discountPercent} onChange={(e) => setDiscountPercent(e.target.value)} className="rounded-lg border border-[#D9D9D1] px-3 py-2 text-sm" />
-        <select value={status} onChange={(e) => setStatus(e.target.value as (typeof statuses)[number])} className="rounded-lg border border-[#D9D9D1] px-3 py-2 text-sm">
-          {statuses.map((s) => (
-            <option key={s} value={s}>
-              {s}
-            </option>
-          ))}
-        </select>
-        <select value={type} onChange={(e) => setType(e.target.value as "simple" | "variant")} className="rounded-lg border border-[#D9D9D1] px-3 py-2 text-sm">
-          <option value="variant">variant</option>
-          <option value="simple">simple</option>
-        </select>
-        <select value={foodType} onChange={(e) => setFoodType(e.target.value as "" | "veg" | "non-veg")} className="rounded-lg border border-[#D9D9D1] px-3 py-2 text-sm">
-          <option value="">Select veg/non-veg</option>
-          {foodTypes.map((item) => (
-            <option key={item} value={item}>
-              {item}
-            </option>
-          ))}
-        </select>
-        <select value={categoryId} onChange={(e) => setCategoryId(e.target.value)} className="rounded-lg border border-[#D9D9D1] px-3 py-2 text-sm">
-          <option value="">No category</option>
-          {categories.map((c, idx) => (
-            <option key={`${c.id}-${idx}`} value={c.id}>
-              {c.name}
-            </option>
-          ))}
-        </select>
-        <input placeholder="Total Stock" type="number" value={totalStock} onChange={(e) => setTotalStock(e.target.value)} className="rounded-lg border border-[#D9D9D1] px-3 py-2 text-sm" />
-        <select value={stockStatus} onChange={(e) => setStockStatus(e.target.value as "in_stock" | "out_of_stock")} className="rounded-lg border border-[#D9D9D1] px-3 py-2 text-sm">
-          <option value="in_stock">in_stock</option>
-          <option value="out_of_stock">out_of_stock</option>
-        </select>
-        <input placeholder="Shelf Life" value={shelfLife} onChange={(e) => setShelfLife(e.target.value)} className="rounded-lg border border-[#D9D9D1] px-3 py-2 text-sm" />
-        <div className="rounded-lg border border-[#D9D9D1] px-3 py-2 text-sm">
-          <p className="mb-2 text-[11px] font-semibold uppercase text-[#646464]">Upload thumbnails (multiple)</p>
-          <input type="file" multiple accept="image/*" onChange={(e) => void uploadMany(e.target.files, "thumbnail")} />
-          {thumbnailUrls.length > 0 && (
-            <div className="mt-2 flex flex-wrap gap-1">
-              {thumbnailUrls.map((url, idx) => (
-                <button
-                  key={`${url}-${idx}`}
-                  type="button"
-                  onClick={() => setThumbnailUrls((prev) => prev.filter((x) => x !== url))}
-                  className="rounded-full border border-[#D9D9D1] bg-white px-2 py-0.5 text-[10px]"
-                >
-                  Thumb {idx + 1} x
-                </button>
-              ))}
+        {mode === "view" ? (
+          <>
+            <ViewField label="Name" value={name} />
+            <ViewField label="Slug" value={slug} />
+            <ViewField label="SKU" value={sku} />
+            <ViewField label="Sale Price" value={price ? `Rs.${price}` : ""} />
+            <ViewField label="Base/MRP" value={basePrice ? `Rs.${basePrice}` : ""} />
+            <ViewField label="Discount %" value={discountPercent ? `${discountPercent}%` : ""} />
+            <ViewField label="Status" value={status} />
+            <ViewField label="Type" value={type} />
+            <ViewField label="Food Type" value={foodType} />
+            <ViewField label="Category" value={categories.find((c) => c.id === categoryId)?.name || "No category"} />
+            <ViewField label="Total Stock" value={totalStock} />
+            <ViewField label="Stock Status" value={stockStatus} />
+            <ViewField label="Shelf Life" value={shelfLife} />
+            <ViewField
+              label="Thumbnails"
+              value={
+                <div className="flex flex-wrap gap-2">
+                  {thumbnailUrls.map((url, idx) => (
+                    <div key={idx} className="relative group overflow-hidden h-16 w-16 rounded-lg border border-[#D9D9D1]">
+                      <img
+                        src={url}
+                        alt={`Thumbnail ${idx + 1}`}
+                        className="h-full w-full object-cover transition-transform group-hover:scale-110"
+                      />
+                      <a
+                        href={url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity text-white text-[9px] font-bold"
+                      >
+                        VIEW
+                      </a>
+                    </div>
+                  ))}
+                </div>
+              }
+            />
+            <ViewField
+              label="Images"
+              value={
+                <div className="flex flex-wrap gap-2">
+                  {imageUrls.map((url, idx) => (
+                    <div key={idx} className="relative group overflow-hidden h-24 w-24 rounded-lg border border-[#D9D9D1]">
+                      <img
+                        src={url}
+                        alt={`Product Image ${idx + 1}`}
+                        className="h-full w-full object-cover transition-transform group-hover:scale-110"
+                      />
+                      <a
+                        href={url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity text-white text-[9px] font-bold"
+                      >
+                        VIEW
+                      </a>
+                    </div>
+                  ))}
+                </div>
+              }
+            />
+            <ViewField label="Meta Title" value={metaTitle} />
+            <ViewField label="Meta Description" value={metaDescription} className="md:col-span-2" />
+            <ViewField label="Tags" value={[foodType, tagsCsv].filter(Boolean).join(", ")} className="md:col-span-3" />
+            <ViewField label="Description" value={description} className="md:col-span-3" />
+          </>
+        ) : (
+          <>
+            <Input placeholder="Name" value={name} onChange={(e) => setName(e.target.value)} className="rounded-lg border border-[#D9D9D1] px-3 py-2 text-sm" />
+            <Input placeholder="Slug" value={slug} onChange={(e) => setSlug(e.target.value)} className="rounded-lg border border-[#D9D9D1] px-3 py-2 text-sm" />
+            <Input placeholder="SKU" value={sku} onChange={(e) => setSku(e.target.value)} className="rounded-lg border border-[#D9D9D1] px-3 py-2 text-sm" />
+            <Input placeholder="Sale Price" type="number" step="0.01" value={price} onChange={(e) => setPrice(e.target.value)} className="rounded-lg border border-[#D9D9D1] px-3 py-2 text-sm" />
+            <Input placeholder="Base/MRP" type="number" step="0.01" value={basePrice} onChange={(e) => setBasePrice(e.target.value)} className="rounded-lg border border-[#D9D9D1] px-3 py-2 text-sm" />
+            <Input placeholder="Discount %" type="number" step="0.01" value={discountPercent} onChange={(e) => setDiscountPercent(e.target.value)} className="rounded-lg border border-[#D9D9D1] px-3 py-2 text-sm" />
+            <Select value={status} onValueChange={(value) => setStatus(value as (typeof statuses)[number])}>
+              <SelectTrigger className="rounded-lg border border-[#D9D9D1] px-3 py-2 text-sm">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {statuses.map((s) => (
+                  <SelectItem key={s} value={s}>
+                    {s}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select value={type} onValueChange={(value) => setType(value as "simple" | "variant")}>
+              <SelectTrigger className="rounded-lg border border-[#D9D9D1] px-3 py-2 text-sm">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="variant">variant</SelectItem>
+                <SelectItem value="simple">simple</SelectItem>
+              </SelectContent>
+            </Select>
+            <Select value={foodType} onValueChange={(value) => setFoodType((value as "" | "veg" | "non-veg") || "")}>
+              <SelectTrigger className="rounded-lg border border-[#D9D9D1] px-3 py-2 text-sm">
+                <SelectValue placeholder="Select veg/non-veg" />
+              </SelectTrigger>
+              <SelectContent>
+                {foodTypes.map((item) => (
+                  <SelectItem key={item} value={item}>
+                    {item}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select value={categoryId} onValueChange={(value) => setCategoryId(value || "")}>
+              <SelectTrigger className="rounded-lg border border-[#D9D9D1] px-3 py-2 text-sm">
+                <SelectValue placeholder="No category" />
+              </SelectTrigger>
+              <SelectContent>
+                {categories.map((c, idx) => (
+                  <SelectItem key={`${c.id}-${idx}`} value={c.id}>
+                    {c.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Input placeholder="Total Stock" type="number" value={totalStock} onChange={(e) => setTotalStock(e.target.value)} className="rounded-lg border border-[#D9D9D1] px-3 py-2 text-sm" />
+            <Select value={stockStatus} onValueChange={(value) => setStockStatus(value as "in_stock" | "out_of_stock")}>
+              <SelectTrigger className="rounded-lg border border-[#D9D9D1] px-3 py-2 text-sm">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="in_stock">in_stock</SelectItem>
+                <SelectItem value="out_of_stock">out_of_stock</SelectItem>
+              </SelectContent>
+            </Select>
+            <Input placeholder="Shelf Life" value={shelfLife} onChange={(e) => setShelfLife(e.target.value)} className="rounded-lg border border-[#D9D9D1] px-3 py-2 text-sm" />
+            <div className="rounded-lg border border-[#D9D9D1] px-3 py-2 text-sm">
+              <p className="mb-2 text-[11px] font-semibold uppercase text-[#646464]">Upload thumbnails (multiple)</p>
+              <input type="file" multiple accept="image/*" onChange={(e) => void uploadMany(e.target.files, "thumbnail")} />
+              {thumbnailUrls.length > 0 && (
+                <div className="mt-2 flex flex-wrap gap-1">
+                  {thumbnailUrls.map((url, idx) => (
+                    <button
+                      key={`${url}-${idx}`}
+                      type="button"
+                      onClick={() => setThumbnailUrls((prev) => prev.filter((x) => x !== url))}
+                      className="rounded-full border border-[#D9D9D1] bg-white px-2 py-0.5 text-[10px]"
+                    >
+                      Thumb {idx + 1} x
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
-          )}
-        </div>
-        <div className="rounded-lg border border-[#D9D9D1] px-3 py-2 text-sm">
-          <p className="mb-2 text-[11px] font-semibold uppercase text-[#646464]">Upload images (multiple)</p>
-          <input type="file" multiple accept="image/*" onChange={(e) => void uploadMany(e.target.files, "image")} />
-          {imageUrls.length > 0 && (
-            <div className="mt-2 flex flex-wrap gap-1">
-              {imageUrls.map((url, idx) => (
-                <button
-                  key={`${url}-${idx}`}
-                  type="button"
-                  onClick={() => setImageUrls((prev) => prev.filter((x) => x !== url))}
-                  className="rounded-full border border-[#D9D9D1] bg-white px-2 py-0.5 text-[10px]"
-                >
-                  Image {idx + 1} x
-                </button>
-              ))}
+            <div className="rounded-lg border border-[#D9D9D1] px-3 py-2 text-sm">
+              <p className="mb-2 text-[11px] font-semibold uppercase text-[#646464]">Upload images (multiple)</p>
+              <input type="file" multiple accept="image/*" onChange={(e) => void uploadMany(e.target.files, "image")} />
+              {imageUrls.length > 0 && (
+                <div className="mt-2 flex flex-wrap gap-1">
+                  {imageUrls.map((url, idx) => (
+                    <button
+                      key={`${url}-${idx}`}
+                      type="button"
+                      onClick={() => setImageUrls((prev) => prev.filter((x) => x !== url))}
+                      className="rounded-full border border-[#D9D9D1] bg-white px-2 py-0.5 text-[10px]"
+                    >
+                      Image {idx + 1} x
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
-          )}
-        </div>
-        <input placeholder="Meta Title" value={metaTitle} onChange={(e) => setMetaTitle(e.target.value)} className="rounded-lg border border-[#D9D9D1] px-3 py-2 text-sm" />
-        <input placeholder="Meta Description" value={metaDescription} onChange={(e) => setMetaDescription(e.target.value)} className="rounded-lg border border-[#D9D9D1] px-3 py-2 text-sm md:col-span-2" />
-        <input placeholder="Tags csv: veg, rice, ready-to-eat" value={tagsCsv} onChange={(e) => setTagsCsv(e.target.value)} className="rounded-lg border border-[#D9D9D1] px-3 py-2 text-sm md:col-span-3" />
-        <textarea placeholder="Description" value={description} onChange={(e) => setDescription(e.target.value)} rows={2} className="rounded-lg border border-[#D9D9D1] px-3 py-2 text-sm md:col-span-3" />
+            <Input placeholder="Meta Title" value={metaTitle} onChange={(e) => setMetaTitle(e.target.value)} className="rounded-lg border border-[#D9D9D1] px-3 py-2 text-sm" />
+            <Input placeholder="Meta Description" value={metaDescription} onChange={(e) => setMetaDescription(e.target.value)} className="rounded-lg border border-[#D9D9D1] px-3 py-2 text-sm md:col-span-2" />
+            <Input placeholder="Tags csv: veg, rice, ready-to-eat" value={tagsCsv} onChange={(e) => setTagsCsv(e.target.value)} className="rounded-lg border border-[#D9D9D1] px-3 py-2 text-sm md:col-span-3" />
+            <Textarea placeholder="Description" value={description} onChange={(e) => setDescription(e.target.value)} rows={2} className="rounded-lg border border-[#D9D9D1] px-3 py-2 text-sm md:col-span-3" />
+          </>
+        )}
+
         <div className="md:col-span-3 space-y-3 rounded-xl border border-[#E8DCC8] p-3">
           <div className="flex items-center justify-between">
             <p className="text-xs font-semibold uppercase tracking-wide text-[#4A1D1F]">Custom Sections</p>
-            <button
-              type="button"
-              onClick={() =>
-                setSections((prev) =>
-                  prev.length >= MAX_SECTIONS
-                    ? prev
-                    : [...prev, { title: "", description: "<p></p>", sortOrder: prev.length, isActive: true }],
-                )
-              }
-              className="rounded-full border border-[#7B3010] px-3 py-1 text-[11px] font-semibold uppercase text-[#7B3010]"
-            >
-              Add Section
-            </button>
+            {mode !== "view" ? (
+                <button
+                  type="button"
+                  onClick={() =>
+                    setSections((prev) =>
+                      prev.length >= MAX_SECTIONS
+                        ? prev
+                        : [...prev, { title: "", description: "<p></p>", sortOrder: prev.length, isActive: true }],
+                    )
+                  }
+                  className="rounded-full border border-[#7B3010] px-3 py-1 text-[11px] font-semibold uppercase text-[#7B3010]"
+                >
+                  Add Section
+                </button>
+              ) : null}
           </div>
           {sections.map((section, idx) => (
             <div key={`${section.id ?? "new"}-${idx}`} className="space-y-2 rounded-lg border border-[#D9D9D1] bg-[#FFFBF3] p-3">
-              <div className="grid gap-2 md:grid-cols-3">
-                <input
-                  placeholder="Section title"
-                  value={section.title}
-                  onChange={(e) =>
-                    setSections((prev) =>
-                      prev.map((item, itemIdx) =>
-                        itemIdx === idx ? { ...item, title: e.target.value } : item,
-                      ),
-                    )
-                  }
-                  className="rounded-lg border border-[#D9D9D1] bg-white px-3 py-2 text-sm md:col-span-2"
-                />
-                <div className="flex items-center gap-2">
-                  <input
-                    placeholder="Order"
-                    type="number"
-                    value={section.sortOrder}
+              {mode === "view" ? (
+                <div className="grid gap-2 md:grid-cols-3">
+                  <ViewField label="Section title" value={section.title} className="md:col-span-2" />
+                  <div className="flex items-center gap-2">
+                    <ViewField label="Order" value={section.sortOrder} />
+                    <ViewField label="Status" value={section.isActive ? "Active" : "Inactive"} />
+                  </div>
+                </div>
+              ) : (
+                <div className="grid gap-2 md:grid-cols-3">
+                  <Input
+                    placeholder="Section title"
+                    value={section.title}
                     onChange={(e) =>
                       setSections((prev) =>
                         prev.map((item, itemIdx) =>
-                          itemIdx === idx ? { ...item, sortOrder: Number(e.target.value || 0) } : item,
+                          itemIdx === idx ? { ...item, title: e.target.value } : item,
                         ),
                       )
                     }
-                    className="w-20 rounded-lg border border-[#D9D9D1] bg-white px-2 py-2 text-sm"
+                    className="rounded-lg border border-[#D9D9D1] bg-white px-3 py-2 text-sm md:col-span-2"
                   />
-                  <label className="flex items-center gap-1 text-[11px] font-semibold uppercase">
-                    <input
-                      type="checkbox"
-                      checked={section.isActive}
+                  <div className="flex items-center gap-2">
+                    <Input
+                      placeholder="Order"
+                      type="number"
+                      value={section.sortOrder}
                       onChange={(e) =>
                         setSections((prev) =>
                           prev.map((item, itemIdx) =>
-                            itemIdx === idx ? { ...item, isActive: e.target.checked } : item,
+                            itemIdx === idx ? { ...item, sortOrder: Number(e.target.value || 0) } : item,
                           ),
                         )
                       }
+                      className="w-20 rounded-lg border border-[#D9D9D1] bg-white px-2 py-2 text-sm"
                     />
-                    active
-                  </label>
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setSections((prev) =>
-                        prev.length === 1 ? prev : prev.filter((_, itemIdx) => itemIdx !== idx),
-                      )
-                    }
-                    className="rounded-full border border-red-300 px-2 py-1 text-[10px] font-semibold uppercase text-red-700"
-                  >
-                    Remove
-                  </button>
+                    <label className="flex items-center gap-1 text-[11px] font-semibold uppercase">
+                      <Checkbox
+                        checked={section.isActive}
+                        onCheckedChange={(checked) =>
+                          setSections((prev) =>
+                            prev.map((item, itemIdx) =>
+                              itemIdx === idx ? { ...item, isActive: !!checked } : item,
+                            ),
+                          )
+                        }
+                      />
+                      active
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setSections((prev) =>
+                          prev.length === 1 ? prev : prev.filter((_, itemIdx) => itemIdx !== idx),
+                        )
+                      }
+                      className="rounded-full border border-red-300 px-2 py-1 text-[10px] font-semibold uppercase text-red-700"
+                    >
+                      Remove
+                    </button>
+                  </div>
                 </div>
-              </div>
-              <RichTextEditor
-                value={section.description}
-                onChange={(html) =>
-                  setSections((prev) =>
-                    prev.map((item, itemIdx) =>
-                      itemIdx === idx ? { ...item, description: html } : item,
-                    ),
-                  )
-                }
-              />
+              )}
+
+              {mode === "view" ? (
+                <div className="rounded-lg border border-[#D9D9D1] bg-white px-3 py-2 text-sm" dangerouslySetInnerHTML={{ __html: section.description }} />
+              ) : (
+                <RichTextEditor
+                  value={section.description}
+                  onChange={(html) =>
+                    setSections((prev) =>
+                      prev.map((item, itemIdx) =>
+                        itemIdx === idx ? { ...item, description: html } : item,
+                      ),
+                    )
+                  }
+                />
+              )}
             </div>
           ))}
           <p className="text-[11px] text-[#646464]">Up to {MAX_SECTIONS} sections. Title and description are required.</p>
         </div>
         <div className="md:col-span-3 flex flex-wrap gap-4 text-xs uppercase">
-          <label className="flex items-center gap-2">
-            <input type="checkbox" checked={taxIncluded} onChange={(e) => setTaxIncluded(e.target.checked)} /> tax included
-          </label>
-          <label className="flex items-center gap-2">
-            <input type="checkbox" checked={isActive} onChange={(e) => setIsActive(e.target.checked)} /> active
-          </label>
-          <label className="flex items-center gap-2">
-            <input type="checkbox" checked={isFeatured} onChange={(e) => setIsFeatured(e.target.checked)} /> featured
-          </label>
-          <label className="flex items-center gap-2">
-            <input type="checkbox" checked={isBestSeller} onChange={(e) => setIsBestSeller(e.target.checked)} /> best seller
-          </label>
+          {mode === "view" ? (
+            <>
+              <ViewField label="Tax Included" value={taxIncluded ? "Yes" : "No"} />
+              <ViewField label="Active" value={isActive ? "Yes" : "No"} />
+              <ViewField label="Featured" value={isFeatured ? "Yes" : "No"} />
+              <ViewField label="Best Seller" value={isBestSeller ? "Yes" : "No"} />
+            </>
+          ) : (
+            <>
+              <label className="flex items-center gap-2">
+                <Checkbox checked={taxIncluded} onCheckedChange={(checked) => setTaxIncluded(!!checked)} /> tax included
+              </label>
+              <label className="flex items-center gap-2">
+                <Checkbox checked={isActive} onCheckedChange={(checked) => setIsActive(!!checked)} /> active
+              </label>
+              <label className="flex items-center gap-2">
+                <Checkbox checked={isFeatured} onCheckedChange={(checked) => setIsFeatured(!!checked)} /> featured
+              </label>
+              <label className="flex items-center gap-2">
+                <Checkbox checked={isBestSeller} onCheckedChange={(checked) => setIsBestSeller(!!checked)} /> best seller
+              </label>
+            </>
+          )}
         </div>
-        <div className="md:col-span-3">
-          <button type="submit" disabled={saving || uploading} className="rounded-full bg-[#7B3010] px-5 py-2.5 text-xs font-semibold uppercase tracking-wide text-white disabled:opacity-50">
-            {saving ? "Saving..." : mode === "edit" ? "Update product" : "Create product"}
-          </button>
-        </div>
+        {mode !== "view" && (
+          <div className="md:col-span-3">
+            <Button type="submit" disabled={saving || uploading} className="rounded-full bg-[#7B3010] px-5 py-2.5 text-xs font-semibold uppercase tracking-wide text-white disabled:opacity-50">
+              {saving ? "Saving..." : mode === "edit" ? "Update product" : "Create product"}
+            </Button>
+          </div>
+        )}
       </form>
     </section>
   )
