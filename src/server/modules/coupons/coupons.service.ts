@@ -24,6 +24,40 @@ export const createCoupon = async (input: {
   })
 }
 
+export const createCouponsBulk = async (input: {
+  prefix: string
+  count: number
+  discountType: "percent" | "fixed"
+  discountValue: number
+  active?: boolean
+  startsAt?: Date | null
+  endsAt?: Date | null
+  usageLimitTotal?: number | null
+  usageLimitPerUser?: number | null
+}) => {
+  const now = Date.now().toString(36).toUpperCase()
+  const codes = Array.from({ length: input.count }).map((_, idx) =>
+    `${input.prefix.trim().toUpperCase()}-${now}-${String(idx + 1).padStart(4, "0")}`,
+  )
+  await prisma.coupon.createMany({
+    data: codes.map((code) => ({
+      code,
+      discountType: input.discountType,
+      discountValue: input.discountValue,
+      active: input.active ?? true,
+      startsAt: input.startsAt ?? null,
+      endsAt: input.endsAt ?? null,
+      usageLimitTotal: input.usageLimitTotal ?? null,
+      usageLimitPerUser: input.usageLimitPerUser ?? null,
+    })),
+    skipDuplicates: true,
+  })
+  return prisma.coupon.findMany({
+    where: { code: { in: codes } },
+    orderBy: { code: "asc" },
+  })
+}
+
 export const updateCoupon = async (
   id: string,
   input: Partial<{

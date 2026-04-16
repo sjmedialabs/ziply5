@@ -6,7 +6,6 @@ const prisma = new PrismaClient()
 const roles = [
   { key: "super_admin", name: "super admin" },
   { key: "admin", name: "admin" },
-  { key: "seller", name: "seller" },
   { key: "customer", name: "customer" },
 ]
 
@@ -18,10 +17,10 @@ const usersToSeed = [
     roleKey: "admin",
   },
   {
-    name: "Ziply5 Seller",
-    email: "seller@ziply5.com",
-    password: "Seller@12345",
-    roleKey: "seller",
+    name: "Ziply5 Super Admin",
+    email: "superadmin@ziply5.com",
+    password: "SuperAdmin@12345",
+    roleKey: "super_admin",
   },
 ]
 

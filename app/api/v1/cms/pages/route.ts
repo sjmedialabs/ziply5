@@ -61,6 +61,15 @@ export async function POST(request: NextRequest) {
     return fail("Validation failed", 422, parsed.error.flatten())
   }
 
-  const page = await upsertCmsPage(parsed.data)
+  const page = await upsertCmsPage({
+    slug: parsed.data.slug,
+    title: parsed.data.title,
+    status: parsed.data.status,
+    sections: parsed.data.sections?.map((section) => ({
+      sectionType: section.sectionType,
+      position: section.position,
+      contentJson: section.contentJson,
+    })),
+  })
   return ok(page, "CMS page saved")
 }

@@ -5,7 +5,6 @@ import { requirePermission } from "@/src/server/middleware/rbac"
 import {
   createReturnRequest,
   listReturnRequests,
-  listReturnRequestsForSeller,
 } from "@/src/server/modules/extended/extended.service"
 import { prisma } from "@/src/server/db/prisma"
 import { z } from "zod"
@@ -18,12 +17,6 @@ const createSchema = z.object({
 export async function GET(request: NextRequest) {
   const auth = requireAuth(request)
   if ("status" in auth) return auth
-  if (auth.user.role === "seller") {
-    const denied = requirePermission(auth.user.role, "returns.read")
-    if (denied) return denied
-    const rows = await listReturnRequestsForSeller(auth.user.sub)
-    return ok(rows, "Returns")
-  }
   const denied = requirePermission(auth.user.role, "returns.read")
   if (denied) return denied
   const rows = await listReturnRequests()

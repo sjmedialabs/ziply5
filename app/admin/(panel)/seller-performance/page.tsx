@@ -34,8 +34,8 @@ export default function AdminSellerPerformancePage() {
     <section className="mx-auto max-w-7xl space-y-4">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="font-melon text-2xl font-bold text-[#4A1D1F]">Seller performance</h1>
-          <p className="text-sm text-[#646464]">Aggregated revenue by seller from order lines.</p>
+          <h1 className="font-melon text-2xl font-bold text-[#4A1D1F]">Platform performance</h1>
+          <p className="text-sm text-[#646464]">Aggregated revenue view for admin-owned order lines.</p>
         </div>
         <button
           type="button"
@@ -54,7 +54,7 @@ export default function AdminSellerPerformancePage() {
           {rows.length === 0 ? (
             <tr>
               <ConsoleTd className="py-8 text-center text-[#646464]" colSpan={4}>
-                No seller-attributed lines yet.
+                No performance rows yet.
               </ConsoleTd>
             </tr>
           ) : (

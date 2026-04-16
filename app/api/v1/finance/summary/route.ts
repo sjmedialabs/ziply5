@@ -7,9 +7,7 @@ import { financeSummary } from "@/src/server/modules/extended/extended.service"
 export async function GET(request: NextRequest) {
   const auth = requireAuth(request)
   if ("status" in auth) return auth
-  if (auth.user.role === "seller") {
-    return fail("Use GET /api/v1/finance/my for seller wallet", 400)
-  }
+  if (!(auth.user.role === "admin" || auth.user.role === "super_admin")) return fail("Forbidden", 403)
   const denied = requirePermission(auth.user.role, "finance.read")
   if (denied) return denied
   const data = await financeSummary()

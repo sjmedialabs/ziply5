@@ -16,7 +16,7 @@ const randomId = (prefix: string) => `${prefix}_${crypto.randomBytes(10).toStrin
 const amountToMinor = (amount: number) => Math.max(0, Math.round(amount * 100))
 
 const stripeClient = env.STRIPE_SECRET_KEY
-  ? new Stripe(env.STRIPE_SECRET_KEY, { apiVersion: "2025-03-31.basil" })
+  ? new Stripe(env.STRIPE_SECRET_KEY, { apiVersion: "2025-08-27.basil" })
   : null
 
 const upsertTransaction = async (

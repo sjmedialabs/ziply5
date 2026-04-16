@@ -3,7 +3,7 @@ import type { Prisma, ProductStatus } from "@prisma/client"
 import { logActivity } from "@/src/server/modules/activity/activity.service"
 import sanitizeHtml from "sanitize-html"
 
-export type ListProductsScope = "public" | "admin" | "seller"
+export type ListProductsScope = "public" | "admin"
 
 type CreateProductInput = {
   name: string
@@ -26,7 +26,8 @@ type CreateProductInput = {
   metaTitle?: string | null
   metaDescription?: string | null
   status?: "draft" | "published" | "archived"
-  sellerId?: string | null
+  createdById?: string | null
+  managedById?: string | null
   categoryId?: string | null
   brandId?: string | null
   variants?: Array<{
@@ -68,7 +69,6 @@ type UpdateProductInput = Partial<{
   metaTitle: string | null
   metaDescription: string | null
   status: "draft" | "published" | "archived"
-  sellerId: string | null
   categoryId: string | null
   brandId: string | null
   variants: Array<{
@@ -91,7 +91,8 @@ type UpdateProductInput = Partial<{
 
 const productSelect = {
   id: true,
-  sellerId: true,
+  createdById: true,
+  managedById: true,
   brandId: true,
   name: true,
   slug: true,
@@ -121,7 +122,6 @@ const productSelect = {
   details: { orderBy: { sortOrder: "asc" as const } },
   sections: { orderBy: { sortOrder: "asc" as const } },
   brand: true,
-  seller: { select: { id: true, name: true, email: true } },
   categories: { include: { category: true }, take: 1 },
   tags: { include: { tag: true } },
   variants: true,
@@ -199,7 +199,6 @@ export const listProducts = async (
   page = 1,
   limit = 20,
   scope: ListProductsScope,
-  sellerUserId: string | undefined,
   filters?: { status?: string; q?: string },
 ) => {
   const skip = (page - 1) * limit
@@ -207,8 +206,6 @@ export const listProducts = async (
 
   if (scope === "public") {
     where.status = "published"
-  } else if (scope === "seller" && sellerUserId) {
-    where.sellerId = sellerUserId
   } else if (scope === "admin" && filters?.status) {
     where.status = filters.status as ProductStatus
   }
@@ -251,13 +248,11 @@ export const getProductBySlug = async (slug: string) => {
 }
 
 export const canAccessProduct = (
-  product: { status: string; sellerId: string | null },
+  product: { status: string },
   scope: ListProductsScope,
-  sellerUserId?: string,
 ) => {
   if (scope === "admin") return true
   if (product.status === "published") return true
-  if (scope === "seller" && sellerUserId && product.sellerId === sellerUserId) return true
   return false
 }
 
@@ -271,7 +266,9 @@ export const createProduct = async (input: CreateProductInput) => {
   const sections = normalizeSections(input)
   return prisma.product.create({
     data: {
-      sellerId: input.sellerId ?? undefined,
+      sellerId: null,
+      createdById: input.createdById ?? null,
+      managedById: input.managedById ?? input.createdById ?? null,
       name: input.name,
       slug: input.slug,
       sku: input.sku,
@@ -360,12 +357,12 @@ export const updateProduct = async (
 ) => {
   const existing = await prisma.product.findUnique({
     where: { id },
-    select: { id: true, sellerId: true },
+    select: { id: true },
   })
   if (!existing) throw new Error("Product not found")
 
   const isAdmin = opts.role === "admin" || opts.role === "super_admin"
-  if (!isAdmin && existing.sellerId !== opts.userId) {
+  if (!isAdmin) {
     throw new Error("Forbidden")
   }
 
@@ -394,7 +391,7 @@ export const updateProduct = async (
         ...("metaDescription" in input ? { metaDescription: input.metaDescription } : {}),
         ...("status" in input && input.status !== undefined ? { status: input.status } : {}),
         ...("brandId" in input ? { brandId: input.brandId ?? null } : {}),
-        ...("sellerId" in input && input.sellerId !== undefined && isAdmin ? { sellerId: input.sellerId } : {}),
+        managedById: opts.userId,
       },
     })
 
@@ -569,12 +566,12 @@ export const updateProduct = async (
 export const deleteProduct = async (id: string, opts: { role: string; userId: string }) => {
   const existing = await prisma.product.findUnique({
     where: { id },
-    select: { id: true, sellerId: true },
+    select: { id: true },
   })
   if (!existing) throw new Error("Product not found")
 
   const isAdmin = opts.role === "admin" || opts.role === "super_admin"
-  if (!isAdmin && existing.sellerId !== opts.userId) {
+  if (!isAdmin) {
     throw new Error("Forbidden")
   }
 

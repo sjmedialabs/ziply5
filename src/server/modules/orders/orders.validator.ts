@@ -9,5 +9,17 @@ export const createOrderSchema = z.object({
 })
 
 export const updateOrderStatusSchema = z.object({
-  status: z.enum(["pending", "confirmed", "shipped", "delivered", "cancelled"]),
+  status: z.enum(["pending", "confirmed", "packed", "shipped", "delivered", "returned", "cancelled"]),
+  reasonCode: z.string().max(80).optional(),
+  note: z.string().max(1000).optional(),
+})
+
+export const createOrderNoteSchema = z.object({
+  note: z.string().min(1).max(2000),
+  isInternal: z.boolean().optional(),
+})
+
+export const createOrderInvoiceSchema = z.object({
+  gstin: z.string().max(30).optional(),
+  taxRate: z.number().min(0).max(1).optional(),
 })

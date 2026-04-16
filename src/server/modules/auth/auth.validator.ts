@@ -4,13 +4,13 @@ export const signupSchema = z.object({
   name: z.string().min(2),
   email: z.string().email(),
   password: z.string().min(8),
-  role: z.enum(["super_admin", "admin", "seller", "customer"]).optional(),
+  role: z.enum(["super_admin", "admin", "customer"]).optional(),
 })
 
 export const loginSchema = z.object({
   email: z.string().email(),
   password: z.string().min(1),
-  portal: z.enum(["website", "admin", "seller"]).optional(),
+  portal: z.enum(["website", "admin"]).optional(),
 })
 
 export const refreshSchema = z.object({
@@ -25,5 +25,5 @@ export const requestOtpSchema = z.object({
 export const verifyOtpSchema = z.object({
   phone: z.string().min(8),
   code: z.string().regex(/^\d{6}$/),
-  portal: z.enum(["website", "admin", "seller"]).optional(),
+  portal: z.enum(["website", "admin"]).optional(),
 })

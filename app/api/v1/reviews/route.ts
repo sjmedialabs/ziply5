@@ -6,7 +6,6 @@ import { requirePermission } from "@/src/server/middleware/rbac"
 import {
   createReview,
   listReviews,
-  listReviewsForSeller,
 } from "@/src/server/modules/extended/extended.service"
 import { z } from "zod"
 
@@ -29,12 +28,6 @@ export async function GET(request: NextRequest) {
   const auth = requireAuth(request)
   if ("status" in auth) return auth
   const status = request.nextUrl.searchParams.get("status") ?? undefined
-  if (auth.user.role === "seller") {
-    const denied = requirePermission(auth.user.role, "reviews.read")
-    if (denied) return denied
-    const rows = await listReviewsForSeller(auth.user.sub, status)
-    return ok(rows, "Reviews")
-  }
   const denied = requirePermission(auth.user.role, "reviews.read")
   if (denied) return denied
   const rows = await listReviews(status)

@@ -40,13 +40,8 @@ export type InventoryRow =
       product: { name: string; slug: string }
     }
 
-const productWhereForSeller = (sellerId?: string | null) =>
-  sellerId ? { product: { sellerId } } : {}
-
-export const listInventoryOverview = async (sellerId?: string | null): Promise<InventoryRow[]> => {
-  const pw = productWhereForSeller(sellerId)
+export const listInventoryOverview = async (): Promise<InventoryRow[]> => {
   const rows = await prisma.inventoryItem.findMany({
-    where: pw,
     include: { product: { select: { name: true, slug: true } } },
     orderBy: { available: "asc" },
     take: 200,
@@ -61,7 +56,6 @@ export const listInventoryOverview = async (sellerId?: string | null): Promise<I
     product: r.product,
   }))
   const variants = await prisma.productVariant.findMany({
-    where: pw,
     include: { product: { select: { name: true, slug: true } } },
     orderBy: { stock: "asc" },
     take: 200,
@@ -76,33 +70,8 @@ export const listInventoryOverview = async (sellerId?: string | null): Promise<I
     variantName: v.name,
     product: v.product,
   }))
-  if (sellerId) {
-    return [...fromWarehouse, ...fromVariant].sort((a, b) => a.available - b.available)
-  }
   if (fromWarehouse.length > 0) return fromWarehouse
   return fromVariant
-}
-
-/** Ensures a seller only mutates inventory for their own products (admin passes null). */
-export const assertSellerOwnsInventorySource = async (
-  sellerId: string | null,
-  source: "warehouse" | "variant",
-  id: string,
-) => {
-  if (!sellerId) return
-  if (source === "warehouse") {
-    const row = await prisma.inventoryItem.findUnique({
-      where: { id },
-      include: { product: { select: { sellerId: true } } },
-    })
-    if (!row || row.product.sellerId !== sellerId) throw new Error("Forbidden")
-    return
-  }
-  const v = await prisma.productVariant.findUnique({
-    where: { id },
-    include: { product: { select: { sellerId: true } } },
-  })
-  if (!v || v.product.sellerId !== sellerId) throw new Error("Forbidden")
 }
 
 export const updateInventoryItem = async (id: string, available: number, reserved?: number) => {
@@ -124,17 +93,6 @@ export const updateVariantStock = async (id: string, stock: number) => {
 export const listReviews = (status?: string) =>
   prisma.productReview.findMany({
     where: status ? { status } : undefined,
-    orderBy: { createdAt: "desc" },
-    take: 200,
-    include: { product: { select: { name: true, slug: true } }, user: { select: { email: true, name: true } } },
-  })
-
-export const listReviewsForSeller = (sellerId: string, status?: string) =>
-  prisma.productReview.findMany({
-    where: {
-      product: { sellerId },
-      ...(status ? { status } : {}),
-    },
     orderBy: { createdAt: "desc" },
     take: 200,
     include: { product: { select: { name: true, slug: true } }, user: { select: { email: true, name: true } } },
@@ -172,20 +130,6 @@ export const listReturnRequests = () =>
     take: 200,
     include: { order: { select: { id: true, total: true, status: true, userId: true } } },
   })
-
-export const listReturnRequestsForSeller = async (sellerId: string) => {
-  const orders = await prisma.order.findMany({
-    where: { items: { some: { product: { sellerId } } } },
-    select: { id: true },
-  })
-  const ids = orders.map((o) => o.id)
-  if (ids.length === 0) return []
-  return prisma.returnRequest.findMany({
-    where: { orderId: { in: ids } },
-    orderBy: { createdAt: "desc" },
-    include: { order: { select: { id: true, total: true, status: true, userId: true } } },
-  })
-}
 
 export const updateReturnStatus = (id: string, status: string) =>
   prisma.returnRequest.update({ where: { id }, data: { status } })
@@ -283,11 +227,11 @@ export const listWithdrawals = () =>
   prisma.withdrawalRequest.findMany({
     orderBy: { createdAt: "desc" },
     take: 100,
-    include: { seller: { select: { id: true, name: true, email: true } } },
+    include: {
+      createdBy: { select: { id: true, name: true, email: true } },
+      managedBy: { select: { id: true, name: true, email: true } },
+    },
   })
-
-export const createWithdrawal = (sellerId: string, amount: number, note?: string) =>
-  prisma.withdrawalRequest.create({ data: { sellerId, amount, note } })
 
 export const updateWithdrawalStatus = (id: string, status: string) =>
   prisma.withdrawalRequest.update({ where: { id }, data: { status } })
@@ -326,33 +270,24 @@ export const reportTopProducts = async (limit = 20) => {
   }))
 }
 
-export const reportSellerPerformance = async () => {
-  const rows = await prisma.orderItem.groupBy({
-    by: ["productId"],
+export const reportPlatformPerformance = async () => {
+  const totals = await prisma.orderItem.aggregate({
     _sum: { lineTotal: true },
+    _count: { _all: true },
   })
-  const products = await prisma.product.findMany({
-    where: { id: { in: rows.map((r) => r.productId) } },
-    select: { id: true, sellerId: true, name: true },
-  })
-  const sellerMap = new Map<string, { revenue: number; lines: number }>()
-  for (const r of rows) {
-    const p = products.find((x) => x.id === r.productId)
-    if (!p?.sellerId) continue
-    const cur = sellerMap.get(p.sellerId) ?? { revenue: 0, lines: 0 }
-    cur.revenue += Number(r._sum.lineTotal ?? 0)
-    cur.lines += 1
-    sellerMap.set(p.sellerId, cur)
-  }
-  const sellers = await prisma.user.findMany({
-    where: { id: { in: [...sellerMap.keys()] } },
-    select: { id: true, name: true, email: true },
-  })
-  return [...sellerMap.entries()].map(([sellerId, v]) => {
-    const u = sellers.find((s) => s.id === sellerId)
-    return { sellerId, name: u?.name ?? "—", email: u?.email ?? "", ...v }
-  })
+  return [
+    {
+      sellerId: "platform",
+      name: "Platform",
+      email: "",
+      revenue: Number(totals._sum.lineTotal ?? 0),
+      lines: totals._count._all ?? 0,
+    },
+  ]
 }
+
+// Backward-compatible export for /api/v1/reports/sellers route name.
+export const reportSellerPerformance = reportPlatformPerformance
 
 export const listUserAddresses = (userId: string) =>
   prisma.userAddress.findMany({ where: { userId }, orderBy: { createdAt: "desc" } })

@@ -16,7 +16,6 @@ type ProductRow = {
   sku: string
   status: string
   price: string | number
-  seller?: { email: string; name: string } | null
 }
 
 type ProductDetail = {
@@ -116,7 +115,7 @@ export function ProductConsolePage({
     { title: "Key Features", description: "<ul><li></li></ul>", sortOrder: 0, isActive: true },
   ])
 
-  const basePath = adminView ? "/admin/products" : "/seller/products"
+  const basePath = adminView ? "/admin/products" : "/admin/products"
 
   const loadList = useCallback(() => {
     setLoading(true)
@@ -380,7 +379,7 @@ export function ProductConsolePage({
       <section className="mx-auto max-w-7xl space-y-4">
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div>
-            <h1 className="font-melon text-2xl font-bold text-[#4A1D1F]">{adminView ? "Products" : "My products"}</h1>
+            <h1 className="font-melon text-2xl font-bold text-[#4A1D1F]">Products</h1>
             <p className="text-sm text-[#646464]">{total} items. Published products appear on website.</p>
           </div>
           <div className="flex gap-2">
@@ -395,10 +394,10 @@ export function ProductConsolePage({
         {error && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-800">{error}</p>}
         {loading && <p className="text-sm text-[#646464]">Loading...</p>}
         {!loading && (
-          <ConsoleTable headers={adminView ? ["Name", "Slug", "SKU", "Status", "Price", "Seller", "", ""] : ["Name", "Slug", "SKU", "Status", "Price", "", ""]}>
+          <ConsoleTable headers={["Name", "Slug", "SKU", "Status", "Price", "", ""]}>
             {rows.length === 0 ? (
               <tr>
-                <ConsoleTd colSpan={adminView ? 8 : 7} className="py-8 text-center text-[#646464]">
+                <ConsoleTd colSpan={7} className="py-8 text-center text-[#646464]">
                   No products yet.
                 </ConsoleTd>
               </tr>
@@ -422,7 +421,6 @@ export function ProductConsolePage({
                     </select>
                   </ConsoleTd>
                   <ConsoleTd className="font-semibold">Rs.{Number(p.price).toFixed(2)}</ConsoleTd>
-                  {adminView && <ConsoleTd className="text-[12px] text-[#646464]">{p.seller?.email ?? "-"}</ConsoleTd>}
                   <ConsoleTd>
                     <Link href={`${basePath}/${p.id}/edit`} className="rounded-full border border-[#7B3010] px-3 py-1.5 text-[11px] font-semibold uppercase text-[#7B3010]">
                       Edit

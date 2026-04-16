@@ -129,10 +129,6 @@ export default function Header() {
         setProfileHref("/login")
         return
       }
-      if (role === "seller") {
-        setProfileHref("/seller/dashboard")
-        return
-      }
       if (role === "admin" || role === "super_admin") {
         setProfileHref("/admin/dashboard")
         return

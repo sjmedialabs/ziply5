@@ -26,7 +26,12 @@ export async function POST(request: NextRequest) {
   const parsed = createSchema.safeParse(body)
   if (!parsed.success) return fail("Validation failed", 422, parsed.error.flatten())
   try {
-    const row = await upsertAbandonedCart(parsed.data)
+    const row = await upsertAbandonedCart({
+      sessionKey: parsed.data.sessionKey,
+      email: parsed.data.email,
+      itemsJson: parsed.data.itemsJson,
+      total: parsed.data.total,
+    })
     return ok(row, "Saved", 201)
   } catch (e) {
     return fail(e instanceof Error ? e.message : "Error", 400)
