@@ -91,6 +91,7 @@ model User {
   orderStatusChanges OrderStatusHistory[] @relation("OrderStatusChangedBy")
   orderNotesCreated  OrderNote[]          @relation("OrderNoteCreatedBy")
   invoicesCreated    Invoice[]            @relation("InvoiceCreatedBy")
+  codReconciliations CodSettlement[]      @relation("CodReconciledBy")
   complianceCertificatesVerified ProductComplianceCertificate[] @relation("ComplianceVerifiedBy")
   segmentMemberships CustomerSegmentMembership[]
   couponRedemptions  CouponRedemption[]
@@ -284,6 +285,38 @@ model ReturnRequest {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   order     Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  items     ReturnRequestItem[]
+  pickup    ReturnPickup?
+}
+
+model ReturnRequestItem {
+  id              String   @id @default(cuid())
+  returnRequestId String
+  orderItemId     String
+  requestedQty    Int
+  receivedQty     Int      @default(0)
+  reasonCode      String?
+  conditionStatus String?
+  notes           String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  returnRequest   ReturnRequest @relation(fields: [returnRequestId], references: [id], onDelete: Cascade)
+  orderItem       OrderItem @relation(fields: [orderItemId], references: [id], onDelete: Cascade)
+  @@unique([returnRequestId, orderItemId])
+}
+
+model ReturnPickup {
+  id              String   @id @default(cuid())
+  returnRequestId String   @unique
+  pickupDate      DateTime
+  timeSlot        String?
+  carrier         String?
+  trackingRef     String?
+  status          String   @default("scheduled")
+  notes           String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  returnRequest   ReturnRequest @relation(fields: [returnRequestId], references: [id], onDelete: Cascade)
 }
 
 model AbandonedCart {
@@ -539,6 +572,7 @@ model Order {
   shipments      Shipment[]
   invoice        Invoice?
   notes          OrderNote[]
+  codSettlement  CodSettlement?
   couponRedemptions CouponRedemption[]
 }
 
@@ -554,6 +588,7 @@ model OrderItem {
   allocations OrderItemAllocation[]
   bundleComponents OrderItemBundleComponent[]
   shipmentItems ShipmentItem[]
+  returnRequestItems ReturnRequestItem[]
 }
 
 model Transaction {
@@ -856,6 +891,23 @@ model OrderNote {
   createdAt   DateTime @default(now())
   order       Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
   createdBy   User?    @relation("OrderNoteCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+}
+
+model CodSettlement {
+  id               String   @id @default(cuid())
+  orderId          String   @unique
+  expectedAmount   Decimal  @db.Decimal(10, 2)
+  collectedAmount  Decimal  @db.Decimal(10, 2)
+  settledAmount    Decimal  @db.Decimal(10, 2)
+  varianceAmount   Decimal  @db.Decimal(10, 2) @default(0)
+  status           String   @default("pending")
+  notes            String?
+  reconciledById   String?
+  reconciledAt     DateTime?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  order            Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  reconciledBy     User?    @relation("CodReconciledBy", fields: [reconciledById], references: [id], onDelete: SetNull)
 }
 
 model OrderItemBundleComponent {

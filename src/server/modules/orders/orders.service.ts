@@ -324,3 +324,253 @@ export const addOrderNote = async (input: {
   return created
 }
 
+export const listOrderShipments = async (orderId: string) => {
+  const order = await prisma.order.findUnique({
+    where: { id: orderId },
+    select: { id: true },
+  })
+  if (!order) throw new Error("Order not found")
+  return prisma.shipment.findMany({
+    where: { orderId },
+    orderBy: { createdAt: "desc" },
+    include: { items: true },
+  })
+}
+
+export const createOrderShipment = async (input: {
+  orderId: string
+  actorId: string
+  carrier: string
+  shipmentNo?: string
+  trackingNo?: string
+  itemAllocations: Array<{ orderItemId: string; quantity: number }>
+}) => {
+  const order = await prisma.order.findUnique({
+    where: { id: input.orderId },
+    include: { items: true, statusHistory: { orderBy: { changedAt: "desc" }, take: 1 } },
+  })
+  if (!order) throw new Error("Order not found")
+  const itemById = new Map(order.items.map((item) => [item.id, item]))
+  for (const allocation of input.itemAllocations) {
+    const item = itemById.get(allocation.orderItemId)
+    if (!item) throw new Error(`Invalid order item: ${allocation.orderItemId}`)
+    if (allocation.quantity > item.quantity) {
+      throw new Error(`Allocated quantity exceeds ordered quantity for ${allocation.orderItemId}`)
+    }
+  }
+
+  const shipment = await prisma.$transaction(async (tx) => {
+    const created = await tx.shipment.create({
+      data: {
+        orderId: input.orderId,
+        shipmentNo: input.shipmentNo?.trim() || null,
+        carrier: input.carrier.trim(),
+        trackingNo: input.trackingNo?.trim() || null,
+        shipmentStatus: "shipped",
+        shippedAt: new Date(),
+        items: {
+          create: input.itemAllocations.map((item) => ({
+            orderItemId: item.orderItemId,
+            quantity: item.quantity,
+          })),
+        },
+      },
+      include: { items: true },
+    })
+
+    const fromStatus = (order.statusHistory?.[0]?.toStatus as OrderLifecycleStatus | undefined) ??
+      (order.status as OrderLifecycleStatus)
+    await tx.order.update({
+      where: { id: input.orderId },
+      data: {
+        status: persistedOrderStatus("shipped"),
+        statusHistory: {
+          create: {
+            fromStatus,
+            toStatus: "shipped",
+            notes: `Shipment created via ${input.carrier.trim()}`,
+            changedById: input.actorId,
+          },
+        },
+      },
+    })
+    await tx.orderFulfillment.upsert({
+      where: { orderId: input.orderId },
+      create: {
+        orderId: input.orderId,
+        fulfillmentStatus: "shipped",
+        shippedAt: new Date(),
+      },
+      update: {
+        fulfillmentStatus: "shipped",
+        shippedAt: new Date(),
+      },
+    })
+    return created
+  })
+
+  await logActivity({
+    actorId: input.actorId,
+    action: "order.shipment.create",
+    entityType: "Order",
+    entityId: input.orderId,
+    metadata: { shipmentId: shipment.id, carrier: shipment.carrier },
+  })
+  await enqueueOutboxEvent({
+    eventType: "order.shipped",
+    aggregateType: "order",
+    aggregateId: input.orderId,
+    payload: { orderId: input.orderId, shipmentId: shipment.id, carrier: shipment.carrier, trackingNo: shipment.trackingNo },
+  }).catch(() => null)
+
+  return shipment
+}
+
+export const getCodSettlement = async (orderId: string) => {
+  const order = await prisma.order.findUnique({ where: { id: orderId }, select: { id: true } })
+  if (!order) throw new Error("Order not found")
+  return prisma.codSettlement.findUnique({ where: { orderId } })
+}
+
+export const reconcileCodSettlement = async (input: {
+  orderId: string
+  actorId: string
+  collectedAmount: number
+  settledAmount?: number
+  status?: "pending" | "partial" | "settled" | "failed"
+  notes?: string
+}) => {
+  const order = await prisma.order.findUnique({
+    where: { id: input.orderId },
+    select: { id: true, total: true },
+  })
+  if (!order) throw new Error("Order not found")
+
+  const expectedAmount = Number(order.total)
+  const settledAmount = input.settledAmount ?? input.collectedAmount
+  const varianceAmount = Number((input.collectedAmount - expectedAmount).toFixed(2))
+  const status =
+    input.status ??
+    (settledAmount >= expectedAmount ? "settled" : settledAmount > 0 ? "partial" : "pending")
+
+  const settlement = await prisma.codSettlement.upsert({
+    where: { orderId: input.orderId },
+    create: {
+      orderId: input.orderId,
+      expectedAmount,
+      collectedAmount: input.collectedAmount,
+      settledAmount,
+      varianceAmount,
+      status,
+      notes: input.notes?.trim() || null,
+      reconciledById: input.actorId,
+      reconciledAt: new Date(),
+    },
+    update: {
+      expectedAmount,
+      collectedAmount: input.collectedAmount,
+      settledAmount,
+      varianceAmount,
+      status,
+      notes: input.notes?.trim() || null,
+      reconciledById: input.actorId,
+      reconciledAt: new Date(),
+    },
+  })
+
+  await logActivity({
+    actorId: input.actorId,
+    action: "order.cod.reconcile",
+    entityType: "Order",
+    entityId: input.orderId,
+    metadata: { status, collectedAmount: input.collectedAmount, settledAmount, varianceAmount },
+  })
+  await enqueueOutboxEvent({
+    eventType: "order.cod.reconciled",
+    aggregateType: "order",
+    aggregateId: input.orderId,
+    payload: {
+      orderId: input.orderId,
+      settlementId: settlement.id,
+      status,
+      collectedAmount: settlement.collectedAmount,
+      settledAmount: settlement.settledAmount,
+    },
+  }).catch(() => null)
+
+  return settlement
+}
+
+export const confirmOrderDelivery = async (input: {
+  orderId: string
+  actorId: string
+  shipmentId?: string
+  note?: string
+}) => {
+  const order = await prisma.order.findUnique({
+    where: { id: input.orderId },
+    include: { shipments: { orderBy: { createdAt: "desc" } }, statusHistory: { orderBy: { changedAt: "desc" }, take: 1 } },
+  })
+  if (!order) throw new Error("Order not found")
+
+  const fromStatus = (order.statusHistory[0]?.toStatus as OrderLifecycleStatus | undefined) ??
+    (order.status as OrderLifecycleStatus)
+  if (!["shipped", "delivered"].includes(fromStatus)) {
+    throw new Error(`Invalid status transition: ${fromStatus} -> delivered`)
+  }
+
+  const shipmentToUpdate =
+    input.shipmentId ?? order.shipments.find((s) => s.shipmentStatus !== "delivered")?.id ?? order.shipments[0]?.id
+
+  await prisma.$transaction(async (tx) => {
+    if (shipmentToUpdate) {
+      await tx.shipment.update({
+        where: { id: shipmentToUpdate },
+        data: { shipmentStatus: "delivered", deliveredAt: new Date() },
+      })
+    }
+    await tx.order.update({
+      where: { id: input.orderId },
+      data: {
+        status: persistedOrderStatus("delivered"),
+        statusHistory: {
+          create: {
+            fromStatus,
+            toStatus: "delivered",
+            notes: input.note?.trim() || "Delivered confirmation",
+            changedById: input.actorId,
+          },
+        },
+      },
+    })
+    await tx.orderFulfillment.upsert({
+      where: { orderId: input.orderId },
+      create: {
+        orderId: input.orderId,
+        fulfillmentStatus: "delivered",
+        deliveredAt: new Date(),
+      },
+      update: {
+        fulfillmentStatus: "delivered",
+        deliveredAt: new Date(),
+      },
+    })
+  })
+
+  await logActivity({
+    actorId: input.actorId,
+    action: "order.delivery.confirm",
+    entityType: "Order",
+    entityId: input.orderId,
+    metadata: { shipmentId: shipmentToUpdate ?? null },
+  })
+  await enqueueOutboxEvent({
+    eventType: "order.delivered",
+    aggregateType: "order",
+    aggregateId: input.orderId,
+    payload: { orderId: input.orderId, shipmentId: shipmentToUpdate ?? null },
+  }).catch(() => null)
+
+  return getOrderById(input.orderId)
+}
+
