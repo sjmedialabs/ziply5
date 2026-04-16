@@ -219,16 +219,24 @@ export const listProducts = async (
     ]
   }
 
-  const [items, total] = await Promise.all([
-    prisma.product.findMany({
+  // const [items, total] = await Promise.all([
+  //   prisma.product.findMany({
+  //     where,
+  //     orderBy: { createdAt: "desc" },
+  //     skip,
+  //     take: limit,
+  //     select: productSelect,
+  //   }),
+  //   prisma.product.count({ where }),
+  // ])
+  const items = await prisma.product.findMany({
       where,
       orderBy: { createdAt: "desc" },
       skip,
       take: limit,
       select: productSelect,
-    }),
-    prisma.product.count({ where }),
-  ])
+    })
+const total = await prisma.product.count({ where })
 
   return { items, total, page, limit }
 }

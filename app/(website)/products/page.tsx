@@ -3,7 +3,7 @@
 import { Suspense, useEffect, useMemo, useState } from "react"
 import Image from "next/image"
 import Link from "next/link"
-import { useSearchParams } from "next/navigation"
+import { useSearchParams, useRouter } from "next/navigation"
 import {
   Select,
   SelectContent,
@@ -14,6 +14,7 @@ import {
 import { getCartItems, setCartItemQuantity } from "@/lib/cart"
 import { getFavoriteSlugs, toggleFavoriteSlug } from "@/lib/favorites"
 import { toStorefrontProduct, type StorefrontProduct } from "@/lib/storefront-products"
+import { useStorefrontProducts } from "@/hooks/useStorefrontProducts"
 
 type CategoryFilter = "all" | string
 type MealTypeFilter = "all" | "veg" | "non-veg"
@@ -32,6 +33,9 @@ function ProductsPageContent() {
   const [error, setError] = useState("")
   const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>("all")
   const [mealTypeFilter, setMealTypeFilter] = useState<MealTypeFilter>("all")
+  const [packFilter, setPackFilter] = useState<any>("all")
+  const [mealTimeFilter, setMealTimeFilter] = useState<MealTypeFilter>("all")
+  const [availabilityFilter, setAvailabilityFilter] = useState<any>("all")
   const [sortBy, setSortBy] = useState<SortType>("popular")
   const [favoriteSlugs, setFavoriteSlugs] = useState<string[]>([])
   const [cartQtyBySlug, setCartQtyBySlug] = useState<Record<string, number>>({})
@@ -47,17 +51,18 @@ function ProductsPageContent() {
     ])
       .then(([productRes, categoryRes]: Array<{ success?: boolean; message?: string; data?: unknown }>) => {
         if (cancelled) return
-        if (productRes.success === false) {
-          setError(productRes.message ?? "Could not load products")
-          return
-        }
+        // if (productRes.success === false) {
+        //   setError(productRes.message ?? "Could not load products")
+        //   return
+        // }
 
         const categories = ((categoryRes.data as CategoryApi[] | undefined) ?? [])
           .filter((c) => c.slug && c.slug !== "all")
           .map((c) => ({ slug: c.slug, name: c.name }))
         setCategoryOptions(categories)
-
-        const rows = ((productRes.data as { items?: ProductApi[] } | undefined)?.items ?? [])
+         const { products } = useStorefrontProducts(40)
+        const prod = useMemo(() => products.slice(0, 4), [])
+        const rows = ((prod as { items?: ProductApi[] } | undefined)?.items ?? [])
         const normalized = rows.map((item) => {
           const mapped = toStorefrontProduct(item as never)
           if (mapped.category !== "all") return mapped
@@ -121,7 +126,18 @@ function ProductsPageContent() {
     const items = products.filter((item) => {
       const categoryMatch = categoryFilter === "all" || item.category === categoryFilter
       const typeMatch = mealTypeFilter === "all" || item.type === mealTypeFilter
-      return categoryMatch && typeMatch
+      const packMatch =
+        packFilter === "all" ||
+        (packFilter === "combo-pack" && (item as any).isCombo) ||
+        (packFilter === "limited-offers" && (item as any).isLimited)
+      const mealTimeMatch = mealTimeFilter === "all" || (item as any).mealTime === mealTimeFilter
+      const availabilityMatch =
+        availabilityFilter === "all" ||
+        (availabilityFilter === "in-stock" && (item as any).inStock !== false) ||
+        (availabilityFilter === "out-of-stock" && (item as any).inStock === false)
+      // const priceMatch =
+        // item.price >= priceRange[0] && item.price <= priceRange[1]
+      return categoryMatch && typeMatch && packMatch && mealTimeMatch && availabilityMatch
     })
 
     const searched = searchTerm ? items.filter((item) => item.name.toLowerCase().includes(searchTerm)) : items
@@ -148,13 +164,14 @@ function ProductsPageContent() {
             </p>
           )}
 
-          <div className="p-3 md:p-4">
-            <div className="flex flex-col gap-3">
+          <div className="p-3 md:p-4 bg-white/40 rounded-3xl">
+            <div className="flex flex-col gap-4">
               <p className="text-xs font-bold uppercase tracking-wide text-[#1F1F1C]">Filtered Products By</p>
               <div className="flex flex-row gap-4 items-center">
+                {/* sort or filter by product type */}
                 <Select value={categoryFilter} onValueChange={(value) => setCategoryFilter(value as CategoryFilter)}>
-                  <SelectTrigger className="h-10 w-full min-w-[190px] rounded-full border-[#D9D9D1] bg-white px-4 text-sm font-medium text-[#494944]">
-                    <SelectValue placeholder="Category" />
+                  <SelectTrigger className="w-full rounded-full border-[#D9D9D1] bg-white px-4 text-sm font-medium text-[#494944]">
+                    <SelectValue placeholder="Product" />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">All Categories</SelectItem>
@@ -165,10 +182,10 @@ function ProductsPageContent() {
                     ))}
                   </SelectContent>
                 </Select>
-
+                {/* Sort by type  */}
                 <Select value={mealTypeFilter} onValueChange={(value) => setMealTypeFilter(value as MealTypeFilter)}>
-                  <SelectTrigger className="h-10 w-full min-w-[190px] rounded-full border-[#D9D9D1] bg-white px-4 text-sm font-medium text-[#494944]">
-                    <SelectValue placeholder="Meal Type" />
+                  <SelectTrigger className="w-full rounded-full border-[#D9D9D1] bg-white px-4 text-sm font-medium text-[#494944]">
+                    <SelectValue placeholder="Type" />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">All Types</SelectItem>
@@ -177,31 +194,80 @@ function ProductsPageContent() {
                   </SelectContent>
                 </Select>
 
+                <Select value={packFilter} onValueChange={(value) => setPackFilter(value as any)}>
+                  <SelectTrigger className="w-full rounded-full border-[#D9D9D1] bg-white px-4 text-sm font-medium text-[#494944]">
+                    <SelectValue placeholder="Packs & Deals" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Packs</SelectItem>
+                    <SelectItem value="combo-pack">Combo Pack</SelectItem>
+                    <SelectItem value="limited-offers">Limited Offers</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Select value={mealTimeFilter} onValueChange={(value) => setMealTimeFilter(value as any)}>
+                  <SelectTrigger className="w-full rounded-full border-[#D9D9D1] bg-white px-4 text-sm font-medium text-[#494944]">
+                    <SelectValue placeholder="Meal Type" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Meal Types</SelectItem>
+                    <SelectItem value="breakfast">Breakfast</SelectItem>
+                    <SelectItem value="lunch">Lunch</SelectItem>
+                    <SelectItem value="dinner">Dinner</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Select value={availabilityFilter} onValueChange={(value) => setAvailabilityFilter(value as any)}>
+                  <SelectTrigger className="w-full rounded-full border-[#D9D9D1] bg-white px-4 text-sm font-medium text-[#494944]">
+                    <SelectValue placeholder="Availability" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Availability</SelectItem>
+                    <SelectItem value="in-stock">In Stock</SelectItem>
+                    <SelectItem value="out-of-stock">Out of Stock</SelectItem>
+                  </SelectContent>
+                </Select>
+                                {/* Sort by popular , a-z or Z o A */}
+                                <div>
                 <Select
                   value={sortBy}
                   onValueChange={(value) => setSortBy(value as SortType)}
                 >
-                  <SelectTrigger className="h-10 w-full min-w-[190px] rounded-full border-[#D9D9D1] bg-white px-4 text-sm font-medium text-[#494944]">
+                  <SelectTrigger className="w-full rounded-full border-[#D9D9D1] bg-white px-4 text-sm font-medium text-[#494944]">
                     <SelectValue placeholder="Sort by" />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="popular">Popular</SelectItem>
-                    <SelectItem value="name-asc">Name: A-Z</SelectItem>
-                    <SelectItem value="name-desc">Name: Z-A</SelectItem>
+                    <SelectItem value="newest">Newest</SelectItem>
+                    <SelectItem value="price-low-high">Price: Low to High</SelectItem>
+                    <SelectItem value="price-high-low">Price: High to Low</SelectItem>
                   </SelectContent>
                 </Select>
-                            <div className="mt-3 flex flex-wrap gap-2 text-xs">
-              <button
-                onClick={() => {
-                  setCategoryFilter("all")
-                  setMealTypeFilter("all")
-                  setSortBy("popular")
-                }}
-                className="rounded-full bg-[#7A2B19] px-3 py-1 text-white"
-              >
-                Reset
-              </button>
-            </div>
+                {/* {sortBy === "price-low-high" || sortBy === "price-high-low" && (<div className="flex gap-2 mt-1 items-center">
+                  <input
+                    type="number"
+                    placeholder="Min"
+                    className="w-20 border px-2 py-1 rounded-full"
+                    onChange={(e) => setPriceRange([Number(e.target.value), priceRange[1]])}
+                  />
+                  <input
+                    type="number"
+                    placeholder="Max"
+                    className="w-20 rounded-full border px-2 py-1"
+                    onChange={(e) => setPriceRange([priceRange[0], Number(e.target.value)])}
+                  />
+                </div>)} */}
+                </div>
+                <div className="flex flex-wrap items-center gap-2 text-xs">
+                  <button
+                    onClick={() => {
+                      setCategoryFilter("all")
+                      setMealTypeFilter("all")
+                      setSortBy("popular")
+                    }}
+                    className="rounded-full bg-[#7A2B19] px-3 py-1 text-white"
+                  >
+                    Reset
+                  </button>
+                </div>
               </div>
             </div>
           </div>
@@ -210,18 +276,6 @@ function ProductsPageContent() {
             <p className="text-xs font-bold uppercase tracking-wide text-[#1F1F1C]">
               Showing {filteredProducts.length} products
             </p>
-            {/* <div className="hidden items-center gap-2 text-xs md:flex">
-              <span className="font-semibold text-[#7F7F7A]">Sort by</span>
-              <select
-                value={sortBy}
-                onChange={(event) => setSortBy(event.target.value as SortType)}
-                className="rounded-full border border-[#D9D9D1] bg-white px-3 py-1.5 font-medium text-[#494944] outline-none"
-              >
-                <option value="popular">Popular</option>
-                <option value="name-asc">Name: A-Z</option>
-                <option value="name-desc">Name: Z-A</option>
-              </select>
-            </div> */}
           </div>
         </div>
 
@@ -247,24 +301,22 @@ function ProductsPageContent() {
                 {favoriteSlugs.includes(product.slug) ? "♥" : "♡"}
               </button>
 
-              <Link href={`/product/${product.slug}`} className="block">
-                <div className="absolute right-3 top-3">
-                  <span
-                    className={`inline-flex h-5 w-5 items-center justify-center rounded-sm border ${
-                      product.type === "veg" ? "border-[#148B2E]" : "border-[#A32424]"
-                    }`}
-                  >
+                <Link href={`/product/${product.slug}`} className="block">
+                  <div className="absolute right-3 top-3">
                     <span
-                      className={`h-2.5 w-2.5 rounded-full ${
-                        product.type === "veg" ? "bg-[#148B2E]" : "bg-[#A32424]"
-                      }`}
-                    />
-                  </span>
-                </div>
+                      className={`inline-flex h-5 w-5 items-center justify-center rounded-sm border ${product.type === "veg" ? "border-[#148B2E]" : "border-[#A32424]"
+                        }`}
+                    >
+                      <span
+                        className={`h-2.5 w-2.5 rounded-full ${product.type === "veg" ? "bg-[#148B2E]" : "bg-[#A32424]"
+                          }`}
+                      />
+                    </span>
+                  </div>
 
-                <div className="relative mx-auto h-[280px] w-full max-w-[190px] transition-transform duration-300 hover:scale-90">
-                  <Image src={product.image} alt={product.name} fill className="object-contain" />
-                </div>
+                  <div className="relative mx-auto h-[280px] w-full max-w-[190px] transition-transform duration-300 hover:scale-90">
+                    <Image src={product.image} alt={product.name} fill className="object-contain" />
+                  </div>
 
                 <div className="mt-2 text-center tracking-wide font-light font-melon">
                   <h3 className="text-[18px] uppercase leading-tight text-white drop-shadow-[0_1px_0_rgba(0,0,0,0.2)]">
@@ -277,42 +329,45 @@ function ProductsPageContent() {
                 </div>
               </Link>
 
-              <div className="mt-3 flex items-center justify-between gap-2 font-melon tracking-wide font-light">
-                    {(cartQtyBySlug[product.slug] ?? 0) > 0 ? (
-                      <div className="flex items-center rounded-md border border-[#d5c4b8] bg-white/95 px-1 py-0.5">
-                        <button
-                          type="button"
-                          onClick={() => setCartItemQuantity(product, Math.max(0, (cartQtyBySlug[product.slug] ?? 0) - 1))}
-                          className="h-6 w-6 rounded text-sm  text-[#5A272A] hover:bg-[#f4efec]"
-                        >
-                          -
-                        </button>
-                        <span className="min-w-5 text-center text-xs text-[#5A272A]">
-                          {cartQtyBySlug[product.slug] ?? 0}
-                        </span>
-                        <button
-                          type="button"
-                          onClick={() => setCartItemQuantity(product, (cartQtyBySlug[product.slug] ?? 0) + 1)}
-                          className="h-6 w-6 rounded text-sm text-[#5A272A] hover:bg-[#f4efec]"
-                        >
-                          +
-                        </button>
-                      </div>  
-                    ) : (
+                <div className="mt-3 flex items-center justify-between gap-2 font-melon tracking-wide font-light">
+                  {(cartQtyBySlug[product.slug] ?? 0) > 0 ? (
+                    <div className="flex items-center rounded-md border border-[#d5c4b8] bg-white/95 px-1 py-0.5">
                       <button
                         type="button"
-                        onClick={() => setCartItemQuantity(product, 1)}
-                        className="rounded-lg border border-white tracking-wide px-4 py-1.5 text-[12px] font-light text-white hover:bg-primary hover:text-white transition-all "
+                        onClick={() => setCartItemQuantity(product, Math.max(0, (cartQtyBySlug[product.slug] ?? 0) - 1))}
+                        className="h-6 w-6 rounded text-sm  text-[#5A272A] hover:bg-[#f4efec]"
                       >
-                        Add to Cart
+                        -
                       </button>
-                    )}
-                    <Link href="/checkout" className="rounded-lg bg-primary tracking-wide px-3 py-1.5 text-[12px] font-light text-white hover:bg-[#2d1011]">
-                      Buy Now
-                    </Link>
-                  </div>
-            </article>
-          ))}
+                      <span className="min-w-5 text-center text-xs text-[#5A272A]">
+                        {cartQtyBySlug[product.slug] ?? 0}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setCartItemQuantity(product, (cartQtyBySlug[product.slug] ?? 0) + 1)}
+                        className="h-6 w-6 rounded text-sm text-[#5A272A] hover:bg-[#f4efec]"
+                      >
+                        +
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => setCartItemQuantity(product, 1)}
+                      className="rounded-lg border border-white tracking-wide px-4 py-1.5 text-[12px] font-light text-white hover:bg-primary hover:text-white transition-all "
+                    >
+                      Add to Cart
+                    </button>
+                  )}
+                  <button
+                    // onClick={() => handleBuyNow(product)}
+                    className="rounded-lg bg-primary tracking-wide px-3 py-1.5 text-[12px] font-light text-white hover:bg-[#2d1011]"
+                  >
+                    Buy Now
+                  </button>
+                </div>
+              </article>
+            ))}
         </div>
       </div>
     </section>
