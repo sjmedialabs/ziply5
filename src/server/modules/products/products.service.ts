@@ -127,6 +127,48 @@ const productSelect = {
   variants: true,
 } as const
 
+// Public list needs to be fast: avoid hydrating rich product sections/labels/details.
+// The storefront cards only require: image, basic pricing, veg/non-veg tagging, and category slug.
+const productSelectPublicList = {
+  id: true,
+  brandId: true,
+  name: true,
+  slug: true,
+  description: true,
+  basePrice: true,
+  salePrice: true,
+  price: true,
+  taxIncluded: true,
+  stockStatus: true,
+  totalStock: true,
+  shelfLife: true,
+  isActive: true,
+  isFeatured: true,
+  isBestSeller: true,
+  thumbnail: true,
+  metaTitle: true,
+  metaDescription: true,
+  status: true,
+  sku: true,
+  createdAt: true,
+  updatedAt: true,
+  images: { take: 1, orderBy: { position: "asc" as const } },
+  // Tags drive veg/non-veg detection.
+  tags: { include: { tag: true } },
+  categories: { include: { category: true }, take: 1 },
+  // Weight/sku/stock are needed for product-card rendering.
+  variants: {
+    select: {
+      name: true,
+      weight: true,
+      price: true,
+      sku: true,
+      stock: true,
+      isDefault: true,
+    },
+  },
+} as const
+
 const slugify = (value: string) =>
   value
     .trim()
@@ -230,12 +272,12 @@ export const listProducts = async (
   //   prisma.product.count({ where }),
   // ])
   const items = await prisma.product.findMany({
-      where,
-      orderBy: { createdAt: "desc" },
-      skip,
-      take: limit,
-      select: productSelect,
-    })
+    where,
+    orderBy: { createdAt: "desc" },
+    skip,
+    take: limit,
+    select: scope === "public" ? productSelectPublicList : productSelect,
+  })
 const total = await prisma.product.count({ where })
 
   return { items, total, page, limit }

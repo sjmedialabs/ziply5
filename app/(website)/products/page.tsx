@@ -14,7 +14,6 @@ import {
 import { getCartItems, setCartItemQuantity } from "@/lib/cart"
 import { getFavoriteSlugs, toggleFavoriteSlug } from "@/lib/favorites"
 import { toStorefrontProduct, type StorefrontProduct } from "@/lib/storefront-products"
-import { useStorefrontProducts } from "@/hooks/useStorefrontProducts"
 
 type CategoryFilter = "all" | string
 type MealTypeFilter = "all" | "veg" | "non-veg"
@@ -46,10 +45,11 @@ function ProductsPageContent() {
     setLoading(true)
     setError("")
     Promise.all([
-      fetch("/api/v1/products?page=1&limit=200").then((r) => r.json()),
+      // This page currently renders only the first 4 items, so fetch only 4.
+      fetch("/api/v1/products?page=1&limit=4").then((r) => r.json()),
       fetch("/api/v1/categories").then((r) => r.json()),
     ])
-      .then(([productRes, categoryRes]: Array<{ success?: boolean; message?: string; data?: unknown }>) => {
+      .then(([productRes, categoryRes]: Array<{ success?: boolean; message?: string; data?: any }>) => {
         if (cancelled) return
         // if (productRes.success === false) {
         //   setError(productRes.message ?? "Could not load products")
@@ -60,10 +60,9 @@ function ProductsPageContent() {
           .filter((c) => c.slug && c.slug !== "all")
           .map((c) => ({ slug: c.slug, name: c.name }))
         setCategoryOptions(categories)
-         const { products } = useStorefrontProducts(40)
-        const prod = useMemo(() => products.slice(0, 4), [])
-        const rows = ((prod as { items?: ProductApi[] } | undefined)?.items ?? [])
-        const normalized = rows.map((item) => {
+
+        const prodItems: ProductApi[] = ((productRes?.data?.items as ProductApi[] | undefined) ?? []) as ProductApi[]
+        const normalized = prodItems.slice(0, 4).map((item) => {
           const mapped = toStorefrontProduct(item as never)
           if (mapped.category !== "all") return mapped
           const linkedSlug = item.categories?.[0]?.category?.slug

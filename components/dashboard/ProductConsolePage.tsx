@@ -439,6 +439,47 @@ export function ProductConsolePage({
     }
   }
 
+  const uploadIcon = async (files: FileList | null | undefined, idx: number) => {
+    const selected = files ? Array.from(files).slice(0, 1) : []
+    if (selected.length === 0) return
+    setUploading(true)
+    setError("")
+    try {
+      const token = window.localStorage.getItem("ziply5_access_token")
+      const form = new FormData()
+      selected.forEach((file) => form.append("files", file))
+      form.append("folder", `products/icon`)
+      const res = await fetch("/api/v1/uploads", {
+        method: "POST",
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+        body: form,
+      })
+      const json = (await res.json()) as {
+        success?: boolean
+        message?: string
+        data?: { files?: Array<{ url: string }> }
+      }
+      if (!res.ok || json.success === false) {
+        setError(json.message ?? "Upload failed")
+        return
+      }
+      const urls = uniq((json.data?.files ?? []).map((f) => f.url))
+      if (urls.length === 0) {
+        setError("Upload failed")
+        return
+      }
+      setFeatures((prev) =>
+        prev.map((item, itemIdx) =>
+          itemIdx === idx ? { ...item, icon: urls[0] } : item,
+        ),
+      )
+    } catch {
+      setError("Upload failed")
+    } finally {
+      setUploading(false)
+    }
+  }
+
   const saveRowStatus = async (id: string) => {
     const next = rowStatus[id]
     if (!next) return
@@ -1012,20 +1053,14 @@ export function ProductConsolePage({
                   />
                 </div>
                 <div>
-                  <Label className="text-xs font-semibold text-[#4A1D1F]">Icon URL (optional)</Label>
-                  <input
-                    type="text"
-                    placeholder="Icon URL (optional)"
-                    value={feature.icon || ""}
-                    onChange={(e) =>
-                      setFeatures((prev) =>
-                        prev.map((item, itemIdx) =>
-                          itemIdx === idx ? { ...item, icon: e.target.value || null } : item,
-                        ),
-                      )
-                    }
-                    className="w-full rounded-lg border border-[#D9D9D1] bg-white px-2 py-2 text-sm"
-                  />
+                  <Label className="text-xs font-semibold text-[#4A1D1F]">Icon (optional)</Label>
+                  <input type="file" accept="image/*" onChange={(e) => void uploadIcon(e.target.files, idx)} className="w-full rounded-lg border border-[#D9D9D1] bg-white px-2 py-2 text-sm" />
+                  {feature.icon && (
+                    <div className="mt-2 flex items-center gap-2">
+                      <img src={feature.icon} alt="Icon preview" className="w-8 h-8 object-cover rounded" />
+                      <button type="button" onClick={() => setFeatures((prev) => prev.map((item, itemIdx) => itemIdx === idx ? { ...item, icon: null } : item))} className="text-xs text-red-500 hover:text-red-700">Remove</button>
+                    </div>
+                  )}
                 </div>
               </div>
               <button

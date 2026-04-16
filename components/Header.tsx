@@ -41,7 +41,8 @@ export default function Header() {
     try {
       const [catsRes, productsRes] = await Promise.all([
         fetch("/api/v1/categories").then((r) => r.json()).catch(() => ({ data: [] })),
-        fetch("/api/v1/products?page=1&limit=200").then((r) => r.json()).catch(() => ({ data: { items: [] } })),
+        // Dropdown only needs a small subset; reduce load.
+        fetch("/api/v1/products?page=1&limit=80").then((r) => r.json()).catch(() => ({ data: { items: [] } })),
       ])
 
       const cats = ((catsRes as { data?: ApiCategory[] })?.data ?? [])
