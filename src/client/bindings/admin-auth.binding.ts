@@ -25,7 +25,7 @@ export const bindAdminAuth = () => {
       const response = await apiRequest<LoginResponse>("/api/v1/auth/login", "POST", { email, password })
       localStorage.setItem("ziply5_access_token", response.data.accessToken)
       localStorage.setItem("ziply5_refresh_token", response.data.refreshToken)
-      window.location.href = response.data.user.role === "seller" ? "/seller/dashboard" : "/admin/dashboard"
+      window.location.href = "/admin/dashboard"
     } catch (error) {
       console.error("Login failed:", error)
     }

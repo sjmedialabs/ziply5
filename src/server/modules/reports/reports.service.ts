@@ -18,12 +18,12 @@ export const salesSummary = async (from: Date, to: Date) => {
   return {
     from,
     to,
-    orderCount: agg._count._all,
+    orderCount: agg._count,
     revenueTotal: agg._sum.total ?? 0,
     subtotalTotal: agg._sum.subtotal ?? 0,
     byStatus: byStatus.map((row) => ({
       status: row.status,
-      count: row._count._all,
+      count: row._count,
       revenue: row._sum.total ?? 0,
     })),
   }

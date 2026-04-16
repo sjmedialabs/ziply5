@@ -33,9 +33,15 @@ export async function PATCH(request: NextRequest, ctx: { params: Promise<{ id: s
   }
 
   try {
-    const order = await updateOrderStatus(id, parsed.data.status, auth.user.sub)
+    const order = await updateOrderStatus(id, parsed.data.status, auth.user.sub, {
+      reasonCode: parsed.data.reasonCode,
+      note: parsed.data.note,
+    })
     return ok(order, "Order updated")
-  } catch {
-    return fail("Order not found", 404)
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Order update failed"
+    if (message.toLowerCase().includes("not found")) return fail(message, 404)
+    if (message.toLowerCase().includes("invalid status transition")) return fail(message, 422)
+    return fail(message, 400)
   }
 }

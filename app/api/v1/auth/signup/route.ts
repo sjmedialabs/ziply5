@@ -12,7 +12,7 @@ export async function GET() {
       name: "string",
       email: "string (email)",
       password: "string (min 8)",
-      role: "super_admin | admin | seller | customer (optional)",
+      role: "super_admin | admin | customer (optional)",
     },
   })
 }

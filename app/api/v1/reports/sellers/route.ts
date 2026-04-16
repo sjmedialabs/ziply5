@@ -10,5 +10,5 @@ export async function GET(request: NextRequest) {
   const denied = requirePermission(auth.user.role, "reports.read")
   if (denied) return denied
   const rows = await reportSellerPerformance()
-  return ok(rows, "Seller performance")
+  return ok(rows, "Platform performance")
 }

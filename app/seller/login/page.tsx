@@ -1,5 +1,5 @@
-import AuthLoginCard from "@/components/AuthLoginCard";
+import { redirect } from "next/navigation";
 
 export default function SellerLoginPage() {
-  return <AuthLoginCard title="SELLER LOGIN" portal="seller" />;
+  redirect("/admin/login");
 }

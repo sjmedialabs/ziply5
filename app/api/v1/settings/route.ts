@@ -30,6 +30,10 @@ export async function POST(request: NextRequest) {
     return fail("Validation failed", 422, parsed.error.flatten())
   }
 
-  const row = await upsertSetting(parsed.data)
+  const row = await upsertSetting({
+    group: parsed.data.group,
+    key: parsed.data.key,
+    valueJson: parsed.data.valueJson,
+  })
   return ok(row, "Setting saved")
 }

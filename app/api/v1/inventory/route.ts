@@ -3,7 +3,6 @@ import { fail, ok } from "@/src/server/core/http/response"
 import { requireAuth } from "@/src/server/middleware/auth"
 import { requirePermission } from "@/src/server/middleware/rbac"
 import {
-  assertSellerOwnsInventorySource,
   listInventoryOverview,
   updateInventoryItem,
   updateVariantStock,
@@ -22,8 +21,7 @@ export async function GET(request: NextRequest) {
   if ("status" in auth) return auth
   const denied = requirePermission(auth.user.role, "inventory.read")
   if (denied) return denied
-  const sellerScope = auth.user.role === "seller" ? auth.user.sub : null
-  const rows = await listInventoryOverview(sellerScope)
+  const rows = await listInventoryOverview()
   return ok(rows, "Inventory")
 }
 
@@ -35,9 +33,7 @@ export async function PATCH(request: NextRequest) {
   const body = await request.json()
   const parsed = patchSchema.safeParse(body)
   if (!parsed.success) return fail("Validation failed", 422, parsed.error.flatten())
-  const sellerId = auth.user.role === "seller" ? auth.user.sub : null
   try {
-    await assertSellerOwnsInventorySource(sellerId, parsed.data.source, parsed.data.id)
     if (parsed.data.source === "warehouse") {
       const row = await updateInventoryItem(
         parsed.data.id,

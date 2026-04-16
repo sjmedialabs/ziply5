@@ -8,10 +8,9 @@ import { createProduct, listProducts, type ListProductsScope } from "@/src/serve
 import { logActivity } from "@/src/server/modules/activity/activity.service"
 import type { AppTokenPayload } from "@/src/server/core/security/jwt"
 
-const resolveListScope = (user: AppTokenPayload | null): { scope: ListProductsScope; sellerUserId?: string } => {
+const resolveListScope = (user: AppTokenPayload | null): { scope: ListProductsScope } => {
   if (!user) return { scope: "public" }
   if (user.role === "super_admin" || user.role === "admin") return { scope: "admin" }
-  if (user.role === "seller") return { scope: "seller", sellerUserId: user.sub }
   return { scope: "public" }
 }
 
@@ -22,9 +21,9 @@ export async function GET(request: NextRequest) {
   const q = request.nextUrl.searchParams.get("q") ?? undefined
 
   const user = optionalAuth(request)
-  const { scope, sellerUserId } = resolveListScope(user)
+  const { scope } = resolveListScope(user)
 
-  const data = await listProducts(page, limit, scope, sellerUserId, {
+  const data = await listProducts(page, limit, scope, {
     status: scope === "admin" ? status : undefined,
     q: q ?? undefined,
   })
@@ -45,13 +44,12 @@ export async function POST(request: NextRequest) {
       return fail("Validation failed", 422, parsed.error.flatten())
     }
 
-    const isSeller = auth.user.role === "seller"
-    const { sellerId: bodySellerId, ...fields } = parsed.data
-    const sellerId = isSeller ? auth.user.sub : (bodySellerId ?? null)
+    const fields = parsed.data
 
     const product = await createProduct({
       ...fields,
-      sellerId,
+      createdById: auth.user.sub,
+      managedById: auth.user.sub,
     })
 
     await logActivity({

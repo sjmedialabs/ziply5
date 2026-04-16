@@ -351,36 +351,8 @@ function ProfilePageContent() {
                         <h3 className="mt-2 text-center text-[18px] font-black uppercase leading-tight text-white">{product.name}</h3>
                         <p className="mt-1 text-center text-[10px] font-semibold uppercase text-white/90">Home style meal | Net wt. {product.weight}</p>
                       </Link>
-                      <div className="mt-3 grid grid-cols-3 gap-2">
-                        <button
-                          type="button"
-                          onClick={() => removeFavorite(product.slug)}
-                          className="rounded-md bg-white/85 py-1 text-[10px] font-semibold uppercase text-[#5A272A]"
-                        >
-                          Remove
-                        </button>
-                        <div className="col-span-2 rounded-md bg-white/85 px-2 py-1">
-                          <p className="text-center text-[9px] font-semibold uppercase text-[#5A272A]">Add to cart</p>
-                          <div className="mt-1 flex items-center justify-between rounded-md border border-[#d5c4b8] bg-white px-1 py-0.5">
-                            <button
-                              type="button"
-                              onClick={() => updateCartQty(product, -1)}
-                              className="h-5 w-5 rounded text-sm font-bold text-[#5A272A] hover:bg-[#f4efec]"
-                            >
-                              -
-                            </button>
-                            <span className="text-xs font-bold text-[#5A272A]">{cartQtyBySlug[product.slug] ?? 0}</span>
-                            <button
-                              type="button"
-                              onClick={() => updateCartQty(product, 1)}
-                              className="h-5 w-5 rounded text-sm font-bold text-[#5A272A] hover:bg-[#f4efec]"
-                            >
-                              +
-                            </button>
-                          </div>
-                        </div>
-                      </div>
-                      <div className="mt-2 grid grid-cols-2 gap-2">
+                      {/*    */}
+                      {/* <div className="mt-2 grid grid-cols-2 gap-2">
                         <button
                           type="button"
                           onClick={() => addToCart(product, 1)}
@@ -398,7 +370,54 @@ function ProfilePageContent() {
                         >
                           Buy now
                         </button>
+                      </div> */}
+                      <div className="mt-3 flex items-center justify-between gap-2">
+                    {(cartQtyBySlug[product.slug] ?? 0) > 0 ? (
+                      <div className="flex items-center rounded-md border border-[#d5c4b8] bg-white/95 px-1 py-0.5">
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setCartItemQuantity(product, Math.max(0, (cartQtyBySlug[product.slug] ?? 0) - 1));
+                          }}
+                          className="h-6 w-6 rounded text-sm font-light text-[#5A272A] hover:bg-[#f4efec]"
+                        >
+                          -
+                        </button>
+                        <span className="min-w-5 text-center text-xs font-light text-[#5A272A]">
+                          {cartQtyBySlug[product.slug] ?? 0}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setCartItemQuantity(product, (cartQtyBySlug[product.slug] ?? 0) + 1);
+                          }}
+                          className="h-6 w-6 rounded text-sm font-light text-[#5A272A] hover:bg-[#f4efec]"
+                        >
+                          +
+                        </button>
                       </div>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setCartItemQuantity(product, 1);
+                        }}
+                        className="rounded-lg border border-white tracking-wide px-4 py-1.5 text-[12px] font-light text-white hover:bg-primary hover:text-white transition-all "
+                      >
+                        Add to Cart
+                      </button>
+                    )}
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        router.push("/checkout")
+                      }} className="rounded-lg bg-primary tracking-wide px-3 py-1.5 text-[12px] font-light text-white hover:bg-[#2d1011]">
+                      Buy Now
+                    </button>
+                  </div>
                     </article>
                   ))}
                 </div>

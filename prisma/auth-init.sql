@@ -59,6 +59,5 @@ INSERT INTO "Role" ("id", "key", "name")
 VALUES
   ('role_super_admin', 'super_admin', 'super admin'),
   ('role_admin', 'admin', 'admin'),
-  ('role_seller', 'seller', 'seller'),
   ('role_customer', 'customer', 'customer')
 ON CONFLICT ("key") DO NOTHING;

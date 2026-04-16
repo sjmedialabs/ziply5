@@ -70,7 +70,7 @@ export default function AdminDashboardPage() {
             <p className="mt-2 text-2xl font-bold text-[#4A1D1F]">{summary.totalUsers}</p>
           </div>
           <div className="rounded-2xl border border-[#E8DCC8] bg-white p-5 shadow-sm">
-            <p className="text-xs font-semibold uppercase tracking-wide text-[#646464]">Sellers (roles)</p>
+            <p className="text-xs font-semibold uppercase tracking-wide text-[#646464]">Seller roles (legacy)</p>
             <p className="mt-2 text-2xl font-bold text-[#4A1D1F]">{summary.totalSellers}</p>
           </div>
           <div className="rounded-2xl border border-[#E8DCC8] bg-white p-5 shadow-sm sm:col-span-2 lg:col-span-4">

@@ -3,6 +3,32 @@ import { prisma } from "@/src/server/db/prisma"
 import { computeCouponDiscount } from "@/src/server/modules/coupons/coupons.service"
 import { logActivity } from "@/src/server/modules/activity/activity.service"
 import { emailTemplates, enqueueEmail } from "@/src/server/modules/notifications/email.service"
+import { enqueueOutboxEvent } from "@/src/server/modules/integrations/outbox.service"
+
+export type OrderLifecycleStatus =
+  | "pending"
+  | "confirmed"
+  | "packed"
+  | "shipped"
+  | "delivered"
+  | "returned"
+  | "cancelled"
+
+const allowedTransitions: Record<OrderLifecycleStatus, OrderLifecycleStatus[]> = {
+  pending: ["confirmed", "cancelled"],
+  confirmed: ["packed", "cancelled"],
+  packed: ["shipped", "cancelled"],
+  shipped: ["delivered", "returned"],
+  delivered: ["returned"],
+  returned: [],
+  cancelled: [],
+}
+
+const persistedOrderStatus = (status: OrderLifecycleStatus): "pending" | "confirmed" | "shipped" | "delivered" | "cancelled" => {
+  if (status === "packed") return "confirmed"
+  if (status === "returned") return "delivered"
+  return status
+}
 
 export const createOrderFromCheckout = async (input: {
   items: { slug: string; quantity: number }[]
@@ -48,6 +74,8 @@ export const createOrderFromCheckout = async (input: {
     const created = await tx.order.create({
       data: {
         userId: input.userId ?? undefined,
+        createdById: null,
+        managedById: null,
         status: "pending",
         currency: input.currency ?? "INR",
         subtotal,
@@ -60,6 +88,13 @@ export const createOrderFromCheckout = async (input: {
             unitPrice: l.unitPrice,
             lineTotal: l.lineTotal,
           })),
+        },
+        statusHistory: {
+          create: {
+            toStatus: "pending",
+            notes: "Order created",
+            changedById: input.userId ?? undefined,
+          },
         },
       },
       include: {
@@ -99,6 +134,13 @@ export const createOrderFromCheckout = async (input: {
     }
   }
 
+  await enqueueOutboxEvent({
+    eventType: "order.created",
+    aggregateType: "order",
+    aggregateId: order.id,
+    payload: { orderId: order.id, total, currency: input.currency ?? "INR" },
+  }).catch(() => null)
+
   return order
 }
 
@@ -110,9 +152,7 @@ export const listOrders = async (
 ) => {
   const skip = (page - 1) * limit
   const where: Prisma.OrderWhereInput = {}
-  if (role === "seller") {
-    where.items = { some: { product: { sellerId: userId } } }
-  } else if (role === "customer") {
+  if (role === "customer") {
     where.userId = userId
   }
 
@@ -123,7 +163,7 @@ export const listOrders = async (
       skip,
       take: limit,
       include: {
-        items: { include: { product: { select: { id: true, name: true, slug: true, sellerId: true } } } },
+        items: { include: { product: { select: { id: true, name: true, slug: true } } } },
         transactions: true,
       },
     }),
@@ -139,6 +179,11 @@ export const getOrderById = async (id: string) => {
     include: {
       items: { include: { product: true } },
       transactions: true,
+      statusHistory: { orderBy: { changedAt: "desc" } },
+      notes: { orderBy: { createdAt: "desc" } },
+      fulfillment: true,
+      shipments: { orderBy: { createdAt: "desc" } },
+      invoice: true,
     },
   })
 }
@@ -148,25 +193,79 @@ export const getOrderForActor = async (id: string, role: string, userId: string)
   if (!order) return null
   if (role === "admin" || role === "super_admin") return order
   if (role === "customer" && order.userId === userId) return order
-  if (role === "seller") {
-    const touches = order.items.some((i) => i.product.sellerId === userId)
-    return touches ? order : null
-  }
   return null
 }
 
 export const updateOrderStatus = async (
   id: string,
-  status: "pending" | "confirmed" | "shipped" | "delivered" | "cancelled",
+  status: OrderLifecycleStatus,
   actorId: string,
+  options?: { reasonCode?: string; note?: string },
 ) => {
-  const order = await prisma.order.update({
+  const existing = await prisma.order.findUnique({
     where: { id },
-    data: { status },
-    include: {
-      items: { include: { product: true } },
-      transactions: true,
+    select: {
+      id: true,
+      status: true,
+      statusHistory: { orderBy: { changedAt: "desc" }, take: 1, select: { toStatus: true } },
     },
+  })
+  if (!existing) throw new Error("Order not found")
+  const fromStatus = (existing.statusHistory[0]?.toStatus as OrderLifecycleStatus | undefined) ??
+    (existing.status as OrderLifecycleStatus)
+  if (status !== fromStatus && !allowedTransitions[fromStatus]?.includes(status)) {
+    throw new Error(`Invalid status transition: ${fromStatus} -> ${status}`)
+  }
+
+  const order = await prisma.$transaction(async (tx) => {
+    const updated = await tx.order.update({
+      where: { id },
+      data: {
+        status: persistedOrderStatus(status),
+        statusHistory: {
+          create: {
+            fromStatus,
+            toStatus: status,
+            reasonCode: options?.reasonCode ?? null,
+            notes: options?.note ?? null,
+            changedById: actorId,
+          },
+        },
+      },
+      include: {
+        items: { include: { product: true } },
+        transactions: true,
+        statusHistory: { orderBy: { changedAt: "desc" } },
+        notes: { orderBy: { createdAt: "desc" } },
+      },
+    })
+
+    const fulfillmentStatusMap: Partial<Record<OrderLifecycleStatus, string>> = {
+      pending: "pending",
+      confirmed: "confirmed",
+      packed: "packed",
+      shipped: "shipped",
+      delivered: "delivered",
+      returned: "returned",
+      cancelled: "cancelled",
+    }
+    await tx.orderFulfillment.upsert({
+      where: { orderId: id },
+      create: {
+        orderId: id,
+        fulfillmentStatus: fulfillmentStatusMap[status] ?? status,
+        packedAt: status === "packed" ? new Date() : null,
+        shippedAt: status === "shipped" ? new Date() : null,
+        deliveredAt: status === "delivered" ? new Date() : null,
+      },
+      update: {
+        fulfillmentStatus: fulfillmentStatusMap[status] ?? status,
+        packedAt: status === "packed" ? new Date() : undefined,
+        shippedAt: status === "shipped" ? new Date() : undefined,
+        deliveredAt: status === "delivered" ? new Date() : undefined,
+      },
+    })
+    return updated
   })
 
   await logActivity({
@@ -189,6 +288,39 @@ export const updateOrderStatus = async (
     }
   }
 
+  await enqueueOutboxEvent({
+    eventType: "order.status.updated",
+    aggregateType: "order",
+    aggregateId: id,
+    payload: { orderId: id, fromStatus, toStatus: status, reasonCode: options?.reasonCode ?? null },
+  }).catch(() => null)
+
   return order
+}
+
+export const addOrderNote = async (input: {
+  orderId: string
+  note: string
+  actorId: string
+  isInternal?: boolean
+}) => {
+  const order = await prisma.order.findUnique({ where: { id: input.orderId }, select: { id: true } })
+  if (!order) throw new Error("Order not found")
+  const created = await prisma.orderNote.create({
+    data: {
+      orderId: input.orderId,
+      note: input.note.trim(),
+      isInternal: input.isInternal ?? true,
+      createdById: input.actorId,
+    },
+  })
+  await logActivity({
+    actorId: input.actorId,
+    action: "order.note.create",
+    entityType: "Order",
+    entityId: input.orderId,
+    metadata: { noteId: created.id, isInternal: created.isInternal },
+  })
+  return created
 }
 

@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useState } from "react";
 
-type Portal = "website" | "admin" | "seller";
+type Portal = "website" | "admin";
 
 type LoginResponse = {
   success: boolean;
@@ -60,9 +60,7 @@ export default function AuthLoginCard({
       localStorage.setItem("ziply5_user_role", payload.data.user.role);
       window.dispatchEvent(new Event("storage"));
 
-      if (payload.data.user.role === "seller") {
-        router.push("/seller/dashboard");
-      } else if (payload.data.user.role === "admin" || payload.data.user.role === "super_admin") {
+      if (payload.data.user.role === "admin" || payload.data.user.role === "super_admin") {
         router.push("/admin/dashboard");
       } else {
         const next = searchParams.get("next");

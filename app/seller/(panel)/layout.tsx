@@ -1,10 +1,10 @@
 import type React from "react"
-import { SellerPanelLayout } from "@/components/dashboard/SellerPanelLayout"
+import { redirect } from "next/navigation"
 
 export default function SellerPanelRootLayout({
-  children,
+  children: _children,
 }: Readonly<{
   children: React.ReactNode
 }>) {
-  return <SellerPanelLayout>{children}</SellerPanelLayout>
+  redirect("/admin/dashboard")
 }

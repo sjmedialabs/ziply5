@@ -24,7 +24,13 @@ export async function PATCH(request: NextRequest, ctx: { params: Promise<{ id: s
   const body = await request.json()
   const parsed = patchSchema.safeParse(body)
   if (!parsed.success) return fail("Validation failed", 422, parsed.error.flatten())
-  const data: Parameters<typeof updatePromotion>[1] = { ...parsed.data }
+  const data: Parameters<typeof updatePromotion>[1] = {
+    kind: parsed.data.kind,
+    name: parsed.data.name,
+    active: parsed.data.active,
+    productId: parsed.data.productId,
+    metadata: parsed.data.metadata,
+  }
   if (parsed.data.startsAt !== undefined) data.startsAt = parsed.data.startsAt ? new Date(parsed.data.startsAt) : null
   if (parsed.data.endsAt !== undefined) data.endsAt = parsed.data.endsAt ? new Date(parsed.data.endsAt) : null
   try {

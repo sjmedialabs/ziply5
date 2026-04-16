@@ -13,7 +13,6 @@ export const getDashboardSummary = async () => {
   const [
     orders,
     users,
-    sellers,
     revenueAgg,
     pendingOrders,
     recentOrders,
@@ -21,13 +20,6 @@ export const getDashboardSummary = async () => {
   ] = await Promise.all([
     safe(() => prisma.order.count(), 0),
     safe(() => prisma.user.count(), 0),
-    safe(
-      () =>
-        prisma.userRole.count({
-          where: { role: { key: "seller" } },
-        }),
-      0,
-    ),
     safe(() => prisma.order.aggregate({ _sum: { total: true } }), { _sum: { total: null } }),
     safe(() => prisma.order.count({ where: { status: "pending" } }), 0),
     safe(
@@ -60,39 +52,10 @@ export const getDashboardSummary = async () => {
   return {
     totalOrders: orders,
     totalUsers: users,
-    totalSellers: sellers,
+    totalSellers: 0,
     totalRevenue: revenueAgg._sum.total ?? 0,
     pendingOrders,
     recentOrders,
     lowStockVariants,
-  }
-}
-
-export const getSellerDashboardSummary = async (sellerId: string) => {
-  const [productCount, revenueAgg, orderIds] = await Promise.all([
-    safe(() => prisma.product.count({ where: { sellerId } }), 0),
-    safe(
-      () =>
-        prisma.orderItem.aggregate({
-          where: { product: { sellerId } },
-          _sum: { lineTotal: true },
-        }),
-      { _sum: { lineTotal: null } },
-    ),
-    safe(
-      () =>
-        prisma.orderItem.findMany({
-          where: { product: { sellerId } },
-          distinct: ["orderId"],
-          select: { orderId: true },
-        }),
-      [],
-    ),
-  ])
-
-  return {
-    myProducts: productCount,
-    ordersTouchingMyProducts: orderIds.length,
-    revenueFromMyLines: revenueAgg._sum.lineTotal ?? 0,
   }
 }

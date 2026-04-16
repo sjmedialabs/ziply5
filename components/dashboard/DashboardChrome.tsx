@@ -90,7 +90,7 @@ export function DashboardChrome({
   )
 
   return (
-    <div className="flex min-h-screen bg-[#F5F1E6] text-[#2A1810]">
+    <div className="flex h-screen scrollbar-hide bg-[#F5F1E6] text-[#2A1810]">
       {sidebarOpen && (
         <button
           type="button"

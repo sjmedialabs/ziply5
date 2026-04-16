@@ -16,7 +16,7 @@ type SignupInput = {
   name: string
   email: string
   password: string
-  role?: "super_admin" | "admin" | "seller" | "customer"
+  role?: "super_admin" | "admin" | "customer"
 }
 
 export const signup = async (input: SignupInput) => {
@@ -113,14 +113,10 @@ export const login = async (email: string, password: string) => {
 
 export const assertPortalAccess = (
   role: string,
-  portal: "website" | "admin" | "seller" = "website",
+  portal: "website" | "admin" = "website",
 ) => {
   if (portal === "admin" && !(role === "admin" || role === "super_admin")) {
     throw new Error("This account is not allowed in admin login")
-  }
-
-  if (portal === "seller" && role !== "seller") {
-    throw new Error("This account is not allowed in seller login")
   }
 
   if (portal === "website" && role !== "customer") {

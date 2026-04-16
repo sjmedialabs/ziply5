@@ -33,10 +33,11 @@ const cardGradients = [
 
 export default function TrendingFood() {
   const isLg = useIsLg()
-  const { products } = useStorefrontProducts(40)
+  const { products } = useStorefrontProducts(20)
   const [favoriteSlugs, setFavoriteSlugs] = useState<string[]>([])
   const [cartQtyBySlug, setCartQtyBySlug] = useState<Record<string, number>>({})
-
+    const trendingProducts = useMemo(() => products.slice(0, 4), [products])
+    console.log("Products on ui hook:", products)
   useEffect(() => {
     const syncFavorites = () => setFavoriteSlugs(getFavoriteSlugs())
     syncFavorites()
@@ -67,11 +68,10 @@ export default function TrendingFood() {
     }
   }, [])
 
-  const trendingProducts = useMemo(() => products.slice(0, 4), [])
   const visibleProducts = isLg ? trendingProducts.slice(0, 3) : trendingProducts
 
   return (
-    <section id="trending" className="bg-[#F3F4F6] py-12 md:py-16 lg:py-20">
+    <section id="trending" className="py-12 md:py-16 lg:py-20">
       <div className="max-w-7xl mx-auto px-4">
         <SectionHeader title="FOOD THAT'S TRENDING" linkHref="/#trending" />
 

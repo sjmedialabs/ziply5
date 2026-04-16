@@ -8,7 +8,7 @@ CREATE TYPE "UserStatus" AS ENUM ('active', 'suspended', 'deleted');
 CREATE TYPE "ProductStatus" AS ENUM ('draft', 'published', 'archived');
 
 -- CreateEnum
-CREATE TYPE "OrderStatus" AS ENUM ('pending', 'confirmed', 'shipped', 'delivered', 'cancelled');
+CREATE TYPE "OrderStatus" AS ENUM ('pending', 'confirmed', 'packed', 'shipped', 'delivered', 'returned', 'cancelled');
 
 -- CreateEnum
 CREATE TYPE "TicketStatus" AS ENUM ('open', 'in_progress', 'resolved', 'closed');

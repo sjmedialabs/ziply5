@@ -22,7 +22,6 @@ import {
   Megaphone,
   Wallet,
   TrendingUp,
-  Store,
   Inbox,
 } from "lucide-react"
 import { DashboardChrome, type DashboardNavItem } from "./DashboardChrome"
@@ -46,7 +45,6 @@ const adminNav: DashboardNavItem[] = [
   { href: "/admin/finance", label: "Finance", icon: Wallet },
   { href: "/admin/reports", label: "Sales report", icon: BarChart3 },
   { href: "/admin/top-products", label: "Top products", icon: TrendingUp },
-  { href: "/admin/seller-performance", label: "Seller performance", icon: Store },
   { href: "/admin/settings", label: "Settings", icon: Settings },
   { href: "/admin/inbox", label: "Inbox", icon: Inbox },
   { href: "/admin/tickets", label: "Support tickets", icon: Headphones },
