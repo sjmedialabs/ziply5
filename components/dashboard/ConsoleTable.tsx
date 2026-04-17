@@ -29,7 +29,7 @@ export function ConsoleTd({
   colSpan?: number
 }) {
   return (
-    <td colSpan={colSpan} className={`px-3 py-2 align-top text-[13px] md:px-4 ${className}`}>
+    <td colSpan={colSpan} className={`px-3 py-2 align-center text-[13px] md:px-4 ${className}`}>
       {children}
     </td>
   )
