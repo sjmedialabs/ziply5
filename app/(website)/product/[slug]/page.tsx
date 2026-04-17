@@ -308,7 +308,7 @@ export default function ProductPage() {
                 {favorite ? "♥" : "♡"}
               </button>
             </div>
-
+              {/* box features with image */}
             <div className="mt-8 grid grid-cols-3 gap-4 border-t border-[#DEDEDE] pt-5">
               {(product.features.length ? product.features : [{ title: "Home Made", icon: null }]).map((item, idx) => (
                 <div key={`${item.title || "feature"}-${idx}`} className="flex flex-col items-center gap-2 text-center">
