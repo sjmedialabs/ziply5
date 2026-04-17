@@ -108,7 +108,7 @@ export default function Footer() {
                   alt="Ziply5 Logo"
                   width={140}
                   height={60}
-                  className="mb-4 object-contain"
+                  className="mb-4 h-auto w-auto object-contain"
                 />
 
                 {/* Timings */}

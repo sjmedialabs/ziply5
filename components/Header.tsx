@@ -279,7 +279,7 @@ export default function Header() {
                 width={180}
                 height={80}
                 priority
-                className="object-contain"
+                className="h-auto w-auto object-contain"
               />
             </Link>
           </div>
