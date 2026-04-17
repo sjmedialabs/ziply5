@@ -13,6 +13,7 @@ import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
+import { toast } from "../ui/use-toast"
 
 type Mode = "list" | "add" | "edit" | "view"
 
@@ -42,6 +43,8 @@ type ProductDetail = {
   stockStatus?: "in_stock" | "out_of_stock"
   totalStock?: number
   shelfLife?: string | null
+  preparationType?: "ready_to_eat" | "ready_to_cook" | null
+  spiceLevel?: "mild" | "medium" | "hot" | "extra_hot" | null
   taxIncluded?: boolean
   isActive?: boolean
   isFeatured?: boolean
@@ -79,6 +82,8 @@ const ViewField = ({ label, value, className = "" }: { label: string; value: Rea
 type CategoryRow = { id: string; name: string }
 const statuses = ["draft", "published", "archived"] as const
 const foodTypes = ["veg", "non-veg"] as const
+const preparationTypes = ["ready_to_eat", "ready_to_cook"] as const
+const spiceLevels = ["mild", "medium", "hot", "extra_hot"] as const
 const MAX_SECTIONS = 10
 const uniq = (list: string[]) => [...new Set(list.map((x) => x.trim()).filter(Boolean))]
 const toNumOrNull = (value: string) => {
@@ -103,7 +108,7 @@ const Info = ({ label, value }: any) => (
 )
 
 const Badge = ({ label }: any) => (
-  <span className="text-xs bg-[#F5F1E6] px-2 py-1 rounded-full border">
+  <span className="text-xs bg-[#F5F1E6] px-2 py-1 rounded-full border capitalize">
     {label}
   </span>
 )
@@ -136,7 +141,7 @@ export function ProductConsolePage({
   productId?: string
 }) {
   const router = useRouter()
-  const [rows, setRows] = useState<ProductRow[]>([])
+  const [rows, setRows] = useState<ProductDetail[]>([])
   const [categories, setCategories] = useState<CategoryRow[]>([])
   const [total, setTotal] = useState(0)
   const [loading, setLoading] = useState(true)
@@ -158,6 +163,8 @@ export function ProductConsolePage({
   const [stockStatus, setStockStatus] = useState<"in_stock" | "out_of_stock">("in_stock")
   const [totalStock, setTotalStock] = useState("0")
   const [shelfLife, setShelfLife] = useState("")
+  const [preparationType, setPreparationType] = useState<"" | "ready_to_eat" | "ready_to_cook">("")
+  const [spiceLevel, setSpiceLevel] = useState<"" | "mild" | "medium" | "hot" | "extra_hot">("")
   const [taxIncluded, setTaxIncluded] = useState(true)
   const [isActive, setIsActive] = useState(true)
   const [isFeatured, setIsFeatured] = useState(false)
@@ -173,11 +180,75 @@ export function ProductConsolePage({
   const [sections, setSections] = useState<Array<{ id?: string; title: string; description: string; sortOrder: number; isActive: boolean }>>([
     { title: "Key Features", description: "<ul><li></li></ul>", sortOrder: 0, isActive: true },
   ])
+  const [searchQuery, setSearchQuery] = useState("")
+  const [filterStatus, setFilterStatus] = useState<"all" | "draft" | "published" | "archived">("all")
+  const [filterCategory, setFilterCategory] = useState<"all" | string>("all")
+  const [filterPreparationType, setFilterPreparationType] = useState<"all" | "ready_to_eat" | "ready_to_cook">("all")
+  const [filterStockStatus, setFilterStockStatus] = useState<"all" | "in_stock" | "out_of_stock">("all")
+  const [filterFoodType, setFilterFoodType] = useState<"all" | "veg" | "non-veg">("all")
 
   const orderedSections = useMemo(
     () => [...sections].sort((a, b) => a.sortOrder - b.sortOrder),
     [sections],
   )
+
+  const filteredRows = useMemo(() => {
+    let result = rows
+
+    // Apply search filter
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase()
+      result = result.filter(p => {
+        const searchable = [
+          p.name,
+          p.slug,
+          p.sku,
+          p.status,
+          p.price?.toString(),
+          p.description,
+          p.features?.map(f => f.title).join(' ') || '',
+          p.details?.map(d => d.title + ' ' + d.content).join(' ') || '',
+          p.stockStatus,
+          p.totalStock?.toString(),
+          p.shelfLife,
+          p.preparationType,
+        ].join(' ').toLowerCase()
+        return searchable.includes(query)
+      })
+    }
+
+    // Apply status filter
+    if (filterStatus !== 'all') {
+      result = result.filter(p => p.status === filterStatus)
+    }
+
+    // Apply category filter
+    if (filterCategory !== 'all') {
+      result = result.filter(p => p.categories?.some(c => c.categoryId === filterCategory))
+    }
+
+    // Apply preparation type filter
+    if (filterPreparationType !== 'all') {
+      result = result.filter(p => p.preparationType === filterPreparationType)
+    }
+
+    // Apply stock status filter
+    if (filterStockStatus !== 'all') {
+      result = result.filter(p => p.stockStatus === filterStockStatus)
+    }
+
+    // Apply food type filter
+    if (filterFoodType !== 'all') {
+      result = result.filter(p => {
+        const tagNames = (p.tags ?? []).map((x) => x.tag.name.toLowerCase())
+        return filterFoodType === 'veg'
+          ? tagNames.includes('veg') || tagNames.includes('vegetarian')
+          : tagNames.includes('non-veg') || tagNames.includes('non vegetarian')
+      })
+    }
+
+    return result
+  }, [rows, searchQuery, filterStatus, filterCategory, filterPreparationType, filterStockStatus, filterFoodType])
 
   const basePath = adminView ? "/admin/products" : "/admin/products"
 
@@ -185,11 +256,11 @@ export function ProductConsolePage({
     setLoading(true)
     setError("")
     Promise.all([
-      authedFetch<{ items: ProductRow[]; total: number }>("/api/v1/products?page=1&limit=100"),
+      authedFetch<{ items: ProductDetail[]; total: number }>("/api/v1/products?page=1&limit=100"),
       authedFetch<CategoryRow[]>("/api/v1/categories").catch(() => []),
     ])
       .then(([products, cats]) => {
-        setRows(products.items)
+        setRows(products.items as ProductDetail[])
         setTotal(products.total)
         setCategories(cats.filter((c) => Boolean(c.id)))
         const map: Record<string, string> = {}
@@ -226,6 +297,8 @@ export function ProductConsolePage({
       setStockStatus(p.stockStatus ?? "in_stock")
       setTotalStock(String(p.totalStock ?? 0))
       setShelfLife(p.shelfLife ?? "")
+      setPreparationType((p.preparationType ?? "") as "" | "ready_to_eat" | "ready_to_cook")
+      setSpiceLevel((p.spiceLevel ?? "") as "" | "mild" | "medium" | "hot" | "extra_hot")
       setTaxIncluded(p.taxIncluded ?? true)
       setIsActive(p.isActive ?? true)
       setIsFeatured(p.isFeatured ?? false)
@@ -276,7 +349,8 @@ export function ProductConsolePage({
     const parsedPrice =
       toNumOrNull(price) ??
       toNumOrNull(salePrice) ??
-      toNumOrNull(basePrice)
+      toNumOrNull(basePrice) ??
+      0
     return {
       name: name.trim(),
       slug: slug.trim(),
@@ -291,6 +365,8 @@ export function ProductConsolePage({
       stockStatus,
       totalStock: totalStock.trim() ? Number(totalStock) : 0,
       shelfLife: shelfLife.trim() || null,
+      preparationType: preparationType || null,
+      spiceLevel: spiceLevel || null,
       taxIncluded,
       isActive,
       isFeatured,
@@ -306,7 +382,7 @@ export function ProductConsolePage({
           .split(",")
           .map((t) => t.trim().toLowerCase())
           .filter(Boolean),
-      ],
+      ].filter(Boolean),
       sections: sections
         .map((s, idx) => ({
           id: s.id,
@@ -348,14 +424,57 @@ export function ProductConsolePage({
     thumbnailUrls,
     totalStock,
     type,
+    preparationType,
+    spiceLevel,
     sections,
   ])
 
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    const isDraft = status === "draft"
+
     if (!payload.name || !payload.slug || !payload.sku) {
       setError("Name, slug and SKU are required")
       return
+    }
+
+    if (!isDraft) {
+      if (!payload.salePrice && !payload.basePrice) {
+        setError("Sale Price or Base Price is required")
+        return
+      }
+      if (payload.discountPercent == null) {
+        setError("Discount percentage is required")
+        return
+      }
+      if (!payload.type) {
+        setError("Product type is required")
+        return
+      }
+      if (!foodType) {
+        setError("Food type (Veg/Non-veg) is required")
+        return
+      }
+      if (!payload.stockStatus) {
+        setError("Stock status is required")
+        return
+      }
+      if (!payload.shelfLife) {
+        setError("Shelf life is required")
+        return
+      }
+      if (!payload.thumbnail) {
+        setError("Thumbnail image is required")
+        return
+      }
+      if (!payload.description) {
+        setError("Description is required")
+        return
+      }
+      if (payload.sections.length < 2) {
+        setError("At least 2 product details/sections are required")
+        return
+      }
     }
 
     const isPublishing = status === "published"
@@ -363,14 +482,6 @@ export function ProductConsolePage({
     if (isPublishing) {
       if (!payload.price || payload.price <= 0) {
         setError("Provide at least one valid price to publish the product")
-        return
-      }
-      if (!foodType) {
-        setError("Veg / Non-veg selection is required to publish")
-        return
-      }
-      if (payload.sections.length === 0) {
-        setError("At least one product section is required to publish")
         return
       }
       if (payload.features.length === 0) {
@@ -383,10 +494,15 @@ export function ProductConsolePage({
     try {
       if (mode === "edit" && productId) {
         await authedPatch(`/api/v1/products/${productId}`, payload)
+        // toast({ title: "Product updated successfully", variant: "default"})
+        alert("Product updated successfully")
+        router.push(`${basePath}/${productId}`)
       } else {
         await authedPost("/api/v1/products", payload)
+        alert("Product created successfully")
+        router.push(`${basePath}`)
+        // toast({ title: "Product created successfully", variant: "default" })
       }
-      router.push(basePath)
     } catch (e) {
       setError(e instanceof Error ? e.message : "Save failed")
     } finally {
@@ -480,14 +596,50 @@ export function ProductConsolePage({
     }
   }
 
+  const validatePublishable = (product: ProductDetail) => {
+    const hasPrice = Number(product.price) > 0
+    const hasDiscount = product.discountPercent != null
+    const hasType = Boolean(product.type)
+    const tagNames = (product.tags ?? []).map((x) => x.tag.name.toLowerCase())
+    const hasFoodType = tagNames.includes("veg") || tagNames.includes("vegetarian") || tagNames.includes("non-veg") || tagNames.includes("non vegetarian")
+    const hasStockStatus = Boolean(product.stockStatus)
+    const hasShelfLife = Boolean(product.shelfLife?.trim())
+    const hasThumbnail = Boolean(product.thumbnail?.trim())
+    const hasDescription = Boolean(product.description?.trim())
+    const sectionCount = (product.sections?.filter((s) => Boolean(s.title) && Boolean(s.description)).length ?? 0) || (product.details?.filter((d) => Boolean(d.title) && Boolean(d.content)).length ?? 0)
+    const hasSections = sectionCount >= 2
+    const hasFeatures = (product.features?.filter((f) => Boolean(f.title)).length ?? 0) > 0
+
+    if (!hasPrice) return "Provide at least one valid price to publish the product."
+    if (!hasDiscount) return "Discount percentage is required to publish the product."
+    if (!hasType) return "Product type is required to publish the product."
+    if (!hasFoodType) return "Food type (veg/non-veg) is required to publish the product."
+    if (!hasStockStatus) return "Stock status is required to publish the product."
+    if (!hasShelfLife) return "Shelf life is required to publish the product."
+    if (!hasThumbnail) return "Thumbnail image is required to publish the product."
+    if (!hasDescription) return "Description is required to publish the product."
+    if (!hasSections) return "At least 2 product details/sections are required to publish the product."
+    if (!hasFeatures) return "At least one product feature is required to publish the product."
+    return null
+  }
+
   const saveRowStatus = async (id: string) => {
     const next = rowStatus[id]
     if (!next) return
     setSaving(true)
     setError("")
     try {
+      if (next === "published") {
+        const product = await authedFetch<ProductDetail>(`/api/v1/products/${id}`)
+        const validationError = validatePublishable(product)
+        if (validationError) {
+          setError(`${validationError} Update mandatory fields First.`)
+          return
+        }
+      }
       await authedPatch(`/api/v1/products/${id}`, { status: next })
       await loadList()
+      alert("Status updated successfully")
     } catch (e) {
       setError(e instanceof Error ? e.message : "Status update failed")
     } finally {
@@ -501,6 +653,7 @@ export function ProductConsolePage({
     try {
       await authedPatch(`/api/v1/products/${id}`, { isActive: !current })
       await loadList()
+      alert("Active status toggled successfully")
     } catch (e) {
       setError(e instanceof Error ? e.message : "Active toggle failed")
     } finally {
@@ -514,7 +667,7 @@ export function ProductConsolePage({
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div>
             <h1 className="font-melon text-2xl font-bold text-[#4A1D1F]">{adminView ? "Products" : "My products"}</h1>
-            <p className="text-sm text-[#646464]">{total} items. Published products appear on website.</p>
+            <p className="text-sm text-[#646464]">{filteredRows.length} of {total} items. Published products appear on website.</p>
           </div>
           <div className="flex gap-2">
             <Link href={`${basePath}/add`} className="rounded-full bg-[#7B3010] px-4 py-2 text-xs font-semibold uppercase tracking-wide text-white">
@@ -525,18 +678,97 @@ export function ProductConsolePage({
             </button>
           </div>
         </div>
+        <div className="flex gap-2 w-full flex-wrap lg:flex-nowrap">
+        <div className="flex gap-2 w-full">
+          <Input
+            type="text"
+            placeholder="Search products..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="max-w-sm bg-white rounded-lg"
+          />
+        </div>
+        <div className="flex flex-wrap lg:flex-nowrap gap-2 w-full">
+          <Select value={filterStatus} onValueChange={(value) => setFilterStatus(value as "all" | "draft" | "published" | "archived")}>
+            <SelectTrigger className="w-40 rounded-lg border border-[#D9D9D1] bg-white px-3 py-2 text-sm">
+              <SelectValue placeholder="Filter by Status" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Statuses</SelectItem>
+              {statuses.map((s) => (
+                <SelectItem key={s} value={s}>
+                  {s}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          <Select value={filterCategory} onValueChange={(value) => setFilterCategory(value)}>
+            <SelectTrigger className="w-40 rounded-lg border border-[#D9D9D1] bg-white px-3 py-2 text-sm">
+              <SelectValue placeholder="Filter by Category" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Categories</SelectItem>
+              {categories.map((c) => (
+                <SelectItem key={c.id} value={c.id}>
+                  {c.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          <Select value={filterPreparationType} onValueChange={(value) => setFilterPreparationType(value as "all" | "ready_to_eat" | "ready_to_cook")}>
+            <SelectTrigger className="w-40 rounded-lg border border-[#D9D9D1] bg-white px-3 py-2 text-sm">
+              <SelectValue placeholder="Filter by Prep Type" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Types</SelectItem>
+              {preparationTypes.map((t) => (
+                <SelectItem key={t} value={t}>
+                  {t.replace(/_/g, " ")}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          <Select value={filterStockStatus} onValueChange={(value) => setFilterStockStatus(value as "all" | "in_stock" | "out_of_stock")}>
+            <SelectTrigger className="w-40 rounded-lg border border-[#D9D9D1] bg-white px-3 py-2 text-sm">
+              <SelectValue placeholder="Filter by Stock Status" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Stock</SelectItem>
+              <SelectItem value="in_stock">In Stock</SelectItem>
+              <SelectItem value="out_of_stock">Out of Stock</SelectItem>
+            </SelectContent>
+          </Select>
+
+          <Select value={filterFoodType} onValueChange={(value) => setFilterFoodType(value as "all" | "veg" | "non-veg")}>
+            <SelectTrigger className="w-40 rounded-lg border border-[#D9D9D1] bg-white px-3 py-2 text-sm">
+              <SelectValue placeholder="Filter by Food Type" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Types</SelectItem>
+              {foodTypes.map((t) => (
+                <SelectItem key={t} value={t}>
+                  {t}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        </div>
         {error && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-800">{error}</p>}
         {loading && <p className="text-sm text-[#646464]">Loading...</p>}
         {!loading && (
           <ConsoleTable headers={["Name", "Slug", "SKU", "Status", "Price", "Active", "Actions"]}>
-            {rows.length === 0 ? (
+            {filteredRows.length === 0 ? (
               <tr>
                 <ConsoleTd colSpan={7} className="py-8 text-center text-[#646464]">
                   No products yet.
                 </ConsoleTd>
               </tr>
             ) : (
-              rows.map((p) => (
+              filteredRows.map((p) => (
                 <tr key={p.id} className="hover:bg-[#FFFBF3]/80">
                   <ConsoleTd className="align-middle">
                     <Link href={`${basePath}/${p.id}`} className="text-[#7B3010] font-semibold hover:underline">
@@ -613,7 +845,7 @@ export function ProductConsolePage({
         <p className="text-xs text-[#646464]">Draft/archive saves can be partial. Publishing requires valid name, slug, SKU, food type, price, and at least one section.</p>
       )}
       {error && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-800">{error}</p>}
-      {loading && mode === "edit" && <p className="text-sm text-[#646464]">Loading product...</p>}
+      {loading && (mode === "edit" || mode === "view") && <p className="text-sm text-[#646464]">Loading product...</p>}
       <form onSubmit={onSubmit} className="grid bg-white gap-3 rounded-2xl border border-[#E8DCC8] p-4 shadow-sm md:grid-cols-3">
         {mode === "view" ? (
           <div className="space-y-6 w-full md:col-span-3">
@@ -649,6 +881,8 @@ export function ProductConsolePage({
                   <Badge label={foodType} />
                   <Badge label={status} />
                   <Badge label={type} />
+                  {preparationType ? <Badge label={preparationType.replace(/_/g, " ")} /> : null}
+                  {spiceLevel ? <Badge label={`Spice Level: ${spiceLevel.replace(/_/g, " ")}`} /> : null}
                 </div>
 
                 <p className="text-sm text-gray-600">
@@ -665,7 +899,7 @@ export function ProductConsolePage({
               <Card title="Inventory">
                 <Info label="Stock" value={totalStock} />
                 <Info label="Stock Status" value={stockStatus} />
-                <Info label="Shelf Life" value={shelfLife} />
+                <Info label="Shelf Life" value={`${shelfLife} months`} />
               </Card>
 
               {/* 🧾 META */}
@@ -713,7 +947,7 @@ export function ProductConsolePage({
                 className="rounded-lg border border-[#D9D9D1] px-3 py-2 text-sm"
               />
             </Field>
-            <Field label="Sale Price">
+            <Field label="Sale Price" required={status !== "draft"}>
               <Input
                 placeholder="Sale Price"
                 type="number"
@@ -723,7 +957,7 @@ export function ProductConsolePage({
                 className="rounded-lg border border-[#D9D9D1] px-3 py-2 text-sm"
               />
             </Field>
-            <Field label="Base / MRP">
+            <Field label="Base / MRP" required={status !== "draft"}>
               <Input
                 placeholder="Base/MRP"
                 type="number"
@@ -733,7 +967,7 @@ export function ProductConsolePage({
                 className="rounded-lg border border-[#D9D9D1] px-3 py-2 text-sm"
               />
             </Field>
-            <Field label="Discount %">
+            <Field label="Discount %" required={status !== "draft"}>
               <Input
                 placeholder="Discount %"
                 type="number"
@@ -757,8 +991,13 @@ export function ProductConsolePage({
                 </SelectContent>
               </Select>
             </Field>
-            <Field label="Type">
-              <Select value={type} onValueChange={(value) => setType(value as "simple" | "variant")}>
+            {status === "draft" ? (
+              <p className="text-xs text-yellow-700 bg-yellow-50 rounded-lg border border-yellow-200 px-3 py-2">
+                Draft products are not visible on the website until published.
+              </p>
+            ) : null}
+            <Field label="Type" required={status !== "draft"}>
+              <Select value={type} onValueChange={(value) => setType(value as "simple" | "variant")}> 
                 <SelectTrigger className="rounded-lg border border-[#D9D9D1] px-3 py-2 text-sm">
                 <SelectValue />
               </SelectTrigger>
@@ -768,7 +1007,7 @@ export function ProductConsolePage({
               </SelectContent>
             </Select>
             </Field>
-            <Field label="Food Type" required>
+            <Field label="Food Type" required={status !== "draft"}>
               <Select value={foodType} onValueChange={(value) => setFoodType(value as "" | "veg" | "non-veg")}>
               <SelectTrigger className="rounded-lg border border-[#D9D9D1] px-3 py-2 text-sm">
                 <SelectValue placeholder="Select veg/non-veg" />
@@ -803,7 +1042,7 @@ export function ProductConsolePage({
             <Field label="Total Stock">
               <Input placeholder="Total Stock" type="number" value={totalStock} onChange={(e) => setTotalStock(e.target.value)} className="rounded-lg border border-[#D9D9D1] px-3 py-2 text-sm" />
             </Field>
-            <Field label="Stock Status">
+            <Field label="Stock Status" required={status !== "draft"}>
               <Select value={stockStatus} onValueChange={(value) => setStockStatus(value as "in_stock" | "out_of_stock")}>
                 <SelectTrigger className="rounded-lg border border-[#D9D9D1] px-3 py-2 text-sm">
                   <SelectValue />
@@ -814,15 +1053,44 @@ export function ProductConsolePage({
                 </SelectContent>
               </Select>
             </Field>
-            <Field label="Shelf Life">
+            <Field label="Shelf Life" required={status !== "draft"}>
               <Input
                 placeholder="Shelf Life"
+                type="number"
                 value={shelfLife}
                 onChange={(e) => setShelfLife(e.target.value)}
                 className="rounded-lg border border-[#D9D9D1] px-3 py-2 text-sm"
               />
             </Field>
-            <Field label="Upload thumbnails (multiple)">
+            <Field label="Preparation Type" required={status !== "draft"}>
+              <Select value={preparationType} onValueChange={(value) => setPreparationType(value as "" | "ready_to_eat" | "ready_to_cook")}>
+                <SelectTrigger className="rounded-lg border border-[#D9D9D1] px-3 py-2 text-sm">
+                  <SelectValue placeholder="Select preparation type" />
+                </SelectTrigger>
+                <SelectContent>
+                  {preparationTypes.map((item) => (
+                    <SelectItem key={item} value={item}>
+                      {item.replace(/_/g, " ")}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </Field>
+            <Field label="Spice Level" required={status !== "draft"}>
+              <Select value={spiceLevel} onValueChange={(value) => setSpiceLevel(value as "" | "mild" | "medium" | "hot" | "extra_hot")}>
+                <SelectTrigger className="rounded-lg border border-[#D9D9D1] px-3 py-2 text-sm">
+                  <SelectValue placeholder="Select spice level" />
+                </SelectTrigger>
+                <SelectContent>
+                  {spiceLevels.map((item) => (
+                    <SelectItem key={item} value={item}>
+                      {item.replace(/_/g, " ")}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </Field>
+            <Field label="Upload thumbnails (multiple)" required={status !== "draft"}>
               <div className="rounded-lg border border-[#D9D9D1] px-3 py-2 text-sm">
                 <p className="mb-2 text-[11px] font-semibold uppercase text-[#646464]">Upload thumbnails (multiple)</p>
               <input type="file" multiple accept="image/*" onChange={(e) => void uploadMany(e.target.files, "thumbnail")} />
@@ -870,7 +1138,7 @@ export function ProductConsolePage({
             <Field label="Tags CSV">
               <Input placeholder="Tags csv: veg, rice, ready-to-eat" value={tagsCsv} onChange={(e) => setTagsCsv(e.target.value)} className="rounded-lg border border-[#D9D9D1] px-3 py-2 text-sm md:col-span-3" />
             </Field>
-            <Field label="Description">
+            <Field label="Description" required={status !== "draft"}>
               <Textarea placeholder="Description" value={description} onChange={(e) => setDescription(e.target.value)} rows={2} className="rounded-lg border border-[#D9D9D1] px-3 py-2 text-sm md:col-span-3" />
             </Field>
           </>
@@ -921,23 +1189,6 @@ export function ProductConsolePage({
                   </AccordionContent>
                 </AccordionItem>
               ))}
-              {features.length > 0 && (
-                <AccordionItem value="features" className="rounded-lg border border-[#D9D9D1] bg-[#FFFBF3]">
-                  <AccordionTrigger className="px-3 py-4">
-                    <p className="font-semibold text-sm text-[#2A1810]">Features</p>
-                  </AccordionTrigger>
-                  <AccordionContent className="px-3">
-                    <ul className="space-y-1">
-                      {features.map((feature, idx) => (
-                        <li key={idx} className="flex items-center gap-2 text-sm">
-                          {feature.icon && <img src={feature.icon} alt="" className="w-4 h-4" />}
-                          <span>{feature.title}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  </AccordionContent>
-                </AccordionItem>
-              )}
             </Accordion>
           ) : (
             sections.map((section, idx) => (
@@ -1017,7 +1268,11 @@ export function ProductConsolePage({
               </div>
             ))
           )}
-          <p className="text-[11px] text-[#646464]">Up to {MAX_SECTIONS} sections. Title and description are required.</p>
+          <p className="text-[11px] text-[#646464]">
+            {status === "draft"
+              ? `Draft products can save partial details. At least 2 sections are required to publish.`
+              : `Up to ${MAX_SECTIONS} sections. Title and description are required.`}
+          </p>
         </div>
         {/* Product Features */}
         <div className="md:col-span-3 space-y-3 shadow-sm rounded-xl border border-[#E8DCC8] p-3">
@@ -1088,6 +1343,11 @@ export function ProductConsolePage({
                 <label className="flex items-center gap-2">
                   <Checkbox checked={isActive} onCheckedChange={(checked) => setIsActive(!!checked)} /> active
                 </label>
+                {isActive ? null : (
+                  <p className="w-full text-xs text-yellow-700 bg-yellow-50 rounded-lg border border-yellow-200 px-3 py-2">
+                    Inactive products are not visible on the website until activated.
+                  </p>
+                )}
                 <label className="flex items-center gap-2">
                   <Checkbox checked={isFeatured} onCheckedChange={(checked) => setIsFeatured(!!checked)} /> featured
                 </label>

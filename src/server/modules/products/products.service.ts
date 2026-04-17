@@ -19,6 +19,8 @@ type CreateProductInput = {
   stockStatus?: "in_stock" | "out_of_stock"
   totalStock?: number
   shelfLife?: string | null
+  preparationType?: "ready_to_eat" | "ready_to_cook" | null
+  spiceLevel?: "mild" | "medium" | "hot" | "extra_hot" | null
   isActive?: boolean
   isFeatured?: boolean
   isBestSeller?: boolean
@@ -62,6 +64,8 @@ type UpdateProductInput = Partial<{
   stockStatus: "in_stock" | "out_of_stock"
   totalStock: number
   shelfLife: string | null
+  preparationType: "ready_to_eat" | "ready_to_cook" | null
+  spiceLevel: "mild" | "medium" | "hot" | "extra_hot" | null
   isActive: boolean
   isFeatured: boolean
   isBestSeller: boolean
@@ -105,6 +109,8 @@ const productSelect = {
   stockStatus: true,
   totalStock: true,
   shelfLife: true,
+  preparationType: true,
+  spiceLevel: true,
   isActive: true,
   isFeatured: true,
   isBestSeller: true,
@@ -142,6 +148,7 @@ const productSelectPublicList = {
   stockStatus: true,
   totalStock: true,
   shelfLife: true,
+  spiceLevel: true,
   isActive: true,
   isFeatured: true,
   isBestSeller: true,
@@ -332,6 +339,8 @@ export const createProduct = async (input: CreateProductInput) => {
       stockStatus: effectiveStockStatus,
       totalStock: effectiveTotalStock,
       shelfLife: input.shelfLife ?? null,
+      preparationType: input.preparationType ?? null,
+      spiceLevel: input.spiceLevel ?? null,
       isActive: input.isActive ?? true,
       isFeatured: input.isFeatured ?? false,
       isBestSeller: input.isBestSeller ?? false,
@@ -416,8 +425,28 @@ export const updateProduct = async (
     throw new Error("Forbidden")
   }
 
-  await prisma.$transaction(async (tx) => {
-    await tx.product.update({
+  let tagRecords: Array<{ id: string }> | undefined
+  if ("tags" in input) {
+    const uniqueTags = [...new Set((input.tags ?? []).map((t) => t.trim()).filter(Boolean))]
+    if (uniqueTags.length) {
+      tagRecords = []
+      for (const raw of uniqueTags) {
+        const name = raw.trim().toLowerCase()
+        if (!name) continue
+        const slug = slugify(name)
+        const tag = await prisma.tag.upsert({
+          where: { slug },
+          create: { name, slug },
+          update: {},
+        })
+        tagRecords.push(tag)
+      }
+    }
+  }
+
+  await prisma.$transaction(
+    async (tx) => {
+      await tx.product.update({
       where: { id },
       data: {
         ...("name" in input && input.name !== undefined ? { name: input.name } : {}),
@@ -433,6 +462,8 @@ export const updateProduct = async (
         ...("stockStatus" in input && input.stockStatus !== undefined ? { stockStatus: input.stockStatus } : {}),
         ...("totalStock" in input && input.totalStock !== undefined ? { totalStock: input.totalStock } : {}),
         ...("shelfLife" in input ? { shelfLife: input.shelfLife } : {}),
+        ...("preparationType" in input ? { preparationType: input.preparationType } : {}),
+        ...("spiceLevel" in input ? { spiceLevel: input.spiceLevel } : {}),
         ...("isActive" in input && input.isActive !== undefined ? { isActive: input.isActive } : {}),
         ...("isFeatured" in input && input.isFeatured !== undefined ? { isFeatured: input.isFeatured } : {}),
         ...("isBestSeller" in input && input.isBestSeller !== undefined ? { isBestSeller: input.isBestSeller } : {}),
@@ -577,24 +608,13 @@ export const updateProduct = async (
     }
     if ("tags" in input) {
       await tx.productTag.deleteMany({ where: { productId: id } })
-      const uniqueTags = [...new Set((input.tags ?? []).map((t) => t.trim()).filter(Boolean))]
-      if (uniqueTags.length) {
-        for (const raw of uniqueTags) {
-          const name = raw.trim().toLowerCase()
-          if (!name) continue
-          const slug = slugify(name)
-          const tag = await tx.tag.upsert({
-            where: { slug },
-            create: { name, slug },
-            update: {},
-          })
-          await tx.productTag.create({
-            data: { productId: id, tagId: tag.id },
-          })
-        }
+      if (tagRecords?.length) {
+        await tx.productTag.createMany({
+          data: tagRecords.map((tag) => ({ productId: id, tagId: tag.id })),
+        })
       }
     }
-  })
+  }, { timeout: 10000 })
 
   const hydrated = await prisma.product.findUnique({
     where: { id },
