@@ -46,7 +46,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" className={`${inter.variable} ${baloo.variable}`}>
-      <body className="font-sans antialiased min-h-screen flex flex-col">{children}</body>
+      <body className="font-sans antialiased flex flex-col">{children}</body>
     </html>
   )
 }

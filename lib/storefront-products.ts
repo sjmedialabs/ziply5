@@ -40,14 +40,17 @@ type ApiProduct = {
 
 const DEFAULT_IMAGE = "/assets/product listing/Ziply5 - Pouch - Butter Chk Rice 3.png"
 
+const toLocalUploadsPath = (value: string) => {
+  const clean = value.replace(/^\/+/, "")
+  return clean ? `/api/v1/uploads/${clean}` : null
+}
+
 const normalizeMediaUrl = (value: string | null | undefined) => {
   const raw = (value ?? "").trim()
   if (!raw) return null
-  // If DB stores local proxy URLs but the runtime should serve from CDN,
-  // rewrite them to the CDN base.
+  // Keep local upload-proxy URLs as-is in local/dev.
   if (raw.startsWith("/api/v1/uploads/")) {
-    const path = raw.replace(/^\/api\/v1\/uploads\//, "")
-    return path ? `https://cdn.ziply5.com/${path}` : null
+    return raw
   }
   // Local assets (or already-local paths) should be returned as-is.
   if (raw.startsWith("/")) return raw
@@ -55,16 +58,16 @@ const normalizeMediaUrl = (value: string | null | undefined) => {
     try {
       const parsed = new URL(raw)
       if (parsed.hostname === "cdn.ziply5.com") {
-        // Images are hosted on CDN; serve directly instead of rewriting to
-        // the local upload proxy (which expects files to exist in STORAGE_LOCAL_PATH).
-        return raw
+        // CDN may be unavailable in local/dev; rewrite to local uploads route.
+        return toLocalUploadsPath(parsed.pathname)
       }
       return raw
     } catch {
       return null
     }
   }
-  return null
+  // Handle plain relative media keys/paths coming from legacy rows.
+  return toLocalUploadsPath(raw)
 }
 
 export const toStorefrontProduct = (p: ApiProduct): StorefrontProduct => {
