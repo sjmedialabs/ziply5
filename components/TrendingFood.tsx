@@ -31,12 +31,13 @@ const cardGradients = [
   "from-[#4A90D9] to-[#2E6EB5]",
 ]
 
-export default function TrendingFood() {
+export default function TrendingFood({ cmsData }: { cmsData?: any }) {
   const isLg = useIsLg()
   const { products } = useStorefrontProducts(20)
   const [favoriteSlugs, setFavoriteSlugs] = useState<string[]>([])
   const [cartQtyBySlug, setCartQtyBySlug] = useState<Record<string, number>>({})
-    const trendingProducts = useMemo(() => products.slice(0, 4), [products])
+  const trendingProducts = useMemo(() => products.slice(0, 4), [products])
+  const sectionTitle = cmsData?.title || "FOOD THAT'S TRENDING"
   useEffect(() => {
     const syncFavorites = () => setFavoriteSlugs(getFavoriteSlugs())
     syncFavorites()
@@ -72,7 +73,7 @@ export default function TrendingFood() {
   return (
     <section id="trending" className="py-12 md:py-16 lg:py-20">
       <div className="max-w-7xl mx-auto px-4">
-        <SectionHeader title="FOOD THAT'S TRENDING" linkHref="/#trending" />
+        <SectionHeader title={sectionTitle} linkHref="/#trending" />
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 md:gap-8 justify-items-center">
           {visibleProducts.map((product, index) => (
