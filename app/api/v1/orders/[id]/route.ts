@@ -15,6 +15,7 @@ export async function GET(request: NextRequest, ctx: { params: Promise<{ id: str
   const { id } = await ctx.params
   const order = await getOrderForActor(id, auth.user.role, auth.user.sub)
   if (!order) return fail("Order not found", 404)
+    console.log("Order fetched:", order)
   return ok(order, "Order fetched")
 }
 

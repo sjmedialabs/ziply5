@@ -39,6 +39,10 @@ export async function authedPost<T>(path: string, body: unknown): Promise<T> {
   return authedFetch<T>(path, { method: "POST", body: JSON.stringify(body) })
 }
 
+export async function authedPut<T>(path: string, body: unknown): Promise<T> {
+  return authedFetch<T>(path, { method: "PUT", body: JSON.stringify(body) })
+}
+
 export async function authedPatch<T>(path: string, body: unknown): Promise<T> {
   return authedFetch<T>(path, { method: "PATCH", body: JSON.stringify(body) })
 }

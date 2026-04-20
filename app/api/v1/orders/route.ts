@@ -24,9 +24,11 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   const blocked = checkRateLimit(request, "orders:create", { limit: 15, windowMs: 60_000 })
   if (blocked) return blocked
+
   try {
     const user = optionalAuth(request)
     const body = await request.json()
+    console.log("Received order creation request:", { body, user })
     const parsed = createOrderSchema.safeParse(body)
     if (!parsed.success) {
       return fail("Validation failed", 422, parsed.error.flatten())
@@ -41,6 +43,11 @@ export async function POST(request: NextRequest) {
       currency: parsed.data.currency,
       couponCode: parsed.data.couponCode,
       gateway: parsed.data.gateway,
+
+      // 🔥 NEW FIELDS
+      billingAddress: parsed.data.billingAddress,
+      paymentStatus: parsed.data.paymentStatus,
+      paymentId: parsed.data.paymentId,
     })
 
     return ok(order, "Order created", 201)
