@@ -29,7 +29,7 @@ export async function POST(request: Request) {
 
     const user = await signup(parsed.data)
     return ok(
-      {
+      { 
         id: user.id,
         email: user.email,
         name: user.name,

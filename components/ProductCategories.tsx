@@ -17,13 +17,16 @@ const categories = [{ id: 1, name: "Cashew Delight Upma", subtitle: "A Perfect B
         { id: 7, name: "Panner Curry Rice", subtitle: "A Perfect Blend Of Flavors & Nutrition", image: "https://hebbkx1anhila5yf.public.blob.vercel-storage.com/beef.png-2CUGA48h1jJI07o8jBTnyTXuCL8mHr.png" },
          { id: 8, name: "Veg Biryani", subtitle: "A Perfect Blend Of Flavors & Nutrition", image: "https://hebbkx1anhila5yf.public.blob.vercel-storage.com/beef.png-2CUGA48h1jJI07o8jBTnyTXuCL8mHr.png" },]
 
-export default function ProductCategories() {
+export default function ProductCategories({ cmsData }: { cmsData?: any }) {
+  const displayCategories = cmsData?.items?.length > 0 ? cmsData.items : categories;
+  const sectionTitle = cmsData?.title || "OUR PRODUCTS";
+
   return (
     <section className="w-full bg-[#F97316] py-12 relative">
       <div className="max-w-7xl mx-auto px-4 relative">
 
-        <h2 className="text-center font-melon text-white text-3xl font-extrabold mb-8">
-          OUR PRODUCTS
+        <h2 className="text-center font-melon text-white text-3xl font-extrabold mb-8 whitespace-pre-line uppercase">
+          {sectionTitle}
         </h2>
 
         {/* Swiper */}
@@ -44,8 +47,8 @@ export default function ProductCategories() {
           }}
           style={{padding: "10px 12px"}}
         >
-          {categories.map((category) => (
-            <SwiperSlide key={category.id}>
+          {displayCategories.map((category: any, i: number) => (
+            <SwiperSlide key={category.id || i}>
               <Link
                 href={`/product/${category.name
                   .toLowerCase()
@@ -68,7 +71,7 @@ export default function ProductCategories() {
                   </h3>
 
                   <p className="text-[#656565] text-[10px] text-center mt-1 line-clamp-2">
-                    {category.subtitle}
+                    {category.description}
                   </p>
                   </div>
                 </div>
