@@ -17,6 +17,7 @@ type SignupInput = {
   email: string
   password: string
   role?: "super_admin" | "admin" | "customer"
+  isFromAdmin?: boolean
 }
 
 export const signup = async (input: SignupInput) => {
@@ -47,8 +48,14 @@ export const signup = async (input: SignupInput) => {
   })
 
   try {
-    const mail = emailTemplates.welcome(user.name)
-    await enqueueEmail({ to: user.email, ...mail })
+    if(input?.isFromAdmin){
+      const mail = emailTemplates.adminCreated(user.name,input.password,input.email)
+      await enqueueEmail({ to: user.email, ...mail })
+    }
+    else{
+      const mail = emailTemplates.welcome(user.name)
+      await enqueueEmail({ to: user.email, ...mail })
+    }
   } catch {
     // Non-blocking: account creation must not fail on email queue issues.
   }
