@@ -10,7 +10,7 @@ type Summary = {
   refundsTotal: string | number;
   pendingWithdrawals: number;
 };
-
+ 
 type Withdrawal = {
   id: string;
   sellerId: string;
@@ -144,8 +144,9 @@ export default function AdminFinancePage() {
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           {[
             { label: "Gross sales", v: `Rs.${Number(summary.grossSales).toFixed(2)}` },
+            { label: "Net revenue", v: `Rs.${Number(summary.netRevenue).toFixed(2)}` },
             { label: "Orders", v: String(summary.orderCount) },
-            { label: "Refunds (non-rejected)", v: `Rs.${Number(summary.refundsTotal).toFixed(2)}` },
+            { label: "Refunded Amount", v: `Rs.${Number(summary.refundsTotal).toFixed(2)}` },
             { label: "Pending withdrawals", v: String(summary.pendingWithdrawals) },
           ].map((c) => (
             <div key={c.label} className="rounded-2xl border border-[#E8DCC8] bg-white p-4 shadow-sm">

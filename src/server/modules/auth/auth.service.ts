@@ -48,7 +48,9 @@ export const signup = async (input: SignupInput) => {
   })
 
   try {
+    console.log("is from aadmin::::::::::::::",input?.isFromAdmin);
     if(input?.isFromAdmin){
+      console.log("Sending admin created email to ", user.email);
       const mail = emailTemplates.adminCreated(user.name,input.password,input.email)
       await enqueueEmail({ to: user.email, ...mail })
     }

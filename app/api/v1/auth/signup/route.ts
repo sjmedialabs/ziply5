@@ -23,6 +23,7 @@ export async function POST(request: Request) {
   try {
     const body = await request.json()
     const parsed = signupSchema.safeParse(body)
+    console.log("Signup data:", parsed.data);
     if (!parsed.success) {
       return fail("Validation failed", 422, parsed.error.flatten())
     }

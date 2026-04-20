@@ -7,9 +7,13 @@ const globalForRedis = globalThis as unknown as {
 
 export const redis =
   globalForRedis.redis ??
-  new Redis(env.REDIS_URL ?? "redis://localhost:6379", {
+  new Redis(env.REDIS_URL ?? "redis://127.0.0.1:6379", {
     lazyConnect: true,
-    maxRetriesPerRequest: 3,
+
+    //  REQUIRED for BullMQ workers
+    maxRetriesPerRequest: null,
+
+    enableReadyCheck: false,
   })
 
 if (process.env.NODE_ENV !== "production") {

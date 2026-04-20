@@ -5,6 +5,7 @@ import { authedFetch } from "@/lib/dashboard-fetch";
 
 import { ConsoleTable, ConsoleTd } from "@/components/dashboard/ConsoleTable";
 import { Button } from "@/components/ui/button";
+import { ToggleLeft, ToggleRight } from "lucide-react";
 
 import {
   Dialog,
@@ -103,6 +104,38 @@ export default function AdminUsersPage() {
     }
   };
 
+  const handleToggleStatus = async (
+  userId: string,
+  currentStatus: string
+) => {
+  
+  try {
+    const newStatus =
+      currentStatus === "active"
+        ? "suspended"
+        : "active";
+
+    await authedFetch(
+      `/api/v1/users/${userId}/status`,
+      {
+        method: "PUT",
+        body: JSON.stringify({
+          status: newStatus,
+        }),
+      }
+    );
+
+    // Reload users
+    load();
+
+  } catch (error: any) {
+    setError(
+      error.message ||
+      "Failed to update status"
+    );
+  }
+};
+
   return (
     <section className="mx-auto max-w-7xl space-y-4">
       <div className="flex flex-wrap items-end justify-between gap-3">
@@ -145,7 +178,7 @@ export default function AdminUsersPage() {
 
       {!loading && (
         <ConsoleTable
-          headers={["Name", "Email", "Roles", "Status", "Joined"]}
+          headers={["Name", "Email", "Roles", "Status", "Joined","Edit"]}
         >
           {rows.length === 0 ? (
             <tr>
@@ -176,8 +209,16 @@ export default function AdminUsersPage() {
                     .join(", ") || "—"}
                 </ConsoleTd>
 
-                <ConsoleTd className="capitalize">
-                  {u.status}
+               <ConsoleTd className="capitalize">
+                  <span
+                    className={`text-xs font-medium px-2 py-1 rounded-full ${
+                      u.status === "active"
+                        ? "bg-green-100 text-green-700"
+                        : "bg-red-100 text-red-700"
+                    }`}
+                  >
+                    {u.status}
+                  </span>
                 </ConsoleTd>
 
                 <ConsoleTd className="text-[12px] text-[#646464]">
@@ -185,6 +226,42 @@ export default function AdminUsersPage() {
                     u.createdAt
                   ).toLocaleDateString()}
                 </ConsoleTd>
+
+                {/*Edit column */}
+
+                <ConsoleTd>
+
+                  <button
+                    onClick={() =>
+                      handleToggleStatus(
+                        u.id,
+                        u.status
+                      )
+                    }
+                    className="cursor-pointer hover:scale-110 transition"
+                    title="Toggle Status"
+                  >
+
+                    {u.status === "active" ? (
+
+                      <ToggleRight
+                        size={24}
+                        className="text-green-600"
+                      />
+
+                    ) : (
+
+                      <ToggleLeft
+                        size={24}
+                        className="text-gray-400"
+                      />
+
+                    )}
+
+                  </button>
+
+                </ConsoleTd>
+                 
               </tr>
             ))
           )}
