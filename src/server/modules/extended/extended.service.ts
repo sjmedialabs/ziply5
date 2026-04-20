@@ -196,7 +196,7 @@ export const updatePromotion = async (
     active: boolean
     startsAt: Date | null
     endsAt: Date | null
-    productId: string | null
+    productId: string | null 
     metadata: unknown
   }>,
 ) => {
@@ -210,19 +210,56 @@ export const updatePromotion = async (
 }
 
 export const financeSummary = async () => {
-  const [sales, refunds, pendingWd] = await Promise.all([
-    prisma.order.aggregate({ _sum: { total: true }, _count: true }),
-    prisma.refundRecord.aggregate({ where: { status: { not: "rejected" } }, _sum: { amount: true } }),
-    prisma.withdrawalRequest.count({ where: { status: "pending" } }),
-  ])
-  return {
-    grossSales: sales._sum.total ?? 0,
-    orderCount: sales._count,
-    refundsTotal: refunds._sum.amount ?? 0,
-    pendingWithdrawals: pendingWd,
-  }
-}
 
+  // 1️⃣ Total Sales
+  const sales = await prisma.order.aggregate({
+    _sum: { total: true },
+    _count: true,
+  });
+
+  // 2️⃣ Completed Refunds only
+  const completedRefunds =
+    await prisma.refundRecord.aggregate({
+      where: {
+        status: "completed",
+      },
+      _sum: {
+        amount: true,
+      },
+    });
+
+  // 3️⃣ Pending Withdrawals
+  const pendingWd =
+    await prisma.withdrawalRequest.count({
+      where: {
+        status: "pending",
+      },
+    });
+
+  const grossSales =
+    sales._sum.total ?? 0;
+
+  const refundsTotal =
+    completedRefunds._sum.amount ?? 0;
+
+  // ✅ Net Revenue Calculation
+  const netRevenue =
+    grossSales - refundsTotal;
+
+  return {
+
+    grossSales,
+
+    netRevenue, // ⭐ NEW (Important)
+
+    orderCount: sales._count,
+
+    refundsTotal,
+
+    pendingWithdrawals: pendingWd,
+
+  };
+};
 export const listWithdrawals = () =>
   prisma.withdrawalRequest.findMany({
     orderBy: { createdAt: "desc" },

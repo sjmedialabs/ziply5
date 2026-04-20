@@ -14,6 +14,7 @@ export async function GET(request: NextRequest) {
   const fromParam = request.nextUrl.searchParams.get("from")
   const toParam = request.nextUrl.searchParams.get("to")
   const prepTypeParam =request.nextUrl.searchParams.get("preparationType");
+  const tagIdParam =request.nextUrl.searchParams.get("tagId");
   if (!fromParam || !toParam) {
     return fail("Query params from and to (ISO dates) are required", 422)
   }
@@ -27,7 +28,8 @@ export async function GET(request: NextRequest) {
   const data = await salesSummary(
   from,
   to,
-  prepTypeParam
+  prepTypeParam,
+  tagIdParam
 );
   return ok(data, "Sales report")
 }
