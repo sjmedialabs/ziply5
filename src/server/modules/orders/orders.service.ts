@@ -165,6 +165,7 @@ export const listOrders = async (
       include: {
         items: { include: { product: { select: { id: true, name: true, slug: true } } } },
         transactions: true,
+        user: { select: { id: true, name: true, email: true } },
       },
     }),
     prisma.order.count({ where }),

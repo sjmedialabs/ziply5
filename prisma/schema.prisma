@@ -23,6 +23,7 @@ model User {
   notifications      Notification[]
   createdOrders      Order[]              @relation("OrderCreatedBy")
   managedOrders      Order[]              @relation("OrderManagedBy")
+  customerOrders     Order[]              @relation("CustomerOrders")
   orderNotesCreated  OrderNote[]          @relation("OrderNoteCreatedBy")
   orderStatusChanges OrderStatusHistory[] @relation("OrderStatusChangedBy")
   createdProducts    Product[]            @relation("ProductCreatedBy")
@@ -514,6 +515,7 @@ model Order {
   invoice        Invoice?
   createdBy      User?                @relation("OrderCreatedBy", fields: [createdById], references: [id])
   managedBy      User?                @relation("OrderManagedBy", fields: [managedById], references: [id])
+  user           User?                @relation("CustomerOrders", fields: [userId], references: [id])
   fulfillment    OrderFulfillment?
   items          OrderItem[]
   notes          OrderNote[]
