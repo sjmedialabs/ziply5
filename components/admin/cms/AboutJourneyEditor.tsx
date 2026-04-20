@@ -4,7 +4,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { Loader2 } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Loader2, X } from 'lucide-react';
 
 export default function AboutJourneyEditor({ value, onChange }: { value: any, onChange: (v: any) => void }) {
   const [uploading, setUploading] = useState(false);
@@ -69,7 +70,20 @@ export default function AboutJourneyEditor({ value, onChange }: { value: any, on
           <div className="flex items-center gap-4 mt-1">
             <Input type="file" accept="image/*,video/*" onChange={(e) => e.target.files?.[0] && handleUpload(e.target.files[0])} className="w-auto" />
             {uploading && <Loader2 className="h-4 w-4 animate-spin text-[#4A1D1F]" />}
-            {value.mediaUrl && <a href={value.mediaUrl} target="_blank" className="text-xs text-blue-600 underline">View current media</a>}
+            {value.mediaUrl && (
+              <div className="flex items-center gap-2">
+                <a href={value.mediaUrl} target="_blank" className="text-xs text-blue-600 underline">View current media</a>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="h-6 w-6 text-red-500 hover:text-red-700 hover:bg-red-50"
+                  onClick={() => onChange({ ...value, mediaUrl: '' })}
+                >
+                  <X className="h-4 w-4" />
+                </Button>
+              </div>
+            )}
           </div>
         </div>
       </CardContent>
