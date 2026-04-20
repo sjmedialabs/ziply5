@@ -4,16 +4,28 @@ import TrendingFood from "@/components/TrendingFood"
 import BestSellers from "@/components/BestSellers"
 import CollectionBanner from "@/components/CollectionBanner"
 import CravingsGallery from "@/components/CravingsGallery"
+import { prisma } from "@/src/server/db/prisma"
 
-export default function HomePage() {
+export default async function HomePage() {
+  const page = await prisma.cmsPage.findUnique({
+    where: { slug: "home" },
+    include: { sections: { orderBy: { position: "asc" } } },
+  })
+
+  const sections = page?.status === "published" ? page.sections : []
+
+  const getCmsData = (type: string) => {
+    return sections.find(s => s.sectionType === type)?.contentJson
+  }
+
   return (
     <div className="flex flex-col w-full bg-white">
-      <Hero />
-      <ProductCategories />
-      <TrendingFood />
-      <BestSellers />
-      <CollectionBanner />
-      <CravingsGallery />
+      <Hero cmsData={getCmsData('hero')} />
+      <ProductCategories cmsData={getCmsData('our-products')} />
+      <TrendingFood cmsData={getCmsData('trending')} />
+      <BestSellers cmsData={getCmsData('best-sellers')} />
+      <CollectionBanner cmsData={getCmsData('collection-banner')} />
+      <CravingsGallery cmsData={getCmsData('cravings')} />
     </div>
   )
 }

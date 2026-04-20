@@ -8,12 +8,13 @@ import { getCartItems, setCartItemQuantity } from "@/lib/cart"
 import { getFavoriteSlugs, toggleFavoriteSlug } from "@/lib/favorites"
 import { useStorefrontProducts } from "@/hooks/useStorefrontProducts"
 
-export default function BestSellers() {
+export default function BestSellers({ cmsData }: { cmsData?: any }) {
   const { products } = useStorefrontProducts(20)
   const [favoriteSlugs, setFavoriteSlugs] = useState<string[]>([])
   const [cartQtyBySlug, setCartQtyBySlug] = useState<Record<string, number>>({})
   const bestSellers = useMemo(() => products.slice(0, 6), [products])
   const router = useRouter()
+  const sectionTitle = cmsData?.title || "BEST SELLERS"
   useEffect(() => {
     const syncFavorites = () => setFavoriteSlugs(getFavoriteSlugs())
     syncFavorites()
@@ -47,7 +48,7 @@ export default function BestSellers() {
   return (
     <section id="best-sellers" className="bg-[#FFF5C5] py-12 md:py-16 lg:py-20">
       <div className="max-w-7xl mx-auto px-4">
-        <SectionHeader title="BEST SELLERS" linkHref="/#best-sellers" />
+        <SectionHeader title={sectionTitle} linkHref="/#best-sellers" />
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 md:gap-8 justify-items-center">
           {bestSellers.map((product) => (

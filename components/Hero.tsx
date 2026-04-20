@@ -3,16 +3,20 @@
 import { useState, useEffect } from "react"
 import Image from "next/image"
 
-export default function Hero() {
+export default function Hero({ cmsData }: { cmsData?: any }) {
   const [currentSlide, setCurrentSlide] = useState(0)
   const [startX, setStartX] = useState(0)
   const [endX, setEndX] = useState(0)
 
-  const slides = [
-    "/hero-banner.png",
-    "/hero-banner.png",
-    "/hero-banner.png",
+  const defaultSlides = [
+    { image: "/hero-banner.png", alt: "Hero Image" },
+    { image: "/hero-banner.png", alt: "Hero Image" },
+    { image: "/hero-banner.png", alt: "Hero Image" },
   ]
+
+  const slides = cmsData?.slides?.length > 0 ? cmsData.slides : defaultSlides;
+  const globalTitle = cmsData?.title || "Nothing Artificial.\nEverything Delicious.";
+  const globalSubtitle = cmsData?.subtitle || "TASTE THE AUTHENTIC FLAVORS\nOF HOME-COOKED MEALS!";
 
   const handleTouchStart = (e: any) => {
   setStartX(e.targetTouches[0].clientX)
@@ -72,8 +76,8 @@ const handleTouchEnd = () => {
       >
         
         <Image
-          src={slides[currentSlide]}
-          alt="Hero Image"
+          src={slides[currentSlide]?.image || slides[currentSlide]}
+          alt={slides[currentSlide]?.alt || "Hero Image"}
           fill
           sizes="100vw"
           className="object-cover w-full h-full"
@@ -83,15 +87,15 @@ const handleTouchEnd = () => {
         <div className="absolute inset-0 flex items-start mt-15">
           <div className="w-full max-w-7xl mx-auto px-4">
             <div className="max-w-7xl">
-              <h1 className="font-heading text-3xl md:text-5xl lg:text-7xl font-extrabold text-primary leading-[1.05] mb-4 whitespace-nowrap">
-                Nothing Artificial.<br />Everything Delicious.
+              <h1 className="font-heading text-3xl md:text-5xl lg:text-7xl font-extrabold text-primary leading-[1.05] mb-4 whitespace-pre-line">
+                {slides[currentSlide]?.title || globalTitle}
               </h1>
               <p
-              className="font-heading text-lg md:text-2xl lg:text-4xl font-extrabold text-primary  leading-[1.05] mb-4 whitespace-nowrap"
+              className="font-heading text-lg md:text-2xl lg:text-4xl font-extrabold text-primary  leading-[1.05] mb-4 whitespace-pre-line"
                 // className="text-base md:text-lg lg:text-xl text-amber-100 font-semibold uppercase tracking-wide max-w-md italic"
                 style={{ textShadow: "1px 1px 2px rgba(0,0,0,0.3)" }}
               >
-                TASTE THE AUTHENTIC FLAVORS<br />OF HOME-COOKED MEALS!
+                {slides[currentSlide]?.subtitle || globalSubtitle}
               </p>
             </div>
           </div>
@@ -100,7 +104,7 @@ const handleTouchEnd = () => {
 
       {/* DOTS */}
       <div className="absolute bottom-6 left-1/2 -translate-x-1/2 flex gap-2">
-        {slides.map((_, dot) => (
+        {slides.map((_: any, dot: number) => (
           <button
             key={dot}
             onClick={() => setCurrentSlide(dot)}
