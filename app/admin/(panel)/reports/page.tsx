@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState,useEffect } from "react";
 import { authedFetch } from "@/lib/dashboard-fetch";
 
 type ReportData = {
@@ -24,24 +24,51 @@ export default function AdminReportsPage() {
   }, []);
 
   const [from, setFrom] = useState(defaultRange.from);
+  const [prepType, setPrepType] = useState("");
   const [to, setTo] = useState(defaultRange.to);
   const [data, setData] = useState<ReportData | null>(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
-  const run = () => {
-    setLoading(true);
-    setError("");
-    const fromIso = `${from}T00:00:00.000Z`;
-    const toIso = `${to}T23:59:59.999Z`;
-    authedFetch<ReportData>(`/api/v1/reports/sales?from=${encodeURIComponent(fromIso)}&to=${encodeURIComponent(toIso)}`)
-      .then(setData)
-      .catch((e: Error) => {
-        setData(null);
-        setError(e.message);
-      })
-      .finally(() => setLoading(false));
-  };
+ const run = () => {
+  setLoading(true);
+  setError("");
+
+  const fromIso = `${from}T00:00:00.000Z`;
+  const toIso = `${to}T23:59:59.999Z`;
+
+  const params = new URLSearchParams({
+    from: fromIso,
+    to: toIso,
+  });
+
+  if (prepType) {
+    params.append("preparationType", prepType);
+  }
+
+  authedFetch<ReportData>(
+    `/api/v1/reports/sales?${params.toString()}`
+  )
+    .then(setData)
+    .catch((e: Error) => {
+      setData(null);
+      setError(e.message);
+    })
+    .finally(() => setLoading(false));
+};
+
+   useEffect(() => {
+    run();
+  }, []); // runs only once on mount
+
+  if(loading){
+    return(
+      <div className="text-center py-20">
+        <p className="text-lg font-medium text-gray-600">Loading report...</p>
+      </div>
+    )
+  }
+
 
   return (
     <section className="mx-auto max-w-7xl space-y-6">
@@ -56,6 +83,7 @@ export default function AdminReportsPage() {
           <input
             type="date"
             value={from}
+            max={to}
             onChange={(e) => setFrom(e.target.value)}
             className="mt-1 block rounded-lg border border-[#D9D9D1] px-3 py-2 text-sm"
           />
@@ -66,9 +94,19 @@ export default function AdminReportsPage() {
             type="date"
             value={to}
             onChange={(e) => setTo(e.target.value)}
+            min={from}
             className="mt-1 block rounded-lg border border-[#D9D9D1] px-3 py-2 text-sm"
           />
         </label>
+        <select
+          value={prepType}
+          onChange={(e) => setPrepType(e.target.value)}
+          className="border px-3 py-2 rounded"
+        >
+          <option value="">All Preparation Types</option>
+          <option value="ready_to_eat">Ready To Eat</option>
+          <option value="ready_to_cook">Ready To Cook</option>
+        </select>
         <button
           type="button"
           onClick={() => run()}

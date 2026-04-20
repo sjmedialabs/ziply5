@@ -25,6 +25,7 @@ export const permissionsByRole: Record<RoleKey, string[]> = {
     "coupons.create",
     "coupons.update",
     "users.read",
+    "users.update",
     "settings.read",
     "settings.update",
     "tickets.read",

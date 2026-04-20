@@ -5,6 +5,7 @@ export const signupSchema = z.object({
   email: z.string().email(),
   password: z.string().min(8),
   role: z.enum(["super_admin", "admin", "customer"]).optional(),
+  isFromAdmin: z.boolean().optional(), // New field to indicate if signup is from admin panel
 })
 
 export const loginSchema = z.object({
