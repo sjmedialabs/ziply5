@@ -1,11 +1,31 @@
 import { z } from "zod"
 
 export const createOrderSchema = z.object({
-  items: z.array(z.object({ slug: z.string().min(1), quantity: z.number().int().positive() })).min(1),
+  items: z.array(
+    z.object({
+      slug: z.string().min(1),
+      quantity: z.number().int().positive(),
+    })
+  ).min(1),
+
   shipping: z.number().nonnegative().optional(),
   currency: z.string().min(1).optional(),
   couponCode: z.string().optional(),
   gateway: z.string().min(1),
+
+  // 🔥 NEW FIELDS
+  billingAddress: z.object({
+    fullName: z.string(),
+    line1: z.string(),
+    city: z.string(),
+    state: z.string(),
+    postalCode: z.string(),
+    country: z.string(),
+    phone: z.string().optional(),
+  }),
+
+  paymentStatus: z.enum(["pending", "paid", "failed"]).optional(),
+  paymentId: z.string().optional(),
 })
 
 export const updateOrderStatusSchema = z.object({

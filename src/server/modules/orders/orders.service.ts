@@ -37,6 +37,20 @@ export const createOrderFromCheckout = async (input: {
   currency?: string
   couponCode?: string
   gateway: string
+
+  // 🔥 ADD THIS
+  billingAddress?: {
+    fullName: string
+    line1: string
+    city: string
+    state: string
+    postalCode: string
+    country: string
+    phone?: string
+  }
+
+  paymentStatus?: string
+  paymentId?: string
 }) => {
   const shipping = input.shipping ?? 0
   const slugs = [...new Set(input.items.map((i) => i.slug))]
@@ -73,46 +87,59 @@ export const createOrderFromCheckout = async (input: {
   const order = await prisma.$transaction(async (tx) => {
     const created = await tx.order.create({
       data: {
-        userId: input.userId ?? undefined,
-        createdById: null,
-        managedById: null,
-        status: "pending",
-        currency: input.currency ?? "INR",
-        subtotal,
-        shipping,
-        total,
-        items: {
-          create: lines.map((l) => ({
-            productId: l.productId,
-            quantity: l.quantity,
-            unitPrice: l.unitPrice,
-            lineTotal: l.lineTotal,
-          })),
-        },
-        statusHistory: {
-          create: {
-            toStatus: "pending",
-            notes: "Order created",
-            changedById: input.userId ?? undefined,
-          },
+      userId: input.userId ?? undefined,
+
+      // 🔥 CUSTOMER SNAPSHOT (VERY IMPORTANT)
+      customerName: input.billingAddress?.fullName ?? null,
+      customerPhone: input.billingAddress?.phone ?? null,
+      customerAddress: input.billingAddress
+        ? `${input.billingAddress.line1}, ${input.billingAddress.city}, ${input.billingAddress.state}, ${input.billingAddress.postalCode}, ${input.billingAddress.country}`
+        : null,
+
+      // 🔥 PAYMENT DATA
+      paymentStatus: input.paymentStatus ?? "pending",
+      paymentId: input.paymentId ?? null,
+      paymentMethod: input.gateway,
+
+      createdById: null,
+      managedById: null,
+      status: "pending",
+      currency: input.currency ?? "INR",
+      subtotal,
+      shipping,
+      total,
+      items: {
+        create: lines.map((l) => ({
+          productId: l.productId,
+          quantity: l.quantity,
+          unitPrice: l.unitPrice,
+          lineTotal: l.lineTotal,
+        })),
+      },
+      statusHistory: {
+        create: {
+          toStatus: "pending",
+          notes: "Order created",
+          changedById: input.userId ?? undefined,
         },
       },
+    },
       include: {
-        items: { include: { product: { select: { id: true, name: true, slug: true } } } },
-      },
+      items: { include: { product: { select: { id: true, name: true, slug: true } } } },
+    },
     })
 
-    await tx.transaction.create({
-      data: {
-        orderId: created.id,
-        gateway: input.gateway,
-        amount: total,
-        status: "pending",
-      },
-    })
-
-    return created
+  await tx.transaction.create({
+    data: {
+      orderId: created.id,
+      gateway: input.gateway,
+      amount: total,
+      status: "pending",
+    },
   })
+
+  return created
+})
 
   await logActivity({
     actorId: input.userId ?? undefined,
@@ -122,26 +149,26 @@ export const createOrderFromCheckout = async (input: {
     metadata: { itemCount: lines.length, total },
   })
 
-  if (input.userId) {
-    const user = await prisma.user.findUnique({ where: { id: input.userId }, select: { email: true } })
-    if (user?.email) {
-      try {
-        const mail = emailTemplates.orderPlaced(order.id)
-        await enqueueEmail({ to: user.email, ...mail })
-      } catch {
-        // Non-blocking side effect
-      }
+if (input.userId) {
+  const user = await prisma.user.findUnique({ where: { id: input.userId }, select: { email: true } })
+  if (user?.email) {
+    try {
+      const mail = emailTemplates.orderPlaced(order.id)
+      await enqueueEmail({ to: user.email, ...mail })
+    } catch {
+      // Non-blocking side effect
     }
   }
+}
 
-  await enqueueOutboxEvent({
-    eventType: "order.created",
-    aggregateType: "order",
-    aggregateId: order.id,
-    payload: { orderId: order.id, total, currency: input.currency ?? "INR" },
-  }).catch(() => null)
+await enqueueOutboxEvent({
+  eventType: "order.created",
+  aggregateType: "order",
+  aggregateId: order.id,
+  payload: { orderId: order.id, total, currency: input.currency ?? "INR" },
+}).catch(() => null)
 
-  return order
+return order
 }
 
 export const listOrders = async (

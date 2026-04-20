@@ -111,7 +111,11 @@ export default function PaymentPage() {
     try {
       const token = window.localStorage.getItem("ziply5_access_token");
       if (!token) throw new Error("Please login to continue.");
-
+      console.log("SENDING DATA:", {
+        items,
+        shipping,
+        billingAddress,
+      })
       const orderRes = await fetch("/api/v1/orders", {
         method: "POST",
         headers: {
@@ -119,10 +123,26 @@ export default function PaymentPage() {
           Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
-          items: items.map((i) => ({ slug: i.slug, quantity: i.quantity })),
+          items: items.map((i) => ({
+            slug: i.slug,
+            quantity: i.quantity ?? 1,
+          })),
           shipping,
           gateway: "razorpay",
-        }),
+
+          billingAddress: {
+            fullName: billingAddress.fullName,
+            line1: billingAddress.line1,
+            city: billingAddress.city,
+            state: billingAddress.state,
+            postalCode: billingAddress.postalCode,
+            country: billingAddress.country,
+            phone: billingAddress.phone,
+          },
+
+          paymentStatus: "paid",
+          paymentId: response.razorpay_payment_id,
+        })
       });
       const orderJson = (await orderRes.json()) as { success?: boolean; message?: string; data?: { id: string; total: string | number; currency?: string } };
       if (!orderRes.ok || orderJson.success === false || !orderJson.data?.id) {
@@ -175,9 +195,64 @@ export default function PaymentPage() {
           orderId: intentJson.data.orderId,
         },
         theme: { color: "#7B3010" },
-        handler: () => {
-          setCartItems([]);
-          router.push(`/payment-success?orderId=${encodeURIComponent(intentJson.data!.orderId)}`);
+        handler: async (response: any) => {
+          try {
+            const token = localStorage.getItem("ziply5_access_token")
+
+            // 🔥 Step 1: verify payment
+            const verifyRes = await fetch("/api/v1/payments/verify", {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${token}`,
+              },
+              body: JSON.stringify({
+                razorpay_order_id: response.razorpay_order_id,
+                razorpay_payment_id: response.razorpay_payment_id,
+                razorpay_signature: response.razorpay_signature,
+              }),
+            })
+
+            const verifyJson = await verifyRes.json()
+
+            if (!verifyJson.success) {
+              throw new Error("Payment verification failed")
+            }
+
+            // 🔥 Step 2: CREATE ORDER AFTER SUCCESS
+            const orderRes = await fetch("/api/v1/orders", {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${token}`,
+              },
+              body: JSON.stringify({
+                items: items.map((i) => ({
+                  slug: i.slug,
+                  quantity: i.quantity,
+                })),
+                shipping,
+
+                // 🔥 ADD ALL IMPORTANT DATA
+                billingAddress,
+                paymentStatus: "paid",
+                paymentId: response.razorpay_payment_id,
+                gateway: "razorpay",
+              }),
+            })
+
+            const orderJson = await orderRes.json()
+
+            if (!orderJson.success) {
+              throw new Error(orderJson.message)
+            }
+
+            setCartItems([])
+
+            router.push(`/payment-success?orderId=${orderJson.data.id}`)
+          } catch (err) {
+            setError(err instanceof Error ? err.message : "Payment failed")
+          }
         },
         modal: {
           ondismiss: () => {

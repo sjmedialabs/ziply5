@@ -12,6 +12,17 @@ export const createTag = (name: string, slug: string) =>
     data: { name, slug: slug.trim().toLowerCase().replace(/\s+/g, "-") },
   })
 
+export const updateTag = async (id: string, name: string, slug: string, isActive: boolean) => {
+  return prisma.tag.update({
+    where: { id },
+    data: { 
+      ...(name !== undefined ? { name } : {}),
+      ...(slug !== undefined ? { slug: slug.trim().toLowerCase().replace(/\s+/g, "-") } : {}),
+      ...(isActive !== undefined ? { isActive } : {}),
+    },
+  })
+}
+
 export const listAttributeDefs = () => prisma.attributeDef.findMany({ orderBy: { name: "asc" } })
 
 export const createAttributeDef = (name: string, slug: string) =>

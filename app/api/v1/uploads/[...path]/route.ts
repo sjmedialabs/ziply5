@@ -41,6 +41,27 @@ export async function GET(
       },
     })
   } catch {
-    return NextResponse.json({ success: false, message: "File not found" }, { status: 404 })
+    // In local/dev, uploaded files may be missing even if DB paths exist.
+    // Serve a stable placeholder image instead of hard 404 to keep UI usable.
+    try {
+      const placeholderPath = path.join(
+        process.cwd(),
+        "public",
+        "assets",
+        "product listing",
+        "Ziply5 - Pouch - Butter Chk Rice 3.png",
+      )
+      const fallback = await fs.readFile(placeholderPath)
+      return new NextResponse(new Uint8Array(fallback), {
+        status: 200,
+        headers: {
+          "Content-Type": "image/png",
+          "Cache-Control": "no-store",
+          "X-Upload-Fallback": "true",
+        },
+      })
+    } catch {
+      return NextResponse.json({ success: false, message: "File not found" }, { status: 404 })
+    }
   }
 }
