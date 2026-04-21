@@ -2,9 +2,13 @@ export type StorefrontProduct = {
   id: string
   name: string
   slug: string
+  sku: string
   productKind: "simple" | "variant"
   price: number
   oldPrice: number
+  discountPercent?: number
+  stockStatus?: string
+  stock?: number
   description: string
   image: string
   gallery: string[]
@@ -23,10 +27,14 @@ type ApiProduct = {
   id: string
   name: string
   slug: string
-  description?: string | null
+  sku: string
+  description?: string
+  stockStatus?: string
+  stock?: number
   price: string | number
   basePrice?: string | number | null
   salePrice?: string | number | null
+  discountPercent?: number | null
   thumbnail?: string | null
   videoUrl?: string | null
   images?: Array<{ url: string }>
@@ -93,9 +101,13 @@ export const toStorefrontProduct = (p: ApiProduct): StorefrontProduct => {
     id: p.id || "0",
     name: p.name || "Unknown Product",
     slug: p.slug || `product-${p.id}`,
+    sku: p.sku || p.slug.replace(/-/g, "").slice(0, 6).toUpperCase(),
     productKind: p.type ?? (variants.length ? "variant" : "simple"),
     price: sale || 0,
     oldPrice: oldPrice || 0,
+    discountPercent: p.discountPercent || 0,
+    stockStatus: p.stockStatus,
+    stock: p.stock,
     description: p.description ?? "Delicious ready meal.",
     image: normalizedThumb ?? normalizedGallery[0] ?? DEFAULT_IMAGE,
     gallery: normalizedGallery ?? [DEFAULT_IMAGE],
