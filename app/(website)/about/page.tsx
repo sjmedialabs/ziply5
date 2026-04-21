@@ -38,13 +38,14 @@ export default function About() {
 
   // Helper to safely extract JSON content for specific sections
   const getSection = (type: string) => cmsData?.sections?.find((s: any) => s.sectionType === type)?.contentJson || {};
+  const heroData = getSection('about-hero');
 
   return (
     <div>
       {/* HERO */}
       <BannerSection
-        title={cmsData?.title || "About Us"}
-        bgImage="/assets/AboutPage/aboutBanner.png"
+        title={heroData?.title || cmsData?.title || "About Us"}
+        bgImage={heroData?.bgImage || "/assets/AboutPage/aboutBanner.png"}
         overlayColor="rgba(128,128,128,0.1)"
       />
 

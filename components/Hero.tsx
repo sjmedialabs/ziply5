@@ -65,6 +65,11 @@ const handleTouchEnd = () => {
     }
   }, [])
 
+  const currentTitle = slides[currentSlide]?.title || globalTitle;
+  const titleWords = currentTitle ? currentTitle.split(/\s+/).filter(Boolean) : [];
+  const currentSubtitle = slides[currentSlide]?.subtitle || globalSubtitle;
+  const subtitleWords = currentSubtitle ? currentSubtitle.split(/\s+/).filter(Boolean) : [];
+
   return (
     <section className="relative overflow-hidden">
       <div
@@ -87,15 +92,32 @@ const handleTouchEnd = () => {
         <div className="absolute inset-0 flex items-start mt-15">
           <div className="w-full max-w-7xl mx-auto px-4">
             <div className="max-w-7xl">
-              <h1 className="font-heading text-3xl md:text-5xl lg:text-7xl font-extrabold text-primary leading-[1.05] mb-4 whitespace-pre-line">
-                {slides[currentSlide]?.title || globalTitle}
+              <h1 className="font-heading text-3xl md:text-5xl lg:text-7xl font-extrabold text-primary leading-[1.05] mb-4">
+                {titleWords.length > 0 ? (
+                  <>
+                    {titleWords.slice(0, 2).join(" ")}
+                    {titleWords.length > 2 && <br />}
+                    {titleWords.slice(2, 4).join(" ")}
+                    {titleWords.length > 4 && <br />}
+                    {titleWords.slice(4).join(" ")}
+                  </>
+                ) : (
+                  currentTitle
+                )}
               </h1>
               <p
-              className="font-heading text-lg md:text-2xl lg:text-4xl font-extrabold text-primary  leading-[1.05] mb-4 whitespace-pre-line"
-                // className="text-base md:text-lg lg:text-xl text-amber-100 font-semibold uppercase tracking-wide max-w-md italic"
+              className="font-heading text-lg md:text-2xl lg:text-4xl font-extrabold text-primary leading-[1.05] mb-4 uppercase"
                 style={{ textShadow: "1px 1px 2px rgba(0,0,0,0.3)" }}
               >
-                {slides[currentSlide]?.subtitle || globalSubtitle}
+                {subtitleWords.length > 0 ? (
+                  <>
+                    {subtitleWords.slice(0, 4).join(" ")}
+                    {subtitleWords.length > 4 && <br />}
+                    {subtitleWords.slice(4).join(" ")}
+                  </>
+                ) : (
+                  currentSubtitle
+                )}
               </p>
             </div>
           </div>

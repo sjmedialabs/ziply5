@@ -124,6 +124,45 @@ const reserveInventoryForOrder = async (
   }
 }
 
+export async function validatePromoCode(code: string, subtotal: number, userId?: string) {
+  const coupon = await prisma.coupon.findUnique({
+    where: { code: code.toUpperCase() }
+  });
+  
+  if (!coupon || !coupon.active || (coupon.endsAt && new Date() > coupon.endsAt) ||
+    (coupon.minOrderAmount && subtotal < Number(coupon.minOrderAmount))) {
+    return { valid: false, error: 'Invalid, expired, or not eligible for this order amount' };
+  }
+
+  // NEW USER CHECK
+  if (coupon.firstOrderOnly && userId) {
+    const priorOrders = await prisma.order.count({
+      where: { userId, status: { notIn: ['cancelled', 'failed'] } }
+    });
+    if (priorOrders > 0) return { valid: false, error: 'This promo code is for first-time orders only' };
+  }
+
+  // USAGE LIMIT (existing orders count as usage)
+  if (coupon.usageLimitPerUser && userId) {
+    const userUsages = await prisma.order.count({
+      where: { appliedCouponId: coupon.id, userId, status: { notIn: ['cancelled', 'failed'] } }
+    });
+    if (userUsages >= coupon.usageLimitPerUser) return { valid: false, error: 'Usage limit reached for this promo code' };
+  }
+
+  const discount = coupon.discountType === 'percentage'
+    ? subtotal * (Number(coupon.discountValue) / 100)
+    : Number(coupon.discountValue);
+  const finalDiscount = Math.min(discount, Number(coupon.maxDiscountAmount ?? Infinity));
+
+  return {
+    valid: true,
+    discountAmount: finalDiscount,
+    coupon,
+    appliedCouponId: coupon.id
+  };
+}
+
 export const createOrderFromCheckout = async (input: {
   items: { productId?: string; variantId?: string | null; slug?: string; quantity: number }[]
   userId?: string | null
@@ -212,9 +251,12 @@ export const createOrderFromCheckout = async (input: {
   }
 
   let discount = 0
+  let appliedCouponId: string | null = null
   if (input.couponCode?.trim()) {
-    const applied = await computeCouponDiscount(input.couponCode, subtotal)
-    discount = applied.discount
+    const validation = await validatePromoCode(input.couponCode.trim(), subtotal, input.userId ?? undefined)
+    if (!validation.valid) throw new Error(validation.error)
+    discount = validation.discountAmount
+    appliedCouponId = validation.appliedCouponId
   }
 
   const total = Math.max(subtotal + shipping - discount, 0)
@@ -240,6 +282,7 @@ export const createOrderFromCheckout = async (input: {
       paymentStatus: normalizePaymentStatus(input.paymentStatus),
       paymentId: input.paymentId ?? null,
       paymentMethod: input.gateway,
+      appliedCouponId,
 
       createdById: null,
       managedById: null,
@@ -759,4 +802,3 @@ export const confirmOrderDelivery = async (input: {
 
   return getOrderById(input.orderId)
 }
-
