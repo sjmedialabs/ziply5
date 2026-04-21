@@ -3,12 +3,14 @@
 import { useCallback, useEffect, useState } from "react";
 import { authedFetch, authedPatch } from "@/lib/dashboard-fetch";
 import { ConsoleTable, ConsoleTd } from "@/components/dashboard/ConsoleTable";
+import { useRealtimeTables } from "@/hooks/useRealtimeTables";
 
 type ReturnRow = {
   id: string;
   status: string;
   reason: string | null;
   createdAt: string;
+  pickup?: { trackingRef: string | null; status: string } | null;
   order: { id: string; total: string | number; status: string };
 };
 
@@ -20,6 +22,12 @@ export default function AdminReturnsPage() {
   const [loading, setLoading] = useState(true);
   const [draft, setDraft] = useState<Record<string, string>>({});
   const [updating, setUpdating] = useState<string | null>(null);
+  const [filter, setFilter] = useState("all");
+
+  const filteredRows = rows.filter((row) => {
+    if (filter === "pending" && !["requested", "approved", "picked_up"].includes(row.status)) return false;
+    return true;
+  });
 
   const load = useCallback(() => {
     setLoading(true);
@@ -41,6 +49,13 @@ export default function AdminReturnsPage() {
     load();
   }, [load]);
 
+  useRealtimeTables({
+    tables: ["returns", "orders"],
+    onChange: () => {
+      void load();
+    },
+  });
+
   const save = async (id: string) => {
     const status = draft[id];
     if (!status) return;
@@ -56,11 +71,37 @@ export default function AdminReturnsPage() {
     }
   };
 
+  const runAction = async (id: string, action: "approve" | "reject" | "mark_picked" | "mark_received") => {
+    setUpdating(`${id}:${action}`);
+    setError("");
+    try {
+      await authedFetch(`/api/v1/returns/${id}/actions`, {
+        method: "POST",
+        body: JSON.stringify({ action }),
+      });
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Action failed");
+    } finally {
+      setUpdating(null);
+    }
+  };
+
   return (
     <section className="mx-auto max-w-7xl space-y-4">
       <div>
         <h1 className="font-melon text-2xl font-bold text-[#4A1D1F]">Returns</h1>
         <p className="text-sm text-[#646464]">Return requests tied to orders.</p>
+        <div className="mt-3">
+          <select
+            value={filter}
+            onChange={(event) => setFilter(event.target.value)}
+            className="rounded-lg border border-[#D9D9D1] bg-white px-3 py-2 text-xs text-[#4A1D1F]"
+          >
+            <option value="all">All returns</option>
+            <option value="pending">Pending returns</option>
+          </select>
+        </div>
       </div>
 
       {error && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-800">{error}</p>}
@@ -75,7 +116,7 @@ export default function AdminReturnsPage() {
               </ConsoleTd>
             </tr>
           ) : (
-            rows.map((r) => (
+            filteredRows.map((r) => (
               <tr key={r.id} className="hover:bg-[#FFFBF3]/80">
                 <ConsoleTd>
                   <span className="font-mono text-[11px]">{r.order.id.slice(0, 12)}…</span>
@@ -105,6 +146,40 @@ export default function AdminReturnsPage() {
                   >
                     {updating === r.id ? "Saving…" : "Apply"}
                   </button>
+                  <div className="mt-2 flex flex-wrap gap-1">
+                    <button
+                      type="button"
+                      disabled={Boolean(updating)}
+                      onClick={() => runAction(r.id, "approve")}
+                      className="rounded-full border border-[#E8DCC8] bg-white px-2 py-1 text-[10px] uppercase text-[#4A1D1F] disabled:opacity-40"
+                    >
+                      Approve
+                    </button>
+                    <button
+                      type="button"
+                      disabled={Boolean(updating)}
+                      onClick={() => runAction(r.id, "reject")}
+                      className="rounded-full border border-[#E8DCC8] bg-white px-2 py-1 text-[10px] uppercase text-[#4A1D1F] disabled:opacity-40"
+                    >
+                      Reject
+                    </button>
+                    <button
+                      type="button"
+                      disabled={Boolean(updating)}
+                      onClick={() => runAction(r.id, "mark_picked")}
+                      className="rounded-full border border-[#E8DCC8] bg-white px-2 py-1 text-[10px] uppercase text-[#4A1D1F] disabled:opacity-40"
+                    >
+                      Mark picked
+                    </button>
+                    <button
+                      type="button"
+                      disabled={Boolean(updating)}
+                      onClick={() => runAction(r.id, "mark_received")}
+                      className="rounded-full border border-[#E8DCC8] bg-white px-2 py-1 text-[10px] uppercase text-[#4A1D1F] disabled:opacity-40"
+                    >
+                      Mark received
+                    </button>
+                  </div>
                 </ConsoleTd>
               </tr>
             ))

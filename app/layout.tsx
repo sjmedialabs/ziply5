@@ -2,6 +2,7 @@ import type React from "react"
 import type { Metadata } from "next"
 import { Inter, Baloo_2 } from "next/font/google"
 import "./globals.css"
+import { AppProvider } from "@/components/providers/app-provider"
 
 const inter = Inter({
   subsets: ["latin"],
@@ -13,6 +14,7 @@ const baloo = Baloo_2({
   subsets: ["latin"],
   variable: "--font-baloo",
   display: "swap",
+  preload: false,
 })
 
 export const metadata: Metadata = {
@@ -46,7 +48,9 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" className={`${inter.variable} ${baloo.variable}`}>
-      <body className="font-sans antialiased flex flex-col">{children}</body>
+      <body className="font-sans antialiased flex flex-col">
+        <AppProvider>{children}</AppProvider>
+      </body>
     </html>
   )
 }

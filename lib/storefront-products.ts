@@ -2,6 +2,7 @@ export type StorefrontProduct = {
   id: string
   name: string
   slug: string
+  productKind: "simple" | "variant"
   price: number
   oldPrice: number
   description: string
@@ -15,7 +16,7 @@ export type StorefrontProduct = {
   features: Array<{ title: string; icon: string | null }>
   details: Array<{ title: string; content: string }>
   sections: Array<{ id: string; title: string; description: string; sortOrder: number; isActive: boolean }>
-  variants: Array<{ name: string; price: number; sku: string; stock: number }>
+  variants: Array<{ id: string; name: string; weight: string; price: number; sku: string; stock: number; isDefault: boolean }>
 }
 
 type ApiProduct = {
@@ -29,7 +30,8 @@ type ApiProduct = {
   thumbnail?: string | null
   videoUrl?: string | null
   images?: Array<{ url: string }>
-  variants?: Array<{ name: string; weight?: string | null; price: string | number; sku: string; stock: number }>
+  type?: "simple" | "variant"
+  variants?: Array<{ id: string; name: string; weight?: string | null; price: string | number; sku: string; stock: number; isDefault?: boolean }>
   tags?: Array<{ tag: { name: string } }>
   labels?: Array<{ label: string; color: string | null }>
   features?: Array<{ title: string; icon: string | null }>
@@ -91,6 +93,7 @@ export const toStorefrontProduct = (p: ApiProduct): StorefrontProduct => {
     id: p.id || "0",
     name: p.name || "Unknown Product",
     slug: p.slug || `product-${p.id}`,
+    productKind: p.type ?? (variants.length ? "variant" : "simple"),
     price: sale || 0,
     oldPrice: oldPrice || 0,
     description: p.description ?? "Delicious ready meal.",
@@ -108,9 +111,12 @@ export const toStorefrontProduct = (p: ApiProduct): StorefrontProduct => {
         : fallbackDetails,
     sections,
     variants: variants.map((v) => ({
+      id: v.id,
       name: v.name,
+      weight: v.weight ?? v.name ?? "",
       price: Number(v.price ?? 0),
       sku: v.sku,
       stock: v.stock ?? 0,
+      isDefault: Boolean(v.isDefault),
     })) || [], } 
 }

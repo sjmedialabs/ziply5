@@ -28,7 +28,6 @@ export async function POST(request: NextRequest) {
   try {
     const user = optionalAuth(request)
     const body = await request.json()
-    console.log("Received order creation request:", { body, user })
     const parsed = createOrderSchema.safeParse(body)
     if (!parsed.success) {
       return fail("Validation failed", 422, parsed.error.flatten())

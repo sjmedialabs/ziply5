@@ -91,15 +91,15 @@ export default function Header() {
     setCartItems(next)
   }
 
-  const updateCartQuantity = (slug: string, delta: number) => {
-    const current = cartItems.find((item) => item.slug === slug)
+  const updateCartQuantity = (id: string, delta: number) => {
+    const current = cartItems.find((item) => item.id === id)
     if (!current) return
 
     const nextQty = current.quantity + delta
     const next =
       nextQty <= 0
-        ? cartItems.filter((item) => item.slug !== slug)
-        : cartItems.map((item) => (item.slug === slug ? { ...item, quantity: nextQty } : item))
+        ? cartItems.filter((item) => item.id !== id)
+        : cartItems.map((item) => (item.id === id ? { ...item, quantity: nextQty } : item))
 
     persistCart(next)
   }
@@ -322,8 +322,8 @@ export default function Header() {
                   items={cartItems}
                   total={total}
                   open={cartOpen}
-                  onIncrement={(slug) => updateCartQuantity(slug, 1)}
-                  onDecrement={(slug) => updateCartQuantity(slug, -1)}
+                  onIncrement={(id) => updateCartQuantity(id, 1)}
+                  onDecrement={(id) => updateCartQuantity(id, -1)}
                 />
 
               </div>

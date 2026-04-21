@@ -450,6 +450,8 @@ model ProductVariant {
   weight          String?
   lotStocks       InventoryStockLot[]
   product         Product             @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@index([productId])
 }
 
 model ProductImage {

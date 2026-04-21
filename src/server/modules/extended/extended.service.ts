@@ -139,15 +139,47 @@ export const listReturnRequests = () =>
   prisma.returnRequest.findMany({
     orderBy: { createdAt: "desc" },
     take: 200,
-    include: { order: { select: { id: true, total: true, status: true, userId: true } } },
+    include: {
+      order: {
+        select: {
+          id: true,
+          total: true,
+          status: true,
+          userId: true,
+          refunds: { select: { id: true, amount: true, status: true, createdAt: true } },
+        },
+      },
+      pickup: true,
+      items: true,
+    },
   })
 
 export const updateReturnStatus = (id: string, status: string) =>
   prisma.returnRequest.update({ where: { id }, data: { status } })
 
 export const createReturnRequest = async (orderId: string, userId: string | null, reason?: string) => {
+  const order = await prisma.order.findUnique({
+    where: { id: orderId },
+    include: { returnRequests: true },
+  })
+  if (!order) throw new Error("Order not found")
+  if (order.status !== "delivered") throw new Error("Returns are allowed only for delivered orders")
+
+  const duplicate = order.returnRequests.find((row) => row.status !== "rejected")
+  if (duplicate) throw new Error("Return request already exists for this order")
+
   return prisma.returnRequest.create({
-    data: { orderId, userId: userId ?? undefined, reason },
+    data: {
+      orderId,
+      userId: userId ?? undefined,
+      reason: reason?.trim() || null,
+      status: "requested",
+    },
+    include: {
+      order: { select: { id: true, total: true, status: true } },
+      pickup: true,
+      items: true,
+    },
   })
 }
 
@@ -239,14 +271,6 @@ export const financeSummary = async () => {
       },
     });
 
-  // 3️⃣ Pending Withdrawals
-  const pendingWd =
-    await prisma.withdrawalRequest.count({
-      where: {
-        status: "pending",
-      },
-    });
-
   const grossSales =
     sales._sum.total ?? 0;
 
@@ -267,8 +291,6 @@ export const financeSummary = async () => {
 
     refundsTotal,
 
-    pendingWithdrawals: pendingWd,
-
   };
 };
 export const listWithdrawals = () =>
@@ -284,15 +306,40 @@ export const listWithdrawals = () =>
 export const updateWithdrawalStatus = (id: string, status: string) =>
   prisma.withdrawalRequest.update({ where: { id }, data: { status } })
 
-export const listRefunds = () =>
+export const listRefunds = (page = 1, limit = 20) =>
   prisma.refundRecord.findMany({
     orderBy: { createdAt: "desc" },
-    take: 100,
+    skip: (Math.max(page, 1) - 1) * Math.min(Math.max(limit, 1), 100),
+    take: Math.min(Math.max(limit, 1), 100),
     include: { order: { select: { id: true, total: true } } },
   })
 
 export const createRefund = (orderId: string, amount: number, reason?: string) =>
-  prisma.refundRecord.create({ data: { orderId, amount, reason, status: "pending" } })
+  prisma.$transaction(async (tx) => {
+    const order = await tx.order.findUnique({
+      where: { id: orderId },
+      include: { refunds: true },
+    })
+    if (!order) throw new Error("Order not found")
+
+    const alreadyRefunded = order.refunds
+      .filter((row) => !["rejected", "failed"].includes(row.status))
+      .reduce((sum, row) => sum + Number(row.amount), 0)
+    const refundable = Number(order.total) - alreadyRefunded
+    if (refundable <= 0) throw new Error("Order already fully refunded")
+    if (amount > refundable) throw new Error(`Amount exceeds refundable balance (${refundable.toFixed(2)})`)
+
+    const created = await tx.refundRecord.create({
+      data: {
+        orderId,
+        amount,
+        reason,
+        status: "pending",
+      },
+    })
+    await tx.$executeRawUnsafe('UPDATE "Order" SET "refundStatus" = $1 WHERE id = $2', "PENDING", orderId)
+    return created
+  })
 
 export const updateRefundStatus = (id: string, status: string) =>
   prisma.refundRecord.update({ where: { id }, data: { status } })

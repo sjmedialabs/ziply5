@@ -31,7 +31,7 @@ export async function GET(request: NextRequest, ctx: { params: Promise<{ id: str
     return fail("Product not found", 404)
   }
 
-  return ok(product, "Product fetched")
+  return ok({ ...product, product, variants: product.variants ?? [] }, "Product fetched")
 }
 
 export async function PATCH(request: NextRequest, ctx: { params: Promise<{ id: string }> }) {

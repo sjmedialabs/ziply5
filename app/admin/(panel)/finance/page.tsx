@@ -3,22 +3,13 @@
 import { useCallback, useEffect, useState } from "react";
 import { authedFetch, authedPatch, authedPost } from "@/lib/dashboard-fetch";
 import { ConsoleTable, ConsoleTd } from "@/components/dashboard/ConsoleTable";
+import { useRealtimeTables } from "@/hooks/useRealtimeTables";
 
 type Summary = {
   grossSales: string | number;
+  netRevenue: string | number;
   orderCount: number;
   refundsTotal: string | number;
-  pendingWithdrawals: number;
-};
- 
-type Withdrawal = {
-  id: string;
-  sellerId: string;
-  amount: string | number;
-  status: string;
-  note: string | null;
-  createdAt: string;
-  seller: { name: string | null; email: string | null };
 };
 
 type Refund = {
@@ -44,14 +35,13 @@ const RF_STATUSES = ["pending", "completed", "rejected"] as const;
 
 export default function AdminFinancePage() {
   const [summary, setSummary] = useState<Summary | null>(null);
-  const [withdrawals, setWithdrawals] = useState<Withdrawal[]>([]);
   const [refunds, setRefunds] = useState<Refund[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
-  const [wdDraft, setWdDraft] = useState<Record<string, string>>({});
   const [rfDraft, setRfDraft] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState<string | null>(null);
+  const [refundFilter, setRefundFilter] = useState("all");
   const [orderId, setOrderId] = useState("");
   const [refundAmount, setRefundAmount] = useState("");
   const [refundReason, setRefundReason] = useState("");
@@ -75,7 +65,6 @@ export default function AdminFinancePage() {
     ])
       .then(([s, w, r, t]) => {
         setSummary(s);
-        setWithdrawals(w);
         setRefunds(r);
         setTransactions(t || []);
         const wd: Record<string, string> = {};
@@ -97,20 +86,12 @@ export default function AdminFinancePage() {
     load();
   }, [load]);
 
-  const saveWd = async (id: string) => {
-    const status = wdDraft[id];
-    if (!status) return;
-    setBusy(`wd-${id}`);
-    setError("");
-    try {
-      await authedPatch(`/api/v1/finance/withdrawals/${id}`, { status });
-      await load();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Update failed");
-    } finally {
-      setBusy(null);
-    }
-  };
+  useRealtimeTables({
+    tables: ["refunds", "orders"],
+    onChange: () => {
+      void load();
+    },
+  });
 
   const saveRf = async (id: string) => {
     const status = rfDraft[id];
@@ -122,6 +103,34 @@ export default function AdminFinancePage() {
       await load();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Update failed");
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const markManualRefund = async (id: string) => {
+    setBusy(`rfm-${id}`);
+    setError("");
+    try {
+      await authedPatch(`/api/v1/finance/refunds/${id}`, { status: "manual_refunded" });
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Update failed");
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const triggerRefund = async (id: string) => {
+    setBusy(`rft-${id}`);
+    setError("");
+    try {
+      await authedFetch(`/api/v1/finance/refunds/${id}/trigger`, {
+        method: "POST",
+      });
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Trigger failed");
     } finally {
       setBusy(null);
     }
@@ -178,7 +187,7 @@ export default function AdminFinancePage() {
     <section className="mx-auto max-w-7xl space-y-6">
       <div>
         <h1 className="font-melon text-2xl font-bold text-[#4A1D1F]">Finance</h1>
-        <p className="text-sm text-[#646464]">Store totals, seller withdrawals, and order refunds.</p>
+        <p className="text-sm text-[#646464]">Store totals, transactions, and order refunds.</p>
       </div>
 
       {error && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-800">{error}</p>}
@@ -191,7 +200,6 @@ export default function AdminFinancePage() {
             { label: "Net revenue", v: `Rs.${Number(summary.netRevenue).toFixed(2)}` },
             { label: "Orders", v: String(summary.orderCount) },
             { label: "Refunded Amount", v: `Rs.${Number(summary.refundsTotal).toFixed(2)}` },
-            { label: "Pending withdrawals", v: String(summary.pendingWithdrawals) },
           ].map((c) => (
             <div key={c.label} className="rounded-2xl border border-[#E8DCC8] bg-white p-4 shadow-sm">
               <p className="text-xs font-semibold uppercase text-[#646464]">{c.label}</p>
@@ -244,53 +252,6 @@ export default function AdminFinancePage() {
       {!loading && (
         <>
           <div>
-            <h2 className="mb-2 font-melon text-lg font-semibold text-[#4A1D1F]">Withdrawals</h2>
-            <ConsoleTable headers={["Seller", "Amount", "Status", "Created", ""]}>
-              {withdrawals.length === 0 ? (
-                <tr>
-                  <ConsoleTd className="py-6 text-center text-[#646464]" colSpan={5}>
-                    No withdrawal requests.
-                  </ConsoleTd>
-                </tr>
-              ) : (
-                withdrawals.map((w) => (
-                  <tr key={w.id} className="hover:bg-[#FFFBF3]/80">
-                    <ConsoleTd className="text-xs">
-                      <div>{w.seller?.name ?? "—"}</div>
-                      <div className="text-[11px] text-[#646464]">{w.seller?.email}</div>
-                    </ConsoleTd>
-                    <ConsoleTd>Rs.{Number(w.amount).toFixed(2)}</ConsoleTd>
-                    <ConsoleTd>
-                      <select
-                        value={wdDraft[w.id] ?? w.status}
-                        onChange={(e) => setWdDraft((d) => ({ ...d, [w.id]: e.target.value }))}
-                        className="rounded-lg border border-[#D9D9D1] bg-white px-2 py-1 text-xs capitalize"
-                      >
-                        {WD_STATUSES.map((s) => (
-                          <option key={s} value={s}>
-                            {s}
-                          </option>
-                        ))}
-                      </select>
-                    </ConsoleTd>
-                    <ConsoleTd className="text-xs">{new Date(w.createdAt).toLocaleString()}</ConsoleTd>
-                    <ConsoleTd>
-                      <button
-                        type="button"
-                        disabled={busy === `wd-${w.id}` || (wdDraft[w.id] ?? w.status) === w.status}
-                        onClick={() => saveWd(w.id)}
-                        className="rounded-full bg-[#7B3010] px-3 py-1.5 text-[11px] font-semibold uppercase text-white disabled:opacity-40"
-                      >
-                        {busy === `wd-${w.id}` ? "…" : "Apply"}
-                      </button>
-                    </ConsoleTd>
-                  </tr>
-                ))
-              )}
-            </ConsoleTable>
-          </div>
-
-          <div>
             <div className="mb-2 flex flex-wrap items-center justify-between gap-4">
               <h2 className="font-melon text-lg font-semibold text-[#4A1D1F]">Refunds</h2>
               <div className="flex flex-wrap items-center gap-2">
@@ -342,7 +303,8 @@ export default function AdminFinancePage() {
               ) : (
               paginatedRefunds.map((r) => (
                   <tr key={r.id} className="hover:bg-[#FFFBF3]/80">
-                    <ConsoleTd className="font-mono text-[11px]">{r.orderId.slice(0, 14)}…</ConsoleTd>
+                    <ConsoleTd className="font-mono text-[11px]">{(r.order?.id ?? r.orderId).slice(0, 14)}…</ConsoleTd>
+                    <ConsoleTd className="text-[11px]">{r.id.slice(0, 10)}...</ConsoleTd>
                     <ConsoleTd>Rs.{Number(r.amount).toFixed(2)}</ConsoleTd>
                     <ConsoleTd>
                       <select
@@ -367,6 +329,22 @@ export default function AdminFinancePage() {
                         className="rounded-full bg-[#7B3010] px-3 py-1.5 text-[11px] font-semibold uppercase text-white disabled:opacity-40"
                       >
                         {busy === `rf-${r.id}` ? "…" : "Apply"}
+                      </button>
+                      <button
+                        type="button"
+                        disabled={busy === `rfm-${r.id}`}
+                        onClick={() => markManualRefund(r.id)}
+                        className="ml-2 rounded-full border border-[#E8DCC8] bg-white px-3 py-1.5 text-[11px] font-semibold uppercase text-[#4A1D1F] disabled:opacity-40"
+                      >
+                        {busy === `rfm-${r.id}` ? "…" : "Mark manual"}
+                      </button>
+                      <button
+                        type="button"
+                        disabled={busy === `rft-${r.id}`}
+                        onClick={() => triggerRefund(r.id)}
+                        className="ml-2 rounded-full border border-[#E8DCC8] bg-white px-3 py-1.5 text-[11px] font-semibold uppercase text-[#4A1D1F] disabled:opacity-40"
+                      >
+                        {busy === `rft-${r.id}` ? "…" : "Trigger refund"}
                       </button>
                     </ConsoleTd>
                   </tr>

@@ -5,8 +5,15 @@ import { requirePermission } from "@/src/server/middleware/rbac"
 import { createCategorySchema } from "@/src/server/modules/categories/categories.validator"
 import { createCategory, listCategories } from "@/src/server/modules/categories/categories.service"
 
+const CATEGORY_TTL_MS = 60_000
+let categoriesCache: { at: number; payload: unknown } | null = null
+
 export async function GET() {
+  if (categoriesCache && Date.now() - categoriesCache.at < CATEGORY_TTL_MS) {
+    return ok(categoriesCache.payload, "Categories fetched")
+  }
   const items = await listCategories()
+  categoriesCache = { at: Date.now(), payload: items }
   return ok(items, "Categories fetched")
 }
 
@@ -25,6 +32,7 @@ export async function POST(request: NextRequest) {
 
   try {
     const category = await createCategory(parsed.data)
+    categoriesCache = null
     return ok(category, "Category created", 201)
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unexpected error"

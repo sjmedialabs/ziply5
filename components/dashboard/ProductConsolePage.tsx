@@ -56,12 +56,14 @@ type ProductDetail = {
   categories?: Array<{ categoryId: string }>
   tags?: Array<{ tag: { name: string } }>
   variants?: Array<{
+    id?: string
     name: string
     weight?: string | null
     sku: string
     price: string | number
     mrp?: string | number | null
     stock: number
+    isDefault?: boolean
   }>
   images?: Array<{ url: string }>
   details?: Array<{ title: string; content: string; sortOrder?: number }>
@@ -162,6 +164,9 @@ export function ProductConsolePage({
   const [discountPercent, setDiscountPercent] = useState("")
   const [stockStatus, setStockStatus] = useState<"in_stock" | "out_of_stock">("in_stock")
   const [totalStock, setTotalStock] = useState("0")
+  const [variants, setVariants] = useState<Array<{ id?: string; name: string; weight: string; sku: string; price: string; stock: string; isDefault: boolean }>>([
+    { name: "250g", weight: "250g", sku: "", price: "", stock: "0", isDefault: true },
+  ])
   const [shelfLife, setShelfLife] = useState("")
   const [preparationType, setPreparationType] = useState<"" | "ready_to_eat" | "ready_to_cook">("")
   const [spiceLevel, setSpiceLevel] = useState<"" | "mild" | "medium" | "hot" | "extra_hot">("")
@@ -282,7 +287,7 @@ export function ProductConsolePage({
         authedFetch<ProductDetail>(`/api/v1/products/${productId}`),
         authedFetch<CategoryRow[]>("/api/v1/categories").catch(() => []),
       ])
-      const v = p.variants?.[0]
+      const v = p.variants?.find((item) => item.isDefault) ?? p.variants?.[0]
       setCategories(cats.filter((c) => Boolean(c.id)))
       setName(p.name)
       setSlug(p.slug)
@@ -313,6 +318,19 @@ export function ProductConsolePage({
       setFoodType(tagNames.includes("veg") || tagNames.includes("vegetarian") ? "veg" : tagNames.includes("non-veg") || tagNames.includes("non vegetarian") ? "non-veg" : "")
       setImageUrls(uniq((p.images ?? []).map((img) => img.url)))
       setTagsCsv(tagNames.filter((x) => x !== "veg" && x !== "vegetarian" && x !== "non-veg" && x !== "non vegetarian").join(", "))
+      setVariants(
+        p.variants?.length
+          ? p.variants.map((item, idx) => ({
+              id: item.id,
+              name: item.weight ?? item.name ?? `Variant ${idx + 1}`,
+              weight: item.weight ?? item.name ?? "",
+              sku: item.sku ?? "",
+              price: String(Number(item.price ?? 0)),
+              stock: String(item.stock ?? 0),
+              isDefault: Boolean(item.isDefault) || idx === 0,
+            }))
+          : [{ name: "250g", weight: "250g", sku: "", price: "", stock: "0", isDefault: true }],
+      )
       const nextSections =
         (p.sections?.length
           ? p.sections.map((s) => ({
@@ -346,24 +364,43 @@ export function ProductConsolePage({
   }, [loadEdit, loadList, mode])
 
   const payload = useMemo(() => {
+    const normalizedVariants = variants
+      .map((v, idx) => ({
+        id: v.id,
+        name: (v.weight || v.name || `Variant ${idx + 1}`).trim(),
+        weight: (v.weight || v.name || "").trim(),
+        sku: v.sku.trim(),
+        price: Number(v.price || 0),
+        stock: Math.max(0, Number(v.stock || 0)),
+        isDefault: Boolean(v.isDefault),
+      }))
+      .filter((v) => v.name && v.sku)
+    if (normalizedVariants.length > 0 && !normalizedVariants.some((v) => v.isDefault)) {
+      normalizedVariants[0].isDefault = true
+    }
+    const defaultVariant = normalizedVariants.find((v) => v.isDefault) ?? normalizedVariants[0]
     const parsedPrice =
-      toNumOrNull(price) ??
-      toNumOrNull(salePrice) ??
-      toNumOrNull(basePrice) ??
-      0
+      type === "variant"
+        ? Number(defaultVariant?.price ?? 0)
+        : (toNumOrNull(price) ?? toNumOrNull(salePrice) ?? toNumOrNull(basePrice) ?? 0)
+    const derivedSku = type === "variant" ? (defaultVariant?.sku ?? sku.trim()) : sku.trim()
+    const derivedStock = type === "variant"
+      ? normalizedVariants.reduce((sum, v) => sum + v.stock, 0)
+      : (totalStock.trim() ? Number(totalStock) : 0)
     return {
       name: name.trim(),
       slug: slug.trim(),
-      sku: sku.trim(),
+      sku: derivedSku,
       description: description.trim() || undefined,
       status: status,
       type: type,
       price: parsedPrice,
+      variants: type === "variant" ? normalizedVariants : [],
       basePrice: toNumOrNull(basePrice),
       salePrice: toNumOrNull(salePrice),
       discountPercent: toNumOrNull(discountPercent),
       stockStatus,
-      totalStock: totalStock.trim() ? Number(totalStock) : 0,
+      totalStock: derivedStock,
       shelfLife: shelfLife.trim() || null,
       preparationType: preparationType || null,
       spiceLevel: spiceLevel || null,
@@ -424,6 +461,7 @@ export function ProductConsolePage({
     thumbnailUrls,
     totalStock,
     type,
+    variants,
     preparationType,
     spiceLevel,
     sections,
@@ -436,6 +474,33 @@ export function ProductConsolePage({
     if (!payload.name || !payload.slug || !payload.sku) {
       setError("Name, slug and SKU are required")
       return
+    }
+    if (payload.type === "variant") {
+      if (!payload.variants.length) {
+        setError("At least 1 variant is required for variant products")
+        return
+      }
+      if (payload.variants.filter((v) => v.isDefault).length !== 1) {
+        setError("Exactly one default variant is required")
+        return
+      }
+      const skuSet = new Set<string>()
+      for (const variant of payload.variants) {
+        if (variant.price <= 0) {
+          setError("Variant price must be greater than 0")
+          return
+        }
+        if (variant.stock < 0) {
+          setError("Variant stock cannot be negative")
+          return
+        }
+        const key = variant.sku.toLowerCase()
+        if (skuSet.has(key)) {
+          setError("Variant SKUs must be unique")
+          return
+        }
+        skuSet.add(key)
+      }
     }
 
     if (!isDraft) {
@@ -939,14 +1004,21 @@ export function ProductConsolePage({
               />
             </Field>
             <Field label="SKU" required>
-              <Input
-                placeholder="SKU"
-                value={sku}
-                onChange={(e) => setSku(e.target.value)}
-                required
-                className="rounded-lg border border-[#D9D9D1] px-3 py-2 text-sm"
-              />
+              {type === "simple" ? (
+                <Input
+                  placeholder="SKU"
+                  value={sku}
+                  onChange={(e) => setSku(e.target.value)}
+                  required
+                  className="rounded-lg border border-[#D9D9D1] px-3 py-2 text-sm"
+                />
+              ) : (
+                <p className="rounded-lg border border-[#D9D9D1] bg-[#FFFBF3] px-3 py-2 text-xs text-[#646464]">
+                  Derived from default variant SKU.
+                </p>
+              )}
             </Field>
+            {type === "simple" ? (
             <Field label="Sale Price" required={status !== "draft"}>
               <Input
                 placeholder="Sale Price"
@@ -957,6 +1029,7 @@ export function ProductConsolePage({
                 className="rounded-lg border border-[#D9D9D1] px-3 py-2 text-sm"
               />
             </Field>
+            ) : null}
             <Field label="Base / MRP" required={status !== "draft"}>
               <Input
                 placeholder="Base/MRP"
@@ -998,7 +1071,7 @@ export function ProductConsolePage({
             ) : null}
             <Field label="Type" required={status !== "draft"}>
               <Select value={type} onValueChange={(value) => setType(value as "simple" | "variant")}> 
-                <SelectTrigger className="rounded-lg border border-[#D9D9D1] px-3 py-2 text-sm">
+                <SelectTrigger className="rounded-lg border border-[#D9D9D1] px-3 py-2 text-sm" disabled={mode === "edit"}>
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -1007,6 +1080,9 @@ export function ProductConsolePage({
               </SelectContent>
             </Select>
             </Field>
+            {mode === "edit" ? (
+              <p className="text-xs text-[#646464]">Type cannot be changed after product creation.</p>
+            ) : null}
             <Field label="Food Type" required={status !== "draft"}>
               <Select value={foodType} onValueChange={(value) => setFoodType(value as "" | "veg" | "non-veg")}>
               <SelectTrigger className="rounded-lg border border-[#D9D9D1] px-3 py-2 text-sm">
@@ -1039,9 +1115,17 @@ export function ProductConsolePage({
               </SelectContent>
             </Select>
             </Field>
-            <Field label="Total Stock">
-              <Input placeholder="Total Stock" type="number" value={totalStock} onChange={(e) => setTotalStock(e.target.value)} className="rounded-lg border border-[#D9D9D1] px-3 py-2 text-sm" />
-            </Field>
+            {type === "simple" ? (
+              <Field label="Total Stock">
+                <Input placeholder="Total Stock" type="number" value={totalStock} onChange={(e) => setTotalStock(e.target.value)} className="rounded-lg border border-[#D9D9D1] px-3 py-2 text-sm" />
+              </Field>
+            ) : (
+              <Field label="Total Stock">
+                <p className="rounded-lg border border-[#D9D9D1] bg-[#FFFBF3] px-3 py-2 text-xs text-[#646464]">
+                  Automatically calculated from variants.
+                </p>
+              </Field>
+            )}
             <Field label="Stock Status" required={status !== "draft"}>
               <Select value={stockStatus} onValueChange={(value) => setStockStatus(value as "in_stock" | "out_of_stock")}>
                 <SelectTrigger className="rounded-lg border border-[#D9D9D1] px-3 py-2 text-sm">
@@ -1138,6 +1222,62 @@ export function ProductConsolePage({
             <Field label="Tags CSV">
               <Input placeholder="Tags csv: veg, rice, ready-to-eat" value={tagsCsv} onChange={(e) => setTagsCsv(e.target.value)} className="rounded-lg border border-[#D9D9D1] px-3 py-2 text-sm md:col-span-3" />
             </Field>
+            {type === "variant" && (
+              <div className="md:col-span-3 space-y-2 rounded-lg border border-[#E8DCC8] p-3">
+                <div className="flex items-center justify-between">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-[#4A1D1F]">Variants</p>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setVariants((prev) => [...prev, { name: "", weight: "", sku: "", price: "", stock: "0", isDefault: prev.length === 0 }])
+                    }
+                    className="rounded-full border border-[#7B3010] px-3 py-1 text-[11px] font-semibold uppercase text-[#7B3010]"
+                  >
+                    Add Variant
+                  </button>
+                </div>
+                {variants.map((variant, idx) => (
+                  <div key={`${variant.id ?? "new"}-${idx}`} className="grid grid-cols-1 gap-2 md:grid-cols-6">
+                    <Input
+                      placeholder="Weight (250g)"
+                      value={variant.weight}
+                      onChange={(e) => setVariants((prev) => prev.map((x, i) => i === idx ? { ...x, weight: e.target.value, name: e.target.value } : x))}
+                    />
+                    <Input
+                      placeholder="Price"
+                      type="number"
+                      value={variant.price}
+                      onChange={(e) => setVariants((prev) => prev.map((x, i) => i === idx ? { ...x, price: e.target.value } : x))}
+                    />
+                    <Input
+                      placeholder="Stock"
+                      type="number"
+                      value={variant.stock}
+                      onChange={(e) => setVariants((prev) => prev.map((x, i) => i === idx ? { ...x, stock: e.target.value } : x))}
+                    />
+                    <Input
+                      placeholder="SKU"
+                      value={variant.sku}
+                      onChange={(e) => setVariants((prev) => prev.map((x, i) => i === idx ? { ...x, sku: e.target.value } : x))}
+                    />
+                    <label className="flex items-center gap-2 text-xs font-semibold uppercase">
+                      <Checkbox
+                        checked={variant.isDefault}
+                        onCheckedChange={() => setVariants((prev) => prev.map((x, i) => ({ ...x, isDefault: i === idx })))}
+                      />
+                      default
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => setVariants((prev) => prev.filter((_, i) => i !== idx))}
+                      className="rounded-full border border-red-300 px-3 py-2 text-[11px] font-semibold uppercase text-red-700"
+                    >
+                      Delete
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
             <Field label="Description" required={status !== "draft"}>
               <Textarea placeholder="Description" value={description} onChange={(e) => setDescription(e.target.value)} rows={2} className="rounded-lg border border-[#D9D9D1] px-3 py-2 text-sm md:col-span-3" />
             </Field>

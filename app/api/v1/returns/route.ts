@@ -12,6 +12,7 @@ import { z } from "zod"
 const createSchema = z.object({
   orderId: z.string().min(1),
   reason: z.string().optional(),
+  description: z.string().max(1000).optional(),
 })
 
 export async function GET(request: NextRequest) {
@@ -39,7 +40,8 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const row = await createReturnRequest(parsed.data.orderId, order.userId, parsed.data.reason)
+    const reason = [parsed.data.reason?.trim(), parsed.data.description?.trim()].filter(Boolean).join(" - ")
+    const row = await createReturnRequest(parsed.data.orderId, order.userId, reason || undefined)
     return ok(row, "Return requested", 201)
   } catch (e) {
     return fail(e instanceof Error ? e.message : "Error", 400)

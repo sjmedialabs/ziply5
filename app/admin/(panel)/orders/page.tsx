@@ -4,31 +4,59 @@ import { useCallback, useEffect, useState } from "react";
 import { authedFetch, authedPatch } from "@/lib/dashboard-fetch";
 import { ConsoleTable, ConsoleTd } from "@/components/dashboard/ConsoleTable";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { useRealtimeTables } from "@/hooks/useRealtimeTables";
 
 type OrderRow = {
   id: string;
   status: string;
+  paymentStatus?: string | null;
   total: string | number;
   createdAt: string;
   items: Array<{ quantity: number; product: { name: string; slug: string } }>;
   transactions?: Array<{ status: string }>;
+  returnRequests?: Array<{ id: string; status: string }>;
+  refunds?: Array<{ id: string; status: string; amount: string | number }>;
+  statusHistory?: Array<{ toStatus: string; changedAt: string }>;
   user?: { id: string; name: string; email: string };
 };
 
-const STATUSES = ["pending", "confirmed", "shipped", "delivered", "cancelled"] as const;
+const STATUSES = [
+  "pending_payment",
+  "payment_success",
+  "admin_approval_pending",
+  "confirmed",
+  "packed",
+  "shipped",
+  "delivered",
+  "cancel_requested",
+  "return_requested",
+  "return_approved",
+  "refund_initiated",
+  "returned",
+  "cancelled",
+] as const;
 
 export default function AdminOrdersPage() {
   const [rows, setRows] = useState<OrderRow[]>([]);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
+  const [canFetch, setCanFetch] = useState(false);
   const [updating, setUpdating] = useState<string | null>(null);
   const [draft, setDraft] = useState<Record<string, string>>({});
   const [searchTerm, setSearchTerm] = useState("");
+  const [quickFilter, setQuickFilter] = useState("all");
 
   const filteredRows = rows.filter((o) => {
+    const paid = Boolean(o.transactions?.some((t) => /paid|captured|success/i.test(t.status)) || (o.paymentStatus ?? "").toUpperCase() === "SUCCESS");
+    const failedPayment = Boolean(o.transactions?.some((t) => /fail/i.test(t.status)) || (o.paymentStatus ?? "").toUpperCase() === "FAILED");
+    const pendingReturn = Boolean(o.returnRequests?.some((ret) => ["requested", "approved", "picked_up"].includes(ret.status)));
+    const refundPending = Boolean(o.refunds?.some((refund) => ["pending", "processing", "initiated"].includes(refund.status)));
+    if (quickFilter === "pending_returns" && !pendingReturn) return false;
+    if (quickFilter === "refund_pending" && !refundPending) return false;
+    if (quickFilter === "failed_payments" && !failedPayment) return false;
+
     if (!searchTerm) return true;
     const term = searchTerm.toLowerCase();
-    const paid = Boolean(o.transactions?.some((t) => /paid|captured|success/i.test(t.status)));
     return (
       o.id.toLowerCase().includes(term) ||
       o.user?.name?.toLowerCase().includes(term) ||
@@ -42,6 +70,12 @@ export default function AdminOrdersPage() {
   });
 
   const load = useCallback(() => {
+    if (!canFetch) {
+      setRows([]);
+      setLoading(false);
+      setError("Login as admin to load orders.");
+      return;
+    }
     setLoading(true);
     setError("");
     authedFetch<{ items: OrderRow[] }>("/api/v1/orders?page=1&limit=50")
@@ -55,11 +89,35 @@ export default function AdminOrdersPage() {
       })
       .catch((e: Error) => setError(e.message))
       .finally(() => setLoading(false));
+  }, [canFetch]);
+
+  useEffect(() => {
+    const syncAuth = () => {
+      const token = window.localStorage.getItem("ziply5_access_token");
+      const role = window.localStorage.getItem("ziply5_user_role");
+      setCanFetch(Boolean(token) && (role === "admin" || role === "super_admin"));
+    };
+    syncAuth();
+    window.addEventListener("storage", syncAuth);
+    return () => window.removeEventListener("storage", syncAuth);
   }, []);
 
   useEffect(() => {
-    load();
-  }, [load]);
+    if (canFetch) {
+      load();
+    } else {
+      setLoading(false);
+    }
+  }, [canFetch, load]);
+
+  useRealtimeTables({
+    tables: ["orders", "returns", "refunds"],
+    onChange: () => {
+      if (canFetch) {
+        void load();
+      }
+    },
+  });
 
   const saveStatus = async (id: string) => {
     const status = draft[id];
@@ -91,9 +149,20 @@ export default function AdminOrdersPage() {
             onChange={(e) => setSearchTerm(e.target.value)}
             className="flex-1 max-w-md rounded-lg border border-[#D9D9D1] bg-white px-3 py-2 text-sm placeholder-[#646464] focus:border-[#7B3010] focus:outline-none"
           />
+          <select
+            value={quickFilter}
+            onChange={(event) => setQuickFilter(event.target.value)}
+            className="rounded-lg border border-[#D9D9D1] bg-white px-3 py-2 text-sm text-[#4A1D1F] focus:border-[#7B3010] focus:outline-none"
+          >
+            <option value="all">All orders</option>
+            <option value="pending_returns">Pending returns</option>
+            <option value="refund_pending">Refund pending</option>
+            <option value="failed_payments">Failed payments</option>
+          </select>
           <button
             type="button"
             onClick={() => load()}
+            disabled={!canFetch}
             className="rounded-full border border-[#E8DCC8] bg-white px-4 py-2 text-xs font-semibold uppercase tracking-wide text-[#4A1D1F] hover:bg-[#FFFBF3]"
           >
             Refresh
@@ -114,7 +183,7 @@ export default function AdminOrdersPage() {
             </tr>
           ) : (
             filteredRows.map((o) => {
-              const paid = Boolean(o.transactions?.some((t) => /paid|captured|success/i.test(t.status)));
+              const paid = Boolean(o.transactions?.some((t) => /paid|captured|success/i.test(t.status)) || (o.paymentStatus ?? "").toUpperCase() === "SUCCESS");
               return (
                 <tr key={o.id} className="hover:bg-[#FFFBF3]/80">
                   <ConsoleTd>
@@ -129,6 +198,13 @@ export default function AdminOrdersPage() {
                   </ConsoleTd>
                   <ConsoleTd>
                     <span className="font-mono text-[11px]">{o.id.slice(0, 12)}…</span>
+                    <div className="mt-1 text-[10px] uppercase text-[#646464]">
+                      {(o.statusHistory ?? [])
+                        .map((entry) => entry.toStatus.toUpperCase())
+                        .slice(0, 6)
+                        .reverse()
+                        .join(" → ")}
+                    </div>
                   </ConsoleTd>
                   <ConsoleTd>{new Date(o.createdAt).toLocaleString()}</ConsoleTd>
                   <ConsoleTd>

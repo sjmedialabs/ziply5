@@ -1,4 +1,5 @@
 import { apiRequest } from "@/src/client/api/http"
+import { persistSession } from "@/lib/auth-session"
 
 type LoginResponse = {
   success: boolean
@@ -23,8 +24,12 @@ export const bindAdminAuth = () => {
 
     try {
       const response = await apiRequest<LoginResponse>("/api/v1/auth/login", "POST", { email, password })
-      localStorage.setItem("ziply5_access_token", response.data.accessToken)
-      localStorage.setItem("ziply5_refresh_token", response.data.refreshToken)
+      persistSession({
+        accessToken: response.data.accessToken,
+        refreshToken: response.data.refreshToken,
+        role: response.data.user.role,
+        user: response.data.user,
+      })
       window.location.href = "/admin/dashboard"
     } catch (error) {
       console.error("Login failed:", error)
