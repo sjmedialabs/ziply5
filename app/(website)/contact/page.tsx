@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import Image from "next/image"
 import { useForm } from "react-hook-form"
 import { toast } from "@/lib/toast"
@@ -14,12 +14,29 @@ type FormData = {
 
 export default function ContactUsPage() {
     const [loading, setLoading] = useState(false)
+    const [cmsData, setCmsData] = useState<any>(null)
     const {
         register,
         handleSubmit,
         reset,
         formState: { errors },
     } = useForm<FormData>()
+
+    useEffect(() => {
+        const fetchCmsData = async () => {
+            try {
+                const res = await fetch("/api/v1/cms/pages?slug=contact")
+                const json = await res.json()
+                if (json.data) {
+                    const contactDetails = json.data.sections?.find((s: any) => s.sectionType === 'contact-details')?.contentJson || {}
+                    setCmsData(contactDetails)
+                }
+            } catch (err) {
+                console.error("Failed to load CMS data", err)
+            }
+        }
+        fetchCmsData()
+    }, [])
 
     const onSubmit = async (data: FormData) => {
         setLoading(true)
@@ -79,9 +96,7 @@ export default function ContactUsPage() {
                 </h2>
 
                 <p className="text-center text-gray-500 mt-2 max-w-xl mx-auto text-sm">
-                    Lorem ipsum dolor sit amet consectetur adipisicing elit.
-                    Expedita quaerat unde quam dolor quia veritatis inventore,
-                    aut commodi cum veniam vel.
+                    {cmsData?.mainDescription || "Lorem ipsum dolor sit amet consectetur adipisicing elit. Expedita quaerat unde quam dolor quia veritatis inventore, aut commodi cum veniam vel."}
                 </p>
 
                 {/* CONTACT CARDS */}
@@ -100,11 +115,11 @@ export default function ContactUsPage() {
                         />
 
                         <h3 className="mt-4 font-semibold text-gray-800 text-sm">
-                            102 Street 2714 Donavan
+                            {cmsData?.address || "102 Street 2714 Donavan"}
                         </h3>
 
                         <p className="text-gray-500 text-xs mt-1">
-                            Lorem ipsum dolor sit amet dicont
+                            {cmsData?.addressDescription || "Lorem ipsum dolor sit amet dicont"}
                         </p>
                     </div>
 
@@ -120,11 +135,11 @@ export default function ContactUsPage() {
                         />
 
                         <h3 className="mt-4 font-semibold text-gray-800 text-sm">
-                            +02 1234 567 88
+                            {cmsData?.phone || "+02 1234 567 88"}
                         </h3>
 
                         <p className="text-gray-500 text-xs mt-1">
-                            Lorem ipsum dolor sit amet dicont
+                            {cmsData?.phoneDescription || "Lorem ipsum dolor sit amet dicont"}
                         </p>
                     </div>
 
@@ -140,11 +155,11 @@ export default function ContactUsPage() {
                         />
 
                         <h3 className="mt-4 font-semibold text-gray-800 text-sm">
-                            info@example.com
+                            {cmsData?.email || "info@example.com"}
                         </h3>
 
                         <p className="text-gray-500 text-xs mt-1">
-                            Lorem ipsum dolor sit amet dicont
+                            {cmsData?.emailDescription || "Lorem ipsum dolor sit amet dicont"}
                         </p>
                     </div>
 
