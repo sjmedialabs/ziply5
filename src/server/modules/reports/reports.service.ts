@@ -12,7 +12,7 @@ export const salesSummary = async (
     createdAt: { gte: from, lte: to },
   };
 
-  // Build product filter safely
+  // Build product filter
   const productFilter: any = {};
 
   if (preparationType) {
@@ -27,7 +27,7 @@ export const salesSummary = async (
     };
   }
 
-  // Apply product filters to orders
+  // Apply product filter to orders
   if (Object.keys(productFilter).length > 0) {
     baseWhere.items = {
       some: {
@@ -58,7 +58,7 @@ export const salesSummary = async (
   });
 
   // 🔹 Status Summary
-  const byStatus = await prisma.order.groupBy({
+  const byStatusRaw = await prisma.order.groupBy({
     by: ["status"],
     where: baseWhere,
     _count: true,
@@ -71,31 +71,25 @@ export const salesSummary = async (
   const productSummary =
     await prisma.orderItem.groupBy({
       by: ["productId"],
-
       where: orderItemWhere,
-
       _sum: {
         quantity: true,
       },
-
       orderBy: {
         _sum: {
           quantity: "desc",
         },
       },
-
       take: 50,
     });
 
-  // 🔹 Refund Summary (NEW)
+  // 🔹 Refund Summary
   const refundAgg =
     await prisma.refundRecord.aggregate({
       where: {
         status: "completed",
-
         order: baseWhere,
       },
-
       _sum: {
         amount: true,
       },
@@ -104,16 +98,38 @@ export const salesSummary = async (
   const refundedAmount =
     refundAgg._sum.amount ?? 0;
 
-  // Existing revenue (unchanged)
   const revenueTotal =
     agg._sum.total ?? 0;
 
-  // NEW net sale calculation
   const netSale =
     Number(revenueTotal) -
     Number(refundedAmount);
 
-  // Fetch product names
+  // 🔹 Ensure cancelled exists in byStatus
+  const statusMap = new Map(
+    byStatusRaw.map(row => [
+      row.status,
+      {
+        status: row.status,
+        count: row._count,
+        revenue: row._sum.total ?? 0,
+      },
+    ])
+  );
+
+  // Always include cancelled
+  if (!statusMap.has("cancelled")) {
+    statusMap.set("cancelled", {
+      status: "cancelled",
+      count: 0,
+      revenue: 0,
+    });
+  }
+
+  const formattedStatus =
+    Array.from(statusMap.values());
+
+  // 🔹 Fetch product names
   const productIds =
     productSummary.map(p => p.productId);
 
@@ -144,16 +160,13 @@ export const salesSummary = async (
     subtotalTotal:
       agg._sum.subtotal ?? 0,
 
-    // ✅ NEW FIELDS
+    // ✅ New fields
     refundedAmount,
 
     netSale,
 
-    byStatus: byStatus.map(row => ({
-      status: row.status,
-      count: row._count,
-      revenue: row._sum.total ?? 0,
-    })),
+    // ✅ Updated status list
+    byStatus: formattedStatus,
 
     products: productSummary.map(row => ({
       productId: row.productId,

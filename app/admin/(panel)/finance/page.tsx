@@ -45,6 +45,8 @@ export default function AdminFinancePage() {
   const [orderId, setOrderId] = useState("");
   const [refundAmount, setRefundAmount] = useState("");
   const [refundReason, setRefundReason] = useState("");
+  const [refundSearch, setRefundSearch] = useState("");
+  const [refundStatusFilter, setRefundStatusFilter] = useState("all");
 
   const load = useCallback(() => {
     setLoading(true);
@@ -129,6 +131,12 @@ export default function AdminFinancePage() {
       setBusy(null);
     }
   };
+
+  const filteredRefunds = refunds.filter((r) => {
+    const matchesSearch = r.orderId.toLowerCase().includes(refundSearch.toLowerCase());
+    const matchesStatus = refundStatusFilter === "all" || r.status === refundStatusFilter;
+    return matchesSearch && matchesStatus;
+  });
 
   return (
     <section className="mx-auto max-w-7xl space-y-6">
@@ -247,16 +255,49 @@ export default function AdminFinancePage() {
           </div>
 
           <div>
-            <h2 className="mb-2 font-melon text-lg font-semibold text-[#4A1D1F]">Refunds</h2>
+            <div className="mb-2 flex flex-wrap items-center justify-between gap-4">
+              <h2 className="font-melon text-lg font-semibold text-[#4A1D1F]">Refunds</h2>
+              <div className="flex flex-wrap items-center gap-2">
+                <input
+                  type="text"
+                  placeholder="Search Order ID..."
+                  value={refundSearch}
+                  onChange={(e) => setRefundSearch(e.target.value)}
+                  className="w-40 rounded-lg border border-[#D9D9D1] bg-white px-3 py-1.5 text-xs focus:border-[#7B3010] focus:outline-none"
+                />
+                <select
+                  value={refundStatusFilter}
+                  onChange={(e) => setRefundStatusFilter(e.target.value)}
+                  className="rounded-lg border border-[#D9D9D1] bg-white px-2 py-1.5 text-xs capitalize focus:border-[#7B3010] focus:outline-none"
+                >
+                  <option value="all">All Statuses</option>
+                  {RF_STATUSES.map((s) => (
+                    <option key={s} value={s}>
+                      {s}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setRefundSearch("");
+                    setRefundStatusFilter("all");
+                  }}
+                  className="rounded-full cursor-pointer bg-[#7B3010] px-4 py-1.5 text-xs font-semibold uppercase tracking-wide text-white"
+                >
+                  Clear
+                </button>
+              </div>
+            </div>
             <ConsoleTable headers={["Order", "Amount", "Status", "Created", ""]}>
-              {refunds.length === 0 ? (
+              {filteredRefunds.length === 0 ? (
                 <tr>
                   <ConsoleTd className="py-6 text-center text-[#646464]" colSpan={5}>
-                    No refunds.
+                    {refunds.length === 0 ? "No refunds." : "No refunds match your filters."}
                   </ConsoleTd>
                 </tr>
               ) : (
-                refunds.map((r) => (
+                filteredRefunds.map((r) => (
                   <tr key={r.id} className="hover:bg-[#FFFBF3]/80">
                     <ConsoleTd className="font-mono text-[11px]">{r.orderId.slice(0, 14)}…</ConsoleTd>
                     <ConsoleTd>Rs.{Number(r.amount).toFixed(2)}</ConsoleTd>
