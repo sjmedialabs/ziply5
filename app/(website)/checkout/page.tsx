@@ -83,9 +83,29 @@ export default function CheckoutPage() {
         router.push(`/login?next=${encodeURIComponent("/payment")}`);
         return;
       }
+
+      const orderRes = await fetch("/api/orders/create", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          items: items.map((item) => ({ slug: item.slug, quantity: item.quantity })),
+          shipping,
+          gateway: "razorpay",
+          billingAddress: payload,
+          paymentStatus: "pending",
+        }),
+      });
+      const orderJson = (await orderRes.json()) as { success?: boolean; message?: string; data?: { id: string } };
+      if (!orderRes.ok || orderJson.success === false || !orderJson.data?.id) {
+        throw new Error(orderJson.message ?? "Unable to place order.");
+      }
+      window.localStorage.setItem("ziply5_pending_order_id", orderJson.data.id);
       router.push("/payment");
-    } catch {
-      setOrderError("Unable to continue to payment. Please try again.");
+    } catch (e) {
+      setOrderError(e instanceof Error ? e.message : "Unable to continue to payment. Please try again.");
     } finally {
       setPlacing(false);
     }
@@ -262,7 +282,7 @@ export default function CheckoutPage() {
               disabled={placing}
               className="bg-[#7B3010] shadow-2xl tracking-wide font-medium text-white w-full py-4 rounded-full font-melon disabled:opacity-60"
             >
-              {placing ? "Please wait…" : "Pay Now →"}
+              {placing ? "Please wait…" : "Place Order →"}
             </button>
             </div>
           </div>

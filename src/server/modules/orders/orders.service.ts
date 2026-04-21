@@ -30,6 +30,40 @@ const persistedOrderStatus = (status: OrderLifecycleStatus): "pending" | "confir
   return status
 }
 
+const reserveInventoryForOrder = async (
+  tx: Prisma.TransactionClient,
+  lines: Array<{ productId: string; quantity: number }>,
+) => {
+  for (const line of lines) {
+    const warehouseStock = await tx.inventoryItem.findFirst({
+      where: { productId: line.productId, available: { gte: line.quantity } },
+      orderBy: { updatedAt: "asc" },
+    })
+    if (warehouseStock) {
+      await tx.inventoryItem.update({
+        where: { id: warehouseStock.id },
+        data: {
+          available: { decrement: line.quantity },
+          reserved: { increment: line.quantity },
+        },
+      })
+      continue
+    }
+
+    const variantStock = await tx.productVariant.findFirst({
+      where: { productId: line.productId, stock: { gte: line.quantity } },
+      orderBy: { updatedAt: "asc" },
+    })
+    if (!variantStock) {
+      throw new Error("Insufficient inventory to reserve order")
+    }
+    await tx.productVariant.update({
+      where: { id: variantStock.id },
+      data: { stock: { decrement: line.quantity } },
+    })
+  }
+}
+
 export const createOrderFromCheckout = async (input: {
   items: { slug: string; quantity: number }[]
   userId?: string | null
@@ -52,6 +86,20 @@ export const createOrderFromCheckout = async (input: {
   paymentStatus?: string
   paymentId?: string
 }) => {
+  if (input.paymentId?.trim()) {
+    const existing = await prisma.order.findFirst({
+      where: {
+        paymentId: input.paymentId.trim(),
+        ...(input.userId ? { userId: input.userId } : {}),
+      },
+      include: {
+        items: { include: { product: { select: { id: true, name: true, slug: true } } } },
+        transactions: true,
+      },
+    })
+    if (existing) return existing
+  }
+
   const shipping = input.shipping ?? 0
   const slugs = [...new Set(input.items.map((i) => i.slug))]
   const products = await prisma.product.findMany({
@@ -85,6 +133,11 @@ export const createOrderFromCheckout = async (input: {
   const total = Math.max(subtotal + shipping - discount, 0)
 
   const order = await prisma.$transaction(async (tx) => {
+    await reserveInventoryForOrder(
+      tx,
+      lines.map((line) => ({ productId: line.productId, quantity: line.quantity })),
+    )
+
     const created = await tx.order.create({
       data: {
       userId: input.userId ?? undefined,
@@ -134,7 +187,8 @@ export const createOrderFromCheckout = async (input: {
       orderId: created.id,
       gateway: input.gateway,
       amount: total,
-      status: "pending",
+      status: input.paymentStatus === "paid" ? "paid" : input.paymentStatus === "failed" ? "failed" : "pending",
+      externalId: input.paymentId ?? null,
     },
   })
 
@@ -193,6 +247,9 @@ export const listOrders = async (
         items: { include: { product: { select: { id: true, name: true, slug: true } } } },
         transactions: true,
         user: { select: { id: true, name: true, email: true } },
+        returnRequests: { select: { id: true, status: true } },
+        refunds: { select: { id: true, status: true, amount: true } },
+        statusHistory: { orderBy: { changedAt: "desc" }, take: 6, select: { toStatus: true, changedAt: true } },
       },
     }),
     prisma.order.count({ where }),
@@ -211,6 +268,8 @@ export const getOrderById = async (id: string) => {
       notes: { orderBy: { createdAt: "desc" } },
       fulfillment: true,
       shipments: { orderBy: { createdAt: "desc" } },
+      returnRequests: { orderBy: { createdAt: "desc" }, include: { pickup: true, items: true } },
+      refunds: { orderBy: { createdAt: "desc" } },
       invoice: true,
     },
   })

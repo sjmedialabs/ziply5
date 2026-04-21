@@ -198,11 +198,16 @@ export const processWebhookEvent = async (
   })
   if (!tx) return { applied: false, reason: "transaction_not_found" }
 
+  const nextTxStatus = paid ? "paid" : "failed"
+  if (tx.status === nextTxStatus) {
+    return { applied: true, duplicate: true, paid, orderId, transactionId: tx.id }
+  }
+
   await prisma.$transaction(async (db) => {
     await db.transaction.update({
       where: { id: tx.id },
       data: {
-        status: paid ? "paid" : "failed",
+        status: nextTxStatus,
         gateway: provider,
         externalId: externalId ?? tx.externalId ?? undefined,
       },

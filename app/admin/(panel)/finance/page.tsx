@@ -3,9 +3,11 @@
 import { useCallback, useEffect, useState } from "react";
 import { authedFetch, authedPatch, authedPost } from "@/lib/dashboard-fetch";
 import { ConsoleTable, ConsoleTd } from "@/components/dashboard/ConsoleTable";
+import { useRealtimeTables } from "@/hooks/useRealtimeTables";
 
 type Summary = {
   grossSales: string | number;
+  netRevenue: string | number;
   orderCount: number;
   refundsTotal: string | number;
   pendingWithdrawals: number;
@@ -28,10 +30,11 @@ type Refund = {
   status: string;
   reason: string | null;
   createdAt: string;
+  order?: { id: string };
 };
 
 const WD_STATUSES = ["pending", "approved", "paid", "rejected"] as const;
-const RF_STATUSES = ["pending", "completed", "rejected"] as const;
+const RF_STATUSES = ["pending", "completed", "manual_refunded", "rejected"] as const;
 
 export default function AdminFinancePage() {
   const [summary, setSummary] = useState<Summary | null>(null);
@@ -42,6 +45,7 @@ export default function AdminFinancePage() {
   const [wdDraft, setWdDraft] = useState<Record<string, string>>({});
   const [rfDraft, setRfDraft] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState<string | null>(null);
+  const [refundFilter, setRefundFilter] = useState("all");
   const [orderId, setOrderId] = useState("");
   const [refundAmount, setRefundAmount] = useState("");
   const [refundReason, setRefundReason] = useState("");
@@ -77,6 +81,13 @@ export default function AdminFinancePage() {
     load();
   }, [load]);
 
+  useRealtimeTables({
+    tables: ["refunds", "orders"],
+    onChange: () => {
+      void load();
+    },
+  });
+
   const saveWd = async (id: string) => {
     const status = wdDraft[id];
     if (!status) return;
@@ -107,6 +118,19 @@ export default function AdminFinancePage() {
     }
   };
 
+  const markManualRefund = async (id: string) => {
+    setBusy(`rfm-${id}`);
+    setError("");
+    try {
+      await authedPatch(`/api/v1/finance/refunds/${id}`, { status: "manual_refunded" });
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Update failed");
+    } finally {
+      setBusy(null);
+    }
+  };
+
   const createRefund = async (e: React.FormEvent) => {
     e.preventDefault();
     const amt = Number(refundAmount);
@@ -129,6 +153,12 @@ export default function AdminFinancePage() {
       setBusy(null);
     }
   };
+
+  const filteredRefunds = refunds.filter((refund) => {
+    if (refundFilter === "pending") return ["pending", "processing", "initiated"].includes(refund.status);
+    if (refundFilter === "failed") return ["failed", "rejected"].includes(refund.status);
+    return true;
+  });
 
   return (
     <section className="mx-auto max-w-7xl space-y-6">
@@ -248,17 +278,29 @@ export default function AdminFinancePage() {
 
           <div>
             <h2 className="mb-2 font-melon text-lg font-semibold text-[#4A1D1F]">Refunds</h2>
-            <ConsoleTable headers={["Order", "Amount", "Status", "Created", ""]}>
-              {refunds.length === 0 ? (
+            <div className="mb-2">
+              <select
+                value={refundFilter}
+                onChange={(event) => setRefundFilter(event.target.value)}
+                className="rounded-lg border border-[#D9D9D1] bg-white px-3 py-2 text-xs text-[#4A1D1F]"
+              >
+                <option value="all">All refunds</option>
+                <option value="pending">Refund pending</option>
+                <option value="failed">Failed refunds</option>
+              </select>
+            </div>
+            <ConsoleTable headers={["Order", "Reference", "Amount", "Status", "Created", ""]}>
+              {filteredRefunds.length === 0 ? (
                 <tr>
-                  <ConsoleTd className="py-6 text-center text-[#646464]" colSpan={5}>
+                  <ConsoleTd className="py-6 text-center text-[#646464]" colSpan={6}>
                     No refunds.
                   </ConsoleTd>
                 </tr>
               ) : (
-                refunds.map((r) => (
+                filteredRefunds.map((r) => (
                   <tr key={r.id} className="hover:bg-[#FFFBF3]/80">
-                    <ConsoleTd className="font-mono text-[11px]">{r.orderId.slice(0, 14)}…</ConsoleTd>
+                    <ConsoleTd className="font-mono text-[11px]">{(r.order?.id ?? r.orderId).slice(0, 14)}…</ConsoleTd>
+                    <ConsoleTd className="text-[11px]">{r.id.slice(0, 10)}...</ConsoleTd>
                     <ConsoleTd>Rs.{Number(r.amount).toFixed(2)}</ConsoleTd>
                     <ConsoleTd>
                       <select
@@ -282,6 +324,14 @@ export default function AdminFinancePage() {
                         className="rounded-full bg-[#7B3010] px-3 py-1.5 text-[11px] font-semibold uppercase text-white disabled:opacity-40"
                       >
                         {busy === `rf-${r.id}` ? "…" : "Apply"}
+                      </button>
+                      <button
+                        type="button"
+                        disabled={busy === `rfm-${r.id}`}
+                        onClick={() => markManualRefund(r.id)}
+                        className="ml-2 rounded-full border border-[#E8DCC8] bg-white px-3 py-1.5 text-[11px] font-semibold uppercase text-[#4A1D1F] disabled:opacity-40"
+                      >
+                        {busy === `rfm-${r.id}` ? "…" : "Mark manual"}
                       </button>
                     </ConsoleTd>
                   </tr>

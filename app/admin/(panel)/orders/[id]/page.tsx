@@ -15,6 +15,10 @@ type OrderDetail = {
   createdAt: string
   items: Array<{ quantity: number; product: { id: string; name: string; slug: string } }>
   transactions?: Array<{ id: string; gateway: string; amount: string | number; status: string; createdAt: string }>
+  statusHistory?: Array<{ toStatus: string; changedAt: string }>
+  shipments?: Array<{ id: string; carrier: string | null; trackingNo: string | null; shipmentStatus: string }>
+  returnRequests?: Array<{ id: string; status: string; reason: string | null }>
+  refunds?: Array<{ id: string; status: string; amount: string | number }>
 }
 
 export default function AdminOrderDetailPage() {
@@ -65,6 +69,17 @@ export default function AdminOrderDetailPage() {
               <p className="text-xs uppercase tracking-[0.15em] text-[#646464]">Status</p>
               <p className="font-semibold text-[#2A1810] capitalize">{order.status}</p>
             </div>
+          </div>
+
+          <div className="rounded-2xl border border-[#E8DCC8] bg-white p-4 shadow-sm">
+            <h2 className="mb-3 text-sm font-semibold uppercase tracking-[0.15em] text-[#4A1D1F]">Lifecycle timeline</h2>
+            <p className="text-xs uppercase text-[#646464]">
+              {(order.statusHistory ?? [])
+                .map((entry) => entry.toStatus.toUpperCase())
+                .slice(0, 7)
+                .reverse()
+                .join(" → ") || "CREATED"}
+            </p>
           </div>
 
           <div className="grid gap-4 rounded-2xl border border-[#E8DCC8] bg-white p-4 shadow-sm md:grid-cols-3">

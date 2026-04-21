@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import { useMutation } from "@tanstack/react-query";
 import { getCartItems, setCartItems } from "@/lib/cart";
 
 declare global {
@@ -15,7 +16,9 @@ export default function PaymentPage() {
   const [scriptReady, setScriptReady] = useState(false);
   const [paying, setPaying] = useState(false);
   const [error, setError] = useState("");
+  const [statusText, setStatusText] = useState("");
   const [loggedIn, setLoggedIn] = useState(false);
+  const [createdOrderId, setCreatedOrderId] = useState<string | null>(null);
   const [billingAddress, setBillingAddress] = useState({
     fullName: "",
     line1: "",
@@ -32,6 +35,61 @@ export default function PaymentPage() {
   const shipping = items.length > 0 ? 20 : 0;
   const total = subTotal + shipping;
 
+  const createOrderMutation = useMutation({
+    mutationFn: async (token: string) => {
+      const res = await fetch("/api/orders/create", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          items: items.map((i) => ({
+            slug: i.slug,
+            quantity: i.quantity ?? 1,
+          })),
+          shipping,
+          gateway: "razorpay",
+          billingAddress,
+          paymentStatus: "pending",
+        }),
+      });
+      const json = (await res.json()) as { success?: boolean; message?: string; data?: { id: string } };
+      if (!res.ok || json.success === false || !json.data?.id) {
+        throw new Error(json.message ?? "Unable to create order.");
+      }
+      return json.data.id;
+    },
+  });
+
+  const initiatePaymentMutation = useMutation({
+    mutationFn: async ({ token, orderId }: { token: string; orderId: string }) => {
+      const intentRes = await fetch("/api/payments/initiate", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ orderId, provider: "razorpay" }),
+      });
+      const intentJson = (await intentRes.json()) as {
+        success?: boolean;
+        message?: string;
+        data?: {
+          externalId: string;
+          amount: number;
+          currency: string;
+          publicKey?: string;
+          orderId: string;
+        };
+      };
+      if (!intentRes.ok || intentJson.success === false || !intentJson.data?.externalId || !intentJson.data.publicKey) {
+        throw new Error(intentJson.message ?? "Unable to initialize payment.");
+      }
+      return intentJson.data;
+    },
+  });
+
   useEffect(() => {
     const token = window.localStorage.getItem("ziply5_access_token");
     if (!token) {
@@ -46,6 +104,8 @@ export default function PaymentPage() {
       .catch(() => setLoggedIn(false));
 
     const savedBilling = window.localStorage.getItem("ziply5_checkout_billing_address");
+    const pendingOrderId = window.localStorage.getItem("ziply5_pending_order_id");
+    if (pendingOrderId) setCreatedOrderId(pendingOrderId);
     if (savedBilling) {
       try {
         const parsed = JSON.parse(savedBilling) as Partial<typeof billingAddress>;
@@ -87,6 +147,57 @@ export default function PaymentPage() {
     router.push(`/login?next=${encodeURIComponent("/payment")}`);
   };
 
+  const openRazorpay = async (token: string, orderId: string) => {
+    const intent = await initiatePaymentMutation.mutateAsync({ token, orderId });
+    const Razorpay = window.Razorpay;
+    if (!Razorpay) throw new Error("Razorpay checkout is not ready yet.");
+    const razorpay = new Razorpay({
+      key: intent.publicKey,
+      amount: Math.round(intent.amount * 100),
+      currency: intent.currency || "INR",
+      name: "ZiPLY5",
+      description: `Order ${intent.orderId.slice(0, 8)}`,
+      order_id: intent.externalId,
+      prefill: {
+        name: billingAddress.fullName,
+        contact: billingAddress.phone,
+      },
+      notes: {
+        billing_line1: billingAddress.line1,
+        billing_city: billingAddress.city,
+        billing_state: billingAddress.state,
+        billing_postal_code: billingAddress.postalCode,
+        billing_country: billingAddress.country,
+        orderId: intent.orderId,
+      },
+      theme: { color: "#7B3010" },
+      handler: async (response: { razorpay_payment_id?: string }) => {
+        setStatusText("Payment successful.");
+        if (response?.razorpay_payment_id) {
+          await fetch(`/api/v1/orders/${orderId}`, {
+            method: "PATCH",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${token}`,
+            },
+            body: JSON.stringify({ status: "confirmed", reasonCode: "payment_captured", note: "Payment completed via checkout" }),
+          }).catch(() => null);
+        }
+        window.localStorage.removeItem("ziply5_pending_order_id");
+        setCartItems([]);
+        router.push(`/payment-success?orderId=${orderId}`);
+      },
+      modal: {
+        ondismiss: () => {
+          setStatusText("Payment interrupted. You can retry.");
+          setError("Payment was not completed. Please retry.");
+          setPaying(false);
+        },
+      },
+    });
+    razorpay.open();
+  };
+
   const payNow = async () => {
     if (!loggedIn) {
       setError("Please login to complete purchase.");
@@ -108,161 +219,37 @@ export default function PaymentPage() {
 
     setPaying(true);
     setError("");
+    setStatusText("Creating order...");
     try {
       const token = window.localStorage.getItem("ziply5_access_token");
       if (!token) throw new Error("Please login to continue.");
-      console.log("SENDING DATA:", {
-        items,
-        shipping,
-        billingAddress,
-      })
-      const orderRes = await fetch("/api/v1/orders", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          items: items.map((i) => ({
-            slug: i.slug,
-            quantity: i.quantity ?? 1,
-          })),
-          shipping,
-          gateway: "razorpay",
-
-          billingAddress: {
-            fullName: billingAddress.fullName,
-            line1: billingAddress.line1,
-            city: billingAddress.city,
-            state: billingAddress.state,
-            postalCode: billingAddress.postalCode,
-            country: billingAddress.country,
-            phone: billingAddress.phone,
-          },
-
-          paymentStatus: "paid",
-          paymentId: response.razorpay_payment_id,
-        })
-      });
-      const orderJson = (await orderRes.json()) as { success?: boolean; message?: string; data?: { id: string; total: string | number; currency?: string } };
-      if (!orderRes.ok || orderJson.success === false || !orderJson.data?.id) {
-        throw new Error(orderJson.message ?? "Unable to create order.");
+      const orderId = createdOrderId ?? (await createOrderMutation.mutateAsync(token));
+      if (!createdOrderId) {
+        setCreatedOrderId(orderId);
+        window.localStorage.setItem("ziply5_pending_order_id", orderId);
       }
-
-      const intentRes = await fetch("/api/v1/payments/intent", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          orderId: orderJson.data.id,
-          provider: "razorpay",
-        }),
-      });
-      const intentJson = (await intentRes.json()) as {
-        success?: boolean
-        message?: string
-        data?: {
-          externalId: string
-          amount: number
-          currency: string
-          publicKey?: string
-          orderId: string
-        }
-      };
-      if (!intentRes.ok || intentJson.success === false || !intentJson.data?.externalId || !intentJson.data?.publicKey) {
-        throw new Error(intentJson.message ?? "Unable to initialize payment.");
-      }
-
-      const razorpay = new window.Razorpay({
-        key: intentJson.data.publicKey,
-        amount: Math.round(intentJson.data.amount * 100),
-        currency: intentJson.data.currency || "INR",
-        name: "ZiPLY5",
-        description: `Order ${intentJson.data.orderId.slice(0, 8)}`,
-        order_id: intentJson.data.externalId,
-        prefill: {
-          name: billingAddress.fullName,
-          contact: billingAddress.phone,
-        },
-        notes: {
-          billing_line1: billingAddress.line1,
-          billing_city: billingAddress.city,
-          billing_state: billingAddress.state,
-          billing_postal_code: billingAddress.postalCode,
-          billing_country: billingAddress.country,
-          orderId: intentJson.data.orderId,
-        },
-        theme: { color: "#7B3010" },
-        handler: async (response: any) => {
-          try {
-            const token = localStorage.getItem("ziply5_access_token")
-
-            // 🔥 Step 1: verify payment
-            const verifyRes = await fetch("/api/v1/payments/verify", {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-                Authorization: `Bearer ${token}`,
-              },
-              body: JSON.stringify({
-                razorpay_order_id: response.razorpay_order_id,
-                razorpay_payment_id: response.razorpay_payment_id,
-                razorpay_signature: response.razorpay_signature,
-              }),
-            })
-
-            const verifyJson = await verifyRes.json()
-
-            if (!verifyJson.success) {
-              throw new Error("Payment verification failed")
-            }
-
-            // 🔥 Step 2: CREATE ORDER AFTER SUCCESS
-            const orderRes = await fetch("/api/v1/orders", {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-                Authorization: `Bearer ${token}`,
-              },
-              body: JSON.stringify({
-                items: items.map((i) => ({
-                  slug: i.slug,
-                  quantity: i.quantity,
-                })),
-                shipping,
-
-                // 🔥 ADD ALL IMPORTANT DATA
-                billingAddress,
-                paymentStatus: "paid",
-                paymentId: response.razorpay_payment_id,
-                gateway: "razorpay",
-              }),
-            })
-
-            const orderJson = await orderRes.json()
-
-            if (!orderJson.success) {
-              throw new Error(orderJson.message)
-            }
-
-            setCartItems([])
-
-            router.push(`/payment-success?orderId=${orderJson.data.id}`)
-          } catch (err) {
-            setError(err instanceof Error ? err.message : "Payment failed")
-          }
-        },
-        modal: {
-          ondismiss: () => {
-            setPaying(false);
-          },
-        },
-      });
-      razorpay.open();
+      setStatusText("Redirecting to payment...");
+      await openRazorpay(token, orderId);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Payment failed.");
+      setPaying(false);
+    }
+  };
+
+  const retryPayment = async () => {
+    if (!createdOrderId) return;
+    const token = window.localStorage.getItem("ziply5_access_token");
+    if (!token) {
+      setError("Please login to retry payment.");
+      return;
+    }
+    setPaying(true);
+    setError("");
+    setStatusText("Retrying payment...");
+    try {
+      await openRazorpay(token, createdOrderId);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Retry failed.");
       setPaying(false);
     }
   };
@@ -352,15 +339,26 @@ export default function PaymentPage() {
         </div>
 
         {error && <p className="mb-3 text-sm text-red-600">{error}</p>}
+        {statusText && !error && <p className="mb-3 text-sm text-[#646464]">{statusText}</p>}
 
         <button
           type="button"
           onClick={() => void payNow()}
-          disabled={paying || !scriptReady}
+          disabled={paying || !scriptReady || createOrderMutation.isPending || initiatePaymentMutation.isPending}
           className="w-full bg-primary text-white py-4 rounded-full font-medium shadow-md font-melon tracking-wide disabled:opacity-60"
         >
           {paying ? "Processing..." : "Pay Now"}
         </button>
+        {createdOrderId && (
+          <button
+            type="button"
+            onClick={() => void retryPayment()}
+            disabled={paying || initiatePaymentMutation.isPending}
+            className="mt-3 w-full rounded-full border border-[#E8DCC8] bg-white py-3 text-xs font-semibold uppercase tracking-wide text-[#4A1D1F] disabled:opacity-40"
+          >
+            Retry Payment
+          </button>
+        )}
       </div>
     </div>
   );

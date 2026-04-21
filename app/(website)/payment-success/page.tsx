@@ -1,8 +1,12 @@
 "use client";
 
 import { Check } from "lucide-react";
+import { useSearchParams } from "next/navigation";
 
 export default function PaymentSuccess() {
+  const searchParams = useSearchParams();
+  const orderId = searchParams.get("orderId");
+
   return (
     <div className="min-h-screen flex items-center justify-center bg-[#F5F1E6] p-4">
 
@@ -27,7 +31,7 @@ export default function PaymentSuccess() {
 
           <div className="flex justify-between">
             <span>Ref Number</span>
-            <span>000085752257</span>
+            <span>{orderId ? `${orderId.slice(0, 12)}...` : "000085752257"}</span>
           </div>
 
           <div className="flex justify-between">

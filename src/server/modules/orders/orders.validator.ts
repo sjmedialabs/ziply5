@@ -14,15 +14,17 @@ export const createOrderSchema = z.object({
   gateway: z.string().min(1),
 
   // 🔥 NEW FIELDS
-  billingAddress: z.object({
-    fullName: z.string(),
-    line1: z.string(),
-    city: z.string(),
-    state: z.string(),
-    postalCode: z.string(),
-    country: z.string(),
-    phone: z.string().optional(),
-  }),
+  billingAddress: z
+    .object({
+      fullName: z.string(),
+      line1: z.string(),
+      city: z.string(),
+      state: z.string(),
+      postalCode: z.string(),
+      country: z.string(),
+      phone: z.string().optional(),
+    })
+    .optional(),
 
   paymentStatus: z.enum(["pending", "paid", "failed"]).optional(),
   paymentId: z.string().optional(),
