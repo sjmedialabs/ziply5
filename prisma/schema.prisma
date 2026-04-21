@@ -284,16 +284,31 @@ model PromotionProduct {
   productId   String
 
   promotion   Promotion @relation(fields: [promotionId], references: [id])
+
   product     Product   @relation(fields: [productId], references: [id])
 
   @@unique([promotionId, productId])
+}
+
+model PromotionVariant {
+  id          String @id @default(cuid())
+
+  promotionId String
+  variantId   String
+
+  promotion   Promotion @relation(fields: [promotionId], references: [id])
+
+  variant     ProductVariant @relation(fields: [variantId], references: [id])
+
+  metadata    Json?
+
+  @@unique([promotionId, variantId])
 }
 
 model Promotion {
   id        String    @id @default(cuid())
 
   kind      PromotionKind
-
   name      String
 
   active    Boolean   @default(true)
@@ -307,6 +322,7 @@ model Promotion {
   updatedAt DateTime  @updatedAt
 
   products  PromotionProduct[]
+  variants  PromotionVariant[]   //  ADD THIS
 }
 
 
@@ -412,7 +428,7 @@ model Product {
   seo                  ProductSeo?
   tags                 ProductTag[]
   variants             ProductVariant[]
-  promotions           Promotion[]
+  promotionLinks       PromotionProduct[]
   sections             ProductSection[]
 
   @@index([createdById])
@@ -449,6 +465,7 @@ model ProductVariant {
   updatedAt       DateTime            @updatedAt
   weight          String?
   lotStocks       InventoryStockLot[]
+  promotionLinks  PromotionVariant[]
   product         Product             @relation(fields: [productId], references: [id], onDelete: Cascade)
 
   @@index([productId])
@@ -1092,4 +1109,12 @@ enum OutboxStatus {
   sent
   failed
   dead
+}
+
+enum PromotionKind {
+  FLASH_SALE
+  CLEARANCE
+  FEATURED_DEAL
+  FEATURED_ONLY
+  CUSTOM
 }
