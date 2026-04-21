@@ -36,6 +36,7 @@ export const permissionsByRole: Record<RoleKey, string[]> = {
     "brands.create",
     "tags.read",
     "tags.create",
+    "tags.edit",
     "attributes.read",
     "attributes.create",
     "inventory.read",

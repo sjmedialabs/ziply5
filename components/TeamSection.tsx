@@ -6,8 +6,8 @@ import "swiper/css";
 import "swiper/css/navigation";
 import { ArrowLeft, ArrowRight, Facebook, Instagram, Youtube } from "lucide-react";
 
-export function TeamSection() {
-    const team = [
+export function TeamSection({ data }: { data?: any }) {
+    const defaultTeam = [
         {
             name: "Management-1",
             role: "Managing Director",
@@ -40,6 +40,15 @@ export function TeamSection() {
         },
     ];
 
+    const titleString = data?.title || "Our Team Members";
+    const titleWords = titleString.split(" ");
+    const firstWord = titleWords[0];
+    const secondWord = titleWords[1];
+    const restOfTitle = titleWords.slice(2).join(" ");
+
+    const mainDescription = data?.mainDescription || "Get to know the friendly faces behind your favorite flavors.";
+    const displayTeam = data?.members?.length > 0 ? data.members : defaultTeam;
+
     return (
         <section className="py-20 bg-[#A9E7FD] bg-[linear-gradient(to_left,#EFD7EF,#F5F9FC,#F8EAE1,#A9E7FD)] text-center">
             <div className="max-w-7xl mx-auto px-4">
@@ -47,11 +56,11 @@ export function TeamSection() {
                 <div className="flex flex-col gap-2 w-full justify-center items-center">
                     <div className="flex flex-col gap-2 max-w-sm">
                         <h2 className="text-4xl font-melon font-medium tracking-wider leading-12 mb-2">
-                            Our <span className="text-primary">Team</span> Members
+                            {firstWord} {secondWord && <span className="text-primary">{secondWord}</span>} {restOfTitle}
                         </h2>
 
                         <p className="text-[#646464] mb-12">
-                            Get to know the friendly faces behind your favorite flavors.
+                            {mainDescription}
                         </p></div>
                 </div>
                 {/* Swiper */}
@@ -74,12 +83,12 @@ export function TeamSection() {
                         1024: { slidesPerView: 3 },
                     }}
                 >
-                    {team.map((member, i) => (
-                        <SwiperSlide key={i}>
+                    {displayTeam.map((member: any, i: number) => (
+                        <SwiperSlide key={member.id || i}>
                             <div className="flex flex-col items-center">
                                 {/* Image */}
                                 <img
-                                    src={member.img}
+                                    src={member.imageUrl || member.img}
                                     alt={member.name}
                                     className="w-48 h-48 rounded-full object-cover mb-4"
                                 />
@@ -97,21 +106,21 @@ export function TeamSection() {
                                 {/* Social Icons */}
                                 <div className="flex gap-3">
                                     <a
-                                        href={member.socials.facebook}
+                                        href={member.facebook || member.socials?.facebook || "#"}
                                         className="w-9 h-9 flex items-center justify-center rounded-full bg-[#7c2d12] text-white hover:scale-110 transition"
                                     >
                                         <Facebook size={14} />
                                     </a>
 
                                     <a
-                                        href={member.socials.instagram}
+                                        href={member.instagram || member.socials?.instagram || "#"}
                                         className="w-9 h-9 flex items-center justify-center rounded-full bg-[#7c2d12] text-white hover:scale-110 transition"
                                     >
                                         <Instagram size={14} />
                                     </a>
 
                                     <a
-                                        href={member.socials.youtube}
+                                        href={member.youtube || member.socials?.youtube || "#"}
                                         className="w-9 h-9 flex items-center justify-center rounded-full bg-[#7c2d12] text-white hover:scale-110 transition"
                                     >
                                         <Youtube size={14} />
