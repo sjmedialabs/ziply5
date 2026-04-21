@@ -5,7 +5,7 @@ import Image from "next/image"
 import { useParams, useRouter } from "next/navigation"
 import { ArrowLeft, ChevronLeft, ChevronRight } from "lucide-react"
 import { getFavoriteSlugs, toggleFavoriteSlug } from "@/lib/favorites"
-import { addToCart, getCartItems, getCartQuantityForSlug, setCartItemQuantity } from "@/lib/cart"
+import { addToCart, getCartItems, getCartQuantity, setCartItemQuantity } from "@/lib/cart"
 import { toStorefrontProduct, type StorefrontProduct } from "@/lib/storefront-products"
 import Link from "next/link"
 
@@ -91,8 +91,12 @@ export default function ProductPage() {
 
   const activeVariant = useMemo(() => {
     if (!product) return null
-    return product.variants.find((v) => v.name === selectedSize) ?? product.variants[0] ?? null
+    return product.variants.find((v) => v.name === selectedSize || v.weight === selectedSize) ?? product.variants[0] ?? null
   }, [product, selectedSize])
+  const allVariantsOutOfStock = useMemo(
+    () => Boolean(product?.variants.length) && product?.variants.every((v) => v.stock <= 0),
+    [product],
+  )
 
   const currentPrice = activeVariant?.price ?? product?.price ?? 0
   const sku = activeVariant?.sku ?? (product ? `SKU:${product.slug.replace(/-/g, "").slice(0, 6).toUpperCase()}` : "")
@@ -102,8 +106,9 @@ export default function ProductPage() {
   useEffect(() => {
     if (!product) return
     setSelectedImage((product.gallery[0] ?? product.image ?? "").trim())
-    setSelectedSize(product.variants[0]?.name ?? product.weight)
-    setQuantity(getCartQuantityForSlug(product.slug))
+    const defaultVariant = product.variants.find((v) => v.isDefault) ?? product.variants[0]
+    setSelectedSize(defaultVariant?.weight || defaultVariant?.name || product.weight)
+    setQuantity(getCartQuantity(product.id, defaultVariant?.id ?? null))
     setOpenSection(null)
     setRelatedStart(0)
     setThumbStart(0)
@@ -120,14 +125,14 @@ export default function ProductPage() {
           }, {})
           setCartQtyBySlug(qtyMap)
         }
-    const syncQty = () => setQuantity(getCartQuantityForSlug(product.slug))
+    const syncQty = () => setQuantity(getCartQuantity(product.id, activeVariant?.id ?? null))
     window.addEventListener("ziply5:cart-updated", syncQty)
     window.addEventListener("storage", syncQty)
     return () => {
       window.removeEventListener("ziply5:cart-updated", syncQty)
       window.removeEventListener("storage", syncQty)
     }
-  }, [product])
+  }, [activeVariant?.id, product])
 
   if (loading) {
     return <section className="flex min-h-[60vh] items-center justify-center bg-[#F3F3F3]">Loading...</section>
@@ -238,21 +243,26 @@ export default function ProductPage() {
 
             <div className="mt-5 flex items-center gap-2">
               <span className="text-xs font-light font-melon tracking-wide text-[#272727]">Size (Wt)</span>
-              {(product.variants.length ? product.variants.map((v) => v.name) : [product.weight]).map((size, idx) => (
+              {(product.variants.length ? product.variants.map((v) => v.weight || v.name) : [product.weight]).map((size, idx) => {
+                const variant = product.variants.find((v) => (v.weight || v.name) === size)
+                const outOfStock = variant ? variant.stock <= 0 : false
+                return (
                 <button
                   type="button"
                   key={`${size || "size"}-${idx}`}
                   onClick={() => setSelectedSize(size)}
+                  disabled={outOfStock}
                   className={`rounded-md border px-3 py-1 text-xs font-semibold ${
                     selectedSize === size
                       ? "border-[#A33838] bg-[#A33838] text-white"
                       : "border-[#D8D8D8] bg-white text-[#696969] hover:border-[#A33838]"
-                  }`}
+                  } disabled:cursor-not-allowed disabled:opacity-40`}
                 >
                   {size}
                 </button>
-              ))}
+              )})}
             </div>
+            {allVariantsOutOfStock && <p className="mt-2 text-sm font-semibold text-red-700">Out of Stock</p>}
 
             <div className="mt-4 flex items-center gap-4">
               <span className="text-xs font-light font-melon tracking-wide text-[#272727]">Add to cart</span>
@@ -261,7 +271,16 @@ export default function ProductPage() {
                   type="button"
                   onClick={() => {
                     const nextQty = Math.max(0, quantity - 1)
-                    setCartItemQuantity({ ...product, price: currentPrice, weight: selectedSize }, nextQty)
+                    setCartItemQuantity({
+                      productId: product.id,
+                      variantId: activeVariant?.id ?? null,
+                      slug: product.slug,
+                      name: product.name,
+                      price: currentPrice,
+                      image: product.image,
+                      weight: selectedSize,
+                      sku: activeVariant?.sku,
+                    }, nextQty)
                     setQuantity(nextQty)
                   }}
                   className="h-10 w-9 text-lg font-bold transition hover:bg-[#6A3033]"
@@ -273,7 +292,16 @@ export default function ProductPage() {
                   type="button"
                   onClick={() => {
                     const nextQty = quantity + 1
-                    setCartItemQuantity({ ...product, price: currentPrice, weight: selectedSize }, nextQty)
+                    setCartItemQuantity({
+                      productId: product.id,
+                      variantId: activeVariant?.id ?? null,
+                      slug: product.slug,
+                      name: product.name,
+                      price: currentPrice,
+                      image: product.image,
+                      weight: selectedSize,
+                      sku: activeVariant?.sku,
+                    }, nextQty)
                     setQuantity(nextQty)
                   }}
                   className="h-10 w-9 text-lg font-bold transition hover:bg-[#6A3033]"
@@ -288,9 +316,19 @@ export default function ProductPage() {
               <button
                 type="button"
                 onClick={() => {
-                  addToCart({ ...product, price: currentPrice, weight: selectedSize }, Math.max(1, quantity))
+                  addToCart({
+                    productId: product.id,
+                    variantId: activeVariant?.id ?? null,
+                    slug: product.slug,
+                    name: product.name,
+                    price: currentPrice,
+                    image: product.image,
+                    weight: selectedSize,
+                    sku: activeVariant?.sku,
+                  }, Math.max(1, quantity))
                   router.push("/cart")
                 }}
+                disabled={allVariantsOutOfStock}
                 className="font-medium font-melon tracking-wide rounded-2xl border border-[#FF8A00] bg-primary flex items-center px-6 py-2.5 text-xl leading-none text-white transition hover:bg-[#e97819]"
               >
                 Buy now

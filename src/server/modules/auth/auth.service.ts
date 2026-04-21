@@ -20,6 +20,19 @@ type SignupInput = {
   isFromAdmin?: boolean
 }
 
+const parseDurationMs = (value: string, fallbackMs: number) => {
+  const match = /^(\d+)([smhd])$/i.exec(value.trim())
+  if (!match) return fallbackMs
+  const amount = Number(match[1])
+  const unit = match[2].toLowerCase()
+  if (!Number.isFinite(amount) || amount <= 0) return fallbackMs
+  if (unit === "s") return amount * 1000
+  if (unit === "m") return amount * 60 * 1000
+  if (unit === "h") return amount * 60 * 60 * 1000
+  if (unit === "d") return amount * 24 * 60 * 60 * 1000
+  return fallbackMs
+}
+
 export const signup = async (input: SignupInput) => {
   const existing = await prisma.user.findUnique({ where: { email: input.email } })
   if (existing) throw new Error("Email already in use")
@@ -48,7 +61,9 @@ export const signup = async (input: SignupInput) => {
   })
 
   try {
+    console.log("is from aadmin::::::::::::::",input?.isFromAdmin);
     if(input?.isFromAdmin){
+      console.log("Sending admin created email to ", user.email);
       const mail = emailTemplates.adminCreated(user.name,input.password,input.email)
       await enqueueEmail({ to: user.email, ...mail })
     }
@@ -83,7 +98,9 @@ const issueAuthTokens = async (input: {
     data: {
       userId: input.userId,
       tokenHash: sha256(refreshToken),
-      expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+      expiresAt: new Date(
+        Date.now() + parseDurationMs(env.JWT_REFRESH_EXPIRES_IN, 7 * 24 * 60 * 60 * 1000),
+      ),
     },
   })
 

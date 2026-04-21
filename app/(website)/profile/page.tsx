@@ -6,16 +6,22 @@ import Image from "next/image"
 import { Facebook, Twitter, Linkedin } from "lucide-react"
 import { User, Star, Package } from "lucide-react"
 import { useRouter, useSearchParams } from "next/navigation"
+import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { getFavoriteSlugs, toggleFavoriteSlug } from "@/lib/favorites"
 import { addToCart, getCartItems, setCartItemQuantity } from "@/lib/cart"
 import { useStorefrontProducts } from "@/hooks/useStorefrontProducts"
+import { useRealtimeTables } from "@/hooks/useRealtimeTables"
+import { clearSession } from "@/lib/auth-session"
 
 type ApiOrderRow = {
   id: string
   status: string
+  paymentStatus?: string | null
+  refunds?: Array<{ status: string }>
   total: string | number
   createdAt: string
   items: Array<{ quantity: number; product: { name: string } }>
+  transactions?: Array<{ status: string }>
 }
 
 function ProfilePageContent() {
@@ -27,8 +33,8 @@ function ProfilePageContent() {
   const [favoriteSlugs, setFavoriteSlugs] = useState<string[]>([])
   const [cartQtyBySlug, setCartQtyBySlug] = useState<Record<string, number>>({})
   const [orders, setOrders] = useState<ApiOrderRow[]>([])
-  const [ordersLoading, setOrdersLoading] = useState(false)
-  const [ordersError, setOrdersError] = useState("")
+  const [orderActionBusy, setOrderActionBusy] = useState<string | null>(null)
+  const queryClient = useQueryClient()
   const [authSnapshot, setAuthSnapshot] = useState<{ token: string | null; role: string | null }>({
     token: null,
     role: null,
@@ -82,50 +88,52 @@ function ProfilePageContent() {
     return () => window.removeEventListener("storage", syncAuth)
   }, [])
 
-  useEffect(() => {
-    if (activeTab !== "orders") return
-    const token = window.localStorage.getItem("ziply5_access_token")
-    const role = window.localStorage.getItem("ziply5_user_role")
-    if (!token || role !== "customer") {
-      setOrders([])
-      setOrdersError("")
-      return
-    }
+  const ordersQuery = useQuery({
+    queryKey: ["profile-orders"],
+    enabled: activeTab === "orders" && Boolean(authSnapshot.token) && authSnapshot.role === "customer",
+    queryFn: async () => {
+      const token = window.localStorage.getItem("ziply5_access_token")
+      if (!token) return []
+      const res = await fetch("/api/v1/orders?page=1&limit=20", {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      const payload = (await res.json()) as { success?: boolean; data?: { items: ApiOrderRow[] }; message?: string }
+      if (!res.ok || !payload.success || !payload.data) throw new Error(payload.message ?? "Could not load orders.")
+      return payload.data.items
+    },
+  })
 
-    let cancelled = false
-    const load = async () => {
-      setOrdersLoading(true)
-      setOrdersError("")
-      try {
-        const res = await fetch("/api/v1/orders?page=1&limit=20", {
-          headers: { Authorization: `Bearer ${token}` },
-        })
-        const payload = (await res.json()) as {
-          success?: boolean
-          data?: { items: ApiOrderRow[] }
-          message?: string
-        }
-        if (cancelled) return
-        if (!res.ok || !payload.success || !payload.data) {
-          setOrdersError(payload.message ?? "Could not load orders.")
-          setOrders([])
-          return
-        }
-        setOrders(payload.data.items)
-      } catch {
-        if (!cancelled) {
-          setOrdersError("Could not load orders.")
-          setOrders([])
-        }
-      } finally {
-        if (!cancelled) setOrdersLoading(false)
+  useEffect(() => {
+    setOrders(ordersQuery.data ?? [])
+  }, [ordersQuery.data])
+
+  useRealtimeTables({
+    tables: ["orders", "returns", "refunds"],
+    onChange: () => {
+      if (activeTab === "orders") {
+        void queryClient.invalidateQueries({ queryKey: ["profile-orders"] })
       }
+    },
+  })
+
+  const runOrderAction = async (orderId: string, action: "cancel_request" | "return_request") => {
+    const token = window.localStorage.getItem("ziply5_access_token")
+    if (!token) return
+    setOrderActionBusy(`${orderId}:${action}`)
+    try {
+      await fetch(`/api/v1/orders/${orderId}/actions`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ action }),
+      })
+    } finally {
+      setOrderActionBusy(null)
+      void queryClient.invalidateQueries({ queryKey: ["profile-orders"] })
     }
-    void load()
-    return () => {
-      cancelled = true
-    }
-  }, [activeTab])
+  }
 
   const favoriteProducts = useMemo(() => {
     return favoriteSlugs.map((slug) => {
@@ -189,10 +197,7 @@ function ProfilePageContent() {
     } catch {
       // Ignore network/logout API errors and continue local logout.
     } finally {
-      window.localStorage.removeItem("ziply5_access_token")
-      window.localStorage.removeItem("ziply5_refresh_token")
-      window.localStorage.removeItem("ziply5_user_role")
-      window.dispatchEvent(new Event("storage"))
+      clearSession({ silent: true })
       router.push("/login")
     }
   }
@@ -435,16 +440,16 @@ function ProfilePageContent() {
                   Order history is available for customer accounts. Use the website login to shop and track orders.
                 </p>
               )}
-              {authSnapshot.token && authSnapshot.role === "customer" && ordersLoading && (
+              {authSnapshot.token && authSnapshot.role === "customer" && ordersQuery.isLoading && (
                 <p className="text-gray-500">Loading orders…</p>
               )}
-              {authSnapshot.token && authSnapshot.role === "customer" && ordersError && (
-                <p className="text-red-600">{ordersError}</p>
+              {authSnapshot.token && authSnapshot.role === "customer" && ordersQuery.error && (
+                <p className="text-red-600">{ordersQuery.error instanceof Error ? ordersQuery.error.message : "Could not load orders."}</p>
               )}
               {authSnapshot.token &&
                 authSnapshot.role === "customer" &&
-                !ordersLoading &&
-                !ordersError &&
+                !ordersQuery.isLoading &&
+                !ordersQuery.error &&
                 orders.length === 0 && <p className="text-gray-500">No orders yet.</p>}
               {authSnapshot.token && authSnapshot.role === "customer" && orders.map((order) => (
                 <div
@@ -455,6 +460,9 @@ function ProfilePageContent() {
                     <span className="font-semibold text-[#5A272A]">Order {order.id.slice(0, 8)}…</span>
                     <span className="text-xs uppercase text-gray-500">{order.status}</span>
                   </div>
+                  <p className="mt-1 text-xs text-gray-500">
+                    Payment: {order.paymentStatus ?? (order.transactions?.some((tx) => tx.status === "paid") ? "paid" : "pending")}
+                  </p>
                   <p className="mt-1 text-xs text-gray-500">
                     {new Date(order.createdAt).toLocaleString()}
                   </p>
@@ -468,6 +476,37 @@ function ProfilePageContent() {
                   <p className="mt-2 font-semibold text-[#5A272A]">
                     Total: Rs.{Number(order.total).toFixed(2)}
                   </p>
+                  <p className="mt-1 text-xs text-[#646464]">
+                    Refund status: {(order.refunds?.[0]?.status ?? "pending").toUpperCase()}
+                  </p>
+                  {(order.paymentStatus ?? "").toUpperCase() === "SUCCESS" &&
+                    ["confirmed", "packed"].includes(order.status.toLowerCase()) && (
+                      <button
+                        type="button"
+                        disabled={orderActionBusy === `${order.id}:cancel_request`}
+                        onClick={() => void runOrderAction(order.id, "cancel_request")}
+                        className="mt-2 rounded-md border border-[#E8DCC8] bg-white px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-[#4A1D1F] disabled:opacity-40"
+                      >
+                        Cancel order
+                      </button>
+                    )}
+                  {order.status.toLowerCase() === "delivered" && (
+                    <button
+                      type="button"
+                      disabled={orderActionBusy === `${order.id}:return_request`}
+                      onClick={() => void runOrderAction(order.id, "return_request")}
+                      className="mt-2 ml-2 rounded-md border border-[#E8DCC8] bg-white px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-[#4A1D1F] disabled:opacity-40"
+                    >
+                      Return order
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => router.push(`/orders/${order.id}`)}
+                    className="mt-2 rounded-md border border-[#E8DCC8] bg-white px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-[#4A1D1F]"
+                  >
+                    View details
+                  </button>
                 </div>
               ))}
             </div>

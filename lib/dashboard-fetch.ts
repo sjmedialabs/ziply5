@@ -1,3 +1,5 @@
+import { authFetch } from "@/lib/auth-session"
+
 export type ApiEnvelope<T> = {
   success: boolean
   message?: string
@@ -6,15 +8,7 @@ export type ApiEnvelope<T> = {
 }
 
 export async function authedFetch<T>(path: string, init?: RequestInit): Promise<T> {
-  const token = typeof window !== "undefined" ? window.localStorage.getItem("ziply5_access_token") : null
-  const res = await fetch(path, {
-    ...init,
-    headers: {
-      "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...(init?.headers ?? {}),
-    },
-  })
+  const res = await authFetch(path, init)
 
   let json: ApiEnvelope<T> = { success: false, message: "Invalid response" }
   try {
@@ -37,6 +31,10 @@ export async function authedFetch<T>(path: string, init?: RequestInit): Promise<
 
 export async function authedPost<T>(path: string, body: unknown): Promise<T> {
   return authedFetch<T>(path, { method: "POST", body: JSON.stringify(body) })
+}
+
+export async function authedPut<T>(path: string, body: unknown): Promise<T> {
+  return authedFetch<T>(path, { method: "PUT", body: JSON.stringify(body) })
 }
 
 export async function authedPatch<T>(path: string, body: unknown): Promise<T> {

@@ -1,15 +1,62 @@
 import { z } from "zod"
 
 export const createOrderSchema = z.object({
-  items: z.array(z.object({ slug: z.string().min(1), quantity: z.number().int().positive() })).min(1),
+  items: z.array(
+    z.object({
+      productId: z.string().optional(),
+      variantId: z.string().nullable().optional(),
+      slug: z.string().min(1).optional(),
+      quantity: z.number().int().positive(),
+    }).superRefine((item, ctx) => {
+      if (!item.productId && !item.slug) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "Either productId or slug is required",
+        })
+      }
+    })
+  ).min(1),
+
   shipping: z.number().nonnegative().optional(),
   currency: z.string().min(1).optional(),
   couponCode: z.string().optional(),
   gateway: z.string().min(1),
+
+  // 🔥 NEW FIELDS
+  billingAddress: z
+    .object({
+      fullName: z.string(),
+      line1: z.string(),
+      city: z.string(),
+      state: z.string(),
+      postalCode: z.string(),
+      country: z.string(),
+      phone: z.string().optional(),
+    })
+    .optional(),
+
+  paymentStatus: z.enum(["pending", "paid", "failed"]).optional(),
+  paymentId: z.string().optional(),
 })
 
 export const updateOrderStatusSchema = z.object({
-  status: z.enum(["pending", "confirmed", "packed", "shipped", "delivered", "returned", "cancelled"]),
+  status: z.enum([
+    "pending",
+    "pending_payment",
+    "payment_success",
+    "admin_approval_pending",
+    "failed",
+    "confirmed",
+    "packed",
+    "shipped",
+    "delivered",
+    "cancel_requested",
+    "return_requested",
+    "return_approved",
+    "refund_initiated",
+    "returned",
+    "cancelled",
+  ]),
   reasonCode: z.string().max(80).optional(),
   note: z.string().max(1000).optional(),
 })

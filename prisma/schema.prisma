@@ -9,37 +9,37 @@ datasource db {
 }
 
 model User {
-  id                       String               @id @default(cuid())
-  email                    String               @unique
-  passwordHash             String
-  name                     String
-  status                   UserStatus           @default(active)
-  createdAt                DateTime             @default(now())
-  updatedAt                DateTime             @updatedAt
-  codReconciliations       CodSettlement[]      @relation("CodReconciledBy")
-  devices                  Device[]
-  managedInventory         InventoryItem[]      @relation("InventoryManagedBy")
-  invoicesCreated          Invoice[]            @relation("InvoiceCreatedBy")
-  notifications            Notification[]
-  createdOrders            Order[]              @relation("OrderCreatedBy")
-  managedOrders            Order[]              @relation("OrderManagedBy")
-  Order_Order_userIdToUser Order[]              @relation("Order_userIdToUser")
-  orderNotesCreated        OrderNote[]          @relation("OrderNoteCreatedBy")
-  orderStatusChanges       OrderStatusHistory[] @relation("OrderStatusChangedBy")
-  createdProducts          Product[]            @relation("ProductCreatedBy")
-  managedProducts          Product[]            @relation("ProductManagedBy")
-  products                 Product[]            @relation("SellerProducts")
-  reviews                  ProductReview[]
-  refreshTokens            RefreshToken[]
-  paymentMethods           SavedPaymentMethod[]
-  sessions                 Session[]
-  ticketsCreated           Ticket[]             @relation("TicketCreatedBy")
-  addresses                UserAddress[]
-  profile                  UserProfile?
-  roles                    UserRole[]
-  createdWithdrawals       WithdrawalRequest[]  @relation("WithdrawalCreatedBy")
-  managedWithdrawals       WithdrawalRequest[]  @relation("WithdrawalManagedBy")
-  withdrawals              WithdrawalRequest[]  @relation("SellerWithdrawals")
+  id                 String               @id @default(cuid())
+  email              String               @unique
+  passwordHash       String
+  name               String
+  status             UserStatus           @default(active)
+  createdAt          DateTime             @default(now())
+  updatedAt          DateTime             @updatedAt
+  codReconciliations CodSettlement[]      @relation("CodReconciledBy")
+  devices            Device[]
+  managedInventory   InventoryItem[]      @relation("InventoryManagedBy")
+  invoicesCreated    Invoice[]            @relation("InvoiceCreatedBy")
+  notifications      Notification[]
+  createdOrders      Order[]              @relation("OrderCreatedBy")
+  managedOrders      Order[]              @relation("OrderManagedBy")
+  customerOrders     Order[]              @relation("CustomerOrders")
+  orderNotesCreated  OrderNote[]          @relation("OrderNoteCreatedBy")
+  orderStatusChanges OrderStatusHistory[] @relation("OrderStatusChangedBy")
+  createdProducts    Product[]            @relation("ProductCreatedBy")
+  managedProducts    Product[]            @relation("ProductManagedBy")
+  products           Product[]            @relation("SellerProducts")
+  reviews            ProductReview[]
+  refreshTokens      RefreshToken[]
+  paymentMethods     SavedPaymentMethod[]
+  sessions           Session[]
+  ticketsCreated     Ticket[]             @relation("TicketCreatedBy")
+  addresses          UserAddress[]
+  profile            UserProfile?
+  roles              UserRole[]
+  createdWithdrawals WithdrawalRequest[]  @relation("WithdrawalCreatedBy")
+  managedWithdrawals WithdrawalRequest[]  @relation("WithdrawalManagedBy")
+  withdrawals        WithdrawalRequest[]  @relation("SellerWithdrawals")
 }
 
 model UserProfile {
@@ -172,6 +172,7 @@ model Tag {
   id        String       @id @default(cuid())
   name      String       @unique
   slug      String       @unique
+  isActive  Boolean      @default(true)
   createdAt DateTime     @default(now())
   isActive  Boolean      @default(true)
   products  ProductTag[]
@@ -431,6 +432,8 @@ model ProductVariant {
   weight          String?
   lotStocks       InventoryStockLot[]
   product         Product             @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@index([productId])
 }
 
 model ProductImage {
@@ -501,36 +504,37 @@ model InventoryItem {
 }
 
 model Order {
-  id                      String               @id @default(cuid())
-  userId                  String?
-  status                  OrderStatus          @default(pending)
-  currency                String               @default("INR")
-  subtotal                Decimal              @db.Decimal(10, 2)
-  shipping                Decimal              @db.Decimal(10, 2)
-  total                   Decimal              @db.Decimal(10, 2)
-  createdAt               DateTime             @default(now())
-  updatedAt               DateTime             @updatedAt
-  createdById             String?
-  managedById             String?
-  customerAddress         String?
-  customerName            String?
-  customerPhone           String?
-  paymentId               String?
-  paymentMethod           String?
-  paymentStatus           String?
-  codSettlement           CodSettlement?
-  invoice                 Invoice?
-  createdBy               User?                @relation("OrderCreatedBy", fields: [createdById], references: [id])
-  managedBy               User?                @relation("OrderManagedBy", fields: [managedById], references: [id])
-  User_Order_userIdToUser User?                @relation("Order_userIdToUser", fields: [userId], references: [id])
-  fulfillment             OrderFulfillment?
-  items                   OrderItem[]
-  notes                   OrderNote[]
-  statusHistory           OrderStatusHistory[]
-  refunds                 RefundRecord[]
-  returnRequests          ReturnRequest[]
-  shipments               Shipment[]
-  transactions            Transaction[]
+  id             String               @id @default(cuid())
+  userId         String?
+  status         OrderStatus          @default(pending)
+  currency       String               @default("INR")
+  subtotal       Decimal              @db.Decimal(10, 2)
+  shipping       Decimal              @db.Decimal(10, 2)
+  total          Decimal              @db.Decimal(10, 2)
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
+  createdById    String?
+  managedById    String?
+  customerName   String?
+  customerPhone  String?
+  customerAddress String?
+
+  paymentStatus  String?
+  paymentId      String?
+  paymentMethod  String?
+  codSettlement  CodSettlement?
+  invoice        Invoice?
+  createdBy      User?                @relation("OrderCreatedBy", fields: [createdById], references: [id])
+  managedBy      User?                @relation("OrderManagedBy", fields: [managedById], references: [id])
+  user           User?                @relation("CustomerOrders", fields: [userId], references: [id])
+  fulfillment    OrderFulfillment?
+  items          OrderItem[]
+  notes          OrderNote[]
+  statusHistory  OrderStatusHistory[]
+  refunds        RefundRecord[]
+  returnRequests ReturnRequest[]
+  shipments      Shipment[]
+  transactions   Transaction[]
 
   @@index([createdById])
   @@index([managedById])

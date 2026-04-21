@@ -4,6 +4,7 @@ import Image from "next/image"
 import Link from "next/link"
 
 interface CartItem {
+  id: string
   slug: string
   name: string
   quantity: number
@@ -16,8 +17,8 @@ interface CartDropdownProps {
   items: CartItem[]
   total: number
   open: boolean
-  onIncrement: (slug: string) => void
-  onDecrement: (slug: string) => void
+  onIncrement: (id: string) => void
+  onDecrement: (id: string) => void
 }
 
 export default function CartDropdown({ items, total, open, onIncrement, onDecrement }: CartDropdownProps) {
@@ -37,7 +38,7 @@ export default function CartDropdown({ items, total, open, onIncrement, onDecrem
       {/* ITEMS */}
       <div className="space-y-6">
         {items.map((item) => (
-          <div key={item.slug} className="flex items-center justify-between gap-4">
+          <div key={item.id} className="flex items-center justify-between gap-4">
             <div className="flex items-center gap-4">
               <div className="relative h-16 w-16 shrink-0 rounded-lg">
                 <Image src={item.image || "/placeholder.svg"} alt={item.name} fill className="object-contain p-2" />
@@ -50,14 +51,14 @@ export default function CartDropdown({ items, total, open, onIncrement, onDecrem
                 </p>
                 <div className="mt-2 flex items-center gap-2">
                   <button
-                    onClick={() => onDecrement(item.slug)}
+                    onClick={() => onDecrement(item.id)}
                     className="h-6 w-6 rounded border border-gray-300 text-sm font-bold text-[#7a1e0e] hover:bg-gray-100"
                   >
                     -
                   </button>
                   <span className="min-w-5 text-center text-xs font-semibold text-black">{item.quantity}</span>
                   <button
-                    onClick={() => onIncrement(item.slug)}
+                    onClick={() => onIncrement(item.id)}
                     className="h-6 w-6 rounded border border-gray-300 text-sm font-bold text-[#7a1e0e] hover:bg-gray-100"
                   >
                     +

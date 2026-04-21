@@ -1,6 +1,7 @@
 import { z } from "zod"
 
 const variantSchema = z.object({
+  id: z.string().optional(),
   name: z.string().min(1),
   weight: z.string().optional().nullable(),
   price: z.number().positive(),
@@ -41,7 +42,7 @@ export const createProductSchema = z.object({
   sku: z.string().min(2),
   price: z.number().min(0),
   description: z.string().optional(),
-  type: z.enum(["simple", "variant"]).optional(),
+  type: z.enum(["simple", "variant"]),
   basePrice: z.number().positive().optional().nullable(),
   salePrice: z.number().min(0).optional().nullable(),
   discountPercent: z.number().min(0).max(100).optional().nullable(),
@@ -67,6 +68,25 @@ export const createProductSchema = z.object({
   labels: z.array(labelSchema).optional(),
   details: z.array(detailsSchema).optional(),
   sections: z.array(sectionSchema).max(10).optional(),
+}).superRefine((data, ctx) => {
+  if (data.type === "variant") {
+    if (!data.variants?.length) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["variants"],
+        message: "At least one variant is required for variant products",
+      })
+      return
+    }
+    const defaultCount = data.variants.filter((v) => Boolean(v.isDefault)).length
+    if (defaultCount > 1) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["variants"],
+        message: "Only one variant can be marked as default",
+      })
+    }
+  }
 })
 
 export const updateProductSchema = z.object({

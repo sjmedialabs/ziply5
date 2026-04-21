@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation"
 import { useEffect, useState, type ReactNode } from "react"
 import type { LucideIcon } from "lucide-react"
 import { Menu, X } from "lucide-react"
+import { authFetch, clearSession } from "@/lib/auth-session"
 
 export type DashboardNavItem = {
   href: string
@@ -37,9 +38,7 @@ export function DashboardChrome({
   const [me, setMe] = useState<MePayload | null>(null)
 
   useEffect(() => {
-    const token = window.localStorage.getItem("ziply5_access_token")
-    if (!token) return
-    fetch("/api/v1/auth/me", { headers: { Authorization: `Bearer ${token}` } })
+    authFetch("/api/v1/auth/me")
       .then((r) => r.json())
       .then((p: { success?: boolean; data?: MePayload }) => {
         if (p.success && p.data) setMe(p.data)
@@ -49,10 +48,7 @@ export function DashboardChrome({
 
   const logout = () => {
     const refresh = window.localStorage.getItem("ziply5_refresh_token")
-    window.localStorage.removeItem("ziply5_access_token")
-    window.localStorage.removeItem("ziply5_refresh_token")
-    window.localStorage.removeItem("ziply5_user_role")
-    window.dispatchEvent(new Event("storage"))
+    clearSession({ silent: true })
     if (refresh) {
       void fetch("/api/v1/auth/logout", {
         method: "POST",
