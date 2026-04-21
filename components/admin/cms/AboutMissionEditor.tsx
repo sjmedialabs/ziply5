@@ -33,15 +33,16 @@ export default function AboutMissionEditor({ value, onChange }: { value: any, on
 
   return (
     <Card className="border-[#E8DCC8]">
-      <CardHeader className="bg-[#FFFBF3] border-b border-[#E8DCC8] py-3">
+      <CardHeader className=" border-b border-[#E8DCC8]">
         <CardTitle className="text-sm font-semibold text-[#4A1D1F]">2. Our Mission</CardTitle>
       </CardHeader>
-      <CardContent className="p-4 space-y-4">
+      <CardContent className="p-x-4 space-y-4">
         <div>
           <Label className="text-xs text-[#646464]">Title</Label>
           <Input 
             value={value.title || ''} 
             onChange={(e) => onChange({ ...value, title: e.target.value })} 
+            placeholder="Enter section title"
           />
         </div>
         <div>
@@ -50,6 +51,7 @@ export default function AboutMissionEditor({ value, onChange }: { value: any, on
             maxLength={150} 
             value={value.description || ''} 
             onChange={(e) => onChange({ ...value, description: e.target.value })} 
+            placeholder="Enter description"
           />
         </div>
         <div>
