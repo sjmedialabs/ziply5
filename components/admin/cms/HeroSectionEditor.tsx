@@ -75,7 +75,7 @@ export default function HeroSectionEditor({ value = { slides: [] }, onChange }: 
               updateSlides(newSlides);
             }}
             className="h-8 text-sm"
-            placeholder="Slide title"
+            placeholder="Enter title"
           />
         </div>
         <div>
@@ -88,7 +88,7 @@ export default function HeroSectionEditor({ value = { slides: [] }, onChange }: 
               updateSlides(newSlides);
             }}
             className="h-8 text-sm"
-            placeholder="Slide subtitle"
+            placeholder="Enter subtitle"
           />
         </div>
       </div>

@@ -36,18 +36,19 @@ export default function AboutTeamEditor({ value, onChange }: { value: any, onCha
 
   return (
     <Card className="border-[#E8DCC8]">
-      <CardHeader className="bg-[#FFFBF3] border-b border-[#E8DCC8] py-3 flex flex-row items-center justify-between">
+      <CardHeader className=" border-b border-[#E8DCC8] flex flex-row items-center justify-between">
         <CardTitle className="text-sm font-semibold text-[#4A1D1F]">4. Our Team Members</CardTitle>
-        <Button size="sm" variant="outline" onClick={() => onChange({ ...value, members: [...members, { name: '', role: '', imageUrl: '', facebook: '', instagram: '', youtube: '' }] })}>
+        <Button className='cursor-pointer' size="sm" variant="outline" onClick={() => onChange({ ...value, members: [...members, { name: '', role: '', imageUrl: '', facebook: '', instagram: '', youtube: '' }] })}>
           <Plus className="h-4 w-4 mr-2" /> Add Member
         </Button>
       </CardHeader>
-      <CardContent className="p-4 space-y-6">
+      <CardContent className="px-4 space-y-2">
         <div>
           <Label className="text-xs text-[#646464]">Team Section Description</Label>
           <Textarea 
             value={value.mainDescription || ''} 
             onChange={(e) => onChange({ ...value, mainDescription: e.target.value })} 
+            placeholder='Enter description'
           />
         </div>
 

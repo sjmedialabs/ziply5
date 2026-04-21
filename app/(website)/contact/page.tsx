@@ -1,7 +1,9 @@
 "use client"
 
+import { useState } from "react"
 import Image from "next/image"
 import { useForm } from "react-hook-form"
+import { toast } from "@/lib/toast"
 
 type FormData = {
     name: string
@@ -11,14 +13,35 @@ type FormData = {
 }
 
 export default function ContactUsPage() {
+    const [loading, setLoading] = useState(false)
     const {
         register,
         handleSubmit,
+        reset,
         formState: { errors },
     } = useForm<FormData>()
 
-    const onSubmit = (data: FormData) => {
-        console.log("Form Data:", data)
+    const onSubmit = async (data: FormData) => {
+        setLoading(true)
+        try {
+            const res = await fetch("/api/v1/contact", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(data),
+            })
+            const payload = await res.json()
+            
+            if (payload.success) {
+                toast.success("Your message has been sent successfully!")
+                reset()
+            } else {
+                toast.error(payload.message || "Failed to send message.")
+            }
+        } catch (error) {
+            toast.error("Something went wrong. Please try again.")
+        } finally {
+            setLoading(false)
+        }
     }
 
     return (
@@ -226,9 +249,10 @@ export default function ContactUsPage() {
 
                         <button
                             type="submit"
-                            className="bg-primary text-white px-6 py-2 rounded-md text-sm hover:opacity-90 transition"
+                            disabled={loading}
+                            className="bg-primary text-white px-6 py-2 rounded-md text-sm hover:opacity-90 transition disabled:opacity-50"
                         >
-                            Send Message
+                            {loading ? "Sending..." : "Send Message"}
                         </button>
 
                     </form>
