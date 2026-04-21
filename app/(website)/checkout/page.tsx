@@ -28,6 +28,10 @@ export default function CheckoutPage() {
   const [items, setItems] = useState<CartItem[]>([]);
   const [placing, setPlacing] = useState(false);
   const [orderError, setOrderError] = useState("");
+  const [couponCode, setCouponCode] = useState("");
+  const [couponDiscount, setCouponDiscount] = useState(0);
+  const [couponError, setCouponError] = useState("");
+  const [applyingCoupon, setApplyingCoupon] = useState(false);
   const [billing, setBilling] = useState({
     firstName: "",
     lastName: "",
@@ -50,7 +54,45 @@ export default function CheckoutPage() {
 
   const subTotal = items.reduce((acc, item) => acc + item.price * item.quantity, 0);
   const shipping = items.length === 0 ? 0 : 20;
-  const total = subTotal + shipping;
+  const total = Math.max(subTotal - couponDiscount, 0) + shipping;
+
+  const applyCoupon = async () => {
+    if (!couponCode.trim()) {
+      setCouponError("Enter a coupon code.");
+      return;
+    }
+    setApplyingCoupon(true);
+    setCouponError("");
+    try {
+      const token = window.localStorage.getItem("ziply5_access_token");
+      const response = await fetch("/api/apply-coupon", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({
+          code: couponCode.trim(),
+          subtotal: subTotal,
+          items: items.map((item) => ({
+            productId: item.productId,
+            categoryId: null,
+            quantity: item.quantity,
+          })),
+        }),
+      });
+      const payload = (await response.json()) as { success?: boolean; message?: string; data?: { discount: number } };
+      if (!response.ok || !payload.success || !payload.data) {
+        throw new Error(payload.message ?? "Unable to apply coupon.");
+      }
+      setCouponDiscount(Number(payload.data.discount));
+    } catch (error) {
+      setCouponDiscount(0);
+      setCouponError(error instanceof Error ? error.message : "Unable to apply coupon.");
+    } finally {
+      setApplyingCoupon(false);
+    }
+  };
 
   const goToPayment = async () => {
     if (items.length === 0) {
@@ -98,6 +140,7 @@ export default function CheckoutPage() {
             quantity: item.quantity,
           })),
           shipping,
+          couponCode: couponCode.trim() || undefined,
           gateway: "razorpay",
           billingAddress: payload,
           paymentStatus: "pending",
@@ -333,8 +376,29 @@ export default function CheckoutPage() {
               <span>Rs.{shipping.toFixed(2)}</span>
             </div>
             <div className="flex justify-between text-[#C03621] font-medium font-melon tracking-wide mt-2">
+              <span>Coupon Discount</span>
+              <span>-Rs.{couponDiscount.toFixed(2)}</span>
+            </div>
+            <div className="flex justify-between text-[#C03621] font-medium font-melon tracking-wide mt-2">
               <span>Grand Total</span>
               <span>Rs.{total.toFixed(2)}</span>
+            </div>
+            <div className="mt-4 space-y-2">
+              <input
+                className="input"
+                placeholder="Coupon code"
+                value={couponCode}
+                onChange={(event) => setCouponCode(event.target.value.toUpperCase())}
+              />
+              <button
+                type="button"
+                onClick={() => void applyCoupon()}
+                disabled={applyingCoupon || items.length === 0}
+                className="w-full rounded-full border border-[#7B3010] bg-white py-2 text-xs font-semibold uppercase text-[#7B3010] disabled:opacity-50"
+              >
+                {applyingCoupon ? "Applying..." : "Apply coupon"}
+              </button>
+              {couponError && <p className="text-xs text-red-700">{couponError}</p>}
             </div>
 
           </div>
