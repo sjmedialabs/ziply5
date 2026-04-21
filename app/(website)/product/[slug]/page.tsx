@@ -99,9 +99,10 @@ export default function ProductPage() {
   )
 
   const currentPrice = activeVariant?.price ?? product?.price ?? 0
-  const sku = activeVariant?.sku ?? (product ? `SKU:${product.slug.replace(/-/g, "").slice(0, 6).toUpperCase()}` : "")
+  const sku = activeVariant?.sku ?? (product ? `SKU:${product.sku.toUpperCase()}` : "")
+
   const salePercent =
-    product && product.oldPrice > 0 ? Math.max(1, Math.round(((product.oldPrice - currentPrice) / product.oldPrice) * 100)) : 0
+    product && product.discountPercent && product?.discountPercent > 0 ? product.discountPercent : 0
 
   useEffect(() => {
     if (!product) return
@@ -151,7 +152,7 @@ export default function ProductPage() {
         <div className="grid grid-cols-1 gap-10 lg:grid-cols-[420px_1fr]">
           <div>
             <div className="rounded-xl border border-[#E2E2E2] bg-[#ECECEC]">
-              <div className="relative mx-auto h-90 w-full">
+              <div className="relative bg-white/70 mx-auto rounded-xl h-100 w-full stretch ">
                 {displayImage ? (
                   <Image src={displayImage} alt={product.name} fill className="object-contain" />
                 ) : (
@@ -160,22 +161,22 @@ export default function ProductPage() {
               </div>
             </div>
 
-            <div className="mt-4 flex items-center gap-2">
+            <div className="flex items-center justify-center gap-2">
               <button
                 type="button"
                 disabled={galleryImages.length <= 4}
                 onClick={() => setThumbStart((prev) => (prev - 1 + galleryImages.length) % galleryImages.length)}
-                className="flex h-8 w-8 items-center justify-center rounded-full border border-[#D4D4D4] bg-white text-[#555] disabled:opacity-40"
+                className={`h-8 w-8 items-center justify-center rounded-full border ${galleryImages.length<=4 ? "hidden" : "flex"} border-[#D4D4D4] bg-white text-[#555] disabled:opacity-40`}
               >
                 <ChevronLeft size={14} />
               </button>
-              <div className="flex items-center gap-2 overflow-x-auto pb-1">
+              <div className="flex items-center gap-1 overflow-x-auto pb-1">
               {visibleThumbs.map((thumb, idx) => (
                 <button
                   type="button"
                   key={`${thumb || "thumb"}-${idx}`}
                   onClick={() => setSelectedImage(thumb)}
-                  className={`relative h-16 w-16 flex-shrink-0 overflow-hidden rounded-md border ${
+                  className={`relative h-30 w-30 flex-shrink-0 mt-8 overflow-hidden rounded-md border ${
                     selectedImage === thumb ? "border-[#50272A]" : "border-[#E0E0E0]"
                   }`}
                 >
@@ -187,7 +188,7 @@ export default function ProductPage() {
                 type="button"
                 disabled={galleryImages.length <= 4}
                 onClick={() => setThumbStart((prev) => (prev + 1) % galleryImages.length)}
-                className="flex h-8 w-8 items-center justify-center rounded-full border border-[#D4D4D4] bg-white text-[#555] disabled:opacity-40"
+                className={`flex h-8 w-8 items-center justify-center rounded-full border ${galleryImages.length<=4 ? "hidden" : "flex"} border-[#D4D4D4] bg-white text-[#555] disabled:opacity-40`}
               >
                 <ChevronRight size={14} />
               </button>
@@ -209,12 +210,15 @@ export default function ProductPage() {
                Back To Products List
             </button>
 
-            <h1 className="font-heading mt-3 text-6xl leading-none text-[#201A1A]">{product.name}</h1>
+            <h1 className="font-heading mt-3 text-4xl leading-none text-[#201A1A]">{product.name}</h1>
 
             <div className="mt-2 flex items-center gap-2">
               <span className="rounded-full bg-[#F0ECE2] px-3 py-1 text-[12px] font-medium text-[#8D8D8D]">{sku}</span>
-              <span className="rounded-full bg-[#DFE8D8] px-3 py-1 text-[12px] font-medium text-[#86917B]">
-                {(activeVariant?.stock ?? 0) > 0 ? "instock" : "out of stock"}
+              <span className="rounded-full bg-[#DFE8D8] px-3 py-1 text-[12px] font-medium text-[#86917B] capitalize">
+                {product.stockStatus?.replace("_", " ")}
+                {activeVariant && activeVariant.stock > 0 && (
+                  <>: {activeVariant.stock <= 5 ? "Hurry, only a few left!" : `${activeVariant.stock} available`}</>
+                )}
               </span>
               {salePercent > 0 && (
                 <span className="rounded-md bg-[#2E84CF] px-2 py-1 text-[11px] font-semibold text-white">SALE {salePercent}% Off</span>
@@ -265,8 +269,8 @@ export default function ProductPage() {
             {allVariantsOutOfStock && <p className="mt-2 text-sm font-semibold text-red-700">Out of Stock</p>}
 
             <div className="mt-4 flex items-center gap-4">
-              <span className="text-xs font-light font-melon tracking-wide text-[#272727]">Add to cart</span>
-              <div className="flex items-center overflow-hidden rounded-2xl border border-[#FF8A00] bg-[#5A272A] text-white">
+              <span className="text-xs font-light font-melon tracking-wide text-[#272727]" title="Quantity Add to Cart">Add to cart</span>
+              <div className="flex items-center overflow-hidden rounded-2xl border border-[#FF8A00}">
                 <button
                   type="button"
                   onClick={() => {
@@ -310,7 +314,7 @@ export default function ProductPage() {
                 </button>
               </div>
             </div>
-            <p className="mt-4 text-sm font-bold text-[#272727]"><span className="font-light font-melon tracking-wide">Variant:</span> <span>{selectedSize}</span></p>
+            {/* <p className="mt-4 text-sm font-bold text-[#272727]"><span className="font-light font-melon tracking-wide">Variant:</span> <span>{selectedSize}</span></p> */}
 
             <div className="mt-5 flex items-center gap-3">
               <button

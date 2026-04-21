@@ -577,7 +577,8 @@ export function ProductConsolePage({
 
   const uploadMany = async (
     files: FileList | null | undefined,
-    kind: "thumbnail" | "image",
+    kind: "thumbnail" | "image" | "feature",
+    idx?: number,
   ) => {
     const selected = files ? Array.from(files) : []
     if (selected.length === 0) return
@@ -589,10 +590,12 @@ export function ProductConsolePage({
       selected.forEach((file) => form.append("files", file))
       form.append("folder", `products/${kind}`)
       const res = await fetch("/api/v1/uploads", {
-        method: "POST",
-        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
-        body: form,
-      })
+  method: "POST",
+  headers: {
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+  },
+  body: form,
+})
       const json = (await res.json()) as {
         success?: boolean
         message?: string
@@ -613,6 +616,10 @@ export function ProductConsolePage({
       if (kind === "image") {
         setImageUrls((prev) => uniq([...prev, ...urls]))
       }
+      if (kind === "feature") {
+       setFeatures((prev) => prev.map((item, itemIdx) => itemIdx === idx ? { ...item, icon: null } : item))
+      }
+
     } catch {
       setError("Upload failed")
     } finally {
@@ -640,6 +647,7 @@ export function ProductConsolePage({
         message?: string
         data?: { files?: Array<{ url: string }> }
       }
+      console.log("after upload api response ",json)
       if (!res.ok || json.success === false) {
         setError(json.message ?? "Upload failed")
         return
@@ -1449,11 +1457,11 @@ export function ProductConsolePage({
                 </div>
                 <div>
                   <Label className="text-xs font-semibold text-[#4A1D1F]">Icon (optional)</Label>
-                  <input type="file" accept="image/*" onChange={(e) => void uploadIcon(e.target.files, idx)} className="w-full rounded-lg border border-[#D9D9D1] bg-white px-2 py-2 text-sm" />
+                  <input type="file" accept="image/*" onChange={(e) => void uploadMany(e.target.files, "feature", idx)} className="w-full rounded-lg border border-[#D9D9D1] bg-white px-2 py-2 text-sm" />
                   {feature.icon && (
                     <div className="mt-2 flex items-center gap-2">
                       <img src={feature.icon} alt="Icon preview" className="w-8 h-8 object-cover rounded" />
-                      <button type="button" onClick={() => setFeatures((prev) => prev.map((item, itemIdx) => itemIdx === idx ? { ...item, icon: null } : item))} className="text-xs text-red-500 hover:text-red-700">Remove</button>
+                      <button type="button" onClick={(e) => setFeatures((prev) => prev.map((item, itemIdx) => itemIdx === idx ? { ...item, icon: null } : item))} className="text-xs text-red-500 hover:text-red-700">Remove</button>
                     </div>
                   )}
                 </div>
