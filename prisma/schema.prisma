@@ -277,19 +277,38 @@ model AbandonedCart {
   createdAt  DateTime @default(now())
 }
 
+model PromotionProduct {
+  id          String @id @default(cuid())
+
+  promotionId String
+  productId   String
+
+  promotion   Promotion @relation(fields: [promotionId], references: [id])
+  product     Product   @relation(fields: [productId], references: [id])
+
+  @@unique([promotionId, productId])
+}
+
 model Promotion {
   id        String    @id @default(cuid())
-  kind      String
+
+  kind      PromotionKind
+
   name      String
+
   active    Boolean   @default(true)
+
   startsAt  DateTime?
   endsAt    DateTime?
-  productId String?
+
   metadata  Json?
+
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
-  product   Product?  @relation(fields: [productId], references: [id])
+
+  products  PromotionProduct[]
 }
+
 
 model WithdrawalRequest {
   id          String   @id @default(cuid())
