@@ -2,17 +2,25 @@
 
 import { useEffect } from "react"
 import StarterKit from "@tiptap/starter-kit"
+import Placeholder from "@tiptap/extension-placeholder"
 import { EditorContent, useEditor } from "@tiptap/react"
 
 export function RichTextEditor({
   value,
   onChange,
+  placeholder,
 }: {
   value: string
   onChange: (html: string) => void
+  placeholder?: string
 }) {
   const editor = useEditor({
-    extensions: [StarterKit],
+    extensions: [
+      StarterKit,
+      Placeholder.configure({
+        placeholder: placeholder || "Write something...",
+      }),
+    ],
     content: value || "<p></p>",
     immediatelyRender: false,
     onUpdate: ({ editor: instance }) => {
@@ -21,7 +29,7 @@ export function RichTextEditor({
     editorProps: {
       attributes: {
         class:
-          "prose max-w-none min-h-[120px] rounded-b-lg border border-[#D9D9D1] px-3 py-2 text-sm outline-none focus:border-[#7B3010]",
+          "tiptap prose max-w-none min-h-[120px] rounded-b-lg border border-[#D9D9D1] px-3 py-2 text-sm outline-none focus:border-[#7B3010]",
       },
     },
   })
@@ -37,6 +45,15 @@ export function RichTextEditor({
 
   return (
     <div>
+      <style>{`
+        .tiptap p.is-editor-empty:first-child::before {
+          color: #9ca3af;
+          content: attr(data-placeholder);
+          float: left;
+          height: 0;
+          pointer-events: none;
+        }
+      `}</style>
       <div className="flex flex-wrap gap-2 rounded-t-lg border border-b-0 border-[#D9D9D1] bg-[#FFFBF3] p-2 text-xs">
         <button type="button" onClick={() => editor.chain().focus().setParagraph().run()} className={`rounded px-2 py-1 cursor-pointer hover:bg-gray-50 transition-colors ${editor.isActive("paragraph") ? "bg-[#7B3010] text-white hover:bg-[#7B3010]" : "bg-white"}`}>
           P

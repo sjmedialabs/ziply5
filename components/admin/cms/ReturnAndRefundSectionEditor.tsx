@@ -13,7 +13,7 @@ interface ReturnAndRefundProps {
 
 export default function ReturnAndRefundSectionEditor({ value = { content: '' }, onChange }: ReturnAndRefundProps) {
   return (
-    <Card className="space-y-4 p-6 border-[#E8DCC8]">
+    <Card className=" p-6 border-[#E8DCC8]">
       <div>
         <Label className="text-sm font-semibold text-[#4A1D1F] mb-2 block">Return & Refund Content</Label>
         <p className="text-xs text-[#646464] mb-4">Use the rich text editor below to format your return and refund policy.</p>

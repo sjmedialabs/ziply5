@@ -37,7 +37,7 @@ export default function BestSellersSectionEditor({ value = { title: '', buttonTe
             value={localValue.title}
             onChange={(e) => updateField('title', e.target.value)}
             className="max-w-md h-8 text-sm"
-            placeholder="e.g. Best Sellers"
+            placeholder="Enter section title"
           />
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -47,7 +47,7 @@ export default function BestSellersSectionEditor({ value = { title: '', buttonTe
               value={localValue.buttonText}
               onChange={(e) => updateField('buttonText', e.target.value)}
               className="h-8 text-sm"
-              placeholder="e.g. View All"
+              placeholder="Enter button text"
             />
           </div>
           <div>
@@ -56,7 +56,7 @@ export default function BestSellersSectionEditor({ value = { title: '', buttonTe
               value={localValue.url}
               onChange={(e) => updateField('url', e.target.value)}
               className="h-8 text-sm"
-              placeholder="e.g. /products"
+              placeholder="Entter URL"
             />
           </div>
         </div>

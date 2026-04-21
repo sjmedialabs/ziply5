@@ -57,7 +57,7 @@ export default function DynamicList<T>({
           variant="outline"
           size="sm"
           onClick={addItem}
-          className="h-7 px-3 text-xs border-[#E8DCC8] hover:bg-[#FFFBF3]"
+          className="h-7 px-3 text-xs cursor-pointer border-[#E8DCC8] hover:bg-[#FFFBF3]"
         >
           <Plus className="h-3 w-3 mr-1" />
           Add
@@ -82,7 +82,7 @@ export default function DynamicList<T>({
                     type="button"
                     variant="ghost"
                     size="sm"
-                    className="h-6 w-6 p-0 hover:bg-[#FFFBF3]"
+                    className="h-6 cursor-pointer w-6 p-0 hover:bg-[#FFFBF3]"
                     onClick={() => moveUp(index)}
                     disabled={index === 0}
                   >
@@ -92,17 +92,17 @@ export default function DynamicList<T>({
                     type="button"
                     variant="ghost"
                     size="sm"
-                    className="h-6 w-6 p-0 hover:bg-[#FFFBF3]"
+                    className="h-6 cursor-pointer w-6 p-0 hover:bg-[#FFFBF3]"
                     onClick={() => moveDown(index)}
                     disabled={index === items.length - 1}
                   >
-                    <ChevronDown className="h-3 w-3" />
+                    <ChevronDown className="h-3 cursor-pointer w-3" />
                   </Button>
                   <Button
                     type="button"
                     variant="ghost"
                     size="sm"
-                    className="h-6 w-6 p-0 text-red-500 hover:bg-red-50 hover:text-red-600"
+                    className="h-6 cursor-pointer w-6 p-0 text-red-500 hover:bg-red-50 hover:text-red-600"
                     onClick={() => remove(index)}
                   >
                     <Trash2 className="h-3 w-3" />

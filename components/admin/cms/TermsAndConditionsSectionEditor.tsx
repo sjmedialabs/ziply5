@@ -13,7 +13,7 @@ interface TermsAndConditionsProps {
 
 export default function TermsAndConditionsSectionEditor({ value = { content: '' }, onChange }: TermsAndConditionsProps) {
   return (
-    <Card className="space-y-4 p-6 border-[#E8DCC8]">
+    <Card className=" p-6 border-[#E8DCC8]">
       <div>
         <Label className="text-sm font-semibold text-[#4A1D1F] mb-2 block">Terms & Conditions Content</Label>
         <p className="text-xs text-[#646464] mb-4">Use the rich text editor below to format your terms and conditions.</p>
