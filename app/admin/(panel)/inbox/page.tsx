@@ -2,91 +2,30 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { authedFetch } from "@/lib/dashboard-fetch";
+import { authedFetch, authedPatch } from "@/lib/dashboard-fetch";
 import { ConsoleTable, ConsoleTd } from "@/components/dashboard/ConsoleTable";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Headphones, Eye, Trash2, RefreshCw } from "lucide-react";
+import { Eye, Trash2, RefreshCw, Mail, X } from "lucide-react";
 
 type InboxRow = {
   id: string;
-  type: "ticket" | "mention" | "alert";
-  subject: string;
-  preview: string;
-  sender: { name: string; avatar: string; email: string };
-  status: "open" | "in_progress" | "resolved" | "closed";
-  unread: boolean;
-  date: string;
-  priority?: "normal" | "urgent";
+  name: string;
+  email: string;
+  phone: string | null;
+  message: string;
+  status: "open" | "contacted" | "closed";
+  createdAt: string;
 };
 
-// Generate 20 fallback rows based on some templates
-const generateFallbackRows = (): InboxRow[] => {
-  const templates: Omit<InboxRow, "id">[] = [
-    {
-      type: "ticket",
-      subject: "Order #123 delayed?",
-      preview: "Hi team, my delivery was supposed to arrive yesterday but I haven't received any updates yet. Can you please check?",
-      sender: { name: "John Doe (customer)", avatar: "JD", email: "john@example.com" },
-      status: "open",
-      unread: true,
-      date: "2h ago",
-      priority: "urgent",
-    },
-    {
-      type: "mention",
-      subject: "Mentioned in #405",
-      preview: "@admin can we get an approval for this refund request?",
-      sender: { name: "Sarah Smith (agent)", avatar: "SS", email: "sarah@ziply5.com" },
-      status: "in_progress",
-      unread: true,
-      date: "4h ago",
-      priority: "normal",
-    },
-    {
-      type: "alert",
-      subject: "High Server Load",
-      preview: "The main API server is experiencing unusually high load (90% CPU).",
-      sender: { name: "System Alert", avatar: "SA", email: "noreply@ziply5.com" },
-      status: "open",
-      unread: false,
-      date: "5h ago",
-      priority: "urgent",
-    },
-    {
-      type: "ticket",
-      subject: "Missing item in delivery",
-      preview: "I ordered the special combo but the extra fries were missing from the package.",
-      sender: { name: "Emily Chen (customer)", avatar: "EC", email: "emily.c@example.com" },
-      status: "resolved",
-      unread: false,
-      date: "1d ago",
-      priority: "normal",
-    },
-    {
-      type: "ticket",
-      subject: "Question about ingredients",
-      preview: "Does the Cashew Chicken contain any dairy products? I am highly allergic.",
-      sender: { name: "Michael B. (customer)", avatar: "MB", email: "mikeb@example.com" },
-      status: "open",
-      unread: true,
-      date: "1d ago",
-      priority: "urgent",
-    },
-  ];
-
-  return Array.from({ length: 20 }).map((_, i) => ({
-    ...templates[i % templates.length],
-    id: `MSG-${1000 + i}`,
-    // Slight randomization for realism
-    unread: i < 12, 
-  }));
-};
-
-const FALLBACK_ROWS = generateFallbackRows();
+const STATUSES = ["open", "contacted", "closed"] as const;
 
 export default function AdminInboxPage() {
   const [rows, setRows] = useState<InboxRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [updating, setUpdating] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [viewingRow, setViewingRow] = useState<InboxRow | null>(null);
+  const [draft, setDraft] = useState<Record<string, string>>({});
   const [error, setError] = useState("");
   const [tab, setTab] = useState("all");
   const [refreshing, setRefreshing] = useState(false);
@@ -98,15 +37,20 @@ export default function AdminInboxPage() {
     setError("");
     try {
       // Try live API first, fallback to mock data if it fails/404s
-      const res = await authedFetch<InboxRow[]>("/api/v1/inbox");
-      if (res && res.length > 0) {
-        setRows(res);
+      const res: any = await authedFetch("/api/v1/inbox");
+      const messages = Array.isArray(res) ? res : (res?.data || []);
+      
+      if (messages.length > 0) {
+        setRows(messages);
+        const d: Record<string, string> = {};
+        messages.forEach((t: InboxRow) => { d[t.id] = t.status; });
+        setDraft(d);
       } else {
-        setRows(FALLBACK_ROWS);
+        setRows([]);
       }
-    } catch (err) {
-      console.warn("API not ready yet, using fallback data.");
-      setRows(FALLBACK_ROWS);
+    } catch (err: any) {
+      console.error("Inbox fetch error:", err);
+      setError(err?.message || "Failed to load inbox data.");
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -124,23 +68,101 @@ export default function AdminInboxPage() {
     return () => clearInterval(interval);
   }, [loadData]);
 
-  const unreadCount = rows.filter((r) => r.unread).length;
+  const apply = async (id: string) => {
+    const status = draft[id];
+    if (!status) return;
+    setUpdating(id);
+    try {
+      await authedPatch(`/api/v1/inbox/${id}`, { status });
+      await loadData(true); // Refresh without full loading spinner
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to update status");
+    } finally {
+      setUpdating(null);
+    }
+  };
+
+  const confirmDelete = async () => {
+    if (!deletingId) return;
+    try {
+      await authedFetch(`/api/v1/inbox/${deletingId}`, { method: "DELETE" });
+      await loadData(true); // Refresh without full loading spinner
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to delete message");
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
+  const openCount = rows.filter((r) => r.status === "open").length;
   const filteredRows = rows.filter((r) => {
-    if (tab === "tickets") return r.type === "ticket";
-    if (tab === "mentions") return r.type === "mention";
-    if (tab === "alerts") return r.type === "alert";
+    if (tab === "closed") return r.status === "closed";
+    if (tab === "contacted") return r.status === "contacted";
     return true; // "all"
   });
 
   return (
+    <>
+      {/* VIEW DETAILS MODAL */}
+      {viewingRow && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm transition-opacity">
+          <div className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-2xl animate-in fade-in zoom-in-95">
+            <div className="flex items-center justify-between mb-4 border-b border-gray-100 pb-3">
+              <h3 className="text-xl font-bold font-melon text-[#4A1D1F]">Message Details</h3>
+              <button onClick={() => setViewingRow(null)} className="text-gray-400 hover:text-gray-800 transition-colors cursor-pointer">
+                <X size={20} />
+              </button>
+            </div>
+            <div className="space-y-3 text-sm text-[#646464]">
+              <div className="flex justify-between">
+                <span className="font-semibold text-black">Name:</span> <span>{viewingRow.name}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="font-semibold text-black">Email:</span> <span>{viewingRow.email}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="font-semibold text-black">Phone:</span> <span>{viewingRow.phone || "N/A"}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="font-semibold text-black">Date:</span> <span>{new Date(viewingRow.createdAt).toLocaleString()}</span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="font-semibold text-black">Status:</span>
+                <span className="uppercase tracking-wide text-[10px] font-bold bg-gray-100 text-gray-800 px-2 py-1 rounded-md">{viewingRow.status.replace("_", " ")}</span>
+              </div>
+              <div className="pt-3 border-t border-gray-100 mt-2">
+                <span className="font-semibold text-black block mb-2">Message:</span>
+                <div className="bg-[#FFFBF3] border border-[#E8DCC8] p-4 rounded-lg whitespace-pre-wrap leading-relaxed text-[#4A1D1F]">{viewingRow.message}</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* CUSTOM DELETE TOAST / CONFIRMATION */}
+      {deletingId && (
+        <div className="fixed bottom-6 right-6 z-50 rounded-xl bg-white p-5 shadow-2xl border border-[#E8DCC8] w-80 animate-in slide-in-from-bottom-5">
+          <h3 className="text-[15px] font-bold text-[#4A1D1F] mb-1">Delete Message?</h3>
+          <p className="text-[13px] text-[#646464] mb-4">Are you sure you want to delete this message? This action cannot be undone.</p>
+          <div className="flex justify-end gap-3">
+            <button onClick={() => setDeletingId(null)} className="px-4 py-2 text-xs font-semibold text-[#4A1D1F] hover:bg-[#FFFBF3] rounded-lg border border-[#E8DCC8] transition-colors cursor-pointer">
+              Cancel
+            </button>
+            <button onClick={confirmDelete} className="px-4 py-2 text-xs font-semibold text-white bg-red-600 hover:bg-red-700 rounded-lg transition-colors cursor-pointer">
+              Delete
+            </button>
+          </div>
+        </div>
+      )}
+
     <section className="mx-auto max-w-7xl space-y-6">
       {/* HEADER */}
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="font-melon text-2xl font-bold text-[#4A1D1F]">
-            Inbox {unreadCount > 0 && `(${unreadCount} unread)`}
+            Inbox
           </h1>
-          <p className="text-sm text-[#646464] mt-1">All messages, tickets, notifications.</p>
+          <p className="text-sm text-[#646464] mt-1">Website contact queries and messages.</p>
         </div>
         <button
           type="button"
@@ -155,18 +177,17 @@ export default function AdminInboxPage() {
 
       {/* STATS BAR */}
       <div className="flex flex-wrap gap-3">
-        <span className="rounded-full bg-blue-100 px-3 py-1 text-xs font-semibold text-blue-800">24 New</span>
-        <span className="rounded-full bg-red-100 px-3 py-1 text-xs font-semibold text-red-800">7 Urgent</span>
-        <span className="rounded-full bg-green-100 px-3 py-1 text-xs font-semibold text-green-800">56 Open</span>
+        <span className="rounded-full bg-blue-100 px-3 py-1 text-xs font-semibold text-blue-800">{openCount} Open</span>
+        <span className="rounded-full bg-green-100 px-3 py-1 text-xs font-semibold text-green-800">{rows.filter(r => r.status === 'contacted').length} Contacted</span>
+        <span className="rounded-full bg-gray-100 px-3 py-1 text-xs font-semibold text-gray-800">Total: {rows.length}</span>
       </div>
 
       {/* TABS */}
       <Tabs value={tab} onValueChange={setTab} className="w-full">
-        <TabsList className="grid w-full max-w-md grid-cols-4 h-auto cursor-pointer">
+        <TabsList className="grid w-full max-w-[300px] grid-cols-3 h-auto cursor-pointer">
           <TabsTrigger value="all">All</TabsTrigger>
-          <TabsTrigger value="tickets">Tickets</TabsTrigger>
-          <TabsTrigger value="mentions">Mentions</TabsTrigger>
-          <TabsTrigger value="alerts">Alerts</TabsTrigger>
+          <TabsTrigger value="contacted">Contacted</TabsTrigger>
+          <TabsTrigger value="closed">Closed</TabsTrigger>
         </TabsList>
       </Tabs>
 
@@ -175,7 +196,7 @@ export default function AdminInboxPage() {
 
       {/* TABLE */}
       {!loading && (
-        <ConsoleTable headers={["Sender", "Subject", "Preview", "Date", "Status", "Actions"]}>
+        <ConsoleTable headers={["Sender", "Phone", "Message", "Date", "Status", "Actions"]}>
           {filteredRows.length === 0 ? (
             <tr>
               <ConsoleTd colSpan={6} className="py-12 text-center text-[#646464]">
@@ -184,59 +205,67 @@ export default function AdminInboxPage() {
             </tr>
           ) : (
             filteredRows.map((row) => (
-              <tr key={row.id} className={`group hover:bg-[#FFFBF3]/80 ${row.unread ? "bg-[#FFFBF3]/40" : ""}`}>
+              <tr key={row.id} className="group hover:bg-[#FFFBF3]/80">
                 {/* AVATAR & NAME */}
                 <ConsoleTd className="align-middle">
                   <div className="flex items-center gap-3">
                     <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-orange-100 text-xs font-bold text-orange-800">
-                      {row.sender.avatar}
+                      {row.name.charAt(0).toUpperCase()}
                     </div>
                     <div className="flex flex-col max-w-[140px]">
-                      <span className={`truncate text-[13px] ${row.unread ? "font-bold text-[#4A1D1F]" : "font-medium text-[#4A1D1F]"}`}>
-                        {row.sender.name}
+                      <span className="truncate text-[13px] font-medium text-[#4A1D1F]">
+                        {row.name}
                       </span>
-                      <span className="truncate text-[11px] text-[#646464]">{row.sender.email}</span>
+                      <span className="truncate text-[11px] text-[#646464]">{row.email}</span>
                     </div>
                   </div>
                 </ConsoleTd>
 
-                {/* SUBJECT */}
+                {/* PHONE */}
                 <ConsoleTd className="align-middle">
-                  <div className={`max-w-[220px] truncate text-[13px] ${row.unread ? "font-bold text-[#4A1D1F]" : "font-medium text-[#4A1D1F]"}`}>
-                    {row.unread && <span className="inline-block w-2 h-2 mr-2 rounded-full bg-blue-500 animate-pulse" title="Unread" />}
-                    {row.subject}
-                  </div>
+                  <span className="text-sm text-[#646464] whitespace-nowrap">{row.phone || "N/A"}</span>
                 </ConsoleTd>
 
-                {/* PREVIEW */}
-                <ConsoleTd className="align-middle max-w-[300px]">
-                  <p className="text-sm text-[#646464] line-clamp-2" title={row.preview}>
-                    {row.preview}
+                {/* MESSAGE */}
+                <ConsoleTd className="align-middle max-w-[350px]">
+                  <p className="text-sm line-clamp-1 text-[#646464]" title={row.message}>
+                    {row.message}
                   </p>
                 </ConsoleTd>
 
                 {/* DATE */}
                 <ConsoleTd className="align-middle text-xs text-[#646464] whitespace-nowrap">
-                  {row.date}
+                  {new Date(row.createdAt).toLocaleDateString()}
                 </ConsoleTd>
 
                 {/* STATUS */}
                 <ConsoleTd className="align-middle">
-                  <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider ${row.status === 'open' ? 'bg-green-100 text-green-800' : row.status === 'resolved' ? 'bg-gray-100 text-gray-800' : 'bg-yellow-100 text-yellow-800'}`}>
-                    {row.status.replace("_", " ")}
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <select
+                      value={draft[row.id] ?? row.status}
+                      onChange={(e) => setDraft((d) => ({ ...d, [row.id]: e.target.value }))}
+                      className="w-[100px] rounded-lg border border-[#D9D9D1] bg-white px-2 py-1 text-[11px] capitalize cursor-pointer focus:outline-none focus:ring-1 focus:ring-orange-500"
+                    >
+                      {STATUSES.map((s) => (
+                        <option key={s} value={s}>{s.replaceAll("_", " ")}</option>
+                      ))}
+                    </select>
+                    <button type="button" disabled={updating === row.id || (draft[row.id] ?? row.status) === row.status} onClick={() => apply(row.id)} className="rounded-md cursor-pointer bg-[#7B3010] px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-white disabled:opacity-40 hover:bg-[#5a220b] transition-colors">
+                      {updating === row.id ? "…" : "Apply"}
+                    </button>
+                  </div>
                 </ConsoleTd>
 
                 {/* ACTIONS */}
                 <ConsoleTd className="align-middle">
                   <div className="flex flex-wrap items-center gap-2">
-                    <Link href={`/admin/tickets/${row.id}`} className="rounded-lg bg-[#7B3010] px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-white hover:bg-[#5a220b] flex items-center gap-1.5 transition-colors">
-                      <Headphones size={12} /> Reply
-                    </Link>
-                    <button type="button" title="View" className="rounded-lg border border-[#E8DCC8] p-1.5 text-[#4A1D1F] hover:bg-[#FFFBF3] transition-colors">
+                    <button type="button" title="View Details" onClick={() => setViewingRow(row)} className="rounded-lg cursor-pointer border border-[#E8DCC8] p-1.5 text-[#4A1D1F] hover:bg-[#FFFBF3] transition-colors">
                       <Eye size={14} />
                     </button>
-                    <button type="button" title="Archive" className="rounded-lg border border-[#E8DCC8] p-1.5 text-red-500 hover:bg-red-50 hover:border-red-200 transition-colors">
+                    <a href={`mailto:${row.email}`} title="Reply via Email" className="rounded-lg border border-[#E8DCC8] p-1.5 text-[#4A1D1F] hover:bg-[#FFFBF3] transition-colors">
+                      <Mail size={14} />
+                    </a>
+                    <button type="button" title="Delete" onClick={() => setDeletingId(row.id)} className="rounded-lg border border-[#E8DCC8] p-1.5 text-red-500 hover:bg-red-50 hover:border-red-200 transition-colors cursor-pointer">
                       <Trash2 size={14} />
                     </button>
                   </div>
@@ -247,5 +276,6 @@ export default function AdminInboxPage() {
         </ConsoleTable>
       )}
     </section>
+    </>
   );
 }
