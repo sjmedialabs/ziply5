@@ -277,19 +277,54 @@ model AbandonedCart {
   createdAt  DateTime @default(now())
 }
 
-model Promotion {
-  id               String             @id @default(cuid())
-  name             String
-  active           Boolean            @default(true)
-  startsAt         DateTime?
-  endsAt           DateTime?
-  metadata         Json?
-  createdAt        DateTime           @default(now())
-  updatedAt        DateTime           @updatedAt
-  kind             PromotionKind
-  PromotionProduct PromotionProduct[]
-  PromotionVariant PromotionVariant[]
+model PromotionProduct {
+  id          String @id @default(cuid())
+
+  promotionId String
+  productId   String
+
+  promotion   Promotion @relation(fields: [promotionId], references: [id])
+
+  product     Product   @relation(fields: [productId], references: [id])
+
+  @@unique([promotionId, productId])
 }
+
+model PromotionVariant {
+  id          String @id @default(cuid())
+
+  promotionId String
+  variantId   String
+
+  promotion   Promotion @relation(fields: [promotionId], references: [id])
+
+  variant     ProductVariant @relation(fields: [variantId], references: [id])
+
+  metadata    Json?
+
+  @@unique([promotionId, variantId])
+}
+
+model Promotion {
+  id        String    @id @default(cuid())
+
+  kind      PromotionKind
+  name      String
+
+  active    Boolean   @default(true)
+
+  startsAt  DateTime?
+  endsAt    DateTime?
+
+  metadata  Json?
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  products  PromotionProduct[]
+  variants  PromotionVariant[]   //  ADD THIS
+}
+
 
 model WithdrawalRequest {
   id          String   @id @default(cuid())
@@ -393,7 +428,7 @@ model Product {
   seo                  ProductSeo?
   tags                 ProductTag[]
   variants             ProductVariant[]
-  PromotionProduct     PromotionProduct[]
+  promotionLinks       PromotionProduct[]
   sections             ProductSection[]
 
   @@index([createdById])
@@ -417,21 +452,21 @@ model ProductSection {
 }
 
 model ProductVariant {
-  id               String              @id @default(cuid())
-  productId        String
-  name             String
-  sku              String              @unique
-  price            Decimal             @db.Decimal(10, 2)
-  stock            Int                 @default(0)
-  createdAt        DateTime            @default(now())
-  discountPercent  Decimal?            @db.Decimal(5, 2)
-  isDefault        Boolean             @default(false)
-  mrp              Decimal?            @db.Decimal(10, 2)
-  updatedAt        DateTime            @updatedAt
-  weight           String?
-  lotStocks        InventoryStockLot[]
-  product          Product             @relation(fields: [productId], references: [id], onDelete: Cascade)
-  PromotionVariant PromotionVariant[]
+  id              String              @id @default(cuid())
+  productId       String
+  name            String
+  sku             String              @unique
+  price           Decimal             @db.Decimal(10, 2)
+  stock           Int                 @default(0)
+  createdAt       DateTime            @default(now())
+  discountPercent Decimal?            @db.Decimal(5, 2)
+  isDefault       Boolean             @default(false)
+  mrp             Decimal?            @db.Decimal(10, 2)
+  updatedAt       DateTime            @updatedAt
+  weight          String?
+  lotStocks       InventoryStockLot[]
+  promotionLinks  PromotionVariant[]
+  product         Product             @relation(fields: [productId], references: [id], onDelete: Cascade)
 
   @@index([productId])
 }
@@ -1102,16 +1137,4 @@ enum PromotionKind {
   FEATURED_DEAL
   FEATURED_ONLY
   CUSTOM
-}
-
-
-model ContactMessage {
-  id        String   @id @default(cuid())
-  name      String
-  email     String
-  phone     String?
-  message   String
-  status    String   @default("open")
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
 }

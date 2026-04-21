@@ -20,7 +20,10 @@ export type StorefrontProduct = {
   features: Array<{ title: string; icon: string | null }>
   details: Array<{ title: string; content: string }>
   sections: Array<{ id: string; title: string; description: string; sortOrder: number; isActive: boolean }>
-  variants: Array<{ id: string; name: string; weight: string; price: number; sku: string; stock: number; isDefault: boolean }>
+  variants: Array<{ id: string; name: string; weight: string; price: number; sku: string; stock: number; isDefault: boolean; discountPercent?: number | null; finalPrice?: number | null; promotion?: { name: string; kind: string } | null }>
+  discountPercent?: number | null
+  finalPrice?: number | null
+  promotion?: { name: string; kind: string } | null
 }
 
 type ApiProduct = {
@@ -34,12 +37,14 @@ type ApiProduct = {
   price: string | number
   basePrice?: string | number | null
   salePrice?: string | number | null
-  discountPercent?: number | null
+  discountPercent?: string | number | null
+  finalPrice?: string | number | null
+  promotion?: { name: string; kind: string } | null
   thumbnail?: string | null
   videoUrl?: string | null
   images?: Array<{ url: string }>
   type?: "simple" | "variant"
-  variants?: Array<{ id: string; name: string; weight?: string | null; price: string | number; sku: string; stock: number; isDefault?: boolean }>
+  variants?: Array<{ id: string; name: string; weight?: string | null; price: string | number; sku: string; stock: number; isDefault?: boolean; discountPercent?: number | null; finalPrice?: number | null; promotion?: { name: string; kind: string } | null }>
   tags?: Array<{ tag: { name: string } }>
   labels?: Array<{ label: string; color: string | null }>
   features?: Array<{ title: string; icon: string | null }>
@@ -105,9 +110,9 @@ export const toStorefrontProduct = (p: ApiProduct): StorefrontProduct => {
     productKind: p.type ?? (variants.length ? "variant" : "simple"),
     price: sale || 0,
     oldPrice: oldPrice || 0,
-    discountPercent: p.discountPercent || 0,
-    stockStatus: p.stockStatus,
-    stock: p.stock,
+    discountPercent: p.discountPercent ? Number(p.discountPercent) : null,
+    finalPrice: p.finalPrice ? Number(p.finalPrice) : null,
+    promotion: p.promotion ?? null,
     description: p.description ?? "Delicious ready meal.",
     image: normalizedThumb ?? normalizedGallery[0] ?? DEFAULT_IMAGE,
     gallery: normalizedGallery ?? [DEFAULT_IMAGE],
@@ -130,5 +135,8 @@ export const toStorefrontProduct = (p: ApiProduct): StorefrontProduct => {
       sku: v.sku,
       stock: v.stock ?? 0,
       isDefault: Boolean(v.isDefault),
+      discountPercent: v.discountPercent ? Number(v.discountPercent) : null,
+      finalPrice: v.finalPrice ? Number(v.finalPrice) : null,
+      promotion: v.promotion ?? null,
     })) || [], } 
 }
