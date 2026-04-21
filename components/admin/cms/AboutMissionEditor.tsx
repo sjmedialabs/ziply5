@@ -4,7 +4,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { Loader2 } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Loader2, X } from 'lucide-react';
 
 export default function AboutMissionEditor({ value, onChange }: { value: any, onChange: (v: any) => void }) {
   const [uploading, setUploading] = useState(false);
@@ -56,7 +57,20 @@ export default function AboutMissionEditor({ value, onChange }: { value: any, on
           <div className="flex items-center gap-4 mt-1">
             <Input type="file" accept="image/*" onChange={(e) => e.target.files?.[0] && handleUpload(e.target.files[0])} className="w-auto" />
             {uploading && <Loader2 className="h-4 w-4 animate-spin text-[#4A1D1F]" />}
-            {value.imageUrl && <img src={value.imageUrl} alt="Mission" className="h-10 w-10 object-cover rounded border" />}
+            {value.imageUrl && (
+              <div className="flex items-center gap-2">
+                <img src={value.imageUrl} alt="Mission" className="h-10 w-10 object-cover rounded border" />
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="h-6 w-6 text-red-500 hover:text-red-700 hover:bg-red-50"
+                  onClick={() => onChange({ ...value, imageUrl: '' })}
+                >
+                  <X className="h-4 w-4" />
+                </Button>
+              </div>
+            )}
           </div>
         </div>
       </CardContent>

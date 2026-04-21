@@ -5,7 +5,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Button } from '@/components/ui/button';
-import { Loader2, Plus, Trash2 } from 'lucide-react';
+import { Loader2, Plus, Trash2, X } from 'lucide-react';
 
 export default function AboutTeamEditor({ value, onChange }: { value: any, onChange: (v: any) => void }) {
   const [uploadingIdx, setUploadingIdx] = useState<number | null>(null);
@@ -68,7 +68,24 @@ export default function AboutTeamEditor({ value, onChange }: { value: any, onCha
                   <div className="flex items-center gap-4 mt-1">
                     <Input type="file" accept="image/*" onChange={(e) => e.target.files?.[0] && handleUpload(e.target.files[0], idx)} className="w-auto" />
                     {uploadingIdx === idx && <Loader2 className="h-4 w-4 animate-spin text-[#4A1D1F]" />}
-                    {member.imageUrl && <img src={member.imageUrl} alt="Team" className="h-8 w-8 object-cover rounded-full border" />}
+                    {member.imageUrl && (
+                      <div className="flex items-center gap-2">
+                        <img src={member.imageUrl} alt="Team" className="h-8 w-8 object-cover rounded-full border" />
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className="h-6 w-6 text-red-500 hover:text-red-700 hover:bg-red-50"
+                          onClick={() => {
+                            const newM = [...members];
+                            newM[idx].imageUrl = '';
+                            onChange({ ...value, members: newM });
+                          }}
+                        >
+                          <X className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    )}
                   </div>
                 </div>
                 <div className="space-y-2 col-span-1 md:col-span-2 grid grid-cols-3 gap-2">
