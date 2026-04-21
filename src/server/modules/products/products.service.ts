@@ -2,6 +2,7 @@ import { prisma } from "@/src/server/db/prisma"
 import type { Prisma, ProductStatus } from "@prisma/client"
 import { logActivity } from "@/src/server/modules/activity/activity.service"
 import sanitizeHtml from "sanitize-html"
+import { assertMasterValueExists } from "@/src/server/modules/master/master.service"
 
 export type ListProductsScope = "public" | "admin"
 

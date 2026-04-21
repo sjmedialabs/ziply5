@@ -4,6 +4,7 @@ import { requireAuth } from "@/src/server/middleware/auth"
 import { requirePermission } from "@/src/server/middleware/rbac"
 import { updateOrderStatusSchema } from "@/src/server/modules/orders/orders.validator"
 import { getOrderForActor, updateOrderStatus } from "@/src/server/modules/orders/orders.service"
+import type { OrderLifecycleStatus } from "@/src/server/modules/orders/orders.service"
 
 export async function GET(request: NextRequest, ctx: { params: Promise<{ id: string }> }) {
   const auth = requireAuth(request)
@@ -33,7 +34,7 @@ export async function PATCH(request: NextRequest, ctx: { params: Promise<{ id: s
   }
 
   try {
-    const order = await updateOrderStatus(id, parsed.data.status, auth.user.sub, {
+    const order = await updateOrderStatus(id, parsed.data.status as OrderLifecycleStatus, auth.user.sub, {
       reasonCode: parsed.data.reasonCode,
       note: parsed.data.note,
     })

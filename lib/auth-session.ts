@@ -232,7 +232,13 @@ export const installGlobalApiInterceptor = () => {
       const token = await getValidAccessToken()
       if (token) requestedHeaders.set("Authorization", `Bearer ${token}`)
     }
-    if (!requestedHeaders.has("Content-Type") && init?.body != null) {
+    const isFormData =
+      typeof FormData !== "undefined" &&
+      init?.body &&
+      (init.body instanceof FormData ||
+        Object.prototype.toString.call(init.body) === "[object FormData]")
+
+    if (!requestedHeaders.has("Content-Type") && init?.body != null && !isFormData) {
       requestedHeaders.set("Content-Type", "application/json")
     }
 

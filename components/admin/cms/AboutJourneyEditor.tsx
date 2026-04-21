@@ -33,16 +33,16 @@ export default function AboutJourneyEditor({ value, onChange }: { value: any, on
 
   return (
     <Card className="border-[#E8DCC8]">
-      <CardHeader className="bg-[#FFFBF3] border-b border-[#E8DCC8] py-3">
+      <CardHeader className=" border-b border-[#E8DCC8]">
         <CardTitle className="text-sm font-semibold text-[#4A1D1F]">1. Our Journey</CardTitle>
       </CardHeader>
-      <CardContent className="p-4 space-y-4">
+      <CardContent className="px-4 space-y-4">
         <div>
           <Label className="text-xs text-[#646464]">Section Title</Label>
           <Input 
             value={value.title || ''} 
             onChange={(e) => onChange({ ...value, title: e.target.value })} 
-            placeholder="e.g. Our Journey" 
+            placeholder="Enter section title" 
           />
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -52,7 +52,7 @@ export default function AboutJourneyEditor({ value, onChange }: { value: any, on
               maxLength={150} 
               value={value.desc1 || ''} 
               onChange={(e) => onChange({ ...value, desc1: e.target.value })} 
-              placeholder="First part of the journey..." 
+              placeholder="Enter description" 
             />
           </div>
           <div>
@@ -61,7 +61,7 @@ export default function AboutJourneyEditor({ value, onChange }: { value: any, on
               maxLength={150} 
               value={value.desc2 || ''} 
               onChange={(e) => onChange({ ...value, desc2: e.target.value })} 
-              placeholder="Second part of the journey..." 
+              placeholder="Enter description" 
             />
           </div>
         </div>

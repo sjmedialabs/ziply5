@@ -172,8 +172,8 @@ model Tag {
   id        String       @id @default(cuid())
   name      String       @unique
   slug      String       @unique
-  isActive  Boolean      @default(true)
   createdAt DateTime     @default(now())
+  isActive  Boolean      @default(true)
   products  ProductTag[]
 }
 
@@ -360,9 +360,9 @@ model Category {
   parentId  String?
   name      String
   slug      String            @unique
-  isActive  Boolean           @default(true)
   createdAt DateTime          @default(now())
   updatedAt DateTime          @updatedAt
+  isActive  Boolean           @default(true)
   parent    Category?         @relation("CategoryTree", fields: [parentId], references: [id])
   children  Category[]        @relation("CategoryTree")
   products  ProductCategory[]
@@ -402,16 +402,16 @@ model Product {
   thumbnail            String?
   totalStock           Int                             @default(0)
   type                 ProductType                     @default(variant)
-  spiceLevel           SpiceLevel?
   createdById          String?
   managedById          String?
   temperatureSensitive Boolean                         @default(false)
+  preparationType      String?
+  spiceLevel           SpiceLevel?
   analyticsSnapshots   AnalyticsDailyProductSnapshot[]
   bundle               Bundle?                         @relation("BundleProduct")
   bundleItems          BundleItem[]
   inventoryItems       InventoryItem[]
   lotStocks            InventoryStockLot[]
-  preparationType      String?
   orderItems           OrderItem[]
   brand                Brand?                          @relation(fields: [brandId], references: [id])
   createdBy            User?                           @relation("ProductCreatedBy", fields: [createdById], references: [id])
@@ -539,37 +539,36 @@ model InventoryItem {
 }
 
 model Order {
-  id             String               @id @default(cuid())
-  userId         String?
-  status         OrderStatus          @default(pending)
-  currency       String               @default("INR")
-  subtotal       Decimal              @db.Decimal(10, 2)
-  shipping       Decimal              @db.Decimal(10, 2)
-  total          Decimal              @db.Decimal(10, 2)
-  createdAt      DateTime             @default(now())
-  updatedAt      DateTime             @updatedAt
-  createdById    String?
-  managedById    String?
-  customerName   String?
-  customerPhone  String?
+  id              String               @id @default(cuid())
+  userId          String?
+  status          OrderStatus          @default(pending)
+  currency        String               @default("INR")
+  subtotal        Decimal              @db.Decimal(10, 2)
+  shipping        Decimal              @db.Decimal(10, 2)
+  total           Decimal              @db.Decimal(10, 2)
+  createdAt       DateTime             @default(now())
+  updatedAt       DateTime             @updatedAt
+  createdById     String?
+  managedById     String?
   customerAddress String?
-
-  paymentStatus  String?
-  paymentId      String?
-  paymentMethod  String?
-  codSettlement  CodSettlement?
-  invoice        Invoice?
-  createdBy      User?                @relation("OrderCreatedBy", fields: [createdById], references: [id])
-  managedBy      User?                @relation("OrderManagedBy", fields: [managedById], references: [id])
-  user           User?                @relation("CustomerOrders", fields: [userId], references: [id])
-  fulfillment    OrderFulfillment?
-  items          OrderItem[]
-  notes          OrderNote[]
-  statusHistory  OrderStatusHistory[]
-  refunds        RefundRecord[]
-  returnRequests ReturnRequest[]
-  shipments      Shipment[]
-  transactions   Transaction[]
+  customerName    String?
+  customerPhone   String?
+  paymentId       String?
+  paymentMethod   String?
+  paymentStatus   String?
+  codSettlement   CodSettlement?
+  invoice         Invoice?
+  createdBy       User?                @relation("OrderCreatedBy", fields: [createdById], references: [id])
+  managedBy       User?                @relation("OrderManagedBy", fields: [managedById], references: [id])
+  user            User?                @relation("CustomerOrders", fields: [userId], references: [id])
+  fulfillment     OrderFulfillment?
+  items           OrderItem[]
+  notes           OrderNote[]
+  statusHistory   OrderStatusHistory[]
+  refunds         RefundRecord[]
+  returnRequests  ReturnRequest[]
+  shipments       Shipment[]
+  transactions    Transaction[]
 
   @@index([createdById])
   @@index([managedById])
@@ -1044,6 +1043,27 @@ model DeliveryEtaRule {
   createdAt                     DateTime           @default(now())
   updatedAt                     DateTime           @default(now()) @updatedAt
   zone                          ServiceabilityZone @relation(fields: [zoneId], references: [id], onDelete: Cascade)
+}
+
+model PromotionProduct {
+  id          String    @id
+  promotionId String
+  productId   String
+  Product     Product   @relation(fields: [productId], references: [id])
+  Promotion   Promotion @relation(fields: [promotionId], references: [id])
+
+  @@unique([promotionId, productId])
+}
+
+model PromotionVariant {
+  id             String         @id
+  promotionId    String
+  variantId      String
+  metadata       Json?
+  Promotion      Promotion      @relation(fields: [promotionId], references: [id])
+  ProductVariant ProductVariant @relation(fields: [variantId], references: [id])
+
+  @@unique([promotionId, variantId])
 }
 
 enum UserStatus {

@@ -189,7 +189,7 @@ export default function CmsDashboard() {
       )}
 
       <Tabs value={tab} onValueChange={(v) => setTab(v as 'home' | 'about' | 'privacy' | 'terms' | 'returns' | 'shipping')} className="space-y-4">
-        <TabsList className="grid w-full grid-cols-3 md:grid-cols-6 h-auto">
+        <TabsList className="grid cursor-pointer w-full grid-cols-3 md:grid-cols-6 h-auto">
           <TabsTrigger value="home">Home</TabsTrigger>
           <TabsTrigger value="about">About</TabsTrigger>
           <TabsTrigger value="privacy">Privacy Policy</TabsTrigger>

@@ -1,9 +1,10 @@
 "use client"
 
-import { FormEvent, useMemo, useState } from "react"
+import { FormEvent, useEffect, useMemo, useState } from "react"
 import { useParams, useRouter } from "next/navigation"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { useRealtimeTables } from "@/hooks/useRealtimeTables"
+import { useMasterValues } from "@/hooks/useMasterData"
 
 type OrderDetail = {
   id: string
@@ -19,7 +20,7 @@ type OrderDetail = {
   refunds: Array<{ id: string; status: string; amount: string | number; createdAt: string }>
 }
 
-const timeline = [
+const FALLBACK_TIMELINE = [
   "pending_payment",
   "payment_success",
   "admin_approval_pending",
@@ -31,7 +32,7 @@ const timeline = [
   "refund_initiated",
   "returned",
 ] as const
-const returnReasons = [
+const FALLBACK_RETURN_REASONS = [
   "Damaged",
   "Wrong item",
   "Quality issue",
@@ -44,7 +45,11 @@ export default function OrderDetailPage() {
   const params = useParams() as { id?: string }
   const router = useRouter()
   const queryClient = useQueryClient()
-  const [reason, setReason] = useState<string>(returnReasons[0])
+  const statusMasterQuery = useMasterValues("ORDER_STATUS")
+  const returnReasonMasterQuery = useMasterValues("RETURN_REASON")
+  const timeline = statusMasterQuery.data?.map((item) => item.value) ?? FALLBACK_TIMELINE
+  const returnReasons = returnReasonMasterQuery.data?.map((item) => item.label) ?? FALLBACK_RETURN_REASONS
+  const [reason, setReason] = useState<string>((returnReasons[0] as string) ?? "Other")
   const [description, setDescription] = useState("")
   const [showReturnForm, setShowReturnForm] = useState(false)
   const [actionBusy, setActionBusy] = useState<string | null>(null)
@@ -138,6 +143,13 @@ export default function OrderDetailPage() {
       setActionBusy(null)
     }
   }
+
+  useEffect(() => {
+    if (!returnReasons.length) return
+    if (!returnReasons.includes(reason)) {
+      setReason(returnReasons[0] as string)
+    }
+  }, [reason, returnReasons])
 
   return (
     <section className="mx-auto max-w-4xl space-y-4 px-4 py-6">

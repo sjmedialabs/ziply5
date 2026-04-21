@@ -74,7 +74,7 @@ export default function ImageUploader({
               type="button"
               variant="ghost"
               size="sm"
-              className="absolute -top-2 -right-2 h-6 w-6 p-0 bg-white rounded-full shadow-md hover:bg-red-50"
+              className="absolute -top-2 -right-2 cursor-pointer h-6 w-6 p-0 bg-white rounded-full shadow-md hover:bg-red-50"
               onClick={removeImage}
             >
               <X className="h-3 w-3 text-red-500" />
