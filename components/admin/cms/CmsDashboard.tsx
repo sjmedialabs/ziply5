@@ -24,6 +24,9 @@ import AboutMissionEditor from './AboutMissionEditor';
 import AboutStatsEditor from './AboutStatsEditor';
 import AboutTeamEditor from './AboutTeamEditor';
 import AboutSubscriptionEditor from './AboutSubscriptionEditor';
+import ContactUsSectionEditor from './ContactUsSectionEditor';
+import FaqSectionEditor from './FaqSectionEditor';
+import PromoSectionEditor from './PromoSectionEditor';
 
 type CmsSection = {
   sectionType: string;
@@ -45,7 +48,7 @@ export default function CmsDashboard() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
-  const [tab, setTab] = useState<'home' | 'about' | 'privacy' | 'terms' | 'returns' | 'shipping'>('home');
+  const [tab, setTab] = useState<'home' | 'about' | 'privacy' | 'terms' | 'returns' | 'shipping' | 'contact' | 'faq' | 'promos'>('home');
   const [seo, setSeo] = useState({ metaTitle: '', metaDescription: '' });
 
   // Section types for Home
@@ -82,6 +85,18 @@ export default function CmsDashboard() {
     { type: 'shipping-content', component: ShippingInfoSectionEditor, position: 0 },
   ];
 
+  const contactSections = [
+    { type: 'contact-details', component: ContactUsSectionEditor, position: 0 },
+  ];
+
+  const faqSections = [
+    { type: 'faq', component: FaqSectionEditor, position: 0 },
+  ];
+
+  const promoSections = [
+    { type: 'promos', component: PromoSectionEditor, position: 0 },
+  ];
+
   const loadPage = useCallback(async (slug: string) => {
     setLoading(true);
     setError('');
@@ -95,7 +110,7 @@ export default function CmsDashboard() {
         // Create stub
         const stub: CmsPage = {
           slug,
-          title: slug === 'home' ? 'Home Page' : slug === 'about' ? 'About Page' : slug === 'privacy' ? 'Privacy Policy' : slug === 'terms' ? 'Terms & Conditions' : slug === 'returns' ? 'Return & Refund' : 'Shipping Info',
+          title: slug === 'home' ? 'Home Page' : slug === 'about' ? 'About Page' : slug === 'privacy' ? 'Privacy Policy' : slug === 'terms' ? 'Terms & Conditions' : slug === 'returns' ? 'Return & Refund' : slug === 'shipping' ? 'Shipping Info' : slug === 'contact' ? 'Contact Us' : slug === 'promos' ? 'Promos' : 'FAQ',
           status: 'draft' as const,
           sections: [],
         };
@@ -142,7 +157,7 @@ export default function CmsDashboard() {
     if (!page) return;
     const existingIdx = page.sections.findIndex(s => s.sectionType === type);
     const newSections = [...page.sections];
-    const allSections = tab === 'home' ? homeSections : tab === 'about' ? aboutSections : tab === 'privacy' ? privacySections : tab === 'terms' ? termsSections : tab === 'returns' ? returnSections : tab === 'shipping' ? shippingSections : [];
+    const allSections = tab === 'home' ? homeSections : tab === 'about' ? aboutSections : tab === 'privacy' ? privacySections : tab === 'terms' ? termsSections : tab === 'returns' ? returnSections : tab === 'shipping' ? shippingSections : tab === 'contact' ? contactSections : tab === 'faq' ? faqSections : tab === 'promos' ? promoSections : [];
     const position = allSections.find(s => s.type === type)?.position ?? newSections.length;
     
     if (existingIdx >= 0) {
@@ -188,19 +203,35 @@ export default function CmsDashboard() {
         </Card>
       )}
 
-      <Tabs value={tab} onValueChange={(v) => setTab(v as 'home' | 'about' | 'privacy' | 'terms' | 'returns' | 'shipping')} className="space-y-4">
-        <TabsList className="grid cursor-pointer w-full grid-cols-3 md:grid-cols-6 h-auto">
-          <TabsTrigger value="home">Home</TabsTrigger>
-          <TabsTrigger value="about">About</TabsTrigger>
-          <TabsTrigger value="privacy">Privacy Policy</TabsTrigger>
-          <TabsTrigger value="terms">Terms & Conditions</TabsTrigger>
-          <TabsTrigger value="returns">Return & Refund</TabsTrigger>
-          <TabsTrigger value="shipping">Shipping Info</TabsTrigger>
+      <Tabs value={tab} onValueChange={(v) => setTab(v as any)} className="space-y-4">
+        <TabsList className="flex flex-wrap justify-start w-full h-auto gap-1">
+          <TabsTrigger className='cursor-pointer' value="home">Home</TabsTrigger>
+          <TabsTrigger className='cursor-pointer' value="about">About</TabsTrigger>
+          <TabsTrigger className='cursor-pointer' value="privacy">Privacy Policy</TabsTrigger>
+          <TabsTrigger className='cursor-pointer' value="terms">Terms & Conditions</TabsTrigger>
+          <TabsTrigger className='cursor-pointer' value="returns">Return & Refund</TabsTrigger>
+          <TabsTrigger className='cursor-pointer' value="shipping">Shipping Info</TabsTrigger>
+          <TabsTrigger className='cursor-pointer' value="contact">Contact Us</TabsTrigger>
+          <TabsTrigger className='cursor-pointer' value="faq">FAQ</TabsTrigger>
+          <TabsTrigger className='cursor-pointer' value="promos">Promos</TabsTrigger>
         </TabsList>
         
         <TabsContent value="home" className="space-y-6 mt-0">
           <div className="space-y-6">
             {homeSections.map(({ type, component: Component }) => (
+              <div key={type}>
+                <Component 
+                  value={page?.sections.find(s => s.sectionType === type)?.contentJson || {}}
+                  onChange={(content) => updateSection(type, content)}
+                />
+              </div>
+            ))}
+          </div>
+        </TabsContent>
+
+        <TabsContent value="contact" className="space-y-6 mt-0">
+          <div className="space-y-6">
+            {contactSections.map(({ type, component: Component }) => (
               <div key={type}>
                 <Component 
                   value={page?.sections.find(s => s.sectionType === type)?.contentJson || {}}
@@ -217,6 +248,19 @@ export default function CmsDashboard() {
               <div key={type}>
                 <Component 
                   value={page?.sections.find(s => s.sectionType === type)?.contentJson || {}}
+                  onChange={(content: any) => updateSection(type, content)}
+                />
+              </div>
+            ))}
+          </div>
+        </TabsContent>
+
+        <TabsContent value="faq" className="space-y-6 mt-0">
+          <div className="space-y-6">
+            {faqSections.map(({ type, component: Component }) => (
+              <div key={type}>
+                <Component 
+                  value={page?.sections.find(s => s.sectionType === type)?.contentJson || []}
                   onChange={(content: any) => updateSection(type, content)}
                 />
               </div>
@@ -270,6 +314,19 @@ export default function CmsDashboard() {
                 <Component 
                   value={page?.sections.find(s => s.sectionType === type)?.contentJson || {}}
                   onChange={(content) => updateSection(type, content)}
+                />
+              </div>
+            ))}
+          </div>
+        </TabsContent>
+
+        <TabsContent value="promos" className="space-y-6 mt-0">
+          <div className="space-y-6">
+            {promoSections.map(({ type, component: Component }) => (
+              <div key={type}>
+                <Component 
+                  value={page?.sections.find(s => s.sectionType === type)?.contentJson || []}
+                  onChange={(content: any) => updateSection(type, content)}
                 />
               </div>
             ))}
