@@ -20,20 +20,35 @@ type OrderRow = {
   user?: { id: string; name: string; email: string };
 };
 
-const STATUSES = ["pending", "confirmed", "shipped", "delivered", "cancelled"] as const;
+const STATUSES = [
+  "pending_payment",
+  "payment_success",
+  "admin_approval_pending",
+  "confirmed",
+  "packed",
+  "shipped",
+  "delivered",
+  "cancel_requested",
+  "return_requested",
+  "return_approved",
+  "refund_initiated",
+  "returned",
+  "cancelled",
+] as const;
 
 export default function AdminOrdersPage() {
   const [rows, setRows] = useState<OrderRow[]>([]);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
+  const [canFetch, setCanFetch] = useState(false);
   const [updating, setUpdating] = useState<string | null>(null);
   const [draft, setDraft] = useState<Record<string, string>>({});
   const [searchTerm, setSearchTerm] = useState("");
   const [quickFilter, setQuickFilter] = useState("all");
 
   const filteredRows = rows.filter((o) => {
-    const paid = Boolean(o.transactions?.some((t) => /paid|captured|success/i.test(t.status)) || o.paymentStatus === "paid");
-    const failedPayment = Boolean(o.transactions?.some((t) => /fail/i.test(t.status)) || o.paymentStatus === "failed");
+    const paid = Boolean(o.transactions?.some((t) => /paid|captured|success/i.test(t.status)) || (o.paymentStatus ?? "").toUpperCase() === "SUCCESS");
+    const failedPayment = Boolean(o.transactions?.some((t) => /fail/i.test(t.status)) || (o.paymentStatus ?? "").toUpperCase() === "FAILED");
     const pendingReturn = Boolean(o.returnRequests?.some((ret) => ["requested", "approved", "picked_up"].includes(ret.status)));
     const refundPending = Boolean(o.refunds?.some((refund) => ["pending", "processing", "initiated"].includes(refund.status)));
     if (quickFilter === "pending_returns" && !pendingReturn) return false;
@@ -55,6 +70,12 @@ export default function AdminOrdersPage() {
   });
 
   const load = useCallback(() => {
+    if (!canFetch) {
+      setRows([]);
+      setLoading(false);
+      setError("Login as admin to load orders.");
+      return;
+    }
     setLoading(true);
     setError("");
     authedFetch<{ items: OrderRow[] }>("/api/v1/orders?page=1&limit=50")
@@ -68,16 +89,33 @@ export default function AdminOrdersPage() {
       })
       .catch((e: Error) => setError(e.message))
       .finally(() => setLoading(false));
+  }, [canFetch]);
+
+  useEffect(() => {
+    const syncAuth = () => {
+      const token = window.localStorage.getItem("ziply5_access_token");
+      const role = window.localStorage.getItem("ziply5_user_role");
+      setCanFetch(Boolean(token) && (role === "admin" || role === "super_admin"));
+    };
+    syncAuth();
+    window.addEventListener("storage", syncAuth);
+    return () => window.removeEventListener("storage", syncAuth);
   }, []);
 
   useEffect(() => {
-    load();
-  }, [load]);
+    if (canFetch) {
+      load();
+    } else {
+      setLoading(false);
+    }
+  }, [canFetch, load]);
 
   useRealtimeTables({
     tables: ["orders", "returns", "refunds"],
     onChange: () => {
-      void load();
+      if (canFetch) {
+        void load();
+      }
     },
   });
 
@@ -124,6 +162,7 @@ export default function AdminOrdersPage() {
           <button
             type="button"
             onClick={() => load()}
+            disabled={!canFetch}
             className="rounded-full border border-[#E8DCC8] bg-white px-4 py-2 text-xs font-semibold uppercase tracking-wide text-[#4A1D1F] hover:bg-[#FFFBF3]"
           >
             Refresh
@@ -144,7 +183,7 @@ export default function AdminOrdersPage() {
             </tr>
           ) : (
             filteredRows.map((o) => {
-              const paid = Boolean(o.transactions?.some((t) => /paid|captured|success/i.test(t.status)) || o.paymentStatus === "paid");
+              const paid = Boolean(o.transactions?.some((t) => /paid|captured|success/i.test(t.status)) || (o.paymentStatus ?? "").toUpperCase() === "SUCCESS");
               return (
                 <tr key={o.id} className="hover:bg-[#FFFBF3]/80">
                   <ConsoleTd>

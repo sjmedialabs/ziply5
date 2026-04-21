@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { persistSession } from "@/lib/auth-session";
 
 type SignupResponse = {
   success: boolean;
@@ -33,10 +34,12 @@ export default function SignupPage() {
 
   const persistAuth = (payload: SignupResponse) => {
     if (!payload.data?.accessToken || !payload.data?.refreshToken || !payload.data?.user?.role) return false;
-    localStorage.setItem("ziply5_access_token", payload.data.accessToken);
-    localStorage.setItem("ziply5_refresh_token", payload.data.refreshToken);
-    localStorage.setItem("ziply5_user_role", payload.data.user.role);
-    window.dispatchEvent(new Event("storage"));
+    persistSession({
+      accessToken: payload.data.accessToken,
+      refreshToken: payload.data.refreshToken,
+      role: payload.data.user.role,
+      user: payload.data.user,
+    });
     return true;
   };
 

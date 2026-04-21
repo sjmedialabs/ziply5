@@ -13,23 +13,17 @@ import {
 } from "@/components/ui/select"
 import { getCartItems, setCartItemQuantity } from "@/lib/cart"
 import { getFavoriteSlugs, toggleFavoriteSlug } from "@/lib/favorites"
-import { toStorefrontProduct, type StorefrontProduct } from "@/lib/storefront-products"
+import { type StorefrontProduct } from "@/lib/storefront-products"
+import { useStorefrontProducts } from "@/hooks/useStorefrontProducts"
 
 type CategoryFilter = "all" | string
 type MealTypeFilter = "all" | "veg" | "non-veg"
 type SortType = "popular" | "name-asc" | "name-desc"
 type CategoryApi = { id: string; name: string; slug: string }
-type ProductApi = {
-  id: string
-  categories?: Array<{ category?: { slug?: string } }>
-}
-
 function ProductsPageContent() {
   const searchParams = useSearchParams()
-  const [products, setProducts] = useState<StorefrontProduct[]>([])
+  const { products, loading, error } = useStorefrontProducts(60)
   const [categoryOptions, setCategoryOptions] = useState<Array<{ slug: string; name: string }>>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState("")
   const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>("all")
   const [mealTypeFilter, setMealTypeFilter] = useState<MealTypeFilter>("all")
   const [packFilter, setPackFilter] = useState<any>("all")
@@ -42,42 +36,16 @@ function ProductsPageContent() {
 
   useEffect(() => {
     let cancelled = false
-    setLoading(true)
-    setError("")
-    Promise.all([
-      // This page currently renders only the first 4 items, so fetch only 4.
-      fetch("/api/v1/products?page=1&limit=4").then((r) => r.json()),
-      fetch("/api/v1/categories").then((r) => r.json()),
-    ])
-      .then(([productRes, categoryRes]: Array<{ success?: boolean; message?: string; data?: any }>) => {
+    fetch("/api/v1/categories")
+      .then((r) => r.json())
+      .then((categoryRes: { success?: boolean; message?: string; data?: any }) => {
         if (cancelled) return
-        // if (productRes.success === false) {
-        //   setError(productRes.message ?? "Could not load products")
-        //   return
-        // }
-
         const categories = ((categoryRes.data as CategoryApi[] | undefined) ?? [])
           .filter((c) => c.slug && c.slug !== "all")
           .map((c) => ({ slug: c.slug, name: c.name }))
         setCategoryOptions(categories)
-
-        const prodItems: ProductApi[] = ((productRes?.data?.items as ProductApi[] | undefined) ?? []) as ProductApi[]
-        const normalized = prodItems.slice(0, 4).map((item) => {
-          const mapped = toStorefrontProduct(item as never)
-          if (mapped.category !== "all") return mapped
-          const linkedSlug = item.categories?.[0]?.category?.slug
-          if (linkedSlug) return { ...mapped, category: linkedSlug }
-          if (categories.length === 1) return { ...mapped, category: categories[0].slug }
-          return mapped
-        })
-        setProducts(normalized)
       })
-      .catch(() => {
-        if (!cancelled) setError("Could not load products")
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false)
-      })
+      .catch(() => null)
     return () => {
       cancelled = true
     }
@@ -278,9 +246,15 @@ function ProductsPageContent() {
           </div>
         </div>
 
-        {loading && <p className="mb-4 text-sm text-[#646464]">Loading products...</p>}
+        {loading && (
+          <div className="mb-4 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {Array.from({ length: 6 }).map((_, idx) => (
+              <div key={idx} className="h-56 animate-pulse rounded-2xl bg-white/70" />
+            ))}
+          </div>
+        )}
         {!loading && filteredProducts.length === 0 && (
-          <p className="mb-4 rounded-lg bg-white px-4 py-3 text-sm text-[#646464]">No published products found.</p>
+          <p className="mb-4 rounded-lg bg-white px-4 py-3 text-sm text-[#646464]">No products available.</p>
         )}
         <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
           {filteredProducts.map((product, idx) => (

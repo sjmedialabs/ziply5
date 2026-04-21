@@ -171,21 +171,41 @@ export default function PaymentPage() {
         orderId: intent.orderId,
       },
       theme: { color: "#7B3010" },
-      handler: async (response: { razorpay_payment_id?: string }) => {
-        setStatusText("Payment successful.");
-        if (response?.razorpay_payment_id) {
-          await fetch(`/api/v1/orders/${orderId}`, {
-            method: "PATCH",
+      handler: async (response: {
+        razorpay_order_id?: string
+        razorpay_payment_id?: string
+        razorpay_signature?: string
+      }) => {
+        try {
+          setStatusText("Verifying payment...");
+          if (!response?.razorpay_order_id || !response?.razorpay_payment_id || !response?.razorpay_signature) {
+            throw new Error("Incomplete payment response from gateway.")
+          }
+          const verifyRes = await fetch("/api/payments/verify", {
+            method: "POST",
             headers: {
               "Content-Type": "application/json",
               Authorization: `Bearer ${token}`,
             },
-            body: JSON.stringify({ status: "confirmed", reasonCode: "payment_captured", note: "Payment completed via checkout" }),
-          }).catch(() => null);
+            body: JSON.stringify({
+              orderId,
+              razorpay_order_id: response.razorpay_order_id,
+              razorpay_payment_id: response.razorpay_payment_id,
+              razorpay_signature: response.razorpay_signature,
+            }),
+          })
+          const verifyJson = (await verifyRes.json()) as { success?: boolean; message?: string }
+          if (!verifyRes.ok || verifyJson.success === false) {
+            throw new Error(verifyJson.message ?? "Payment verification failed")
+          }
+          setStatusText("Payment successful.");
+          window.localStorage.removeItem("ziply5_pending_order_id");
+          setCartItems([]);
+          router.push(`/payment-success?orderId=${orderId}`);
+        } catch (error) {
+          setPaying(false)
+          setError(error instanceof Error ? error.message : "Payment verification failed")
         }
-        window.localStorage.removeItem("ziply5_pending_order_id");
-        setCartItems([]);
-        router.push(`/payment-success?orderId=${orderId}`);
       },
       modal: {
         ondismiss: () => {

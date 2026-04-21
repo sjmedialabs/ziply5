@@ -19,7 +19,18 @@ type OrderDetail = {
   refunds: Array<{ id: string; status: string; amount: string | number; createdAt: string }>
 }
 
-const timeline = ["pending", "confirmed", "packed", "shipped", "delivered", "returned"] as const
+const timeline = [
+  "pending_payment",
+  "payment_success",
+  "admin_approval_pending",
+  "confirmed",
+  "packed",
+  "shipped",
+  "delivered",
+  "return_requested",
+  "refund_initiated",
+  "returned",
+] as const
 const returnReasons = [
   "Damaged",
   "Wrong item",
@@ -36,6 +47,7 @@ export default function OrderDetailPage() {
   const [reason, setReason] = useState<string>(returnReasons[0])
   const [description, setDescription] = useState("")
   const [showReturnForm, setShowReturnForm] = useState(false)
+  const [actionBusy, setActionBusy] = useState<string | null>(null)
 
   const orderQuery = useQuery({
     queryKey: ["order-detail", params.id],
@@ -74,6 +86,27 @@ export default function OrderDetailPage() {
     },
   })
 
+  const statusActionMutation = useMutation({
+    mutationFn: async (action: "cancel_request" | "return_request") => {
+      if (!params.id) throw new Error("Order missing")
+      const token = window.localStorage.getItem("ziply5_access_token")
+      if (!token) throw new Error("Please login to continue.")
+      const res = await fetch(`/api/v1/orders/${params.id}/actions`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ action }),
+      })
+      const payload = (await res.json()) as { success?: boolean; message?: string }
+      if (!res.ok || payload.success === false) throw new Error(payload.message ?? "Request failed")
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["order-detail", params.id] })
+    },
+  })
+
   useRealtimeTables({
     tables: ["orders", "returns", "refunds"],
     onChange: () => {
@@ -86,6 +119,8 @@ export default function OrderDetailPage() {
   const order = orderQuery.data
   const historySet = useMemo(() => new Set(order?.statusHistory.map((entry) => entry.toStatus.toLowerCase())), [order?.statusHistory])
   const returnExists = Boolean(order?.returnRequests.length)
+  const cancelRequested = historySet.has("cancel_requested")
+  const returnRequested = historySet.has("return_requested")
   const paymentStatus =
     order?.paymentStatus ??
     (order?.transactions.some((tx) => tx.status === "paid") ? "paid" : "pending")
@@ -93,6 +128,15 @@ export default function OrderDetailPage() {
   const submitReturn = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     void returnMutation.mutateAsync()
+  }
+
+  const runStatusAction = async (action: "cancel_request" | "return_request") => {
+    setActionBusy(action)
+    try {
+      await statusActionMutation.mutateAsync(action)
+    } finally {
+      setActionBusy(null)
+    }
   }
 
   return (
@@ -118,6 +162,19 @@ export default function OrderDetailPage() {
             <p className="font-mono text-sm text-[#2A1810]">{order.id}</p>
             <p className="mt-2 text-sm text-[#646464]">Payment status: <span className="font-semibold uppercase">{paymentStatus}</span></p>
             <p className="text-sm text-[#646464]">Total: {order.currency} {Number(order.total).toFixed(2)}</p>
+            <p className="text-sm text-[#646464]">
+              Refund status: <span className="font-semibold uppercase">{(order.refunds[0]?.status ?? "pending").replace("_", " ")}</span>
+            </p>
+            {(paymentStatus ?? "").toUpperCase() === "SUCCESS" && ["confirmed", "packed"].includes(order.status.toLowerCase()) && !cancelRequested && (
+              <button
+                type="button"
+                onClick={() => void runStatusAction("cancel_request")}
+                disabled={actionBusy === "cancel_request"}
+                className="mt-2 rounded-full border border-[#E8DCC8] bg-white px-4 py-2 text-xs font-semibold uppercase text-[#4A1D1F] disabled:opacity-40"
+              >
+                {actionBusy === "cancel_request" ? "Submitting..." : "Request cancel"}
+              </button>
+            )}
           </div>
 
           <div className="rounded-2xl border border-[#E8DCC8] bg-white p-4 shadow-sm">
@@ -153,7 +210,7 @@ export default function OrderDetailPage() {
 
           {order.status.toLowerCase() === "delivered" && (
             <div className="rounded-2xl border border-[#E8DCC8] bg-white p-4 shadow-sm">
-              {!returnExists ? (
+              {!returnExists && !returnRequested ? (
                 <>
                   <button
                     type="button"
@@ -182,13 +239,23 @@ export default function OrderDetailPage() {
                         className="w-full rounded-lg border border-[#D9D9D1] bg-white px-3 py-2 text-sm"
                         rows={3}
                       />
-                      <button
-                        type="submit"
-                        disabled={returnMutation.isPending}
-                        className="rounded-full bg-[#7B3010] px-4 py-2 text-xs font-semibold uppercase text-white disabled:opacity-50"
-                      >
-                        {returnMutation.isPending ? "Submitting..." : "Submit return request"}
-                      </button>
+                      <div className="flex gap-2">
+                        <button
+                          type="submit"
+                          disabled={returnMutation.isPending}
+                          className="rounded-full bg-[#7B3010] px-4 py-2 text-xs font-semibold uppercase text-white disabled:opacity-50"
+                        >
+                          {returnMutation.isPending ? "Submitting..." : "Submit return request"}
+                        </button>
+                        <button
+                          type="button"
+                          disabled={actionBusy === "return_request"}
+                          onClick={() => void runStatusAction("return_request")}
+                          className="rounded-full border border-[#E8DCC8] bg-white px-4 py-2 text-xs font-semibold uppercase text-[#4A1D1F] disabled:opacity-40"
+                        >
+                          {actionBusy === "return_request" ? "Submitting..." : "Quick return request"}
+                        </button>
+                      </div>
                       {returnMutation.error && (
                         <p className="text-sm text-red-600">
                           {returnMutation.error instanceof Error ? returnMutation.error.message : "Could not submit return request."}

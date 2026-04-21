@@ -14,6 +14,7 @@ const baloo = Baloo_2({
   subsets: ["latin"],
   variable: "--font-baloo",
   display: "swap",
+  preload: false,
 })
 
 export const metadata: Metadata = {

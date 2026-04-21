@@ -16,7 +16,9 @@ export async function GET(request: NextRequest) {
   if ("status" in auth) return auth
   const denied = requirePermission(auth.user.role, "finance.read")
   if (denied) return denied
-  const rows = await listRefunds()
+  const page = Number(request.nextUrl.searchParams.get("page") ?? "1")
+  const limit = Number(request.nextUrl.searchParams.get("limit") ?? "20")
+  const rows = await listRefunds(page, limit)
   return ok(rows, "Refunds")
 }
 

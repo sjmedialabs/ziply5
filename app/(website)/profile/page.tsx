@@ -11,11 +11,13 @@ import { getFavoriteSlugs, toggleFavoriteSlug } from "@/lib/favorites"
 import { addToCart, getCartItems, setCartItemQuantity } from "@/lib/cart"
 import { useStorefrontProducts } from "@/hooks/useStorefrontProducts"
 import { useRealtimeTables } from "@/hooks/useRealtimeTables"
+import { clearSession } from "@/lib/auth-session"
 
 type ApiOrderRow = {
   id: string
   status: string
   paymentStatus?: string | null
+  refunds?: Array<{ status: string }>
   total: string | number
   createdAt: string
   items: Array<{ quantity: number; product: { name: string } }>
@@ -31,6 +33,7 @@ function ProfilePageContent() {
   const [favoriteSlugs, setFavoriteSlugs] = useState<string[]>([])
   const [cartQtyBySlug, setCartQtyBySlug] = useState<Record<string, number>>({})
   const [orders, setOrders] = useState<ApiOrderRow[]>([])
+  const [orderActionBusy, setOrderActionBusy] = useState<string | null>(null)
   const queryClient = useQueryClient()
   const [authSnapshot, setAuthSnapshot] = useState<{ token: string | null; role: string | null }>({
     token: null,
@@ -113,6 +116,25 @@ function ProfilePageContent() {
     },
   })
 
+  const runOrderAction = async (orderId: string, action: "cancel_request" | "return_request") => {
+    const token = window.localStorage.getItem("ziply5_access_token")
+    if (!token) return
+    setOrderActionBusy(`${orderId}:${action}`)
+    try {
+      await fetch(`/api/v1/orders/${orderId}/actions`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ action }),
+      })
+    } finally {
+      setOrderActionBusy(null)
+      void queryClient.invalidateQueries({ queryKey: ["profile-orders"] })
+    }
+  }
+
   const favoriteProducts = useMemo(() => {
     return favoriteSlugs.map((slug) => {
       const existing = products.find((item) => item.slug === slug)
@@ -175,10 +197,7 @@ function ProfilePageContent() {
     } catch {
       // Ignore network/logout API errors and continue local logout.
     } finally {
-      window.localStorage.removeItem("ziply5_access_token")
-      window.localStorage.removeItem("ziply5_refresh_token")
-      window.localStorage.removeItem("ziply5_user_role")
-      window.dispatchEvent(new Event("storage"))
+      clearSession({ silent: true })
       router.push("/login")
     }
   }
@@ -457,6 +476,30 @@ function ProfilePageContent() {
                   <p className="mt-2 font-semibold text-[#5A272A]">
                     Total: Rs.{Number(order.total).toFixed(2)}
                   </p>
+                  <p className="mt-1 text-xs text-[#646464]">
+                    Refund status: {(order.refunds?.[0]?.status ?? "pending").toUpperCase()}
+                  </p>
+                  {(order.paymentStatus ?? "").toUpperCase() === "SUCCESS" &&
+                    ["confirmed", "packed"].includes(order.status.toLowerCase()) && (
+                      <button
+                        type="button"
+                        disabled={orderActionBusy === `${order.id}:cancel_request`}
+                        onClick={() => void runOrderAction(order.id, "cancel_request")}
+                        className="mt-2 rounded-md border border-[#E8DCC8] bg-white px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-[#4A1D1F] disabled:opacity-40"
+                      >
+                        Cancel order
+                      </button>
+                    )}
+                  {order.status.toLowerCase() === "delivered" && (
+                    <button
+                      type="button"
+                      disabled={orderActionBusy === `${order.id}:return_request`}
+                      onClick={() => void runOrderAction(order.id, "return_request")}
+                      className="mt-2 ml-2 rounded-md border border-[#E8DCC8] bg-white px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-[#4A1D1F] disabled:opacity-40"
+                    >
+                      Return order
+                    </button>
+                  )}
                   <button
                     type="button"
                     onClick={() => router.push(`/orders/${order.id}`)}

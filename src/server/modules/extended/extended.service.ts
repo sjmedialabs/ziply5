@@ -271,14 +271,6 @@ export const financeSummary = async () => {
       },
     });
 
-  // 3️⃣ Pending Withdrawals
-  const pendingWd =
-    await prisma.withdrawalRequest.count({
-      where: {
-        status: "pending",
-      },
-    });
-
   const grossSales =
     sales._sum.total ?? 0;
 
@@ -299,8 +291,6 @@ export const financeSummary = async () => {
 
     refundsTotal,
 
-    pendingWithdrawals: pendingWd,
-
   };
 };
 export const listWithdrawals = () =>
@@ -316,10 +306,11 @@ export const listWithdrawals = () =>
 export const updateWithdrawalStatus = (id: string, status: string) =>
   prisma.withdrawalRequest.update({ where: { id }, data: { status } })
 
-export const listRefunds = () =>
+export const listRefunds = (page = 1, limit = 20) =>
   prisma.refundRecord.findMany({
     orderBy: { createdAt: "desc" },
-    take: 100,
+    skip: (Math.max(page, 1) - 1) * Math.min(Math.max(limit, 1), 100),
+    take: Math.min(Math.max(limit, 1), 100),
     include: { order: { select: { id: true, total: true } } },
   })
 
@@ -338,7 +329,7 @@ export const createRefund = (orderId: string, amount: number, reason?: string) =
     if (refundable <= 0) throw new Error("Order already fully refunded")
     if (amount > refundable) throw new Error(`Amount exceeds refundable balance (${refundable.toFixed(2)})`)
 
-    return tx.refundRecord.create({
+    const created = await tx.refundRecord.create({
       data: {
         orderId,
         amount,
@@ -346,6 +337,8 @@ export const createRefund = (orderId: string, amount: number, reason?: string) =
         status: "pending",
       },
     })
+    await tx.$executeRawUnsafe('UPDATE "Order" SET "refundStatus" = $1 WHERE id = $2', "PENDING", orderId)
+    return created
   })
 
 export const updateRefundStatus = (id: string, status: string) =>

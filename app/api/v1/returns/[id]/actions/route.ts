@@ -5,6 +5,7 @@ import { requireAuth } from "@/src/server/middleware/auth"
 import { requirePermission } from "@/src/server/middleware/rbac"
 import { prisma } from "@/src/server/db/prisma"
 import { settleReturnRequest, recordReturnReceiving } from "@/src/server/modules/returns/returns.service"
+import { updateOrderStatus } from "@/src/server/modules/orders/orders.service"
 
 const schema = z.object({
   action: z.enum(["approve", "reject", "mark_picked", "mark_received"]),
@@ -25,6 +26,12 @@ export async function POST(request: NextRequest, ctx: { params: Promise<{ id: st
   try {
     if (parsed.data.action === "approve") {
       const row = await settleReturnRequest({ returnRequestId: id, actorId: auth.user.sub, status: "approved", notes: parsed.data.notes })
+      if (row.returnRequest?.orderId) {
+        await updateOrderStatus(row.returnRequest.orderId, "return_approved", auth.user.sub, {
+          reasonCode: "return_approved",
+          note: "Return approved by admin",
+        }).catch(() => null)
+      }
       return ok(row, "Return approved")
     }
     if (parsed.data.action === "reject") {
@@ -59,6 +66,12 @@ export async function POST(request: NextRequest, ctx: { params: Promise<{ id: st
       notes: parsed.data.notes,
       items,
     })
+    if (status === "received" && req.order?.id) {
+      await updateOrderStatus(req.order.id, "refund_initiated", auth.user.sub, {
+        reasonCode: "refund_initiated",
+        note: "Return received, refund can be initiated",
+      }).catch(() => null)
+    }
     return ok(row, status === "picked_up" ? "Return marked picked up" : "Return marked received")
   } catch (error) {
     const message = error instanceof Error ? error.message : "Action failed"

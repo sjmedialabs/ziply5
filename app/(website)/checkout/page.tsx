@@ -91,7 +91,12 @@ export default function CheckoutPage() {
           Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
-          items: items.map((item) => ({ slug: item.slug, quantity: item.quantity })),
+          items: items.map((item) => ({
+            slug: item.slug,
+            productId: item.productId,
+            variantId: item.variantId ?? null,
+            quantity: item.quantity,
+          })),
           shipping,
           gateway: "razorpay",
           billingAddress: payload,
@@ -297,7 +302,7 @@ export default function CheckoutPage() {
             <div className="w-full h-0.5 bg-black mt-4"></div>
             <div className="space-y-4 py-8">
               {items.map((item) => (
-                <div key={item.slug}>
+                <div key={item.id}>
                 <div className="flex justify-between text-sm pb-2">
                   <div>
                     <p className="font-medium font-melon text-[#C03621] tracking-wide">{item.name}</p>

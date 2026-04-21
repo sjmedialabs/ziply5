@@ -1,9 +1,13 @@
 export type CartItem = {
+  id: string
+  productId?: string
+  variantId?: string | null
   slug: string
   name: string
   price: number
   image: string
   weight: string
+  sku?: string
   quantity: number
 }
 
@@ -18,7 +22,25 @@ export const getCartItems = (): CartItem[] => {
   if (typeof window === "undefined") return []
   try {
     const parsed = JSON.parse(window.localStorage.getItem(CART_KEY) || "[]")
-    return Array.isArray(parsed) ? parsed : []
+    if (!Array.isArray(parsed)) return []
+    return parsed.map((item) => {
+      const slug = String(item?.slug ?? "")
+      const productId = item?.productId ? String(item.productId) : undefined
+      const variantId = item?.variantId ? String(item.variantId) : null
+      const id = String(item?.id ?? `${productId ?? slug}:${variantId ?? "default"}`)
+      return {
+        id,
+        productId,
+        variantId,
+        slug,
+        name: String(item?.name ?? ""),
+        price: Number(item?.price ?? 0),
+        image: String(item?.image ?? ""),
+        weight: String(item?.weight ?? ""),
+        sku: item?.sku ? String(item.sku) : undefined,
+        quantity: Math.max(0, Number(item?.quantity ?? 0)),
+      } satisfies CartItem
+    }).filter((item) => item.quantity > 0 && (item.slug || item.productId))
   } catch {
     return []
   }
@@ -33,24 +55,38 @@ export const setCartItems = (items: CartItem[]) => {
 export const getCartCount = (): number => getCartItems().reduce((sum, item) => sum + item.quantity, 0)
 
 type CartProductInput = {
+  id?: string
+  productId?: string
+  variantId?: string | null
   slug: string
   name: string
   price: number
   image: string
   weight: string
+  sku?: string
+}
+
+const getCartKey = (product: CartProductInput) => {
+  const base = product.productId || product.id || product.slug
+  return `${base}:${product.variantId ?? "default"}`
 }
 
 export const addToCart = (product: CartProductInput, quantity = 1) => {
   const existing = getCartItems()
-  const index = existing.findIndex((item) => item.slug === product.slug)
+  const key = getCartKey(product)
+  const index = existing.findIndex((item) => item.id === key)
 
   if (index === -1) {
     existing.push({
+      id: key,
+      productId: product.productId || product.id,
+      variantId: product.variantId ?? null,
       slug: product.slug,
       name: product.name,
       price: product.price,
       image: product.image,
       weight: product.weight,
+      sku: product.sku,
       quantity,
     })
   } else {
@@ -61,22 +97,35 @@ export const addToCart = (product: CartProductInput, quantity = 1) => {
 }
 
 export const getCartQuantityForSlug = (slug: string): number => {
-  const item = getCartItems().find((cartItem) => cartItem.slug === slug)
-  return item ? item.quantity : 0
+  return getCartItems()
+    .filter((cartItem) => cartItem.slug === slug)
+    .reduce((sum, item) => sum + item.quantity, 0)
+}
+
+export const getCartQuantity = (productId: string, variantId?: string | null): number => {
+  const key = `${productId}:${variantId ?? "default"}`
+  return getCartItems()
+    .filter((item) => item.id === key)
+    .reduce((sum, item) => sum + item.quantity, 0)
 }
 
 export const setCartItemQuantity = (product: CartProductInput, quantity: number) => {
   const existing = getCartItems()
   const nextQuantity = Math.max(0, quantity)
-  const index = existing.findIndex((item) => item.slug === product.slug)
+  const key = getCartKey(product)
+  const index = existing.findIndex((item) => item.id === key)
 
   if (index === -1 && nextQuantity > 0) {
     existing.push({
+      id: key,
+      productId: product.productId || product.id,
+      variantId: product.variantId ?? null,
       slug: product.slug,
       name: product.name,
       price: product.price,
       image: product.image,
       weight: product.weight,
+      sku: product.sku,
       quantity: nextQuantity,
     })
   } else if (index !== -1 && nextQuantity === 0) {

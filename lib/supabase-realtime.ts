@@ -10,7 +10,11 @@ export const getSupabaseRealtimeClient = () => {
   const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
   if (!url || !anonKey) return null
   client = createClient(url, anonKey, {
-    auth: { persistSession: false, autoRefreshToken: false },
+    auth: {
+      persistSession: true,
+      autoRefreshToken: true,
+      storageKey: "ziply5_supabase_session",
+    },
   })
   return client
 }
