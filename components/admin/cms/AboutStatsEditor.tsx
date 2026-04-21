@@ -36,19 +36,19 @@ export default function AboutStatsEditor({ value, onChange }: { value: any, onCh
 
   return (
     <Card className="border-[#E8DCC8]">
-      <CardHeader className="bg-[#FFFBF3] border-b border-[#E8DCC8] py-3 flex flex-row items-center justify-between">
+      <CardHeader className=" border-b border-[#E8DCC8] flex flex-row items-center justify-between">
         <CardTitle className="text-sm font-semibold text-[#4A1D1F]">3. Stats Section</CardTitle>
-        <Button size="sm" variant="outline" onClick={() => onChange({ ...value, stats: [...stats, { title: '', description: '', iconUrl: '' }] })}>
+        <Button className="cursor-pointer" size="sm" variant="outline" onClick={() => onChange({ ...value, stats: [...stats, { title: '', description: '', iconUrl: '' }] })}>
           <Plus className="h-4 w-4 mr-2" /> Add Stat
         </Button>
       </CardHeader>
-      <CardContent className="p-4 space-y-6">
+      <CardContent className="px-4 space-y-4">
         <div>
           <Label className="text-xs text-[#646464]">Main Stats Description</Label>
           <Textarea 
             value={value.mainDescription || ''} 
             onChange={(e) => onChange({ ...value, mainDescription: e.target.value })} 
-            placeholder="Enter the overall description for the stats section" 
+            placeholder="Enter description" 
           />
         </div>
 

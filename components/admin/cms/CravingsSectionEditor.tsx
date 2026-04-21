@@ -88,7 +88,7 @@ export default function CravingsSectionEditor({ value = { title: '', buttonText:
             value={localValue.title || ''}
             onChange={(e) => updateField('title', e.target.value)}
             className="h-8 text-sm"
-            placeholder="e.g. FUEL YOUR CRAVINGS"
+            placeholder="Enter section title"
           />
         </div>
         <div>
@@ -97,7 +97,7 @@ export default function CravingsSectionEditor({ value = { title: '', buttonText:
             value={localValue.buttonText || ''}
             onChange={(e) => updateField('buttonText', e.target.value)}
             className="h-8 text-sm"
-            placeholder="e.g. Follow @ziply5"
+            placeholder="Enter button text"
           />
         </div>
         <div>
@@ -106,7 +106,7 @@ export default function CravingsSectionEditor({ value = { title: '', buttonText:
             value={localValue.url || ''}
             onChange={(e) => updateField('url', e.target.value)}
             className="h-8 text-sm"
-            placeholder="e.g. https://instagram.com"
+            placeholder="Enter URL"
           />
         </div>
       </div>

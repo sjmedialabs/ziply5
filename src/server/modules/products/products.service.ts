@@ -617,31 +617,49 @@ export const updateProduct = async (
       }
     }
     if ("variants" in input) {
-      await tx.productVariant.deleteMany({ where: { productId: id } })
-      if (normalizedVariants?.length) {
-        await tx.productVariant.createMany({
-          data: normalizedVariants.map((v) => ({
-            productId: id,
-            name: v.name,
-            weight: v.weight ?? null,
-            sku: v.sku,
-            price: v.price,
-            mrp: v.mrp ?? null,
-            discountPercent: v.discountPercent ?? null,
-            stock: v.stock,
-            isDefault: Boolean(v.isDefault),
-          })),
+      const existingVariants = await tx.productVariant.findMany({
+        where: { productId: id },
+        select: { id: true }
+      })
+      const existingIds = existingVariants.map(v => v.id)
+      const incoming = normalizedVariants || []
+      const incomingIds = incoming.map(v => v.id).filter((vid): vid is string => Boolean(vid))
+      
+      const toDelete = existingIds.filter(eid => !incomingIds.includes(eid))
+      if (toDelete.length > 0) {
+        await tx.productVariant.deleteMany({
+          where: { id: { in: toDelete } }
         })
-        if (!("totalStock" in input)) {
-          const totalStock = normalizedVariants.reduce((sum, v) => sum + (v.stock ?? 0), 0)
-          await tx.product.update({
-            where: { id },
-            data: {
-              totalStock,
-              stockStatus: totalStock > 0 ? "in_stock" : "out_of_stock",
-            },
-          })
+      }
+
+      for (const v of incoming) {
+        const variantData = {
+          name: v.name,
+          weight: v.weight ?? null,
+          sku: v.sku,
+          price: v.price,
+          mrp: v.mrp ?? null,
+          discountPercent: v.discountPercent ?? null,
+          stock: v.stock,
+          isDefault: Boolean(v.isDefault),
         }
+
+        if (v.id && existingIds.includes(v.id)) {
+          await tx.productVariant.update({ where: { id: v.id }, data: variantData })
+        } else {
+          await tx.productVariant.create({ data: { ...variantData, productId: id } })
+        }
+      }
+
+      if (!("totalStock" in input)) {
+        const totalStock = incoming.reduce((sum, v) => sum + (v.stock ?? 0), 0)
+        await tx.product.update({
+          where: { id },
+          data: {
+            totalStock,
+            stockStatus: totalStock > 0 ? "in_stock" : "out_of_stock",
+          },
+        })
       }
     }
     if ("images" in input) {

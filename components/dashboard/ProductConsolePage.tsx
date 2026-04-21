@@ -644,6 +644,7 @@ export function ProductConsolePage({
         message?: string
         data?: { files?: Array<{ url: string }> }
       }
+      console.log("after upload api response ",json)
       if (!res.ok || json.success === false) {
         setError(json.message ?? "Upload failed")
         return
@@ -1468,7 +1469,7 @@ export function ProductConsolePage({
                   {feature.icon && (
                     <div className="mt-2 flex items-center gap-2">
                       <img src={feature.icon} alt="Icon preview" className="w-8 h-8 object-cover rounded" />
-                      <button type="button" onClick={() => setFeatures((prev) => prev.map((item, itemIdx) => itemIdx === idx ? { ...item, icon: null } : item))} className="text-xs text-red-500 hover:text-red-700">Remove</button>
+                      <button type="button" onClick={(e) => setFeatures((prev) => prev.map((item, itemIdx) => itemIdx === idx ? { ...item, icon: null } : item))} className="text-xs text-red-500 hover:text-red-700">Remove</button>
                     </div>
                   )}
                 </div>

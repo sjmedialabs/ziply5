@@ -72,7 +72,7 @@ export default function OurProductsSectionEditor({ value = { title: '', items: [
                   updateItems(newItems);
                 }}
                 className="h-8 text-sm"
-                placeholder="Product name"
+                placeholder="Enter product name"
               />
             </div>
             <div>
@@ -85,7 +85,7 @@ export default function OurProductsSectionEditor({ value = { title: '', items: [
                   updateItems(newItems);
                 }}
                 className="h-16 text-sm resize-none"
-                placeholder="Short description"
+                placeholder="Enter product escription"
               />
             </div>
           </div>
@@ -107,7 +107,7 @@ export default function OurProductsSectionEditor({ value = { title: '', items: [
           value={localValue.title}
           onChange={(e) => updateTitle(e.target.value)}
           className="max-w-md h-8 text-sm"
-          placeholder="e.g. Our Products"
+          placeholder="Enter Section Title"
         />
       </div>
 

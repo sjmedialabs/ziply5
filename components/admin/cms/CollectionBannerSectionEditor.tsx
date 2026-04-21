@@ -49,7 +49,7 @@ export default function CollectionBannerSectionEditor({ value = { title: '', sli
             updateSlides(newSlides);
           }}
           className="max-w-md h-8 text-sm"
-          placeholder="e.g. Our Veg & Non Veg Collection"
+          placeholder="Enter title"
         />
       </div>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
