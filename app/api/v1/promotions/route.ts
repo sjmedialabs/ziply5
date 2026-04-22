@@ -54,12 +54,98 @@ const createSchema = z.object({
     .optional(),
 })
 export async function GET(request: NextRequest) {
+
   const auth = requireAuth(request)
+
   if ("status" in auth) return auth
-  const denied = requirePermission(auth.user.role, "promotions.read")
+
+  const denied =
+    requirePermission(
+      auth.user.role,
+      "promotions.read"
+    )
+
   if (denied) return denied
-  const rows = await listPromotions()
-  return ok(rows, "Promotions")
+
+  const rows =
+    await listPromotions()
+
+  const mappedRows =
+    rows.map((promo: any) => {
+
+      /* 🔥 Extract product-level discounts */
+
+      const productDiscounts =
+        promo.metadata?.products ?? []
+
+      const mappedProducts =
+        (promo.products || []).map((p: any) => {
+
+          /* 🔥 FIX — get simple product discount */
+
+          const productDiscount =
+            productDiscounts.find(
+              (pd: any) =>
+                pd.productId === p.productId
+            )?.discountPercent ?? 0
+
+          /* Variant mapping (unchanged) */
+
+          const productVariants =
+            (promo.variants || [])
+
+              .filter(
+                (v: any) =>
+                  v.variant?.productId ===
+                  p.productId
+              )
+
+              .map((v: any) => ({
+
+                variantId:
+                  v.variantId,
+
+                discountPercent:
+                  v.metadata
+                    ?.discountPercent ?? 0,
+
+              }))
+
+          return {
+
+            ...p,
+
+            productId:
+              p.productId,
+
+            /* 🔥 Correct simple discount */
+
+            discountPercent:
+              productDiscount,
+
+            variants:
+              productVariants,
+
+          }
+
+        })
+
+      return {
+
+        ...promo,
+
+        products:
+          mappedProducts,
+
+      }
+
+    })
+
+  return ok(
+    mappedRows,
+    "Promotions"
+  )
+
 }
 
 export async function POST(request: NextRequest) {
@@ -72,7 +158,7 @@ export async function POST(request: NextRequest) {
     auth.user.role,
     "promotions.create"
   )
-
+ 
   if (denied) return denied
 
   const body = await request.json()

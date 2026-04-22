@@ -237,7 +237,6 @@ export const createPromotion = async (input: {
 
   products?: Array<{
     productId: string
-
     discountPercent?: number
 
     variants?: Array<{
@@ -250,56 +249,92 @@ export const createPromotion = async (input: {
 }) => {
 
   return prisma.promotion.create({
+
     data: {
+
       kind: input.kind,
+
       name: input.name,
 
       active: input.active ?? true,
 
       startsAt: input.startsAt ?? undefined,
+
       endsAt: input.endsAt ?? undefined,
 
-      metadata:
-        input.metadata === undefined
-          ? undefined
-          : (input.metadata as never),
+      /* 🔥 Store product-level discount */
 
-      // ✅ Product-level linking
+      metadata: {
+
+        products:
+          input.products?.map(p => ({
+
+            productId: p.productId,
+
+            discountPercent:
+              p.discountPercent ?? null
+
+          })) ?? []
+
+      },
+
+      /* Product links */
+
       products: input.products
         ? {
             create: input.products.map((p) => ({
+
               product: {
+
                 connect: {
+
                   id: p.productId,
+
                 },
+
               },
+
             })),
           }
         : undefined,
 
-      // ✅ Variant-level discounts
+      /* Variant discounts */
+
       variants: input.products
         ? {
             create: input.products.flatMap((p) =>
+
               p.variants
                 ? p.variants.map((v) => ({
+
                     variant: {
+
                       connect: {
+
                         id: v.variantId,
+
                       },
+
                     },
 
                     metadata: {
+
                       discountPercent:
                         v.discountPercent,
+
                     },
+
                   }))
                 : []
+
             ),
           }
         : undefined,
+
     },
+
   })
+
 }
 
 export const updatePromotion = async (
@@ -313,6 +348,7 @@ export const updatePromotion = async (
 
     products: Array<{
       productId: string
+      discountPercent?: number
 
       variants?: Array<{
         variantId: string
@@ -325,12 +361,17 @@ export const updatePromotion = async (
 ) => {
 
   return prisma.promotion.update({
+
     where: { id },
 
     data: {
 
+      /* ---------- BASIC FIELDS ---------- */
+
       kind: input.kind,
+
       name: input.name,
+
       active: input.active,
 
       startsAt:
@@ -339,54 +380,85 @@ export const updatePromotion = async (
       endsAt:
         input.endsAt ?? undefined,
 
-      metadata:
-        input.metadata === undefined
-          ? undefined
-          : (input.metadata as never),
+      /* ---------- STORE SIMPLE PRODUCT DISCOUNTS ---------- */
 
-      //  Replace product links
+      metadata:
+        input.products
+          ? {
+              products: input.products.map(p => ({
+
+                productId: p.productId,
+
+                discountPercent:
+                  p.discountPercent ?? null
+
+              }))
+            }
+          : input.metadata === undefined
+            ? undefined
+            : (input.metadata as never),
+
+      /* ---------- REPLACE PRODUCT LINKS ---------- */
+
       products: input.products
         ? {
+
             deleteMany: {},
 
-            create: input.products.map(
-              (p) => ({
-                product: {
-                  connect: {
-                    id: p.productId,
-                  },
-                },
-              })
-            ),
+            create: input.products.map(p => ({
+
+              product: {
+
+                connect: {
+                  id: p.productId
+                }
+
+              }
+
+            }))
+
           }
         : undefined,
 
-      //  Replace variant discounts
+      /* ---------- REPLACE VARIANT DISCOUNTS ---------- */
+
       variants: input.products
         ? {
+
             deleteMany: {},
 
-            create: input.products.flatMap(
-              (p) =>
-                p.variants
-                  ? p.variants.map((v) => ({
-                      variant: {
-                        connect: {
-                          id: v.variantId,
-                        },
-                      },
+            create: input.products.flatMap(p =>
 
-                      metadata: {
-                        discountPercent:
-                          v.discountPercent,
-                      },
-                    }))
-                  : []
-            ),
+              p.variants
+                ? p.variants.map(v => ({
+
+                    variant: {
+
+                      connect: {
+                        id: v.variantId
+                      }
+
+                    },
+
+                    metadata: {
+
+                      discountPercent:
+                        v.discountPercent
+
+                    }
+
+                  }))
+                : []
+
+            )
+
           }
         : undefined,
-    },
+
+    }
+
   })
+
 }
 
 export const financeSummary = async () => {

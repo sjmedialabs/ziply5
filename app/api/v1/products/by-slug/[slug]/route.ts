@@ -12,7 +12,93 @@ const resolveAccessScope = (user: AppTokenPayload | null): { scope: ListProducts
 
 function applyPromotionToProduct(product: any) {
 
-  /* ---------- PRODUCT LEVEL ---------- */
+  console.log(
+    "Applying promotion to product::::",
+    product.promotionLinks[0]?.promotion?.metadata
+  )
+
+  /* ===========================================================
+     SIMPLE PRODUCT LOGIC
+     =========================================================== */
+
+  if (product.type === "simple") {
+
+    const basePrice =
+      Number(product.basePrice ?? product.price)
+
+    let discountPercent = 0
+    let saleName: string | null = null
+
+    /* ---------- PRODUCT PROMOTION ---------- */
+
+    if (product.promotionLinks?.length) {
+
+      const promo =
+        product.promotionLinks[0]?.promotion
+
+      const discount =
+        promo?.metadata?.products
+          ?.find(
+            (p: any) =>
+              p.productId === product.id
+          )
+          ?.discountPercent ?? 0
+
+      if (discount > 0) {
+
+        discountPercent = discount
+        saleName = promo?.name ?? null
+
+      }
+
+    }
+
+    /* ---------- NORMAL PRODUCT DISCOUNT ---------- */
+
+    if (discountPercent === 0) {
+
+      discountPercent =
+        Number(product.discountPercent ?? 0)
+
+    }
+
+    /* ---------- FINAL PRICE ---------- */
+
+    const finalPrice =
+      basePrice -
+      (basePrice * discountPercent / 100)
+
+    /* ---------- RENAME FIELDS ---------- */
+
+    product.oldPrice = basePrice
+    product.price = Math.round(finalPrice)
+
+    product.discountPercent =
+      discountPercent
+
+    product.saleName =
+      saleName
+
+    delete product.finalPrice
+    delete product.promotionLinks
+
+    product.variants =
+      product.variants?.map((variant: any) => {
+
+        delete variant.promotionLinks
+
+        return variant
+
+      })
+
+    return product
+  }
+
+
+
+  /* ===========================================================
+     PRODUCT LEVEL (VARIANT PRODUCTS)
+     =========================================================== */
 
   if (product.promotionLinks?.length) {
 
@@ -24,16 +110,20 @@ function applyPromotionToProduct(product: any) {
 
     if (discount > 0) {
 
-      /*  Apply on basePrice */
-
       const basePrice =
         Number(product.basePrice ?? product.price)
 
-      product.discountPercent = discount
-
-      product.finalPrice =
+      const finalPrice =
         basePrice -
         (basePrice * discount / 100)
+
+      /* ---------- RENAME ---------- */
+
+      product.oldPrice = basePrice
+      product.price = Math.round(finalPrice)
+
+      product.discountPercent =
+        discount
 
       product.promotion = {
         name: promo.name,
@@ -45,9 +135,10 @@ function applyPromotionToProduct(product: any) {
   }
   else {
 
-    /*  No sale → use normal product discount */
+    product.oldPrice =
+      Number(product.price)
 
-    product.finalPrice =
+    product.price =
       Number(product.price)
 
     product.discountPercent =
@@ -56,10 +147,19 @@ function applyPromotionToProduct(product: any) {
   }
 
 
-  /* ---------- VARIANT LEVEL ---------- */
+
+  /* ===========================================================
+     VARIANT LEVEL
+     =========================================================== */
 
   product.variants =
     product.variants?.map((variant: any) => {
+
+      const originalPrice =
+        Number(
+          variant.mrp ??
+          variant.price
+        )
 
       if (variant.promotionLinks?.length) {
 
@@ -72,24 +172,27 @@ function applyPromotionToProduct(product: any) {
 
         if (discount > 0) {
 
-          /*  Apply on variant base price */
+          const finalPrice =
+            originalPrice -
+            (originalPrice * discount / 100)
 
-          const basePrice =
-            Number(
-              variant.mrp ??
-              variant.price
-            )
+          /* ---------- RENAME ---------- */
+
+          variant.oldPrice =
+            originalPrice
+
+          variant.price =
+            Math.round(finalPrice)
 
           variant.discountPercent =
             discount
 
-          variant.finalPrice =
-            basePrice -
-            (basePrice * discount / 100)
-
           variant.promotion = {
+
             name: promo.name,
+
             kind: promo.kind
+
           }
 
         }
@@ -97,9 +200,10 @@ function applyPromotionToProduct(product: any) {
       }
       else {
 
-        /*  No sale → keep original price */
+        variant.oldPrice =
+          originalPrice
 
-        variant.finalPrice =
+        variant.price =
           Number(variant.price)
 
         variant.discountPercent =
@@ -120,7 +224,6 @@ function applyPromotionToProduct(product: any) {
   return product
 
 }
-
 export async function GET(request: NextRequest, ctx: { params: Promise<{ slug: string }> }) {
   const { slug } = await ctx.params
   const user = optionalAuth(request)

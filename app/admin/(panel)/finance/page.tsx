@@ -19,6 +19,7 @@ type Refund = {
   status: string;
   reason: string | null;
   createdAt: string;
+  order?: any;
 };
 
 type Transaction = {
@@ -30,7 +31,6 @@ type Transaction = {
   createdAt: string;
 };
 
-const WD_STATUSES = ["pending", "approved", "paid", "rejected"] as const;
 const RF_STATUSES = ["pending", "completed", "rejected"] as const;
 
 export default function AdminFinancePage() {
@@ -59,19 +59,13 @@ export default function AdminFinancePage() {
     setError("");
     Promise.all([
       authedFetch<Summary>("/api/v1/finance/summary"),
-      authedFetch<Withdrawal[]>("/api/v1/finance/withdrawals"),
       authedFetch<Refund[]>("/api/v1/finance/refunds"),
       authedFetch<Transaction[]>("/api/v1/finance/transactions").catch(() => []), // Failsafe if endpoint isn't ready
     ])
-      .then(([s, w, r, t]) => {
+      .then(([s, r, t]) => {
         setSummary(s);
         setRefunds(r);
-        setTransactions(t || []);
-        const wd: Record<string, string> = {};
-        w.forEach((x) => {
-          wd[x.id] = x.status;
-        });
-        setWdDraft(wd);
+        setTransactions(t || []); 
         const rf: Record<string, string> = {};
         r.forEach((x) => {
           rf[x.id] = x.status;
