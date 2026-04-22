@@ -208,28 +208,99 @@ export const upsertAbandonedCart = async (input: {
   })
 }
 
-export const listPromotions = () => prisma.promotion.findMany({ orderBy: { updatedAt: "desc" }, take: 100 })
+export const listPromotions = () =>
+  prisma.promotion.findMany({
+    orderBy: { updatedAt: "desc" },
+    take: 100,
 
-export const createPromotion = (input: {
+    include: {
+      products: {
+        include: {
+          product: true,
+        },
+      },
+
+      variants: {
+        include: {
+          variant: true,
+        },
+      },
+    },
+  })
+
+export const createPromotion = async (input: {
   kind: string
   name: string
   active?: boolean
   startsAt?: Date | null
   endsAt?: Date | null
-  productId?: string | null
+
+  products?: Array<{
+    productId: string
+
+    discountPercent?: number
+
+    variants?: Array<{
+      variantId: string
+      discountPercent: number
+    }>
+  }>
+
   metadata?: unknown
-}) =>
-  prisma.promotion.create({
+}) => {
+
+  return prisma.promotion.create({
     data: {
       kind: input.kind,
       name: input.name,
+
       active: input.active ?? true,
+
       startsAt: input.startsAt ?? undefined,
       endsAt: input.endsAt ?? undefined,
-      productId: input.productId ?? undefined,
-      metadata: input.metadata === undefined ? undefined : (input.metadata as never),
+
+      metadata:
+        input.metadata === undefined
+          ? undefined
+          : (input.metadata as never),
+
+      // ✅ Product-level linking
+      products: input.products
+        ? {
+            create: input.products.map((p) => ({
+              product: {
+                connect: {
+                  id: p.productId,
+                },
+              },
+            })),
+          }
+        : undefined,
+
+      // ✅ Variant-level discounts
+      variants: input.products
+        ? {
+            create: input.products.flatMap((p) =>
+              p.variants
+                ? p.variants.map((v) => ({
+                    variant: {
+                      connect: {
+                        id: v.variantId,
+                      },
+                    },
+
+                    metadata: {
+                      discountPercent:
+                        v.discountPercent,
+                    },
+                  }))
+                : []
+            ),
+          }
+        : undefined,
     },
   })
+}
 
 export const updatePromotion = async (
   id: string,
@@ -239,15 +310,81 @@ export const updatePromotion = async (
     active: boolean
     startsAt: Date | null
     endsAt: Date | null
-    productId: string | null 
+
+    products: Array<{
+      productId: string
+
+      variants?: Array<{
+        variantId: string
+        discountPercent: number
+      }>
+    }>
+
     metadata: unknown
-  }>,
+  }>
 ) => {
+
   return prisma.promotion.update({
     where: { id },
+
     data: {
-      ...input,
-      metadata: input.metadata === undefined ? undefined : (input.metadata as never),
+
+      kind: input.kind,
+      name: input.name,
+      active: input.active,
+
+      startsAt:
+        input.startsAt ?? undefined,
+
+      endsAt:
+        input.endsAt ?? undefined,
+
+      metadata:
+        input.metadata === undefined
+          ? undefined
+          : (input.metadata as never),
+
+      //  Replace product links
+      products: input.products
+        ? {
+            deleteMany: {},
+
+            create: input.products.map(
+              (p) => ({
+                product: {
+                  connect: {
+                    id: p.productId,
+                  },
+                },
+              })
+            ),
+          }
+        : undefined,
+
+      //  Replace variant discounts
+      variants: input.products
+        ? {
+            deleteMany: {},
+
+            create: input.products.flatMap(
+              (p) =>
+                p.variants
+                  ? p.variants.map((v) => ({
+                      variant: {
+                        connect: {
+                          id: v.variantId,
+                        },
+                      },
+
+                      metadata: {
+                        discountPercent:
+                          v.discountPercent,
+                      },
+                    }))
+                  : []
+            ),
+          }
+        : undefined,
     },
   })
 }
