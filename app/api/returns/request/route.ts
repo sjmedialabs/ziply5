@@ -5,6 +5,7 @@ import { requireAuth } from "@/src/server/middleware/auth"
 import { requirePermission } from "@/src/server/middleware/rbac"
 import { prisma } from "@/src/server/db/prisma"
 import { createReturnRequest } from "@/src/server/modules/extended/extended.service"
+import { assertMasterValueExists, listMasterValues } from "@/src/server/modules/master/master.service"
 
 const schema = z.object({
   orderId: z.string().min(1),
@@ -27,6 +28,16 @@ export async function POST(request: NextRequest) {
   if (order.userId && order.userId !== auth.user.sub) return fail("Not your order", 403)
 
   try {
+    if (parsed.data.reason?.trim()) {
+      const byValue = await assertMasterValueExists("RETURN_REASON", parsed.data.reason.trim())
+      if (!byValue) {
+        const values = await listMasterValues("RETURN_REASON", { activeOnly: true })
+        const byLabel = values.some(
+          (entry) => entry.label.toLowerCase() === parsed.data.reason!.trim().toLowerCase(),
+        )
+        if (!byLabel) return fail("Invalid return reason", 422)
+      }
+    }
     const reason = [parsed.data.reason?.trim(), parsed.data.description?.trim()].filter(Boolean).join(" - ")
     const row = await createReturnRequest(parsed.data.orderId, order.userId, reason || undefined)
     return ok(row, "Return requested", 201)

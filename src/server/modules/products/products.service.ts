@@ -2,6 +2,7 @@ import { prisma } from "@/src/server/db/prisma"
 import { Prisma, type ProductStatus } from "@prisma/client"
 import { logActivity } from "@/src/server/modules/activity/activity.service"
 import sanitizeHtml from "sanitize-html"
+import { assertMasterValueExists } from "@/src/server/modules/master/master.service"
 
 export type ListProductsScope = "public" | "admin"
 let cachedDeletedAtSupport: boolean | null = null
@@ -419,6 +420,12 @@ export const isProductSoftDeleted = async (productId: string) => {
 
 export const createProduct = async (input: CreateProductInput) => {
   const normalizedVariants = normalizeVariants(input.variants)
+  for (const variant of normalizedVariants) {
+    if (variant.weight) {
+      const exists = await assertMasterValueExists("PRODUCT_WEIGHT", variant.weight)
+      if (!exists) throw new Error(`Invalid PRODUCT_WEIGHT: ${variant.weight}`)
+    }
+  }
   if (input.type === "variant" && normalizedVariants.length === 0) {
     throw new Error("Variant products require at least one variant")
   }
@@ -538,6 +545,14 @@ export const updateProduct = async (
   }
 
   const normalizedVariants = "variants" in input ? normalizeVariants(input.variants ?? []) : undefined
+  if (normalizedVariants) {
+    for (const variant of normalizedVariants) {
+      if (variant.weight) {
+        const exists = await assertMasterValueExists("PRODUCT_WEIGHT", variant.weight)
+        if (!exists) throw new Error(`Invalid PRODUCT_WEIGHT: ${variant.weight}`)
+      }
+    }
+  }
   if (existing.type === "variant" && "variants" in input && (normalizedVariants?.length ?? 0) === 0) {
     throw new Error("Variant products require at least one variant")
   }

@@ -14,6 +14,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea"
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
 import { toast } from "../ui/use-toast"
+import { useMasterValues } from "@/hooks/useMasterData"
 
 type Mode = "list" | "add" | "edit" | "view"
 
@@ -86,6 +87,7 @@ const statuses = ["draft", "published", "archived"] as const
 const foodTypes = ["veg", "non-veg"] as const
 const preparationTypes = ["ready_to_eat", "ready_to_cook"] as const
 const spiceLevels = ["mild", "medium", "hot", "extra_hot"] as const
+const fallbackWeightOptions = ["250g", "500g", "1kg"] as const
 const MAX_SECTIONS = 10
 const uniq = (list: string[]) => [...new Set(list.map((x) => x.trim()).filter(Boolean))]
 const toNumOrNull = (value: string) => {
@@ -191,6 +193,8 @@ export function ProductConsolePage({
   const [filterPreparationType, setFilterPreparationType] = useState<"all" | "ready_to_eat" | "ready_to_cook">("all")
   const [filterStockStatus, setFilterStockStatus] = useState<"all" | "in_stock" | "out_of_stock">("all")
   const [filterFoodType, setFilterFoodType] = useState<"all" | "veg" | "non-veg">("all")
+  const productWeightMasterQuery = useMasterValues("PRODUCT_WEIGHT")
+  const weightOptions = productWeightMasterQuery.data?.map((item) => item.value) ?? fallbackWeightOptions
 
   const orderedSections = useMemo(
     () => [...sections].sort((a, b) => a.sortOrder - b.sortOrder),
@@ -1239,11 +1243,22 @@ export function ProductConsolePage({
                 </div>
                 {variants.map((variant, idx) => (
                   <div key={`${variant.id ?? "new"}-${idx}`} className="grid grid-cols-1 gap-2 md:grid-cols-6">
-                    <Input
-                      placeholder="Weight (250g)"
+                    <select
                       value={variant.weight}
-                      onChange={(e) => setVariants((prev) => prev.map((x, i) => i === idx ? { ...x, weight: e.target.value, name: e.target.value } : x))}
-                    />
+                      onChange={(e) =>
+                        setVariants((prev) =>
+                          prev.map((x, i) => i === idx ? { ...x, weight: e.target.value, name: e.target.value } : x),
+                        )
+                      }
+                      className="rounded border border-[#D9D9D1] px-3 py-2 text-sm"
+                    >
+                      <option value="">Select weight</option>
+                      {weightOptions.map((weight) => (
+                        <option key={weight} value={weight}>
+                          {weight}
+                        </option>
+                      ))}
+                    </select>
                     <Input
                       placeholder="Price"
                       type="number"

@@ -5,6 +5,7 @@ import { authedFetch, authedPatch } from "@/lib/dashboard-fetch";
 import { ConsoleTable, ConsoleTd } from "@/components/dashboard/ConsoleTable";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useRealtimeTables } from "@/hooks/useRealtimeTables";
+import { useMasterValues } from "@/hooks/useMasterData";
 
 type OrderRow = {
   id: string;
@@ -20,7 +21,7 @@ type OrderRow = {
   user?: { id: string; name: string; email: string };
 };
 
-const STATUSES = [
+const FALLBACK_STATUSES = [
   "pending_payment",
   "payment_success",
   "admin_approval_pending",
@@ -37,7 +38,9 @@ const STATUSES = [
 ] as const;
 
 export default function AdminOrdersPage() {
+  const statusMasterQuery = useMasterValues("ORDER_STATUS");
   const [rows, setRows] = useState<OrderRow[]>([]);
+  const statuses = (statusMasterQuery.data?.map((item) => item.value) ?? FALLBACK_STATUSES) as string[];
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
   const [canFetch, setCanFetch] = useState(false);
@@ -223,7 +226,7 @@ export default function AdminOrdersPage() {
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        {STATUSES.map((s) => (
+                        {statuses.map((s) => (
                           <SelectItem key={s} value={s}>
                             {s}
                           </SelectItem>

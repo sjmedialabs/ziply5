@@ -4,6 +4,7 @@ import { computeCouponDiscount } from "@/src/server/modules/coupons/coupons.serv
 import { logActivity } from "@/src/server/modules/activity/activity.service"
 import { emailTemplates, enqueueEmail } from "@/src/server/modules/notifications/email.service"
 import { enqueueOutboxEvent } from "@/src/server/modules/integrations/outbox.service"
+import { assertMasterValueExists } from "@/src/server/modules/master/master.service"
 
 export type OrderLifecycleStatus =
   | "pending"
@@ -377,6 +378,8 @@ export const updateOrderStatus = async (
   actorId?: string,
   options?: { reasonCode?: string; note?: string },
 ) => {
+  const allowed = await assertMasterValueExists("ORDER_STATUS", status)
+  if (!allowed) throw new Error(`Invalid master value for ORDER_STATUS: ${status}`)
   const existing = await prisma.order.findUnique({
     where: { id },
     select: {

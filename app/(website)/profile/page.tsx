@@ -293,6 +293,20 @@ function ProfilePageContent() {
               </div>
 
               <div className="flex">
+                <p className="w-24 font-bold text-gray-700">Support</p>
+                <Link href="/support" className="text-orange-600 underline hover:text-orange-700">
+                  Open support center
+                </Link>
+              </div>
+
+              <div className="flex">
+                <p className="w-24 font-bold text-gray-700">Returns</p>
+                <Link href="/my-returns" className="text-orange-600 underline hover:text-orange-700">
+                  Track return/replace
+                </Link>
+              </div>
+
+              <div className="flex">
                 <p className="w-24 font-bold text-gray-700">Address</p>
                 <p className="text-gray-600">
                   27 street jonway, NY America USA
