@@ -35,32 +35,6 @@ export default function PaymentPage() {
   const shipping = items.length > 0 ? 20 : 0;
   const total = subTotal + shipping;
 
-  const createOrderMutation = useMutation({
-    mutationFn: async (token: string) => {
-      const res = await fetch("/api/orders/create", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          items: items.map((i) => ({
-            slug: i.slug,
-            quantity: i.quantity ?? 1,
-          })),
-          shipping,
-          gateway: "razorpay",
-          billingAddress,
-          paymentStatus: "pending",
-        }),
-      });
-      const json = (await res.json()) as { success?: boolean; message?: string; data?: { id: string } };
-      if (!res.ok || json.success === false || !json.data?.id) {
-        throw new Error(json.message ?? "Unable to create order.");
-      }
-      return json.data.id;
-    },
-  });
 
   const initiatePaymentMutation = useMutation({
     mutationFn: async ({ token, orderId }: { token: string; orderId: string }) => {
@@ -89,7 +63,32 @@ export default function PaymentPage() {
       return intentJson.data;
     },
   });
-
+  const createOrderMutation = useMutation({
+    mutationFn: async (token: string) => {
+      const res = await fetch("/api/orders/create", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          items: items.map((i) => ({
+            slug: i.slug,
+            quantity: i.quantity ?? 1,
+          })),
+          shipping,
+          gateway: "razorpay",
+          billingAddress,
+          paymentStatus: "pending",
+        }),
+      });
+      const json = (await res.json()) as { success?: boolean; message?: string; data?: { id: string } };
+      if (!res.ok || json.success === false || !json.data?.id) {
+        throw new Error(json.message ?? "Unable to create order.");
+      }
+      return json.data.id;
+    },
+  });
   useEffect(() => {
     const token = window.localStorage.getItem("ziply5_access_token");
     if (!token) {

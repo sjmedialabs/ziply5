@@ -101,8 +101,8 @@ export default function ProductPage() {
   )
 
   const currentPrice = activeVariant?.price ?? product?.price ?? 0
-  const currentOldPrice = activeVariant?.oldPrice ?? activeVariant?.mrp ?? product?.oldPrice ?? 0
-  const sku = activeVariant?.sku ?? (product ? `SKU:${product.sku.toUpperCase()}` : "")
+  const currentOldPrice = activeVariant?.mrp ?? product?.oldPrice ?? 0
+  const sku = `SKU:${activeVariant?.sku ?? (product ? product.sku.toUpperCase() : "")}`
 
   const salePercent =
     activeVariant != null && activeVariant.discountPercent !== undefined
@@ -220,12 +220,17 @@ export default function ProductPage() {
             <div className="mt-2 flex items-center gap-2">
               <span className="rounded-full bg-[#F0ECE2] px-3 py-1 text-[12px] font-medium text-[#8D8D8D]">{sku}</span>
               <span className="rounded-full bg-[#DFE8D8] px-3 py-1 text-[12px] font-medium text-[#86917B] capitalize">
-                {product.stockStatus?.replace("_", " ")}
+                {product.stockStatus?.replace("_", " ")}: 
+                {product.productKind === "simple" && product.stock && product?.stock > 0 && (
+                  <span className="ml-1">
+                    {product?.stock < 5 ? `Hurry up only ${product.stock} left` : `${product.stock} available`}
+                  </span>
+                )}
                 {activeVariant && activeVariant.stock > 0 && (
-                  <>: {activeVariant.stock <= 5 ? "Hurry, only a few left!" : `${activeVariant.stock} available`}</>
+                  <> {activeVariant.stock <= 5 ? "Hurry, only a few left!" : `${activeVariant.stock} available`}</>
                 )}
               </span>
-              {salePercent > 0 && (
+              {salePercent && salePercent > 0 && (
                 <span className="rounded-md bg-[#2E84CF] px-2 py-1 text-[11px] font-semibold text-white">SALE {salePercent}% Off</span>
               )}
               {product.labels.slice(0, 2).map((label, idx) => (

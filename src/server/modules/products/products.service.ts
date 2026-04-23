@@ -35,6 +35,7 @@ type CreateProductInput = {
   categoryId?: string | null
   brandId?: string | null
   variants?: Array<{
+    id?: string
     name: string
     weight?: string | null
     price: number
@@ -79,6 +80,7 @@ type UpdateProductInput = Partial<{
   categoryId: string | null
   brandId: string | null
   variants: Array<{
+    id?: string
     name: string
     weight?: string | null
     price: number
@@ -171,6 +173,7 @@ const productSelectPublicList = {
   // Weight/sku/stock are needed for product-card rendering.
   variants: {
     select: {
+      id: true,
       name: true,
       weight: true,
       price: true,
@@ -291,8 +294,7 @@ export const listProducts = async (
     select: scope === "public" ? productSelectPublicList : productSelect,
   })
 const total = await prisma.product.count({ where })
-
-  return { items, total, page, limit }
+   return { items, total, page, limit }
 }
 
 export const getProductById = async (id: string) => {
