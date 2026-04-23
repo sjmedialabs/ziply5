@@ -41,6 +41,7 @@ type ProductDetail = {
   basePrice?: string | number | null
   salePrice?: string | number | null
   discountPercent?: string | number | null
+  weight?: string | null
   stockStatus?: "in_stock" | "out_of_stock"
   totalStock?: number
   shelfLife?: string | null
@@ -63,6 +64,7 @@ type ProductDetail = {
     sku: string
     price: string | number
     mrp?: string | number | null
+    discountPercent?: string | number | null
     stock: number
     isDefault?: boolean
   }>
@@ -164,10 +166,11 @@ export function ProductConsolePage({
   const [basePrice, setBasePrice] = useState("")
   const [salePrice, setSalePrice] = useState("")
   const [discountPercent, setDiscountPercent] = useState("")
+  const [simpleProductWeight, setSimpleProductWeight] = useState(""); // New state for simple product weight
   const [stockStatus, setStockStatus] = useState<"in_stock" | "out_of_stock">("in_stock")
   const [totalStock, setTotalStock] = useState("0")
-  const [variants, setVariants] = useState<Array<{ id?: string; name: string; weight: string; sku: string; price: string; stock: string; isDefault: boolean }>>([
-    { name: "250g", weight: "250g", sku: "", price: "", stock: "0", isDefault: true },
+  const [variants, setVariants] = useState<Array<{ id?: string; name: string; weight: string; sku: string; price: string; mrp: string; discountPercent: string; stock: string; isDefault: boolean }>>([
+    { name: "250g", weight: "250g", sku: "", price: "", mrp: "", discountPercent: "", stock: "0", isDefault: true },
   ])
   const [shelfLife, setShelfLife] = useState("")
   const [preparationType, setPreparationType] = useState<"" | "ready_to_eat" | "ready_to_cook">("")
@@ -193,13 +196,24 @@ export function ProductConsolePage({
   const [filterPreparationType, setFilterPreparationType] = useState<"all" | "ready_to_eat" | "ready_to_cook">("all")
   const [filterStockStatus, setFilterStockStatus] = useState<"all" | "in_stock" | "out_of_stock">("all")
   const [filterFoodType, setFilterFoodType] = useState<"all" | "veg" | "non-veg">("all")
+  const [filterType, setFilterType] = useState<"all" | "simple" | "variant">("all")
   const productWeightMasterQuery = useMasterValues("PRODUCT_WEIGHT")
-  const weightOptions = productWeightMasterQuery.data?.map((item) => item.value) ?? fallbackWeightOptions
+  const weightOptions = fallbackWeightOptions
 
   const orderedSections = useMemo(
     () => [...sections].sort((a, b) => a.sortOrder - b.sortOrder),
     [sections],
   )
+
+  const resetFilters = () => {
+    setSearchQuery("")
+    setFilterStatus("all")
+    setFilterType("all")
+    setFilterCategory("all")
+    setFilterPreparationType("all")
+    setFilterStockStatus("all")
+    setFilterFoodType("all")
+  }
 
   const filteredRows = useMemo(() => {
     let result = rows
@@ -231,6 +245,11 @@ export function ProductConsolePage({
       result = result.filter(p => p.status === filterStatus)
     }
 
+    // Apply type filter
+    if (filterType !== 'all') {
+      result = result.filter(p => p.type === filterType)
+    }
+
     // Apply category filter
     if (filterCategory !== 'all') {
       result = result.filter(p => p.categories?.some(c => c.categoryId === filterCategory))
@@ -257,7 +276,7 @@ export function ProductConsolePage({
     }
 
     return result
-  }, [rows, searchQuery, filterStatus, filterCategory, filterPreparationType, filterStockStatus, filterFoodType])
+  }, [rows, searchQuery, filterStatus, filterType, filterCategory, filterPreparationType, filterStockStatus, filterFoodType])
 
   const basePath = adminView ? "/admin/products" : "/admin/products"
 
@@ -303,6 +322,7 @@ export function ProductConsolePage({
       setBasePrice(p.basePrice != null ? String(Number(p.basePrice)) : "")
       setSalePrice(p.salePrice != null ? String(Number(p.salePrice)) : "")
       setDiscountPercent(p.discountPercent != null ? String(Number(p.discountPercent)) : "")
+      setSimpleProductWeight(p.weight ?? ""); // Populate new weight field
       setStockStatus(p.stockStatus ?? "in_stock")
       setTotalStock(String(p.totalStock ?? 0))
       setShelfLife(p.shelfLife ?? "")
@@ -330,10 +350,12 @@ export function ProductConsolePage({
               weight: item.weight ?? item.name ?? "",
               sku: item.sku ?? "",
               price: String(Number(item.price ?? 0)),
+              mrp: item.mrp != null ? String(Number(item.mrp)) : "",
+              discountPercent: item.discountPercent != null ? String(Number(item.discountPercent)) : "",
               stock: String(item.stock ?? 0),
               isDefault: Boolean(item.isDefault) || idx === 0,
             }))
-          : [{ name: "250g", weight: "250g", sku: "", price: "", stock: "0", isDefault: true }],
+          : [{ name: "250g", weight: "250g", sku: "", price: "", mrp: "", discountPercent: "", stock: "0", isDefault: true }],
       )
       const nextSections =
         (p.sections?.length
@@ -375,6 +397,8 @@ export function ProductConsolePage({
         weight: (v.weight || v.name || "").trim(),
         sku: v.sku.trim(),
         price: Number(v.price || 0),
+        mrp: toNumOrNull(v.mrp),
+        discountPercent: toNumOrNull(v.discountPercent),
         stock: Math.max(0, Number(v.stock || 0)),
         isDefault: Boolean(v.isDefault),
       }))
@@ -403,6 +427,7 @@ export function ProductConsolePage({
       basePrice: toNumOrNull(basePrice),
       salePrice: toNumOrNull(salePrice),
       discountPercent: toNumOrNull(discountPercent),
+      weight: type === "simple" ? (simpleProductWeight.trim() || null) : null, // Include new weight field
       stockStatus,
       totalStock: derivedStock,
       shelfLife: shelfLife.trim() || null,
@@ -450,6 +475,7 @@ export function ProductConsolePage({
     isFeatured,
     metaDescription,
     metaTitle,
+    simpleProductWeight, // Add to dependencies
     features,
     name,
     price,
@@ -508,13 +534,17 @@ export function ProductConsolePage({
     }
 
     if (!isDraft) {
-      if (!payload.salePrice && !payload.basePrice) {
+      if (payload.type === "simple" && !payload.salePrice && !payload.basePrice) {
         setError("Sale Price or Base Price is required")
         return
       }
-      if (payload.discountPercent == null) {
+      if (payload.type === "simple" && payload.discountPercent == null) {
         setError("Discount percentage is required")
         return
+      }
+      if (payload.type === "simple" && !payload.weight) { // New validation for simple product weight
+        setError("Weight is required for simple products.");
+        return;
       }
       if (!payload.type) {
         setError("Product type is required")
@@ -669,6 +699,7 @@ export function ProductConsolePage({
   const validatePublishable = (product: ProductDetail) => {
     const hasPrice = Number(product.price) > 0
     const hasDiscount = product.discountPercent != null
+    const hasWeight = product.type === "simple" ? Boolean(product.weight?.trim()) : true; // New validation
     const hasType = Boolean(product.type)
     const tagNames = (product.tags ?? []).map((x) => x.tag.name.toLowerCase())
     const hasFoodType = tagNames.includes("veg") || tagNames.includes("vegetarian") || tagNames.includes("non-veg") || tagNames.includes("non vegetarian")
@@ -682,6 +713,7 @@ export function ProductConsolePage({
 
     if (!hasPrice) return "Provide at least one valid price to publish the product."
     if (!hasDiscount) return "Discount percentage is required to publish the product."
+    if (!hasWeight) return "Weight is required for simple products to publish." // New error message
     if (!hasType) return "Product type is required to publish the product."
     if (!hasFoodType) return "Food type (veg/non-veg) is required to publish the product."
     if (!hasStockStatus) return "Stock status is required to publish the product."
@@ -764,12 +796,23 @@ export function ProductConsolePage({
               <SelectValue placeholder="Filter by Status" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">All Statuses</SelectItem>
+              <SelectItem value="all">All Status</SelectItem>
               {statuses.map((s) => (
                 <SelectItem key={s} value={s}>
                   {s}
                 </SelectItem>
               ))}
+            </SelectContent>
+          </Select>
+
+          <Select value={filterType} onValueChange={(value) => setFilterType(value as "all" | "simple" | "variant")}>
+            <SelectTrigger className="w-40 rounded-lg border border-[#D9D9D1] bg-white px-3 py-2 text-sm">
+              <SelectValue placeholder="Product Type" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Types</SelectItem>
+              <SelectItem value="simple">Simple</SelectItem>
+              <SelectItem value="variant">Variant</SelectItem>
             </SelectContent>
           </Select>
 
@@ -792,7 +835,7 @@ export function ProductConsolePage({
               <SelectValue placeholder="Filter by Prep Type" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">All Types</SelectItem>
+              <SelectItem value="all">All Prep Types</SelectItem>
               {preparationTypes.map((t) => (
                 <SelectItem key={t} value={t}>
                   {t.replace(/_/g, " ")}
@@ -817,7 +860,7 @@ export function ProductConsolePage({
               <SelectValue placeholder="Filter by Food Type" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">All Types</SelectItem>
+              <SelectItem value="all">All Food Types</SelectItem>
               {foodTypes.map((t) => (
                 <SelectItem key={t} value={t}>
                   {t}
@@ -827,10 +870,19 @@ export function ProductConsolePage({
           </Select>
         </div>
         </div>
+        <div className="flex justify-end">
+          <button
+            type="button"
+            onClick={resetFilters}
+            className="text-[11px] font-bold uppercase tracking-wide text-[#7B3010] hover:underline"
+          >
+            Reset all filters
+          </button>
+        </div>
         {error && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-800">{error}</p>}
         {loading && <p className="text-sm text-[#646464]">Loading...</p>}
         {!loading && (
-          <ConsoleTable headers={["Name", "Slug", "SKU", "Status", "Price", "Active", "Actions"]}>
+          <ConsoleTable headers={["Name", "Weight", "SKU", "Status", "Sale Price", "Active", "Actions"]}>
             {filteredRows.length === 0 ? (
               <tr>
                 <ConsoleTd colSpan={7} className="py-8 text-center text-[#646464]">
@@ -846,7 +898,11 @@ export function ProductConsolePage({
                     </Link>
                   </ConsoleTd>
                   <ConsoleTd className="align-middle">
-                    <code className="text-[11px]">{p.slug}</code>
+                    <span className="text-[11px] text-[#646464]">
+                      {p.type === "variant" 
+                        ? p.variants?.map(v => v.weight).filter(Boolean).join(", ") || "—"
+                        : p.weight || "—"}
+                    </span>
                   </ConsoleTd>
                   <ConsoleTd className="align-middle">
                     <code className="text-[11px]">{p.sku}</code>
@@ -865,7 +921,13 @@ export function ProductConsolePage({
                       </SelectContent>
                     </Select>
                   </ConsoleTd>
-                  <ConsoleTd className="align-middle font-semibold">Rs.{Number(p.price).toFixed(2)}</ConsoleTd>
+                  <ConsoleTd className="align-middle font-semibold text-[11px]">
+                    {p.type === "variant"
+                      ? p.variants?.map(v => `Rs.${Number(v.price).toFixed(2)}`).join(", ") || "—"
+                      : p.price 
+                        ? `Rs.${Number(p.price).toFixed(2)}`
+                        : "—"}
+                  </ConsoleTd>
                   <ConsoleTd className="align-middle">
                     <button
                       type="button"
@@ -905,6 +967,7 @@ export function ProductConsolePage({
 
   return (
     <section className="mx-auto max-w-7xl space-y-4">
+      {/* header section for page */}
       <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
         <h1 className="font-melon text-2xl font-bold text-[#4A1D1F]">{mode === "view" ? "View product" : mode === "edit" ? "Edit product" : "Add product"}</h1>
         <Link href={basePath} className="text-xs font-semibold uppercase text-[#7B3010] underline">
@@ -914,10 +977,15 @@ export function ProductConsolePage({
       {mode !== "view" && (
         <p className="text-xs text-[#646464]">Draft/archive saves can be partial. Publishing requires valid name, slug, SKU, food type, price, and at least one section.</p>
       )}
+
       {error && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-800">{error}</p>}
       {loading && (mode === "edit" || mode === "view") && <p className="text-sm text-[#646464]">Loading product...</p>}
+      
       <form onSubmit={onSubmit} className="grid bg-white gap-3 rounded-2xl border border-[#E8DCC8] p-4 shadow-sm md:grid-cols-3">
-        {mode === "view" ? (
+        {/* Product info, images and description and seo meta data */}
+        {mode === "view" ? 
+        // product info for view mode
+        (
           <div className="space-y-6 w-full md:col-span-3">
 
             {/* 🔥 TOP SECTION */}
@@ -927,25 +995,30 @@ export function ProductConsolePage({
                 <div className="flex justify-between items-center ">
                   <h2 className="text-xl font-bold text-[#4A1D1F]">{name}</h2>
 
-                  <div className="flex items-center gap-3">
-                    <span className="text-lg font-semibold text-green-600">
-                      ₹{price}
-                    </span>
-                    {basePrice && (
-                      <span className="line-through text-gray-400">
-                        ₹{basePrice}
+                  {type === "simple" && (
+                    <div className="flex items-center gap-3">
+                      {simpleProductWeight && <span className="text-sm text-gray-600">Weight: {simpleProductWeight}</span>}
+                      <span className="text-lg font-semibold text-green-600">
+                        ₹{price}
                       </span>
-                    )}
-                    {discountPercent && (
-                      <span className="text-sm bg-green-100 text-green-700 px-2 py-1 rounded">
-                        {discountPercent}% OFF
-                      </span>
-                    )}
+                      {basePrice && (
+                        <span className="line-through text-gray-400">
+                          ₹{basePrice}
+                        </span>
+                      )}
+                      {discountPercent && (
+                        <span className="text-sm bg-green-100 text-green-700 px-2 py-1 rounded">
+                          {discountPercent}% OFF
+                        </span>
+                      )}
+                    </div>
+                  )}
+                </div>
+                {type === "simple" && (
+                  <div className="text-sm text-gray-600">
+                    SKU: {sku}
                   </div>
-                </div>
-                <div className="text-sm text-gray-600">
-                  SKU: {sku}
-                </div>
+                )}
 
                 <div className="flex gap-2 flex-wrap">
                   <Badge label={foodType} />
@@ -959,17 +1032,20 @@ export function ProductConsolePage({
                   Category: {categories.find((c) => c.id === categoryId)?.name || "—"}
                 </p>
               </div>
-              {/* 💰 PRICING + INVENTORY */}
-              <Card title="Pricing">
-                <Info label="Sale Price" value={`₹${price}`} />
-                <Info label="MRP" value={`₹${basePrice}`} />
-                <Info label="Discount" value={`${discountPercent}%`} />
-              </Card>
+
+              {/* 💰 PRICING (Only for Simple) */}
+              {type === "simple" && (
+                <Card title="Pricing">
+                  <Info label="Sale Price" value={`₹${price}`} />
+                  <Info label="MRP" value={basePrice ? `₹${basePrice}` : "—"} />
+                  <Info label="Discount" value={discountPercent ? `${discountPercent}%` : "—"} />
+                </Card>
+              )}
 
               <Card title="Inventory">
-                <Info label="Stock" value={totalStock} />
+                <Info label={type === "variant" ? "Total Stock" : "Stock"} value={totalStock} />
                 <Info label="Stock Status" value={stockStatus} />
-                <Info label="Shelf Life" value={`${shelfLife} months`} />
+                <Info label="Shelf Life" value={shelfLife ? `${shelfLife} months` : "—"} />
               </Card>
 
               {/* 🧾 META */}
@@ -980,6 +1056,38 @@ export function ProductConsolePage({
               </Card>
             </div>
 
+            {/* 📋 VARIANTS SECTION */}
+            {type === "variant" && (
+              <div className="bg-white rounded-2xl p-4 border border-[#E5E5DC] shadow-sm">
+                <p className="font-semibold mb-3 text-[#4A1D1F]">Product Variants</p>
+                <ConsoleTable headers={["Weight", "SKU", "Sale Price", "MRP", "Discount", "Stock", "Default"]}>
+                  {variants.map((v, idx) => (
+                    <tr key={`${v.id}-${idx}`} className="hover:bg-[#FFFBF3]/50">
+                      <ConsoleTd>{v.weight || v.name}</ConsoleTd>
+                      <ConsoleTd><code className="text-[11px]">{v.sku}</code></ConsoleTd>
+                      <ConsoleTd className="font-semibold text-green-600">₹{Number(v.price).toFixed(2)}</ConsoleTd>
+                      <ConsoleTd className="text-gray-400 line-through">
+                        {v.mrp ? `₹${Number(v.mrp).toFixed(2)}` : "—"}
+                      </ConsoleTd>
+                      <ConsoleTd>
+                        {v.discountPercent ? (
+                          <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded">
+                            {v.discountPercent}%
+                          </span>
+                        ) : "—"}
+                      </ConsoleTd>
+                      <ConsoleTd>{v.stock}</ConsoleTd>
+                      <ConsoleTd>
+                        {v.isDefault ? (
+                          <span className="text-[10px] bg-[#FFC222] text-[#4A1D1F] px-2 py-0.5 rounded-full font-bold uppercase">Default</span>
+                        ) : "—"}
+                      </ConsoleTd>
+                    </tr>
+                  ))}
+                </ConsoleTable>
+              </div>
+            )}
+
             {/* 📝 DESCRIPTION */}
             <Card title="Description">
               <p className="text-sm text-gray-700 whitespace-pre-line">
@@ -988,8 +1096,12 @@ export function ProductConsolePage({
             </Card>
 
           </div>
-        ) : (
+        )
+         : 
+        //  product info for edit and add mode
+         (
           <>
+            {/* product name */}
             <Field label="Name" required>
               <Input
                 placeholder="Name"
@@ -999,6 +1111,7 @@ export function ProductConsolePage({
                 className="rounded-lg border border-[#D9D9D1] px-3 py-2 text-sm"
               />
             </Field>
+            {/* Slug for product to search and verify on readable mode */}
             <Field label="Slug" required>
               <Input
                 placeholder="Slug"
@@ -1008,6 +1121,7 @@ export function ProductConsolePage({
                 className="rounded-lg border border-[#D9D9D1] px-3 py-2 text-sm"
               />
             </Field>
+            {/* sku for simple type of product */}
             <Field label="SKU" required>
               {type === "simple" ? (
                 <Input
@@ -1023,7 +1137,10 @@ export function ProductConsolePage({
                 </p>
               )}
             </Field>
+            {/* prdouct price and weight details for simple type */}
             {type === "simple" ? (
+              <>
+              {/* sale price for simple product */}
             <Field label="Sale Price" required={status !== "draft"}>
               <Input
                 placeholder="Sale Price"
@@ -1034,7 +1151,7 @@ export function ProductConsolePage({
                 className="rounded-lg border border-[#D9D9D1] px-3 py-2 text-sm"
               />
             </Field>
-            ) : null}
+            {/* mrp/baseprice for simple product  */}
             <Field label="Base / MRP" required={status !== "draft"}>
               <Input
                 placeholder="Base/MRP"
@@ -1045,6 +1162,7 @@ export function ProductConsolePage({
                 className="rounded-lg border border-[#D9D9D1] px-3 py-2 text-sm"
               />
             </Field>
+            {/* discount percent for simple product */}
             <Field label="Discount %" required={status !== "draft"}>
               <Input
                 placeholder="Discount %"
@@ -1055,6 +1173,8 @@ export function ProductConsolePage({
                 className="rounded-lg border border-[#D9D9D1] px-3 py-2 text-sm"
               />
             </Field>
+             </>  ) : null}
+            {/* Product status published, draft and archived */}
             <Field label="Status" required>
               <Select value={status} onValueChange={(value) => setStatus(value as (typeof statuses)[number])}>
                 <SelectTrigger className="rounded-lg border border-[#D9D9D1] px-3 py-2 text-sm">
@@ -1074,6 +1194,7 @@ export function ProductConsolePage({
                 Draft products are not visible on the website until published.
               </p>
             ) : null}
+            {/* Type simple and variant */}
             <Field label="Type" required={status !== "draft"}>
               <Select value={type} onValueChange={(value) => setType(value as "simple" | "variant")}> 
                 <SelectTrigger className="rounded-lg border border-[#D9D9D1] px-3 py-2 text-sm" disabled={mode === "edit"}>
@@ -1088,38 +1209,67 @@ export function ProductConsolePage({
             {mode === "edit" ? (
               <p className="text-xs text-[#646464]">Type cannot be changed after product creation.</p>
             ) : null}
-            <Field label="Food Type" required={status !== "draft"}>
-              <Select value={foodType} onValueChange={(value) => setFoodType(value as "" | "veg" | "non-veg")}>
-              <SelectTrigger className="rounded-lg border border-[#D9D9D1] px-3 py-2 text-sm">
-                <SelectValue placeholder="Select veg/non-veg" />
-              </SelectTrigger>
-              <SelectContent>
-                {foodTypes.map((item) => (
-                  <SelectItem key={item} value={item}>
-                    {item}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            </Field>
-            <Field label="Category">
-              <Select value={categoryId} onValueChange={(value) => setCategoryId(value || "")}>
-              <SelectTrigger className="rounded-lg border border-[#D9D9D1] px-3 py-2 text-sm">
-                <SelectValue placeholder="No category" />
-              </SelectTrigger>
-              <SelectContent>
-             
-                  <SelectItem value="beafkfast">
-                 {categories.length === 0 ? "No categories" : "None"}
-                  </SelectItem>
-                {categories.map((c) => (
-                  <SelectItem key={c.id} value={c.id}>
-                    {c.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            </Field>
+            {/* Food Type */}
+            {type === "simple" ? (
+              <>
+                {/* sale price for simple product */}
+                <Field label="Sale Price" required={status !== "draft"}>
+                  <Input
+                    placeholder="Sale Price"
+                    type="number"
+                    step="0.01"
+                    value={price}
+                    onChange={(e) => setPrice(e.target.value)}
+                    className="rounded-lg border border-[#D9D9D1] px-3 py-2 text-sm"
+                  />
+                </Field>
+                {/* mrp/baseprice for simple product  */}
+                <Field label="Base / MRP" required={status !== "draft"}>
+                  <Input
+                    placeholder="Base/MRP"
+                    type="number"
+                    step="0.01"
+                    value={basePrice}
+                    onChange={(e) => setBasePrice(e.target.value)}
+                    className="rounded-lg border border-[#D9D9D1] px-3 py-2 text-sm"
+                  />
+                </Field>
+                {/* discount percent for simple product */}
+                <Field label="Discount %" required={status !== "draft"}>
+                  <Input
+                    placeholder="Discount %"
+                    type="number"
+                    step="0.01"
+                    value={discountPercent}
+                    onChange={(e) => setDiscountPercent(e.target.value)}
+                    className="rounded-lg border border-[#D9D9D1] px-3 py-2 text-sm"
+                  />
+                </Field>
+                {/* New Weight field for simple products */}
+                <Field label="Weight" required={status !== "draft"}>
+                  <Select value={simpleProductWeight} onValueChange={setSimpleProductWeight}>
+                    <SelectTrigger className="rounded-lg border border-[#D9D9D1] px-3 py-2 text-sm">
+                      <SelectValue placeholder="Select weight" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="100g">
+                        100g
+                      </SelectItem>
+                      <SelectItem value="250g">
+                        250g
+                      </SelectItem>
+                      <SelectItem value="500g">
+                        500g
+                      </SelectItem>
+                      <SelectItem value="1kg">
+                        1kg
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
+                </Field>
+              </>
+            ) : null}
+            {/* No. of stock for simple  */}
             {type === "simple" ? (
               <Field label="Total Stock">
                 <Input placeholder="Total Stock" type="number" value={totalStock} onChange={(e) => setTotalStock(e.target.value)} className="rounded-lg border border-[#D9D9D1] px-3 py-2 text-sm" />
@@ -1131,6 +1281,41 @@ export function ProductConsolePage({
                 </p>
               </Field>
             )}
+            {/* Food Type */}
+            <Field label="Food Type" required={status !== "draft"}>
+              <Select value={foodType} onValueChange={(value) => setFoodType(value as "" | "veg" | "non-veg")}>
+                <SelectTrigger className="rounded-lg border border-[#D9D9D1] px-3 py-2 text-sm">
+                  <SelectValue placeholder="Select veg/non-veg" />
+                </SelectTrigger>
+                <SelectContent>
+                  {foodTypes.map((item) => (
+                    <SelectItem key={item} value={item}>
+                      {item}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </Field>
+            {/* Category breakfast, lunch and other */}
+            <Field label="Category">
+              <Select value={categoryId || "none"} onValueChange={(value) => setCategoryId(value === "none" ? "" : value)}>
+                <SelectTrigger className="rounded-lg border border-[#D9D9D1] px-3 py-2 text-sm">
+                  <SelectValue placeholder="No category" />
+                </SelectTrigger>
+                <SelectContent>
+
+                  <SelectItem value="none">
+                    {categories.length === 0 ? "No categories" : "None"}
+                  </SelectItem>
+                  {categories.map((c) => (
+                    <SelectItem key={c.id} value={c.id}>
+                      {c.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </Field>
+            {/* Stock Status  */}
             <Field label="Stock Status" required={status !== "draft"}>
               <Select value={stockStatus} onValueChange={(value) => setStockStatus(value as "in_stock" | "out_of_stock")}>
                 <SelectTrigger className="rounded-lg border border-[#D9D9D1] px-3 py-2 text-sm">
@@ -1142,15 +1327,18 @@ export function ProductConsolePage({
                 </SelectContent>
               </Select>
             </Field>
+            {/* shelf life in months */}
             <Field label="Shelf Life" required={status !== "draft"}>
               <Input
-                placeholder="Shelf Life"
+                placeholder="Shelf Life in Months"
                 type="number"
                 value={shelfLife}
                 onChange={(e) => setShelfLife(e.target.value)}
                 className="rounded-lg border border-[#D9D9D1] px-3 py-2 text-sm"
+                title="Shelf life in months"
               />
             </Field>
+            {/* Preparation type ready-to-eat, reasdy-to-cook */}
             <Field label="Preparation Type" required={status !== "draft"}>
               <Select value={preparationType} onValueChange={(value) => setPreparationType(value as "" | "ready_to_eat" | "ready_to_cook")}>
                 <SelectTrigger className="rounded-lg border border-[#D9D9D1] px-3 py-2 text-sm">
@@ -1165,6 +1353,7 @@ export function ProductConsolePage({
                 </SelectContent>
               </Select>
             </Field>
+            {/* spice level */}
             <Field label="Spice Level" required={status !== "draft"}>
               <Select value={spiceLevel} onValueChange={(value) => setSpiceLevel(value as "" | "mild" | "medium" | "hot" | "extra_hot")}>
                 <SelectTrigger className="rounded-lg border border-[#D9D9D1] px-3 py-2 text-sm">
@@ -1179,6 +1368,7 @@ export function ProductConsolePage({
                 </SelectContent>
               </Select>
             </Field>
+            {/* thumbnail upload */}
             <Field label="Upload thumbnails (multiple)" required={status !== "draft"}>
               <div className="rounded-lg border border-[#D9D9D1] px-3 py-2 text-sm">
                 <p className="mb-2 text-[11px] font-semibold uppercase text-[#646464]">Upload thumbnails (multiple)</p>
@@ -1199,6 +1389,7 @@ export function ProductConsolePage({
               )}
             </div>
             </Field>
+            {/* gallery images */}
             <Field label="Upload images (multiple)">
               <div className="rounded-lg border border-[#D9D9D1] px-3 py-2 text-sm">
                 <input type="file" multiple accept="image/*" onChange={(e) => void uploadMany(e.target.files, "image")} />
@@ -1218,6 +1409,7 @@ export function ProductConsolePage({
                 )}
               </div>
             </Field>
+            {/* meta details */}
             <Field label="Meta Title">
               <Input placeholder="Meta Title" value={metaTitle} onChange={(e) => setMetaTitle(e.target.value)} className="rounded-lg border border-[#D9D9D1] px-3 py-2 text-sm" />
             </Field>
@@ -1227,6 +1419,8 @@ export function ProductConsolePage({
             <Field label="Tags CSV">
               <Input placeholder="Tags csv: veg, rice, ready-to-eat" value={tagsCsv} onChange={(e) => setTagsCsv(e.target.value)} className="rounded-lg border border-[#D9D9D1] px-3 py-2 text-sm md:col-span-3" />
             </Field>
+
+                {/* for product type as varient then specify the variant */}
             {type === "variant" && (
               <div className="md:col-span-3 space-y-2 rounded-lg border border-[#E8DCC8] p-3">
                 <div className="flex items-center justify-between">
@@ -1234,7 +1428,7 @@ export function ProductConsolePage({
                   <button
                     type="button"
                     onClick={() =>
-                      setVariants((prev) => [...prev, { name: "", weight: "", sku: "", price: "", stock: "0", isDefault: prev.length === 0 }])
+                      setVariants((prev) => [...prev, { name: "", weight: "", sku: "", price: "", mrp: "", discountPercent: "", stock: "0", isDefault: prev.length === 0 }])
                     }
                     className="rounded-full border border-[#7B3010] px-3 py-1 text-[11px] font-semibold uppercase text-[#7B3010]"
                   >
@@ -1242,54 +1436,101 @@ export function ProductConsolePage({
                   </button>
                 </div>
                 {variants.map((variant, idx) => (
-                  <div key={`${variant.id ?? "new"}-${idx}`} className="grid grid-cols-1 gap-2 md:grid-cols-6">
-                    <select
-                      value={variant.weight}
-                      onChange={(e) =>
-                        setVariants((prev) =>
-                          prev.map((x, i) => i === idx ? { ...x, weight: e.target.value, name: e.target.value } : x),
-                        )
-                      }
-                      className="rounded border border-[#D9D9D1] px-3 py-2 text-sm"
-                    >
-                      <option value="">Select weight</option>
-                      {weightOptions.map((weight) => (
-                        <option key={weight} value={weight}>
-                          {weight}
-                        </option>
-                      ))}
-                    </select>
-                    <Input
-                      placeholder="Price"
-                      type="number"
-                      value={variant.price}
-                      onChange={(e) => setVariants((prev) => prev.map((x, i) => i === idx ? { ...x, price: e.target.value } : x))}
-                    />
-                    <Input
-                      placeholder="Stock"
-                      type="number"
-                      value={variant.stock}
-                      onChange={(e) => setVariants((prev) => prev.map((x, i) => i === idx ? { ...x, stock: e.target.value } : x))}
-                    />
-                    <Input
-                      placeholder="SKU"
-                      value={variant.sku}
-                      onChange={(e) => setVariants((prev) => prev.map((x, i) => i === idx ? { ...x, sku: e.target.value } : x))}
-                    />
-                    <label className="flex items-center gap-2 text-xs font-semibold uppercase">
-                      <Checkbox
-                        checked={variant.isDefault}
-                        onCheckedChange={() => setVariants((prev) => prev.map((x, i) => ({ ...x, isDefault: i === idx })))}
-                      />
-                      default
-                    </label>
-                    <button
-                      type="button"
-                      onClick={() => setVariants((prev) => prev.filter((_, i) => i !== idx))}
-                      className="rounded-full border border-red-300 px-3 py-2 text-[11px] font-semibold uppercase text-red-700"
-                    >
-                      Delete
-                    </button>
+                   <div key={`${variant.id ?? "new"}-${idx}`} className="space-y-4 rounded-lg border border-[#E8DCC8] bg-[#FFFBF3]/20 p-4">
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6">
+                      <div className="space-y-1.5">
+                        <Label className="text-[10px] font-bold uppercase text-[#646464]">Weight</Label>
+                        <Select
+                          value={variant.weight}
+                          onValueChange={(val) =>
+                            setVariants((prev) =>
+                              prev.map((x, i) => i === idx ? { ...x, weight: val, name: val } : x),
+                            )
+                          }
+                        >
+                          <SelectTrigger className="rounded border border-[#D9D9D1] bg-white px-3 py-2 text-sm h-9">
+                            <SelectValue placeholder="Weight" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="100g">100g</SelectItem>
+                            <SelectItem value="250g">250g</SelectItem>
+                            <SelectItem value="500g">500g</SelectItem>
+                            <SelectItem value="1kg">1kg</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <Label className="text-[10px] font-bold uppercase text-[#646464]">Sale Price</Label>
+                        <Input
+                          placeholder="Sale Price"
+                          type="number"
+                          value={variant.price}
+                          onChange={(e) => setVariants((prev) => prev.map((x, i) => i === idx ? { ...x, price: e.target.value } : x))}
+                          className="bg-white h-9"
+                        />
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <Label className="text-[10px] font-bold uppercase text-[#646464]">MRP / Base</Label>
+                        <Input
+                          placeholder="MRP"
+                          type="number"
+                          value={variant.mrp}
+                          onChange={(e) => setVariants((prev) => prev.map((x, i) => i === idx ? { ...x, mrp: e.target.value } : x))}
+                          className="bg-white h-9"
+                        />
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <Label className="text-[10px] font-bold uppercase text-[#646464]">Discount %</Label>
+                        <Input
+                          placeholder="%"
+                          type="number"
+                          value={variant.discountPercent}
+                          onChange={(e) => setVariants((prev) => prev.map((x, i) => i === idx ? { ...x, discountPercent: e.target.value } : x))}
+                          className="bg-white h-9"
+                        />
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <Label className="text-[10px] font-bold uppercase text-[#646464]">Stock</Label>
+                        <Input
+                          placeholder="Stock"
+                          type="number"
+                          value={variant.stock}
+                          onChange={(e) => setVariants((prev) => prev.map((x, i) => i === idx ? { ...x, stock: e.target.value } : x))}
+                          className="bg-white h-9"
+                        />
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <Label className="text-[10px] font-bold uppercase text-[#646464]">SKU</Label>
+                        <Input
+                          placeholder="SKU"
+                          value={variant.sku}
+                          onChange={(e) => setVariants((prev) => prev.map((x, i) => i === idx ? { ...x, sku: e.target.value } : x))}
+                          className="bg-white h-9"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-between pt-2 border-t border-[#E8DCC8]/50">
+                      <label className="flex items-center gap-2 text-[11px] font-semibold uppercase text-[#4A1D1F] cursor-pointer">
+                        <Checkbox
+                          checked={variant.isDefault}
+                          onCheckedChange={() => setVariants((prev) => prev.map((x, i) => ({ ...x, isDefault: i === idx })))}
+                        />
+                        Default Variant
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => setVariants((prev) => prev.filter((_, i) => i !== idx))}
+                        className="rounded-full border border-red-200 px-3 py-1 text-[10px] font-semibold uppercase text-red-700 hover:bg-red-50 transition-colors"
+                      >
+                        Remove
+                      </button>
+                    </div>
                   </div>
                 ))}
               </div>

@@ -1,5 +1,6 @@
 "use client"
 
+import { useState } from 'react';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import DynamicList from './DynamicList';
@@ -14,6 +15,7 @@ interface PromoItem {
   startDate: string;
   endDate: string;
   isActive: boolean;
+  firstOrderOnly?: boolean;
 }
 
 interface PromoSectionProps {
@@ -23,6 +25,15 @@ interface PromoSectionProps {
 
 export default function PromoSectionEditor({ value = [], onChange }: PromoSectionProps) {
   const items = Array.isArray(value) ? value : [];
+  const [coupons, setCoupons] = useState([]);
+
+  const saveCoupon = async (couponData: any) => {
+    await fetch('/api/v1/coupons', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(couponData)
+    });
+  };
 
   const renderItem = (item: PromoItem, index: number) => (
     <div className="space-y-5">
@@ -42,6 +53,21 @@ export default function PromoSectionEditor({ value = [], onChange }: PromoSectio
             title="Toggle active status"
           />
         </div>
+        
+        <div className="flex items-center gap-2">
+          <Label className="text-xs font-semibold text-[#646464]">First Order Only</Label>
+          <input
+            type="checkbox"
+            checked={item.firstOrderOnly || false}
+            onChange={(e) => {
+              const newItems = [...items];
+              newItems[index].firstOrderOnly = e.target.checked;
+              onChange(newItems);
+            }}
+            className="accent-[#7B3010] cursor-pointer w-4 h-4"
+            title="Limit to new users only"
+          />
+        </div>
       </div>
       
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -54,8 +80,8 @@ export default function PromoSectionEditor({ value = [], onChange }: PromoSectio
               newItems[index].code = e.target.value.toUpperCase().replace(/\s+/g, '');
               onChange(newItems);
             }}
-            placeholder="e.g., SUMMER20"
-            className="h-8 text-sm font-semibold"
+            placeholder="Enter promo code (e.g., SAVE20)"
+            className="h-8 text-sm font-normal focus:ring-1 focus:ring-orange-500"
           />
         </div>
         <div>
@@ -84,7 +110,7 @@ export default function PromoSectionEditor({ value = [], onChange }: PromoSectio
               newItems[index].value = Number(e.target.value);
               onChange(newItems);
             }}
-            placeholder="e.g., 20"
+            placeholder="Enter discount value"
             className="h-8 text-sm"
             disabled={item.discountType === 'free_shipping'}
           />
@@ -102,7 +128,7 @@ export default function PromoSectionEditor({ value = [], onChange }: PromoSectio
               newItems[index].minOrderAmount = Number(e.target.value);
               onChange(newItems);
             }}
-            placeholder="e.g., 500"
+            placeholder="Enter minimum order amount"
             className="h-8 text-sm"
           />
         </div>
@@ -116,7 +142,7 @@ export default function PromoSectionEditor({ value = [], onChange }: PromoSectio
               newItems[index].usageLimitGlobal = Number(e.target.value);
               onChange(newItems);
             }}
-            placeholder="Empty = unlimited"
+            placeholder="Enter global usage limit (empty = unlimited)"
             className="h-8 text-sm"
           />
         </div>
@@ -130,7 +156,7 @@ export default function PromoSectionEditor({ value = [], onChange }: PromoSectio
               newItems[index].usageLimitPerUser = Number(e.target.value);
               onChange(newItems);
             }}
-            placeholder="Empty = unlimited"
+            placeholder="Enter per user usage limit"
             className="h-8 text-sm"
           />
         </div>
@@ -138,7 +164,7 @@ export default function PromoSectionEditor({ value = [], onChange }: PromoSectio
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div>
-          <Label className="text-xs text-[#646464] block mb-1">Start Date</Label>
+          <Label className="text-xs text-gray-500 block mb-1">Start Date</Label>
           <Input
             type="datetime-local"
             value={item.startDate || ''}
@@ -163,6 +189,27 @@ export default function PromoSectionEditor({ value = [], onChange }: PromoSectio
             className="h-8 text-sm"
           />
         </div>
+      </div>
+
+      <div className="pt-2 border-t border-[#E8DCC8]">
+        <button
+          type="button"
+          onClick={() => saveCoupon({
+            code: item.code,
+            discountType: item.discountType,
+            discountValue: item.value,
+            minOrderAmount: item.minOrderAmount,
+            usageLimitTotal: item.usageLimitGlobal,
+            usageLimitPerUser: item.usageLimitPerUser,
+            active: item.isActive,
+            firstOrderOnly: item.firstOrderOnly || false,
+            startsAt: item.startDate ? new Date(item.startDate).toISOString() : null,
+            endsAt: item.endDate ? new Date(item.endDate).toISOString() : null
+          })}
+          className="bg-orange-500 text-white px-3 py-1.5 rounded-md text-xs font-semibold hover:bg-orange-600 transition-colors"
+        >
+          Save Coupon to Database
+        </button>
       </div>
     </div>
   );
