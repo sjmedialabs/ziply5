@@ -4,7 +4,7 @@ import BannerSection from "@/components/BannerSection";
 import { ArrowLeft } from "lucide-react";
 import Link from "next/link";
 import { useLocation } from "@/hooks/useLocation";
-import { getCartItems, type CartItem } from "@/lib/cart";
+import { getCartItems, type CartItem, setCartItems } from "@/lib/cart";
 import {
   Select,
   SelectContent,
@@ -12,8 +12,25 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import { authedFetch, authedPost, authedPatch } from "@/lib/dashboard-fetch";
+
+type Addr = {
+  id: string;
+  label: string | null;
+  firstName: string | null;
+  lastName: string | null;
+  email: string | null;
+  line1: string;
+  line2: string | null;
+  city: string;
+  state: string;
+  postalCode: string;
+  country: string;
+  phone: string | null;
+  isDefault: boolean;
+};
 
 export default function CheckoutPage() {
   const {
@@ -28,6 +45,13 @@ export default function CheckoutPage() {
   const [items, setItems] = useState<CartItem[]>([]);
   const [placing, setPlacing] = useState(false);
   const [orderError, setOrderError] = useState("");
+  const [couponCode, setCouponCode] = useState("");
+  const [couponDiscount, setCouponDiscount] = useState(0);
+  const [couponError, setCouponError] = useState("");
+  const [applyingCoupon, setApplyingCoupon] = useState(false);
+  const [savedAddresses, setSavedAddresses] = useState<Addr[]>([]);
+  const [selectedAddressId, setSelectedAddressId] = useState<string>("manual");
+  const [originalAddress, setOriginalAddress] = useState<Addr | null>(null);
   const [billing, setBilling] = useState({
     firstName: "",
     lastName: "",
@@ -37,20 +61,98 @@ export default function CheckoutPage() {
     phone: "",
   });
 
+  const loadAddresses = useCallback(async () => {
+    const token = typeof window !== "undefined" ? window.localStorage.getItem("ziply5_access_token") : null;
+    if (!token) {
+      router.replace(`/login?next=${encodeURIComponent("/checkout")}`);
+      return;
+    }
+    try {
+      const data = await authedFetch<Addr[]>("/api/v1/me/addresses");
+      setSavedAddresses(data);
+    } catch (e) {
+      console.error("Failed to load addresses", e);
+    }
+  }, [router]);
+
   useEffect(() => {
     const syncCart = () => setItems(getCartItems());
     syncCart();
     window.addEventListener("ziply5:cart-updated", syncCart);
     window.addEventListener("storage", syncCart);
+
+    void loadAddresses();
+
     return () => {
       window.removeEventListener("ziply5:cart-updated", syncCart);
       window.removeEventListener("storage", syncCart);
     };
-  }, []);
+  }, [loadAddresses]);
 
   const subTotal = items.reduce((acc, item) => acc + item.price * item.quantity, 0);
+
   const shipping = items.length === 0 ? 0 : 20;
-  const total = subTotal + shipping;
+  const total = Math.max(subTotal - couponDiscount, 0) + shipping;
+
+  const applyCoupon = async () => {
+    if (!couponCode.trim()) {
+      setCouponError("Enter a coupon code.");
+      return;
+    }
+    setApplyingCoupon(true);
+    setCouponError("");
+    try {
+      const token = window.localStorage.getItem("ziply5_access_token");
+      const response = await fetch("/api/apply-coupon", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({
+          code: couponCode.trim(),
+          subtotal: subTotal,
+          items: items.map((item) => ({
+            productId: item.productId,
+            categoryId: null,
+            quantity: item.quantity,
+          })),
+        }),
+      });
+      const payload = (await response.json()) as { success?: boolean; message?: string; data?: { discount: number } };
+      if (!response.ok || !payload.success || !payload.data) {
+        throw new Error(payload.message ?? "Unable to apply coupon.");
+      }
+      setCouponDiscount(Number(payload.data.discount));
+    } catch (error) {
+      setCouponDiscount(0);
+      setCouponError(error instanceof Error ? error.message : "Unable to apply coupon.");
+    } finally {
+      setApplyingCoupon(false);
+    }
+  };
+
+  const handleAddressSelect = (id: string) => {
+    setSelectedAddressId(id);
+    if (id === "manual") return;
+
+    const addr = savedAddresses.find((a) => a.id === id);
+    if (addr) {
+      setBilling((prev) => ({
+        firstName: addr.firstName || prev.firstName,
+        lastName: addr.lastName || prev.lastName,
+        email: addr.email || prev.email,
+        line1: addr.line1,
+        postalCode: addr.postalCode,
+        phone: addr.phone || prev.phone,
+      }));
+      setState(addr.state);
+      setCity(addr.city);
+      setOriginalAddress(addr);
+    } else {
+      setOriginalAddress(null);
+    }
+  };
 
   const goToPayment = async () => {
     if (items.length === 0) {
@@ -84,6 +186,56 @@ export default function CheckoutPage() {
         return;
       }
 
+      if (selectedAddressId !== "manual" && originalAddress) {
+        const hasChanged = 
+          billing.firstName !== (originalAddress.firstName || "") ||
+          billing.lastName !== (originalAddress.lastName || "") ||
+          billing.email !== (originalAddress.email || "") ||
+          billing.line1 !== originalAddress.line1 ||
+          billing.postalCode !== originalAddress.postalCode ||
+          billing.phone !== (originalAddress.phone || "") ||
+          city !== originalAddress.city ||
+          state !== originalAddress.state;
+
+        if (hasChanged) {
+          const update = window.confirm("You have modified a saved address. Would you like to update your profile with these changes?");
+          if (update) {
+            try {
+              await authedPatch(`/api/v1/me/addresses/${selectedAddressId}`, {
+                firstName: billing.firstName,
+                lastName: billing.lastName,
+                email: billing.email,
+                line1: billing.line1,
+                city,
+                state,
+                postalCode: billing.postalCode,
+                phone: billing.phone || null,
+              });
+            } catch (e) { console.error("Update failed", e); }
+          }
+        }
+      } else if (selectedAddressId === "manual") {
+        const save = window.confirm("Would you like to save this address for future use?");
+        if (save) {
+          try {
+            await authedPost("/api/v1/me/addresses", {
+              label: billing.firstName ? `${billing.firstName}'s Home` : "New Address",
+              firstName: billing.firstName,
+              lastName: billing.lastName,
+              email: billing.email,
+              line1: billing.line1,
+              city: city,
+              state: state,
+              postalCode: billing.postalCode,
+              country: "India",
+              phone: billing.phone || null,
+            });
+          } catch (e) {
+            console.error("Failed to auto-save address", e);
+          }
+        }
+      }
+
       const orderRes = await fetch("/api/orders/create", {
         method: "POST",
         headers: {
@@ -98,6 +250,7 @@ export default function CheckoutPage() {
             quantity: item.quantity,
           })),
           shipping,
+          couponCode: couponCode.trim() || undefined,
           gateway: "razorpay",
           billingAddress: payload,
           paymentStatus: "pending",
@@ -142,10 +295,32 @@ export default function CheckoutPage() {
               </Link>
             </div>
             {/* Billing */}
-  <div>
-      <h2 className="font-melon text-lg font-medium mb-4">
-        Billing Address:
-      </h2>
+            <div>
+              <h2 className="font-melon text-lg font-medium mb-4">
+                Billing Address:
+              </h2>
+
+              {savedAddresses.length > 0 && (
+                <div className="mb-6">
+                  <label className="text-[#646464] text-xs font-semibold uppercase block mb-1">Select from saved addresses</label>
+                  <Select value={selectedAddressId} onValueChange={handleAddressSelect}>
+                    <SelectTrigger className="input">
+                      <SelectValue placeholder="Choose a saved address" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="manual">Add new address...</SelectItem>
+                      {savedAddresses.map((a) => (
+                        <SelectItem key={a.id} value={a.id}>
+                          {a.label || a.line1} ({a.city})
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="mt-2 text-[10px] text-[#646464]">
+                    Fields will autofill based on selection. You can still edit them manually.
+                  </p>
+                </div>
+              )}
 
       <div className="grid md:grid-cols-2 gap-4">
 
@@ -196,7 +371,7 @@ export default function CheckoutPage() {
         {/* State */}
         <div>
           <label className="text-[#646464] text-sm">State</label>
-          <Select onValueChange={(val) => {
+          <Select value={state} onValueChange={(val) => {
             setState(val);
             setCity(""); // reset city
           }}>
@@ -333,8 +508,29 @@ export default function CheckoutPage() {
               <span>Rs.{shipping.toFixed(2)}</span>
             </div>
             <div className="flex justify-between text-[#C03621] font-medium font-melon tracking-wide mt-2">
+              <span>Coupon Discount</span>
+              <span>-Rs.{couponDiscount.toFixed(2)}</span>
+            </div>
+            <div className="flex justify-between text-[#C03621] font-medium font-melon tracking-wide mt-2">
               <span>Grand Total</span>
               <span>Rs.{total.toFixed(2)}</span>
+            </div>
+            <div className="mt-4 space-y-2">
+              <input
+                className="input"
+                placeholder="Coupon code"
+                value={couponCode}
+                onChange={(event) => setCouponCode(event.target.value.toUpperCase())}
+              />
+              <button
+                type="button"
+                onClick={() => void applyCoupon()}
+                disabled={applyingCoupon || items.length === 0}
+                className="w-full rounded-full border border-[#7B3010] bg-white py-2 text-xs font-semibold uppercase text-[#7B3010] disabled:opacity-50"
+              >
+                {applyingCoupon ? "Applying..." : "Apply coupon"}
+              </button>
+              {couponError && <p className="text-xs text-red-700">{couponError}</p>}
             </div>
 
           </div>

@@ -168,15 +168,15 @@ export default function CartPage() {
             <h3 className="mb-6 text-center font-melon text-xl">
               Order Summary
             </h3>
-
-            <div className="mb-6 flex items-center justify-between">
+            <div className="my-4 border-t border-white" />
+            <div className="mb-6 flex items-center font-melon justify-between">
               <p className="text-sm">Apply Coupons</p>
-              <button className="rounded-full bg-black px-3 py-1 text-xs text-white">
+              <button className="rounded-full bg-black px-5 py-2 text-xs text-[#FFC222]">
                 Apply
               </button>
             </div>
-
-            <div className="space-y-3 text-sm">
+            <div className="my-4 border-t border-white" />
+            <div className="space-y-3 text-sm text-[#C03621] font-melon">
               <div className="flex justify-between">
                 <span>Sub Total</span>
                 <span>INR {formatMoney(subTotal)}</span>
@@ -187,9 +187,9 @@ export default function CartPage() {
               </div>
             </div>
 
-            <div className="my-4 border-t" />
+            <div className="my-4 border-t border-white" />
 
-            <div className="flex justify-between font-semibold">
+            <div className="flex justify-between text-[#C03621] font-melon font-medium">
               <span>Grand Total</span>
               <span>INR {formatMoney(total)}</span>
             </div>
@@ -202,10 +202,13 @@ export default function CartPage() {
                 Proceed to checkout →
               </button>
             </Link>
-
-            <p className="mt-4 text-xs text-gray-700">
+            <div className="my-4 border-t border-white" />
+            <div className="flex flex-row gap-2 items-center">
+            <img src="/assets/cartPage/Symbol.png" alt="" />
+            <p className="mt-4 font-semibold text-xs ">
               Safe and Secure Payments. Easy Returns. 100% Authentic Products.
             </p>
+            </div>
           </div>
         </div>
       </section>

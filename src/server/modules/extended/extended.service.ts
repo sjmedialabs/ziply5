@@ -208,28 +208,134 @@ export const upsertAbandonedCart = async (input: {
   })
 }
 
-export const listPromotions = () => prisma.promotion.findMany({ orderBy: { updatedAt: "desc" }, take: 100 })
+export const listPromotions = () =>
+  prisma.promotion.findMany({
+    orderBy: { updatedAt: "desc" },
+    take: 100,
 
-export const createPromotion = (input: {
+    include: {
+      products: {
+        include: {
+          product: true,
+        },
+      },
+
+      variants: {
+        include: {
+          variant: true,
+        },
+      },
+    },
+  })
+
+export const createPromotion = async (input: {
   kind: string
   name: string
   active?: boolean
   startsAt?: Date | null
   endsAt?: Date | null
-  productId?: string | null
+
+  products?: Array<{
+    productId: string
+    discountPercent?: number
+
+    variants?: Array<{
+      variantId: string
+      discountPercent: number
+    }>
+  }>
+
   metadata?: unknown
-}) =>
-  prisma.promotion.create({
+}) => {
+
+  return prisma.promotion.create({
+
     data: {
+
       kind: input.kind,
+
       name: input.name,
+
       active: input.active ?? true,
+
       startsAt: input.startsAt ?? undefined,
+
       endsAt: input.endsAt ?? undefined,
-      productId: input.productId ?? undefined,
-      metadata: input.metadata === undefined ? undefined : (input.metadata as never),
+
+      /* 🔥 Store product-level discount */
+
+      metadata: {
+
+        products:
+          input.products?.map(p => ({
+
+            productId: p.productId,
+
+            discountPercent:
+              p.discountPercent ?? null
+
+          })) ?? []
+
+      },
+
+      /* Product links */
+
+      products: input.products
+        ? {
+            create: input.products.map((p) => ({
+
+              product: {
+
+                connect: {
+
+                  id: p.productId,
+
+                },
+
+              },
+
+            })),
+          }
+        : undefined,
+
+      /* Variant discounts */
+
+      variants: input.products
+        ? {
+            create: input.products.flatMap((p) =>
+
+              p.variants
+                ? p.variants.map((v) => ({
+
+                    variant: {
+
+                      connect: {
+
+                        id: v.variantId,
+
+                      },
+
+                    },
+
+                    metadata: {
+
+                      discountPercent:
+                        v.discountPercent,
+
+                    },
+
+                  }))
+                : []
+
+            ),
+          }
+        : undefined,
+
     },
+
   })
+
+}
 
 export const updatePromotion = async (
   id: string,
@@ -239,17 +345,120 @@ export const updatePromotion = async (
     active: boolean
     startsAt: Date | null
     endsAt: Date | null
-    productId: string | null 
+
+    products: Array<{
+      productId: string
+      discountPercent?: number
+
+      variants?: Array<{
+        variantId: string
+        discountPercent: number
+      }>
+    }>
+
     metadata: unknown
-  }>,
+  }>
 ) => {
+
   return prisma.promotion.update({
+
     where: { id },
+
     data: {
-      ...input,
-      metadata: input.metadata === undefined ? undefined : (input.metadata as never),
-    },
+
+      /* ---------- BASIC FIELDS ---------- */
+
+      kind: input.kind,
+
+      name: input.name,
+
+      active: input.active,
+
+      startsAt:
+        input.startsAt ?? undefined,
+
+      endsAt:
+        input.endsAt ?? undefined,
+
+      /* ---------- STORE SIMPLE PRODUCT DISCOUNTS ---------- */
+
+      metadata:
+        input.products
+          ? {
+              products: input.products.map(p => ({
+
+                productId: p.productId,
+
+                discountPercent:
+                  p.discountPercent ?? null
+
+              }))
+            }
+          : input.metadata === undefined
+            ? undefined
+            : (input.metadata as never),
+
+      /* ---------- REPLACE PRODUCT LINKS ---------- */
+
+      products: input.products
+        ? {
+
+            deleteMany: {},
+
+            create: input.products.map(p => ({
+
+              product: {
+
+                connect: {
+                  id: p.productId
+                }
+
+              }
+
+            }))
+
+          }
+        : undefined,
+
+      /* ---------- REPLACE VARIANT DISCOUNTS ---------- */
+
+      variants: input.products
+        ? {
+
+            deleteMany: {},
+
+            create: input.products.flatMap(p =>
+
+              p.variants
+                ? p.variants.map(v => ({
+
+                    variant: {
+
+                      connect: {
+                        id: v.variantId
+                      }
+
+                    },
+
+                    metadata: {
+
+                      discountPercent:
+                        v.discountPercent
+
+                    }
+
+                  }))
+                : []
+
+            )
+
+          }
+        : undefined,
+
+    }
+
   })
+
 }
 
 export const financeSummary = async () => {
@@ -391,6 +600,9 @@ export const createUserAddress = (
   userId: string,
   data: {
     label?: string | null
+    firstName?: string | null
+    lastName?: string | null
+    email?: string | null
     line1: string
     line2?: string | null
     city: string
@@ -406,19 +618,23 @@ export const updateUserAddress = async (
   id: string,
   userId: string,
   data: Partial<{
-    label: string | null
-    line1: string
-    line2: string | null
-    city: string
-    state: string
-    postalCode: string
-    country: string
-    phone: string | null
-    isDefault: boolean
+    firstName?: string | null
+    lastName?: string | null
+    email?: string | null
+    label?: string | null
+    line1?: string
+    line2?: string | null
+    city?: string
+    state?: string
+    postalCode?: string
+    country?: string
+    phone?: string | null
+    isDefault?: boolean
   }>,
 ) => {
   const found = await prisma.userAddress.findFirst({ where: { id, userId } })
   if (!found) return { count: 0 }
+  console.log("Updating address", id, data)
   await prisma.userAddress.update({ where: { id }, data })
   return { count: 1 }
 }

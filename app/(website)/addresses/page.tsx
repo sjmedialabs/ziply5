@@ -3,11 +3,14 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { authedDelete, authedFetch, authedPost } from "@/lib/dashboard-fetch";
+import { authedDelete, authedFetch, authedPost, authedPatch } from "@/lib/dashboard-fetch";
 
 type Addr = {
   id: string;
   label: string | null;
+  firstName: string | null;
+  lastName: string | null;
+  email: string | null;
   line1: string;
   line2: string | null;
   city: string;
@@ -24,7 +27,11 @@ export default function AddressesPage() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
 
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
+  const [email, setEmail] = useState("");
   const [line1, setLine1] = useState("");
   const [line2, setLine2] = useState("");
   const [city, setCity] = useState("");
@@ -59,8 +66,11 @@ export default function AddressesPage() {
     setBusy("add");
     setError("");
     try {
-      await authedPost("/api/v1/me/addresses", {
+      const payload = {
         label: label.trim() || null,
+        firstName: firstName.trim() || null,
+        lastName: lastName.trim() || null,
+        email: email.trim() || null,
         line1: line1.trim(),
         line2: line2.trim() || null,
         city: city.trim(),
@@ -68,9 +78,23 @@ export default function AddressesPage() {
         postalCode: postalCode.trim(),
         country: country.trim() || "IN",
         phone: phone.trim() || null,
-      });
+      };
+
+      if (editingId) {
+        await authedPatch(`/api/v1/me/addresses/${editingId}`, payload);
+      } else {
+        await authedPost("/api/v1/me/addresses", payload);
+      }
+
+      setEditingId(null);
+      setFirstName("");
+      setLastName("");
+      setEmail("");
       setLine1("");
       setLine2("");
+      setCity("");
+      setState("");
+      setPostalCode("");
       setLabel("");
       setPhone("");
       await load();
@@ -95,8 +119,23 @@ export default function AddressesPage() {
     }
   };
 
+  const startEdit = (a: Addr) => {
+    setEditingId(a.id);
+    setLabel(a.label || "");
+    setFirstName(a.firstName || "");
+    setLastName(a.lastName || "");
+    setEmail(a.email || "");
+    setLine1(a.line1);
+    setLine2(a.line2 || "");
+    setCity(a.city);
+    setState(a.state);
+    setPostalCode(a.postalCode);
+    setPhone(a.phone || "");
+  };
+
   return (
     <div className="mx-auto max-w-3xl px-4 py-12">
+        {/* heading and back link */}
       <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="font-melon text-2xl font-bold text-[#4A1D1F]">Saved addresses</h1>
@@ -112,6 +151,7 @@ export default function AddressesPage() {
 
       {!loading && (
         <>
+          {/* Address Lists */}
           <ul className="mb-8 space-y-3">
             {rows.length === 0 ? (
               <li className="rounded-2xl border border-[#E8DCC8] bg-white p-6 text-sm text-[#646464]">
@@ -124,6 +164,11 @@ export default function AddressesPage() {
                   className="flex flex-wrap items-start justify-between gap-3 rounded-2xl border border-[#E8DCC8] bg-white p-4 shadow-sm"
                 >
                   <div className="text-sm">
+                    {(a.firstName || a.lastName) && (
+                      <p className="font-semibold text-[#4A1D1F]">
+                        {a.firstName} {a.lastName} {a.email ? `(${a.email})` : ""}
+                      </p>
+                    )}
                     {a.label && <p className="font-semibold text-[#4A1D1F]">{a.label}</p>}
                     <p className="text-[#333]">
                       {a.line1}
@@ -139,27 +184,64 @@ export default function AddressesPage() {
                       </span>
                     )}
                   </div>
-                  <button
-                    type="button"
-                    disabled={busy === a.id}
-                    onClick={() => remove(a.id)}
-                    className="text-xs font-semibold uppercase text-red-700 hover:underline disabled:opacity-50"
-                  >
-                    {busy === a.id ? "…" : "Remove"}
-                  </button>
+                  <div className="flex gap-4">
+                    <button
+                      type="button"
+                      onClick={() => startEdit(a)}
+                      className="text-xs font-semibold uppercase text-[#7B3010] hover:underline"
+                    >
+                      Edit
+                    </button>
+                    <button
+                      type="button"
+                      disabled={busy === a.id}
+                      onClick={() => remove(a.id)}
+                      className="text-xs font-semibold uppercase text-red-700 hover:underline disabled:opacity-50"
+                    >
+                      {busy === a.id ? "…" : "Remove"}
+                    </button>
+                  </div>
                 </li>
               ))
             )}
           </ul>
-
+            {/* Add address form */}
           <div className="rounded-2xl border border-[#E8DCC8] bg-[#FFFBF3]/40 p-6">
-            <h2 className="font-melon text-lg font-semibold text-[#4A1D1F]">Add address</h2>
+            <h2 className="font-melon text-lg font-semibold text-[#4A1D1F]">
+              {editingId ? "Edit address" : "Add address"}
+            </h2>
+            {editingId && <button onClick={() => setEditingId(null)} className="text-xs text-[#646464] underline">Cancel editing</button>}
             <form onSubmit={add} className="mt-4 grid gap-3 sm:grid-cols-2">
               <label className="text-xs font-semibold uppercase text-[#646464] sm:col-span-2">
                 Label (optional)
                 <input
                   value={label}
                   onChange={(e) => setLabel(e.target.value)}
+                  className="mt-1 w-full rounded-lg border border-[#D9D9D1] bg-white px-3 py-2 text-sm"
+                />
+              </label>
+              <label className="text-xs font-semibold uppercase text-[#646464]">
+                First Name
+                <input
+                  value={firstName}
+                  onChange={(e) => setFirstName(e.target.value)}
+                  className="mt-1 w-full rounded-lg border border-[#D9D9D1] bg-white px-3 py-2 text-sm"
+                />
+              </label>
+              <label className="text-xs font-semibold uppercase text-[#646464]">
+                Last Name
+                <input
+                  value={lastName}
+                  onChange={(e) => setLastName(e.target.value)}
+                  className="mt-1 w-full rounded-lg border border-[#D9D9D1] bg-white px-3 py-2 text-sm"
+                />
+              </label>
+              <label className="text-xs font-semibold uppercase text-[#646464] sm:col-span-2">
+                Email Address
+                <input
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
                   className="mt-1 w-full rounded-lg border border-[#D9D9D1] bg-white px-3 py-2 text-sm"
                 />
               </label>

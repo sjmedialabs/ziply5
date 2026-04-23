@@ -19,14 +19,24 @@ type Refund = {
   status: string;
   reason: string | null;
   createdAt: string;
-  order?: { id: string };
+  order?: any;
 };
 
-const RF_STATUSES = ["pending", "initiated", "completed", "manual_refunded", "rejected"] as const;
+type Transaction = {
+  id: string;
+  amount: string | number;
+  type: string;
+  status: string;
+  referenceId?: string | null;
+  createdAt: string;
+};
+
+const RF_STATUSES = ["pending", "completed", "rejected"] as const;
 
 export default function AdminFinancePage() {
   const [summary, setSummary] = useState<Summary | null>(null);
   const [refunds, setRefunds] = useState<Refund[]>([]);
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
   const [rfDraft, setRfDraft] = useState<Record<string, string>>({});
@@ -35,17 +45,27 @@ export default function AdminFinancePage() {
   const [orderId, setOrderId] = useState("");
   const [refundAmount, setRefundAmount] = useState("");
   const [refundReason, setRefundReason] = useState("");
+  const [refundSearch, setRefundSearch] = useState("");
+  const [refundStatusFilter, setRefundStatusFilter] = useState("all");
+  const [refundPage, setRefundPage] = useState(1);
+  const REFUNDS_PER_PAGE = 10;
+  const [transactionSearch, setTransactionSearch] = useState("");
+  const [transactionStatusFilter, setTransactionStatusFilter] = useState("all");
+  const [transactionPage, setTransactionPage] = useState(1);
+  const TRANSACTIONS_PER_PAGE = 10;
 
   const load = useCallback(() => {
     setLoading(true);
     setError("");
     Promise.all([
       authedFetch<Summary>("/api/v1/finance/summary"),
-      authedFetch<Refund[]>("/api/v1/finance/refunds?page=1&limit=50"),
+      authedFetch<Refund[]>("/api/v1/finance/refunds"),
+      authedFetch<Transaction[]>("/api/v1/finance/transactions").catch(() => []), // Failsafe if endpoint isn't ready
     ])
-      .then(([s, r]) => {
+      .then(([s, r, t]) => {
         setSummary(s);
         setRefunds(r);
+        setTransactions(t || []); 
         const rf: Record<string, string> = {};
         r.forEach((x) => {
           rf[x.id] = x.status;
@@ -133,11 +153,29 @@ export default function AdminFinancePage() {
     }
   };
 
-  const filteredRefunds = refunds.filter((refund) => {
-    if (refundFilter === "pending") return ["pending", "processing", "initiated"].includes(refund.status);
-    if (refundFilter === "failed") return ["failed", "rejected"].includes(refund.status);
-    return true;
+  const filteredRefunds = refunds.filter((r) => {
+    const matchesSearch = r.orderId.toLowerCase().includes(refundSearch.toLowerCase());
+    const matchesStatus = refundStatusFilter === "all" || r.status === refundStatusFilter;
+    return matchesSearch && matchesStatus;
   });
+
+  const totalRefundPages = Math.ceil(filteredRefunds.length / REFUNDS_PER_PAGE) || 1;
+  const paginatedRefunds = filteredRefunds.slice(
+    (refundPage - 1) * REFUNDS_PER_PAGE,
+    refundPage * REFUNDS_PER_PAGE
+  );
+
+  const filteredTransactions = transactions.filter((t) => {
+    const matchesSearch = t.id.toLowerCase().includes(transactionSearch.toLowerCase());
+    const matchesStatus = transactionStatusFilter === "all" || t.status === transactionStatusFilter;
+    return matchesSearch && matchesStatus;
+  });
+
+  const totalTransactionPages = Math.ceil(filteredTransactions.length / TRANSACTIONS_PER_PAGE) || 1;
+  const paginatedTransactions = filteredTransactions.slice(
+    (transactionPage - 1) * TRANSACTIONS_PER_PAGE,
+    transactionPage * TRANSACTIONS_PER_PAGE
+  );
 
   return (
     <section className="mx-auto max-w-7xl space-y-6">
@@ -208,27 +246,56 @@ export default function AdminFinancePage() {
       {!loading && (
         <>
           <div>
-            <h2 className="mb-2 font-melon text-lg font-semibold text-[#4A1D1F]">Refunds</h2>
-            <div className="mb-2">
-              <select
-                value={refundFilter}
-                onChange={(event) => setRefundFilter(event.target.value)}
-                className="rounded-lg border border-[#D9D9D1] bg-white px-3 py-2 text-xs text-[#4A1D1F]"
-              >
-                <option value="all">All refunds</option>
-                <option value="pending">Refund pending</option>
-                <option value="failed">Failed refunds</option>
-              </select>
+            <div className="mb-2 flex flex-wrap items-center justify-between gap-4">
+              <h2 className="font-melon text-lg font-semibold text-[#4A1D1F]">Refunds</h2>
+              <div className="flex flex-wrap items-center gap-2">
+                <input
+                  type="text"
+                  placeholder="Search Order ID..."
+                  value={refundSearch}
+                onChange={(e) => {
+                  setRefundSearch(e.target.value);
+                  setRefundPage(1);
+                }}
+                  className="w-40 rounded-lg border border-[#D9D9D1] bg-white px-3 py-1.5 text-xs focus:border-[#7B3010] focus:outline-none"
+                />
+                <select
+                  value={refundStatusFilter}
+                onChange={(e) => {
+                  setRefundStatusFilter(e.target.value);
+                  setRefundPage(1);
+                }}
+                  className="rounded-lg border border-[#D9D9D1] bg-white px-2 py-1.5 text-xs capitalize focus:border-[#7B3010] focus:outline-none"
+                >
+                  <option value="all">All Statuses</option>
+                  {RF_STATUSES.map((s) => (
+                    <option key={s} value={s}>
+                      {s}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setRefundSearch("");
+                    setRefundStatusFilter("all");
+                  setRefundPage(1);
+                  }}
+                  className="rounded-full cursor-pointer bg-[#7B3010] px-4 py-1.5 text-xs font-semibold uppercase tracking-wide text-white"
+                >
+                  Clear
+                </button>
+              </div>
             </div>
-            <ConsoleTable headers={["Order", "Reference", "Amount", "Status", "Created", ""]}>
-              {filteredRefunds.length === 0 ? (
+            <ConsoleTable headers={["Order", "Amount", "Status", "Reason", ""]}>
+            {paginatedRefunds.length === 0 ? (
                 <tr>
-                  <ConsoleTd className="py-6 text-center text-[#646464]" colSpan={6}>
-                    No refunds.
+                  <ConsoleTd className="py-6 text-center text-[#646464]" colSpan={5}>
+                    {refunds.length === 0 ? "No refunds." : "No refunds match your filters."}
                   </ConsoleTd>
                 </tr>
               ) : (
-                filteredRefunds.map((r) => (
+              paginatedRefunds.map((r) => (
                   <tr key={r.id} className="hover:bg-[#FFFBF3]/80">
                     <ConsoleTd className="font-mono text-[11px]">{(r.order?.id ?? r.orderId).slice(0, 14)}…</ConsoleTd>
                     <ConsoleTd className="text-[11px]">{r.id.slice(0, 10)}...</ConsoleTd>
@@ -246,7 +313,8 @@ export default function AdminFinancePage() {
                         ))}
                       </select>
                     </ConsoleTd>
-                    <ConsoleTd className="text-xs">{new Date(r.createdAt).toLocaleString()}</ConsoleTd>
+                    <ConsoleTd className="text-xs">{r.reason || "—"}</ConsoleTd>
+
                     <ConsoleTd>
                       <button
                         type="button"
@@ -277,7 +345,127 @@ export default function AdminFinancePage() {
                 ))
               )}
             </ConsoleTable>
+          {totalRefundPages > 1 && (
+            <div className="mt-4 flex items-center justify-between">
+              <p className="text-xs text-[#646464]">
+                Showing {(refundPage - 1) * REFUNDS_PER_PAGE + 1} to {Math.min(refundPage * REFUNDS_PER_PAGE, filteredRefunds.length)} of {filteredRefunds.length} entries
+              </p>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  disabled={refundPage === 1}
+                  onClick={() => setRefundPage((p) => Math.max(1, p - 1))}
+                  className="rounded border border-[#D9D9D1] bg-white px-3 py-1 text-xs font-semibold text-[#4A1D1F] disabled:opacity-50"
+                >
+                  Previous
+                </button>
+                <span className="text-xs font-semibold text-[#646464]">
+                  Page {refundPage} of {totalRefundPages}
+                </span>
+                <button
+                  type="button"
+                  disabled={refundPage === totalRefundPages}
+                  onClick={() => setRefundPage((p) => Math.min(totalRefundPages, p + 1))}
+                  className="rounded border border-[#D9D9D1] bg-white px-3 py-1 text-xs font-semibold text-[#4A1D1F] disabled:opacity-50"
+                >
+                  Next
+                </button>
+              </div>
+            </div>
+          )}
           </div>
+
+        <div className="mt-8">
+          <div className="mb-2 flex flex-wrap items-center justify-between gap-4">
+            <h2 className="font-melon text-lg font-semibold text-[#4A1D1F]">Transactions</h2>
+            <div className="flex flex-wrap items-center gap-2">
+              <input
+                type="text"
+                placeholder="Search ID..."
+                value={transactionSearch}
+                onChange={(e) => {
+                  setTransactionSearch(e.target.value);
+                  setTransactionPage(1);
+                }}
+                className="w-40 rounded-lg border border-[#D9D9D1] bg-white px-3 py-1.5 text-xs focus:border-[#7B3010] focus:outline-none"
+              />
+              <select
+                value={transactionStatusFilter}
+                onChange={(e) => {
+                  setTransactionStatusFilter(e.target.value);
+                  setTransactionPage(1);
+                }}
+                className="rounded-lg border border-[#D9D9D1] bg-white px-2 py-1.5 text-xs capitalize focus:border-[#7B3010] focus:outline-none"
+              >
+                <option value="all">All Statuses</option>
+                {Array.from(new Set(transactions.map((t) => t.status))).map((s) => (
+                  <option key={s} value={s}>
+                    {s}
+                  </option>
+                ))}
+              </select>
+              <button
+                type="button"
+                onClick={() => {
+                  setTransactionSearch("");
+                  setTransactionStatusFilter("all");
+                  setTransactionPage(1);
+                }}
+                className="rounded-full cursor-pointer bg-[#7B3010] px-4 py-1.5 text-xs font-semibold uppercase tracking-wide text-white"
+              >
+                Clear
+              </button>
+            </div>
+          </div>
+          <ConsoleTable headers={["ID", "Reference", "Type", "Amount", "Status", "Date"]}>
+            {paginatedTransactions.length === 0 ? (
+              <tr>
+                <ConsoleTd className="py-6 text-center text-[#646464]" colSpan={6}>
+                  {transactions.length === 0 ? "No transactions found." : "No transactions match your filters."}
+                </ConsoleTd>
+              </tr>
+            ) : (
+              paginatedTransactions.map((t) => (
+                <tr key={t.id} className="hover:bg-[#FFFBF3]/80">
+                  <ConsoleTd className="font-mono text-[11px]">{t.id.slice(0, 14)}…</ConsoleTd>
+                  <ConsoleTd className="text-xs">{t.referenceId || "—"}</ConsoleTd>
+                  <ConsoleTd className="text-xs capitalize">{t.type}</ConsoleTd>
+                  <ConsoleTd>Rs.{Number(t.amount).toFixed(2)}</ConsoleTd>
+                  <ConsoleTd className="text-xs capitalize">{t.status}</ConsoleTd>
+                  <ConsoleTd className="text-xs">{new Date(t.createdAt).toLocaleString()}</ConsoleTd>
+                </tr>
+              ))
+            )}
+          </ConsoleTable>
+          {totalTransactionPages > 1 && (
+            <div className="mt-4 flex items-center justify-between">
+              <p className="text-xs text-[#646464]">
+                Showing {(transactionPage - 1) * TRANSACTIONS_PER_PAGE + 1} to {Math.min(transactionPage * TRANSACTIONS_PER_PAGE, filteredTransactions.length)} of {filteredTransactions.length} entries
+              </p>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  disabled={transactionPage === 1}
+                  onClick={() => setTransactionPage((p) => Math.max(1, p - 1))}
+                  className="rounded border border-[#D9D9D1] bg-white px-3 py-1 text-xs font-semibold text-[#4A1D1F] disabled:opacity-50"
+                >
+                  Previous
+                </button>
+                <span className="text-xs font-semibold text-[#646464]">
+                  Page {transactionPage} of {totalTransactionPages}
+                </span>
+                <button
+                  type="button"
+                  disabled={transactionPage === totalTransactionPages}
+                  onClick={() => setTransactionPage((p) => Math.min(totalTransactionPages, p + 1))}
+                  className="rounded border border-[#D9D9D1] bg-white px-3 py-1 text-xs font-semibold text-[#4A1D1F] disabled:opacity-50"
+                >
+                  Next
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
         </>
       )}
     </section>

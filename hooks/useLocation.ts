@@ -6,6 +6,10 @@ const data = {
   Maharashtra: ["Mumbai", "Pune", "Nagpur"],
   Karnataka: ["Bangalore", "Mysore"],
   Delhi: ["New Delhi"],
+  "Madhya Pradesh": ["Indore", "Bhopal", "Satna", "Gwalior"],
+  "Uttar Pradesh": ["Lucknow", "Kanpur", "Varanasi"],
+  Rajasthan: ["Jaipur", "Udaipur", "Jodhpur"],
+  Telangana: ["Hyderabad", "Warangal"],
 };
 
 export function useLocation() {
