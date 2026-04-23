@@ -64,6 +64,7 @@ const [tagId, setTagId] = useState("");
   const [data, setData] = useState<ReportData | null>(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [isSearching, setIsSearching] = useState(false);
 
  const run = () => {
   setLoading(true);
@@ -92,7 +93,10 @@ const [tagId, setTagId] = useState("");
       setData(null);
       setError(e.message);
     })
-    .finally(() => setLoading(false));
+    .finally(() => {
+      setLoading(false);
+      setIsSearching(false);
+    });
 };
 
 
@@ -228,11 +232,14 @@ const [tagId, setTagId] = useState("");
             </div>
         <button
           type="button"
-          onClick={() => run()}
-          disabled={loading}
+          onClick={() => {
+            setIsSearching(true);
+            run();
+          }}
+          disabled={isSearching}
           className="rounded-full bg-[#7B3010] px-5 py-2.5 text-xs font-semibold uppercase tracking-wide text-white disabled:opacity-50"
         >
-          {loading ? "Loading…" : "Search"}
+          {isSearching ? "Loading…" : "Search"}
         </button>
         <Button
   variant="outline"
