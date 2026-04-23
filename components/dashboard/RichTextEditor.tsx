@@ -26,10 +26,12 @@ export function RichTextEditor({
     onUpdate: ({ editor: instance }) => {
       onChange(instance.getHTML())
     },
+    parseOptions: {
+      preserveWhitespace: "full",
+    },
     editorProps: {
       attributes: {
-        class:
-          "tiptap prose max-w-none min-h-[120px] rounded-b-lg border border-[#D9D9D1] px-3 py-2 text-sm outline-none focus:border-[#7B3010]",
+        class: "tiptap prose max-w-none min-h-[120px] rounded-b-lg border border-[#D9D9D1] px-3 py-2 text-sm outline-none focus:border-[#7B3010] whitespace-pre-wrap",
       },
     },
   })
@@ -52,6 +54,9 @@ export function RichTextEditor({
           float: left;
           height: 0;
           pointer-events: none;
+        }
+        .tiptap p {
+          min-height: 1.25rem;
         }
       `}</style>
       <div className="flex flex-wrap gap-2 rounded-t-lg border border-b-0 border-[#D9D9D1] bg-[#FFFBF3] p-2 text-xs">

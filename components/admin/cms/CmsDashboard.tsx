@@ -19,6 +19,7 @@ import PrivacyPolicySectionEditor from './PrivacyPolicySectionEditor';
 import TermsAndConditionsSectionEditor from './TermsAndConditionsSectionEditor';
 import ReturnAndRefundSectionEditor from './ReturnAndRefundSectionEditor';
 import ShippingInfoSectionEditor from './ShippingInfoSectionEditor';
+import AboutHeroEditor from './AboutHeroEditor';
 import AboutJourneyEditor from './AboutJourneyEditor';
 import AboutMissionEditor from './AboutMissionEditor';
 import AboutStatsEditor from './AboutStatsEditor';
@@ -62,11 +63,12 @@ export default function CmsDashboard() {
   ];
 
   const aboutSections = [
-    { type: 'about-journey', component: AboutJourneyEditor, position: 0 },
-    { type: 'about-mission', component: AboutMissionEditor, position: 1 },
-    { type: 'about-stats', component: AboutStatsEditor, position: 2 },
-    { type: 'about-team', component: AboutTeamEditor, position: 3 },
-    { type: 'about-subscription', component: AboutSubscriptionEditor, position: 4 },
+    { type: 'about-hero', component: AboutHeroEditor, position: 0 },
+    { type: 'about-journey', component: AboutJourneyEditor, position: 1 },
+    { type: 'about-mission', component: AboutMissionEditor, position: 2 },
+    { type: 'about-stats', component: AboutStatsEditor, position: 3 },
+    { type: 'about-team', component: AboutTeamEditor, position: 4 },
+    { type: 'about-subscription', component: AboutSubscriptionEditor, position: 5 },
   ];
 
   const privacySections = [
