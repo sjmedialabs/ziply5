@@ -28,6 +28,8 @@ import AboutSubscriptionEditor from './AboutSubscriptionEditor';
 import ContactUsSectionEditor from './ContactUsSectionEditor';
 import FaqSectionEditor from './FaqSectionEditor';
 import PromoSectionEditor from './PromoSectionEditor';
+import HeaderSectionEditor from './HeaderSectionEditor';
+import FooterSectionEditor from './FooterSectionEditor';
 
 type CmsSection = {
   sectionType: string;
@@ -49,7 +51,7 @@ export default function CmsDashboard() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
-  const [tab, setTab] = useState<'home' | 'about' | 'privacy' | 'terms' | 'returns' | 'shipping' | 'contact' | 'faq' | 'promos'>('home');
+  const [tab, setTab] = useState<'home' | 'about' | 'privacy' | 'terms' | 'returns' | 'shipping' | 'contact' | 'faq' | 'promos' | 'header' | 'footer'>('home');
   const [seo, setSeo] = useState({ metaTitle: '', metaDescription: '' });
 
   // Section types for Home
@@ -99,6 +101,14 @@ export default function CmsDashboard() {
     { type: 'promos', component: PromoSectionEditor, position: 0 },
   ];
 
+  const headerSections = [
+    { type: 'header', component: HeaderSectionEditor, position: 0 },
+  ];
+
+  const footerSections = [
+    { type: 'footer', component: FooterSectionEditor, position: 0 },
+  ];
+
   const loadPage = useCallback(async (slug: string) => {
     setLoading(true);
     setError('');
@@ -112,7 +122,7 @@ export default function CmsDashboard() {
         // Create stub
         const stub: CmsPage = {
           slug,
-          title: slug === 'home' ? 'Home Page' : slug === 'about' ? 'About Page' : slug === 'privacy' ? 'Privacy Policy' : slug === 'terms' ? 'Terms & Conditions' : slug === 'returns' ? 'Return & Refund' : slug === 'shipping' ? 'Shipping Info' : slug === 'contact' ? 'Contact Us' : slug === 'promos' ? 'Promos' : 'FAQ',
+          title: slug === 'home' ? 'Home Page' : slug === 'about' ? 'About Page' : slug === 'privacy' ? 'Privacy Policy' : slug === 'terms' ? 'Terms & Conditions' : slug === 'returns' ? 'Return & Refund' : slug === 'shipping' ? 'Shipping Info' : slug === 'contact' ? 'Contact Us' : slug === 'promos' ? 'Promos' : slug === 'header' ? 'Header Settings' : slug === 'footer' ? 'Footer Settings' : 'FAQ',
           status: 'draft' as const,
           sections: [],
         };
@@ -159,7 +169,7 @@ export default function CmsDashboard() {
     if (!page) return;
     const existingIdx = page.sections.findIndex(s => s.sectionType === type);
     const newSections = [...page.sections];
-    const allSections = tab === 'home' ? homeSections : tab === 'about' ? aboutSections : tab === 'privacy' ? privacySections : tab === 'terms' ? termsSections : tab === 'returns' ? returnSections : tab === 'shipping' ? shippingSections : tab === 'contact' ? contactSections : tab === 'faq' ? faqSections : tab === 'promos' ? promoSections : [];
+    const allSections = tab === 'home' ? homeSections : tab === 'about' ? aboutSections : tab === 'privacy' ? privacySections : tab === 'terms' ? termsSections : tab === 'returns' ? returnSections : tab === 'shipping' ? shippingSections : tab === 'contact' ? contactSections : tab === 'faq' ? faqSections : tab === 'promos' ? promoSections : tab === 'header' ? headerSections : tab === 'footer' ? footerSections : [];
     const position = allSections.find(s => s.type === type)?.position ?? newSections.length;
     
     if (existingIdx >= 0) {
@@ -185,7 +195,7 @@ export default function CmsDashboard() {
         <div>
           <h1 className="font-melon text-2xl font-bold text-[#4A1D1F]">CMS Dashboard</h1>
           <p className="text-sm text-[#646464]">
-            Manage dynamic content for pages. Changes save to database via API.
+            Manage dynamic content for website.
           </p>
         </div>
         <div className="flex gap-2">
@@ -207,15 +217,17 @@ export default function CmsDashboard() {
 
       <Tabs value={tab} onValueChange={(v) => setTab(v as any)} className="space-y-4">
         <TabsList className="flex flex-wrap justify-start w-full h-auto gap-1">
-          <TabsTrigger className='cursor-pointer' value="home">Home</TabsTrigger>
-          <TabsTrigger className='cursor-pointer' value="about">About</TabsTrigger>
-          <TabsTrigger className='cursor-pointer' value="privacy">Privacy Policy</TabsTrigger>
-          <TabsTrigger className='cursor-pointer' value="terms">Terms & Conditions</TabsTrigger>
-          <TabsTrigger className='cursor-pointer' value="returns">Return & Refund</TabsTrigger>
-          <TabsTrigger className='cursor-pointer' value="shipping">Shipping Info</TabsTrigger>
-          <TabsTrigger className='cursor-pointer' value="contact">Contact Us</TabsTrigger>
-          <TabsTrigger className='cursor-pointer' value="faq">FAQ</TabsTrigger>
-          <TabsTrigger className='cursor-pointer' value="promos">Promos</TabsTrigger>
+          <TabsTrigger className='cursor-pointer data-[state=active]:bg-primary data-[state=active]:text-white' value="home">Home</TabsTrigger>
+          <TabsTrigger className='cursor-pointer data-[state=active]:bg-primary data-[state=active]:text-white' value="about">About</TabsTrigger>
+          <TabsTrigger className='cursor-pointer data-[state=active]:bg-primary data-[state=active]:text-white' value="privacy">Privacy Policy</TabsTrigger>
+          <TabsTrigger className='cursor-pointer data-[state=active]:bg-primary data-[state=active]:text-white' value="terms">Terms & Conditions</TabsTrigger>
+          <TabsTrigger className='cursor-pointer data-[state=active]:bg-primary data-[state=active]:text-white' value="returns">Return & Refund</TabsTrigger>
+          <TabsTrigger className='cursor-pointer data-[state=active]:bg-primary data-[state=active]:text-white' value="shipping">Shipping Info</TabsTrigger>
+          <TabsTrigger className='cursor-pointer data-[state=active]:bg-primary data-[state=active]:text-white' value="contact">Contact Us</TabsTrigger>
+          <TabsTrigger className='cursor-pointer data-[state=active]:bg-primary data-[state=active]:text-white' value="faq">FAQ</TabsTrigger>
+          <TabsTrigger className='cursor-pointer data-[state=active]:bg-primary data-[state=active]:text-white' value="promos">Promos</TabsTrigger>
+          <TabsTrigger className='cursor-pointer data-[state=active]:bg-primary data-[state=active]:text-white' value="header">Header</TabsTrigger>
+          <TabsTrigger className='cursor-pointer data-[state=active]:bg-primary data-[state=active]:text-white' value="footer">Footer</TabsTrigger>
         </TabsList>
         
         <TabsContent value="home" className="space-y-6 mt-0">
@@ -328,6 +340,32 @@ export default function CmsDashboard() {
               <div key={type}>
                 <Component 
                   value={page?.sections.find(s => s.sectionType === type)?.contentJson || []}
+                  onChange={(content: any) => updateSection(type, content)}
+                />
+              </div>
+            ))}
+          </div>
+        </TabsContent>
+
+        <TabsContent value="header" className="space-y-6 mt-0">
+          <div className="space-y-6">
+            {headerSections.map(({ type, component: Component }) => (
+              <div key={type}>
+                <Component 
+                  value={page?.sections.find(s => s.sectionType === type)?.contentJson || {}}
+                  onChange={(content: any) => updateSection(type, content)}
+                />
+              </div>
+            ))}
+          </div>
+        </TabsContent>
+
+        <TabsContent value="footer" className="space-y-6 mt-0">
+          <div className="space-y-6">
+            {footerSections.map(({ type, component: Component }) => (
+              <div key={type}>
+                <Component 
+                  value={page?.sections.find(s => s.sectionType === type)?.contentJson || {}}
                   onChange={(content: any) => updateSection(type, content)}
                 />
               </div>
