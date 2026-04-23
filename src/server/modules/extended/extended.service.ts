@@ -600,6 +600,9 @@ export const createUserAddress = (
   userId: string,
   data: {
     label?: string | null
+    firstName?: string | null
+    lastName?: string | null
+    email?: string | null
     line1: string
     line2?: string | null
     city: string
@@ -615,19 +618,23 @@ export const updateUserAddress = async (
   id: string,
   userId: string,
   data: Partial<{
-    label: string | null
-    line1: string
-    line2: string | null
-    city: string
-    state: string
-    postalCode: string
-    country: string
-    phone: string | null
-    isDefault: boolean
+    firstName?: string | null
+    lastName?: string | null
+    email?: string | null
+    label?: string | null
+    line1?: string
+    line2?: string | null
+    city?: string
+    state?: string
+    postalCode?: string
+    country?: string
+    phone?: string | null
+    isDefault?: boolean
   }>,
 ) => {
   const found = await prisma.userAddress.findFirst({ where: { id, userId } })
   if (!found) return { count: 0 }
+  console.log("Updating address", id, data)
   await prisma.userAddress.update({ where: { id }, data })
   return { count: 1 }
 }

@@ -6,10 +6,17 @@ import { deleteUserAddress, updateUserAddress } from "@/src/server/modules/exten
 import { z } from "zod"
 
 const patchSchema = z.object({
+  firstName: z.string().optional().nullable(),
+  lastName: z.string().optional().nullable(),
+  email: z.string().email().optional().nullable(),
+  label: z.string().optional().nullable(),
   line1: z.string().min(1).optional(),
+  line2: z.string().optional().nullable(),
   city: z.string().min(1).optional(),
   state: z.string().optional(),
   postalCode: z.string().optional(),
+  country: z.string().optional(),
+  phone: z.string().optional().nullable(),
   isDefault: z.boolean().optional(),
 })
 

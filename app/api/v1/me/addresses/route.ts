@@ -10,6 +10,9 @@ import { z } from "zod"
 
 const createSchema = z.object({
   label: z.string().optional().nullable(),
+  firstName: z.string().optional().nullable(),
+  lastName: z.string().optional().nullable(),
+  email: z.string().email().optional().nullable(),
   line1: z.string().min(1),
   line2: z.string().optional().nullable(),
   city: z.string().min(1),

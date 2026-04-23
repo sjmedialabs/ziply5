@@ -16,6 +16,7 @@ type CreateProductInput = {
   basePrice?: number | null
   salePrice?: number | null
   discountPercent?: number | null
+  weight?: string | null
   taxIncluded?: boolean
   stockStatus?: "in_stock" | "out_of_stock"
   totalStock?: number
@@ -61,6 +62,7 @@ type UpdateProductInput = Partial<{
   basePrice: number | null
   salePrice: number | null
   discountPercent: number | null
+  weight: string | null
   taxIncluded: boolean
   stockStatus: "in_stock" | "out_of_stock"
   totalStock: number
@@ -106,6 +108,7 @@ const productSelect = {
   basePrice: true,
   salePrice: true,
   discountPercent: true,
+  weight: true,
   taxIncluded: true,
   stockStatus: true,
   totalStock: true,
@@ -144,6 +147,7 @@ const productSelectPublicList = {
   description: true,
   basePrice: true,
   salePrice: true,
+  weight: true,
   price: true,
   taxIncluded: true,
   stockStatus: true,
@@ -434,6 +438,7 @@ export const createProduct = async (input: CreateProductInput) => {
       basePrice: input.basePrice ?? defaultVariant?.mrp ?? null,
       salePrice: input.salePrice ?? effectivePrice,
       discountPercent: input.discountPercent ?? defaultVariant?.discountPercent ?? null,
+      weight: input.weight ?? null,
       taxIncluded: input.taxIncluded ?? true,
       stockStatus: effectiveStockStatus,
       totalStock: effectiveTotalStock,
@@ -557,6 +562,7 @@ export const updateProduct = async (
         ...("basePrice" in input ? { basePrice: input.basePrice } : {}),
         ...("salePrice" in input ? { salePrice: input.salePrice } : {}),
         ...("discountPercent" in input ? { discountPercent: input.discountPercent } : {}),
+        ...("weight" in input ? { weight: input.weight } : {}),
         ...("taxIncluded" in input && input.taxIncluded !== undefined ? { taxIncluded: input.taxIncluded } : {}),
         ...("stockStatus" in input && input.stockStatus !== undefined ? { stockStatus: input.stockStatus } : {}),
         ...("totalStock" in input && input.totalStock !== undefined ? { totalStock: input.totalStock } : {}),
