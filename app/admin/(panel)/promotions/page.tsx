@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { authedFetch, authedPost } from "@/lib/dashboard-fetch";
+import { authedFetch, authedPost, authedPatch } from "@/lib/dashboard-fetch";
 import {
   ConsoleTable,
   ConsoleTd,
@@ -28,6 +28,7 @@ type Promo = {
   active: boolean;
   startsAt: string | null;
   endsAt: string | null;
+  products?: SelectedProduct[];
 };
 
 type SelectedProduct = {
@@ -82,6 +83,9 @@ export default function AdminPromotionsPage() {
 
   const [saving, setSaving] =
     useState(false);
+
+  const [togglingId, setTogglingId] =
+    useState<string | null>(null);
 
   /* ---------- Products ---------- */
 
@@ -141,7 +145,7 @@ export default function AdminPromotionsPage() {
 
 }, []);
 
-  console.log("Fetched products:::",products);
+  console.log("fetched promottions are::::",rows);
 
   useEffect(() => {
 
@@ -174,9 +178,68 @@ export default function AdminPromotionsPage() {
     }
   };
 
-  /* ---------------- CREATE ---------------- */
+  /* ---------------- TOGGLE STATUS ---------------- */
 
-  const create = async (
+  const toggleStatus = async (id: string, currentActive: boolean) => {
+    setTogglingId(id);
+    setError("");
+    try {
+      await authedPatch(`/api/v1/promotions/${id}`, { active: !currentActive });
+      setRows((prev) =>
+        prev.map((r) => (r.id === id ? { ...r, active: !currentActive } : r))
+      );
+    } catch (e) {
+      setError(
+        e instanceof Error
+          ? e.message
+          : "Toggle failed"
+      );
+    } finally {
+      setTogglingId(null);
+    }
+  };
+
+  /* ---------------- SUBMIT / EDIT ---------------- */
+
+  const [editingId, setEditingId] = useState<string | null>(null);
+
+  const handleEdit = (promo: Promo) => {
+    setEditingId(promo.id);
+    setName(promo.name);
+
+    const lowerKind = promo.kind.toLowerCase();
+    setKind(KINDS.includes(lowerKind as any) ? (lowerKind as any) : "featured");
+
+    setActive(promo.active);
+
+    const toLocalDatetime = (isoString: string | null) => {
+      if (!isoString) return "";
+      const date = new Date(isoString);
+      const local = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
+      return local.toISOString().slice(0, 16);
+    };
+
+    setStartsAt(toLocalDatetime(promo.startsAt));
+    setEndsAt(toLocalDatetime(promo.endsAt));
+
+    // Normalize products to ensure discount values and IDs match our SelectedProduct type
+    const mappedProducts = (promo.products || []).map((sp: any) => {
+      const variants = sp.variants || sp.productVariants || [];
+      return {
+        productId: sp.productId || sp.product?.id || sp.id,
+        discountPercent: sp.discountPercent ?? sp.discountPercentage ?? sp.discount ?? sp.discountValue ?? 0,
+        variants: variants.map((sv: any) => ({
+          variantId: sv.variantId || sv.variant?.id || sv.id,
+          discountPercent: sv.discountPercent ?? sv.discountPercentage ?? sv.discount ?? sv.discountValue ?? 0,
+        })),
+      };
+    });
+    setSelectedProducts(mappedProducts as SelectedProduct[]);
+
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  const handleSubmit = async (
     e: React.FormEvent
   ) => {
 
@@ -190,35 +253,28 @@ export default function AdminPromotionsPage() {
 
     try {
 
-      await authedPost(
-        "/api/v1/promotions",
+      const payload: any = {
+        kind: kind.toUpperCase(),
+        name: name.trim(),
+        active,
+        startsAt: startsAt ? new Date(startsAt).toISOString() : null,
+        endsAt: endsAt ? new Date(endsAt).toISOString() : null,
+      };
 
-        {
-          kind:kind.toUpperCase(),
+      if (selectedProducts.length > 0) {
+        payload.products = selectedProducts;
+      }
 
-          name: name.trim(),
-
-          active,
-
-          startsAt:
-            startsAt
-              ? new Date(startsAt)
-                  .toISOString()
-              : null,
-
-          endsAt:
-            endsAt
-              ? new Date(endsAt)
-                  .toISOString()
-              : null,
-
-          products:
-            selectedProducts,
-
-        }
-      );
+      if (editingId) {
+        await authedPatch(`/api/v1/promotions/${editingId}`, payload);
+      } else {
+        payload.products = selectedProducts;
+        await authedPost("/api/v1/promotions", payload);
+      }
 
       /* reset */
+
+      setEditingId(null);
 
       setName("");
 
@@ -235,7 +291,7 @@ export default function AdminPromotionsPage() {
       setError(
         e instanceof Error
           ? e.message
-          : "Create failed"
+          : "Save failed"
       );
 
     } finally {
@@ -272,7 +328,7 @@ export default function AdminPromotionsPage() {
       {/* FORM */}
 
       <form
-        onSubmit={create}
+        onSubmit={handleSubmit}
         className="grid gap-3 rounded-2xl border border-[#E8DCC8] bg-white p-4 shadow-sm md:grid-cols-2"
       >
 
@@ -504,20 +560,22 @@ export default function AdminPromotionsPage() {
                             type="number"
                             placeholder="Discount %"
                             className="border px-2 py-1 rounded"
+                            value={sp.variants?.find(sv => sv.variantId === v.id)?.discountPercent ?? ""}
 
                             onChange={(e) => {
-
-                              const updated =
-                                [
-                                  ...selectedProducts,
-                                ];
-
-                              updated[i]
-                                .variants![vi]
-                                .discountPercent =
-                                Number(
-                                  e.target.value
-                                );
+                              const updated = [...selectedProducts];
+                              const currentProduct = { ...updated[i] };
+                              const variants = [...(currentProduct.variants || [])];
+                              
+                              const targetIndex = variants.findIndex(sv => sv.variantId === v.id);
+                              if (targetIndex >= 0) {
+                                variants[targetIndex] = { ...variants[targetIndex], discountPercent: Number(e.target.value) };
+                              } else {
+                                variants.push({ variantId: v.id, discountPercent: Number(e.target.value) });
+                              }
+                              
+                              currentProduct.variants = variants;
+                              updated[i] = currentProduct;
 
                               setSelectedProducts(
                                 updated
@@ -538,19 +596,14 @@ export default function AdminPromotionsPage() {
                       type="number"
                       placeholder="Discount %"
                       className="border px-2 py-1 rounded mt-2"
+                      value={sp.discountPercent ?? ""}
 
                       onChange={(e) => {
-
-                        const updated =
-                          [
-                            ...selectedProducts,
-                          ];
-
-                        updated[i]
-                          .discountPercent =
-                          Number(
-                            e.target.value
-                          );
+                        const updated = [...selectedProducts];
+                        updated[i] = { 
+                          ...updated[i], 
+                          discountPercent: Number(e.target.value) 
+                        };
 
                         setSelectedProducts(
                           updated
@@ -572,7 +625,7 @@ export default function AdminPromotionsPage() {
 
         {/* SUBMIT */}
 
-        <div className="md:col-span-2">
+        <div className="md:col-span-2 flex gap-3">
 
           <button
             type="submit"
@@ -582,9 +635,28 @@ export default function AdminPromotionsPage() {
 
             {saving
               ? "Saving…"
+              : editingId
+              ? "Update promotion"
               : "Create promotion"}
 
           </button>
+
+          {editingId && (
+            <button
+              type="button"
+              disabled={saving}
+              onClick={() => {
+                setEditingId(null);
+                setName("");
+                setStartsAt("");
+                setEndsAt("");
+                setSelectedProducts([]);
+              }}
+              className="rounded-full border border-[#E8DCC8] bg-white px-5 py-2.5 text-xs font-semibold uppercase tracking-wide text-[#4A1D1F] hover:bg-[#FFFBF3] disabled:opacity-50"
+            >
+              Cancel
+            </button>
+          )}
 
         </div>
 
@@ -610,13 +682,17 @@ export default function AdminPromotionsPage() {
           headers={[
             "Name",
             "Kind",
-            "Active",
+            "Status",
             "Window",
+            "Actions",
           ]}
         >
 
-          {rows.map(r => (
+          {rows.map(r => {
+            const now = new Date();
+            const isExpired = r.endsAt ? new Date(r.endsAt) < now : false;
 
+            return (
             <tr
               key={r.id}
               className="hover:bg-[#FFFBF3]/80"
@@ -634,12 +710,14 @@ export default function AdminPromotionsPage() {
 
               </ConsoleTd>
 
-              <ConsoleTd>
-
-                {r.active
-                  ? "Yes"
-                  : "No"}
-
+              <ConsoleTd className="text-xs uppercase">
+                {isExpired ? (
+                  <span className="rounded-full bg-gray-200 px-2 py-1 text-[10px] font-semibold text-gray-600">Expired</span>
+                ) : r.active ? (
+                  <span className="rounded-full bg-green-100 px-2 py-1 text-[10px] font-semibold text-green-700">Active</span>
+                ) : (
+                  <span className="rounded-full bg-yellow-100 px-2 py-1 text-[10px] font-semibold text-yellow-700">Inactive</span>
+                )}
               </ConsoleTd>
 
               <ConsoleTd className="text-[11px] text-[#646464]">
@@ -660,9 +738,46 @@ export default function AdminPromotionsPage() {
 
               </ConsoleTd>
 
-            </tr>
+              <ConsoleTd>
+                {!isExpired && (
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => handleEdit(r)}
+                      className="flex items-center justify-center rounded-full border border-[#7B3010] p-1.5 text-[#7B3010] hover:bg-[#FFFBF3]"
+                      title="Edit"
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M12 20h9"></path>
+                        <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"></path>
+                      </svg>
+                    </button>
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={r.active}
+                      disabled={saving}
+                      onClick={() => toggleStatus(r.id, r.active)}
+                      className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus-visible:ring-2 focus-visible:ring-[#7B3010] focus-visible:ring-offset-2 ${
+                        r.active ? "bg-green-500" : "bg-gray-300"
+                      }`}
+                      title={r.active ? "Deactivate" : "Activate"}
+                    >
+                      <span className="sr-only">Toggle Status</span>
+                      <span
+                        aria-hidden="true"
+                        className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                          r.active ? "translate-x-4" : "translate-x-0"
+                        }`}
+                      />
+                    </button>
+                  </div>
+                )}
+              </ConsoleTd>
 
-          ))}
+            </tr>
+            );
+          })}
 
         </ConsoleTable>
 

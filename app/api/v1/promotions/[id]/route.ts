@@ -8,11 +8,11 @@ import { z } from "zod"
 const patchSchema = z.object({
 
   kind: z.enum([
-    "flash_sale",
-    "featured",
-    "clearance",
-    "custom"
-  ]).optional(),
+  "FLASH_SALE",
+  "FEATURED",
+  "CLEARANCE",
+  "CUSTOM"
+]).optional(),
 
   name: z.string().min(1).optional(),
 
@@ -116,7 +116,7 @@ export async function PATCH(
         : null
   }
 
-  try {
+  try { 
 
     const row = await updatePromotion(id, data)
 

@@ -88,7 +88,7 @@ const normalizeMediaUrl = (value: string | null | undefined) => {
 export const toStorefrontProduct = (p: ApiProduct): StorefrontProduct => {
   const variants = p.variants ?? []
   const firstVariant = variants[0]
-  const sale = Number(p.salePrice ?? firstVariant?.price ?? p.price ?? 0)
+  const sale = Number(p.price ?? firstVariant?.price ?? p.price ?? 0)
   const oldPrice = Number(p.basePrice ?? sale * 1.2)
   const tags = (p.tags ?? []).map((t) => t.tag.name.toLowerCase())
   const isVeg = tags.some((t) => t === "veg" || t === "vegetarian")
@@ -122,6 +122,7 @@ export const toStorefrontProduct = (p: ApiProduct): StorefrontProduct => {
     category: p.categories?.[0]?.category.slug ?? "all",
     labels: p.labels ?? [],
     features: p.features ?? [],
+    saleName:p?.saleName ?? null,
     details:
       sections.length > 0
         ? sections.map((s) => ({ title: s.title, content: s.description }))
@@ -131,12 +132,12 @@ export const toStorefrontProduct = (p: ApiProduct): StorefrontProduct => {
       id: v.id,
       name: v.name,
       weight: v.weight ?? v.name ?? "",
-      price: Number(v.price ?? 0),
+     oldPrice: Number(v.oldPrice ?? 0),
       sku: v.sku,
       stock: v.stock ?? 0,
       isDefault: Boolean(v.isDefault),
       discountPercent: v.discountPercent ? Number(v.discountPercent) : null,
-      finalPrice: v.finalPrice ? Number(v.finalPrice) : null,
+      price: v.price ? Number(v.price) : null,
       promotion: v.promotion ?? null,
     })) || [], } 
 }

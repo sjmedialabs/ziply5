@@ -81,6 +81,8 @@ export default function ProductPage() {
     }
   }, [slug])
 
+  console.log("Fetched  Product details are::::",product);
+
   const visibleRelated = useMemo(() => {
     if (relatedProducts.length === 0) return []
     return Array.from({ length: 4 }).map((_, index) => {
@@ -99,10 +101,13 @@ export default function ProductPage() {
   )
 
   const currentPrice = activeVariant?.price ?? product?.price ?? 0
+  const currentOldPrice = activeVariant?.oldPrice ?? activeVariant?.mrp ?? product?.oldPrice ?? 0
   const sku = activeVariant?.sku ?? (product ? `SKU:${product.sku.toUpperCase()}` : "")
 
   const salePercent =
-    product && product.discountPercent && product?.discountPercent > 0 ? product.discountPercent : 0
+    activeVariant != null && activeVariant.discountPercent !== undefined
+      ? activeVariant.discountPercent
+      : product?.discountPercent ?? 0
 
   useEffect(() => {
     if (!product) return
@@ -239,7 +244,7 @@ export default function ProductPage() {
 
             <div className="mt-3 flex items-end gap-2">
               <p className="text-[28px] font-extrabold text-[#B44444]">₹{currentPrice.toFixed(2)}</p>
-              <p className="pb-1 text-sm font-semibold text-[#B8B8B8] line-through">₹{product.oldPrice.toFixed(2)}</p>
+              <p className="pb-1 text-sm font-semibold text-[#B8B8B8] line-through">₹{currentOldPrice.toFixed(2)}</p>
             </div>
             <p className="text-sm text-[#8A8A8A]">Taxes included. Shipping calculated at checkout.</p>
 
