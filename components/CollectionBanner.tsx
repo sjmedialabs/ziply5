@@ -33,6 +33,8 @@ export default function CollectionBanner({ cmsData }: { cmsData?: any }) {
 
   const displayProducts = cmsData?.items?.length > 0 ? cmsData.items : products;
   const bigImage = slides[0]?.mainImage || "/assets/Homepage/CollectionBigImg.png";
+  const sectionTitle = cmsData?.title;
+  const titleWords = sectionTitle ? sectionTitle.split(" ").filter(Boolean) : [];
 
   // secondary image handling
   const iconImage =
@@ -75,9 +77,31 @@ export default function CollectionBanner({ cmsData }: { cmsData?: any }) {
           <div className="relative justify-between lg:col-span-5 xl:col-span-4 col-span-12 flex flex-col h-full">
             <div className="lg:text-start text-center lg:py-0 py-4">
               <h2 className="text-4xl md:text-5xl font-extrabold font-melon text-[#4B1E1E] leading-tight">
-                OUR VEG<span className="hidden lg:inline"><br /></span><span className="inline lg:hidden"> & </span>
-                NON VEG <span className="hidden lg:inline"><br /></span>
-                COLLECTION
+                {sectionTitle ? (
+                  <>
+                    {titleWords.slice(0, 2).join(" ")}
+                    {titleWords.length > 2 && (
+                      <>
+                        <span className="hidden lg:inline"><br /></span>
+                        <span className="inline lg:hidden">{" "}</span>
+                      </>
+                    )}
+                    {titleWords.slice(2, 4).join(" ")}
+                    {titleWords.length > 4 && (
+                      <>
+                        <span className="hidden lg:inline"><br /></span>
+                        <span className="inline lg:hidden">{" "}</span>
+                      </>
+                    )}
+                    {titleWords.slice(4).join(" ")}
+                  </>
+                ) : (
+                  <>
+                    OUR VEG<span className="hidden lg:inline"><br /></span><span className="inline lg:hidden"> & </span>
+                    NON VEG <span className="hidden lg:inline"><br /></span>
+                    COLLECTION
+                  </>
+                )}
               </h2>
             </div>
 

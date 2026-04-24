@@ -13,19 +13,17 @@ export async function PATCH(request: NextRequest, ctx: { params: Promise<{ id: s
   if (forbidden) return forbidden
 
   const { id } = await ctx.params
-  const body = await request.json()
+  const body = await request.json() 
+  console.log("Received body:", body) // Debug log
   const parsed = updateCouponSchema.safeParse(body)
+  console.log("Validation result:", parsed) // Debug log
   if (!parsed.success) {
     return fail("Validation failed", 422, parsed.error.flatten())
   }
 
-  const { startsAt, endsAt, ...rest } = parsed.data
+  // const { startsAt, endsAt, ...rest } = parsed.data
   try {
-    const coupon = await updateCoupon(id, {
-      ...rest,
-      ...(startsAt !== undefined ? { startsAt: startsAt ? new Date(startsAt) : null } : {}),
-      ...(endsAt !== undefined ? { endsAt: endsAt ? new Date(endsAt) : null } : {}),
-    })
+    const coupon = await updateCoupon(id, parsed.data)
     return ok(coupon, "Coupon updated")
   } catch {
     return fail("Coupon not found", 404)

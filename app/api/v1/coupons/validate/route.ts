@@ -12,6 +12,7 @@ export async function POST(request: NextRequest) {
     }
 
     const result = await computeCouponDiscount(parsed.data.code, parsed.data.subtotal)
+    console.log("Computed discount:", result) // Debug log
     return ok(result, "Coupon valid")
   } catch (error) {
     const message = error instanceof Error ? error.message : "Invalid coupon"

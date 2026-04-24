@@ -1,42 +1,18 @@
 "use client";
-import { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { Button } from '@/components/ui/button';
-import { Loader2, X } from 'lucide-react';
+import ImageUploader from './ImageUploader';
 
 export default function AboutMissionEditor({ value, onChange }: { value: any, onChange: (v: any) => void }) {
-  const [uploading, setUploading] = useState(false);
-
-  const handleUpload = async (file: File) => {
-    setUploading(true);
-    try {
-      const token = window.localStorage.getItem("ziply5_access_token");
-      const form = new FormData();
-      form.append("files", file);
-      form.append("folder", "cms/about");
-      const res = await fetch("/api/v1/uploads", {
-        method: "POST",
-        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
-        body: form,
-      });
-      const json = await res.json();
-      if (json.data?.files?.[0]?.url) {
-        onChange({ ...value, imageUrl: json.data.files[0].url });
-      }
-    } finally {
-      setUploading(false);
-    }
-  };
 
   return (
     <Card className="border-[#E8DCC8]">
       <CardHeader className=" border-b border-[#E8DCC8]">
-        <CardTitle className="text-sm font-semibold text-[#4A1D1F]">2. Our Mission</CardTitle>
+        <CardTitle className="text-sm font-semibold text-[#4A1D1F]">Our Mission</CardTitle>
       </CardHeader>
-      <CardContent className="p-x-4 space-y-4">
+      <CardContent className="px-4 space-y-4">
         <div>
           <Label className="text-xs text-[#646464]">Title</Label>
           <Input 
@@ -46,34 +22,20 @@ export default function AboutMissionEditor({ value, onChange }: { value: any, on
           />
         </div>
         <div>
-          <Label className="text-xs text-[#646464]">Description (Max 150 chars)</Label>
+          <Label className="text-xs text-[#646464]">Description (Max 250 chars)</Label>
           <Textarea 
-            maxLength={150} 
+            maxLength={250} 
             value={value.description || ''} 
             onChange={(e) => onChange({ ...value, description: e.target.value })} 
             placeholder="Enter description"
           />
         </div>
         <div>
-          <Label className="text-xs text-[#646464]">Mission Image</Label>
-          <div className="flex items-center gap-4 mt-1">
-            <Input type="file" accept="image/*" onChange={(e) => e.target.files?.[0] && handleUpload(e.target.files[0])} className="w-auto" />
-            {uploading && <Loader2 className="h-4 w-4 animate-spin text-[#4A1D1F]" />}
-            {value.imageUrl && (
-              <div className="flex items-center gap-2">
-                <img src={value.imageUrl} alt="Mission" className="h-10 w-10 object-cover rounded border" />
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  className="h-6 w-6 text-red-500 hover:text-red-700 hover:bg-red-50"
-                  onClick={() => onChange({ ...value, imageUrl: '' })}
-                >
-                  <X className="h-4 w-4" />
-                </Button>
-              </div>
-            )}
-          </div>
+          <Label className="text-xs text-[#646464] block mb-1">Mission Image</Label>
+          <ImageUploader 
+            value={value.imageUrl || ''} 
+            onChange={(image) => onChange({ ...value, imageUrl: image })} 
+          />
         </div>
       </CardContent>
     </Card>

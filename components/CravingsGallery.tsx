@@ -14,6 +14,8 @@ const cravingsGallery = [
 export default function CravingsGallery({ cmsData }: { cmsData?: any }) {
   const displayItems = cmsData?.items?.length > 0 ? cmsData.items : cravingsGallery;
   const sectionTitle = cmsData?.title || "FUEL YOUR CRAVINGS";
+  const buttonText = cmsData?.buttonText || "Follow@ziply5";
+  const buttonUrl = cmsData?.url || "#";
 
   return (
     <section className="bg-[#fff]">
@@ -22,12 +24,14 @@ export default function CravingsGallery({ cmsData }: { cmsData?: any }) {
           <h2 className="font-heading text-3xl md:text-4xl lg:text-5xl font-extrabold text-primary text-center sm:text-left">
             {sectionTitle}
           </h2>
-          <Button className="bg-primary text-[#fff] h-[40px] rounded-[10px] font-bold cursor-pointer 
-              border-2 border-transparent 
-              hover:border-[#F36E21] 
-              transition-all duration-300 ease-in-out mb-2 sm:mb-0">
-            Follow@ziply5
-          </Button>
+          <Link href={buttonUrl}>
+            <Button className="bg-primary text-[#fff] h-[40px] rounded-[10px] font-bold cursor-pointer 
+                border-2 border-transparent 
+                hover:border-[#F36E21] 
+                transition-all duration-300 ease-in-out mb-2 sm:mb-0">
+              {buttonText}
+            </Button>
+          </Link>
         </div>
         <div className="flex gap-4 overflow-x-auto pb-4 scrollbar-hide" style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}>
           {displayItems.map((item: any, i: number) => (

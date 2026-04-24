@@ -1,26 +1,10 @@
 import { prisma } from "@/src/server/db/prisma"
-import { Prisma, type ProductStatus } from "@prisma/client"
+import type { Prisma, ProductStatus } from "@prisma/client"
 import { logActivity } from "@/src/server/modules/activity/activity.service"
 import sanitizeHtml from "sanitize-html"
 import { assertMasterValueExists } from "@/src/server/modules/master/master.service"
 
 export type ListProductsScope = "public" | "admin"
-let cachedDeletedAtSupport: boolean | null = null
-
-const hasDeletedAtColumn = async () => {
-  if (cachedDeletedAtSupport !== null) return cachedDeletedAtSupport
-  const rows = await prisma.$queryRaw<Array<{ exists: boolean }>>`
-    SELECT EXISTS (
-      SELECT 1
-      FROM information_schema.columns
-      WHERE table_schema = 'public'
-        AND table_name = 'Product'
-        AND column_name = 'deletedAt'
-    ) as "exists"
-  `
-  cachedDeletedAtSupport = Boolean(rows[0]?.exists)
-  return cachedDeletedAtSupport
-}
 
 type CreateProductInput = {
   name: string
@@ -28,10 +12,11 @@ type CreateProductInput = {
   sku: string
   price: number
   description?: string
-  type: "simple" | "variant"
+  type?: "simple" | "variant"
   basePrice?: number | null
   salePrice?: number | null
   discountPercent?: number | null
+  weight?: string | null
   taxIncluded?: boolean
   stockStatus?: "in_stock" | "out_of_stock"
   totalStock?: number
@@ -50,7 +35,6 @@ type CreateProductInput = {
   categoryId?: string | null
   brandId?: string | null
   variants?: Array<{
-    id?: string
     name: string
     weight?: string | null
     price: number
@@ -78,6 +62,7 @@ type UpdateProductInput = Partial<{
   basePrice: number | null
   salePrice: number | null
   discountPercent: number | null
+  weight: string | null
   taxIncluded: boolean
   stockStatus: "in_stock" | "out_of_stock"
   totalStock: number
@@ -94,7 +79,6 @@ type UpdateProductInput = Partial<{
   categoryId: string | null
   brandId: string | null
   variants: Array<{
-    id?: string
     name: string
     weight?: string | null
     price: number
@@ -124,10 +108,13 @@ const productSelect = {
   basePrice: true,
   salePrice: true,
   discountPercent: true,
+  weight: true,
   taxIncluded: true,
   stockStatus: true,
   totalStock: true,
   shelfLife: true,
+  preparationType: true,
+  spiceLevel: true,
   isActive: true,
   isFeatured: true,
   isBestSeller: true,
@@ -160,11 +147,13 @@ const productSelectPublicList = {
   description: true,
   basePrice: true,
   salePrice: true,
+  weight: true,
   price: true,
   taxIncluded: true,
   stockStatus: true,
   totalStock: true,
   shelfLife: true,
+  spiceLevel: true,
   isActive: true,
   isFeatured: true,
   isBestSeller: true,
@@ -182,7 +171,6 @@ const productSelectPublicList = {
   // Weight/sku/stock are needed for product-card rendering.
   variants: {
     select: {
-      id: true,
       name: true,
       weight: true,
       price: true,
@@ -233,40 +221,6 @@ const sanitizeSectionHtml = (value: string) =>
     allowedSchemes: ["http", "https", "mailto", "tel"],
   }).trim()
 
-const normalizeVariants = (
-  variants: Array<{
-    id?: string
-    name: string
-    weight?: string | null
-    price: number
-    mrp?: number | null
-    discountPercent?: number | null
-    stock?: number
-    sku: string
-    isDefault?: boolean
-  }> = [],
-) => {
-  const normalized = variants.map((v, idx) => ({
-    id: v.id,
-    name: (v.name || v.weight || `Variant ${idx + 1}`).trim(),
-    weight: v.weight?.trim() || null,
-    sku: v.sku.trim(),
-    price: Number(v.price),
-    mrp: v.mrp != null ? Number(v.mrp) : null,
-    discountPercent: v.discountPercent != null ? Number(v.discountPercent) : null,
-    stock: Math.max(0, Number(v.stock ?? 0)),
-    isDefault: Boolean(v.isDefault),
-  }))
-  const defaults = normalized.filter((v) => v.isDefault)
-  if (defaults.length > 1) {
-    throw new Error("Only one variant can be marked as default")
-  }
-  if (normalized.length > 0 && defaults.length === 0) {
-    normalized[0].isDefault = true
-  }
-  return normalized
-}
-
 const normalizeSections = (
   input: Pick<CreateProductInput, "sections" | "details">,
 ): Array<{ title: string; description: string; sortOrder: number; isActive: boolean }> => {
@@ -299,13 +253,10 @@ export const listProducts = async (
   page = 1,
   limit = 20,
   scope: ListProductsScope,
-  filters?: { status?: string; q?: string; inStockOnly?: boolean },
+  filters?: { status?: string; q?: string },
 ) => {
-  const safePage = Number.isFinite(page) && page > 0 ? Math.floor(page) : 1
-  const safeLimit = Number.isFinite(limit) ? Math.min(Math.max(Math.floor(limit), 1), 100) : 20
-  const skip = (safePage - 1) * safeLimit
+  const skip = (page - 1) * limit
   const where: Prisma.ProductWhereInput = {}
-  where.isActive = true
 
   if (scope === "public") {
     where.status = "published"
@@ -332,54 +283,16 @@ export const listProducts = async (
   //   }),
   //   prisma.product.count({ where }),
   // ])
-  if (filters?.inStockOnly) {
-    where.totalStock = { gt: 0 }
-  }
+  const items = await prisma.product.findMany({
+    where,
+    orderBy: { createdAt: "desc" },
+    skip,
+    take: limit,
+    select: scope === "public" ? productSelectPublicList : productSelect,
+  })
+const total = await prisma.product.count({ where })
 
-  const supportDeletedAt = await hasDeletedAtColumn()
-  const selectShape = scope === "public" ? productSelectPublicList : productSelect
-
-  if (!supportDeletedAt) {
-    const [items, total] = await Promise.all([
-      prisma.product.findMany({
-        where,
-        orderBy: { createdAt: "desc" },
-        skip,
-        take: safeLimit,
-        select: selectShape,
-      }),
-      prisma.product.count({ where }),
-    ])
-    return { items, total, page: safePage, limit: safeLimit }
-  }
-
-  const visibleIds = await prisma.$queryRaw<Array<{ id: string }>>`
-    SELECT p."id"
-    FROM "Product" p
-    WHERE p."isActive" = true
-      AND p."deletedAt" IS NULL
-      ${scope === "public" ? Prisma.sql`AND p."status" = 'published'` : Prisma.empty}
-    ORDER BY p."createdAt" DESC
-    LIMIT ${safeLimit} OFFSET ${skip}
-  `
-  const ids = visibleIds.map((row) => row.id)
-  const [items, totalRows] = await Promise.all([
-    ids.length
-      ? prisma.product.findMany({
-          where: { ...where, id: { in: ids } },
-          select: selectShape,
-        })
-      : Promise.resolve([]),
-    prisma.$queryRaw<Array<{ count: bigint }>>`
-      SELECT COUNT(*)::bigint as count
-      FROM "Product" p
-      WHERE p."isActive" = true
-        AND p."deletedAt" IS NULL
-        ${scope === "public" ? Prisma.sql`AND p."status" = 'published'` : Prisma.empty}
-    `,
-  ])
-  const ordered = ids.map((id) => items.find((item) => item.id === id)).filter(Boolean)
-  return { items: ordered, total: Number(totalRows[0]?.count ?? 0), page: safePage, limit: safeLimit }
+  return { items, total, page, limit }
 }
 
 export const getProductById = async (id: string) => {
@@ -390,49 +303,124 @@ export const getProductById = async (id: string) => {
 }
 
 export const getProductBySlug = async (slug: string) => {
-  return prisma.product.findUnique({
-    where: { slug },
-    select: productSelect,
-  })
-}
 
+  const now = new Date()
+
+  return prisma.product.findUnique({
+
+    where: { slug }, // ✅ correct (you passed slug)
+
+    select: {
+
+      ...productSelect,
+
+      /* 🔥 Product-level promotions */
+
+      promotionLinks: {
+
+        where: {
+
+          promotion: {
+
+            active: true,
+
+            AND: [
+
+              {
+                OR: [
+                  { startsAt: null },
+                  { startsAt: { lte: now } }
+                ]
+              },
+
+              {
+                OR: [
+                  { endsAt: null },
+                  { endsAt: { gte: now } }
+                ]
+              }
+
+            ]
+
+          }
+
+        },
+
+        include: {
+
+          promotion: true
+
+        }
+
+      },
+
+      /* 🔥 Variant-level promotions */
+
+      variants: {
+
+        include: {
+
+          promotionLinks: {
+
+            where: {
+
+              promotion: {
+
+                active: true,
+
+                AND: [
+
+                  {
+                    OR: [
+                      { startsAt: null },
+                      { startsAt: { lte: now } }
+                    ]
+                  },
+
+                  {
+                    OR: [
+                      { endsAt: null },
+                      { endsAt: { gte: now } }
+                    ]
+                  }
+
+                ]
+
+              }
+
+            },
+
+            include: {
+
+              promotion: true
+
+            }
+
+          }
+
+        }
+
+      }
+
+    }
+
+  })
+
+}
 export const canAccessProduct = (
-  product: { status: string; isActive?: boolean | null },
+  product: { status: string },
   scope: ListProductsScope,
 ) => {
-  if (product.isActive === false) return false
   if (scope === "admin") return true
   if (product.status === "published") return true
   return false
 }
 
-export const isProductSoftDeleted = async (productId: string) => {
-  const supportDeletedAt = await hasDeletedAtColumn()
-  if (!supportDeletedAt) return false
-  const rows = await prisma.$queryRaw<Array<{ deleted: boolean }>>`
-    SELECT ("deletedAt" IS NOT NULL) as deleted
-    FROM "Product"
-    WHERE id = ${productId}
-    LIMIT 1
-  `
-  return Boolean(rows[0]?.deleted)
-}
-
 export const createProduct = async (input: CreateProductInput) => {
-  const normalizedVariants = normalizeVariants(input.variants)
-  for (const variant of normalizedVariants) {
-    if (variant.weight) {
-      const exists = await assertMasterValueExists("PRODUCT_WEIGHT", variant.weight)
-      if (!exists) throw new Error(`Invalid PRODUCT_WEIGHT: ${variant.weight}`)
-    }
-  }
-  if (input.type === "variant" && normalizedVariants.length === 0) {
-    throw new Error("Variant products require at least one variant")
-  }
-  const defaultVariant = normalizedVariants.find((v) => v.isDefault) ?? normalizedVariants[0]
+  const defaultVariant = input.variants?.find((v) => v.isDefault) ?? input.variants?.[0]
   const effectivePrice = input.salePrice ?? defaultVariant?.price ?? input.price
-  const variantStockTotal = normalizedVariants.reduce((sum, v) => sum + (v.stock ?? 0), 0)
-  const effectiveTotalStock = input.type === "variant" ? variantStockTotal : (input.totalStock ?? 0)
+  const variantStockTotal = (input.variants ?? []).reduce((sum, v) => sum + (v.stock ?? 0), 0)
+  const effectiveTotalStock = input.totalStock ?? variantStockTotal
   const effectiveStockStatus = input.stockStatus ?? (effectiveTotalStock > 0 ? "in_stock" : "out_of_stock")
   const uniqueTags = [...new Set((input.tags ?? []).map((t) => t.trim()).filter(Boolean))]
   const sections = normalizeSections(input)
@@ -446,10 +434,11 @@ export const createProduct = async (input: CreateProductInput) => {
       sku: input.sku,
       price: effectivePrice,
       description: input.description,
-      type: input.type,
+      type: input.type ?? "variant",
       basePrice: input.basePrice ?? defaultVariant?.mrp ?? null,
       salePrice: input.salePrice ?? effectivePrice,
       discountPercent: input.discountPercent ?? defaultVariant?.discountPercent ?? null,
+      weight: input.weight ?? null,
       taxIncluded: input.taxIncluded ?? true,
       stockStatus: effectiveStockStatus,
       totalStock: effectiveTotalStock,
@@ -465,16 +454,16 @@ export const createProduct = async (input: CreateProductInput) => {
       status: input.status ?? "draft",
       brandId: input.brandId ?? undefined,
       categories: input.categoryId ? { create: [{ categoryId: input.categoryId }] } : undefined,
-      variants: normalizedVariants.length
+      variants: input.variants?.length
         ? {
-            create: normalizedVariants.map((v) => ({
+            create: input.variants.map((v) => ({
               name: v.name,
               weight: v.weight ?? null,
               sku: v.sku,
               price: v.price,
               mrp: v.mrp ?? null,
               discountPercent: v.discountPercent ?? null,
-              stock: v.stock,
+              stock: v.stock ?? 0,
               isDefault: Boolean(v.isDefault),
             })),
           }
@@ -531,30 +520,13 @@ export const updateProduct = async (
 ) => {
   const existing = await prisma.product.findUnique({
     where: { id },
-    select: { id: true, type: true },
+    select: { id: true },
   })
   if (!existing) throw new Error("Product not found")
 
   const isAdmin = opts.role === "admin" || opts.role === "super_admin"
   if (!isAdmin) {
     throw new Error("Forbidden")
-  }
-
-  if ("type" in input && input.type && input.type !== existing.type) {
-    throw new Error("Changing product type after creation is not supported")
-  }
-
-  const normalizedVariants = "variants" in input ? normalizeVariants(input.variants ?? []) : undefined
-  if (normalizedVariants) {
-    for (const variant of normalizedVariants) {
-      if (variant.weight) {
-        const exists = await assertMasterValueExists("PRODUCT_WEIGHT", variant.weight)
-        if (!exists) throw new Error(`Invalid PRODUCT_WEIGHT: ${variant.weight}`)
-      }
-    }
-  }
-  if (existing.type === "variant" && "variants" in input && (normalizedVariants?.length ?? 0) === 0) {
-    throw new Error("Variant products require at least one variant")
   }
 
   let tagRecords: Array<{ id: string }> | undefined
@@ -590,6 +562,7 @@ export const updateProduct = async (
         ...("basePrice" in input ? { basePrice: input.basePrice } : {}),
         ...("salePrice" in input ? { salePrice: input.salePrice } : {}),
         ...("discountPercent" in input ? { discountPercent: input.discountPercent } : {}),
+        ...("weight" in input ? { weight: input.weight } : {}),
         ...("taxIncluded" in input && input.taxIncluded !== undefined ? { taxIncluded: input.taxIncluded } : {}),
         ...("stockStatus" in input && input.stockStatus !== undefined ? { stockStatus: input.stockStatus } : {}),
         ...("totalStock" in input && input.totalStock !== undefined ? { totalStock: input.totalStock } : {}),
@@ -617,49 +590,31 @@ export const updateProduct = async (
       }
     }
     if ("variants" in input) {
-      const existingVariants = await tx.productVariant.findMany({
-        where: { productId: id },
-        select: { id: true }
-      })
-      const existingIds = existingVariants.map(v => v.id)
-      const incoming = normalizedVariants || []
-      const incomingIds = incoming.map(v => v.id).filter((vid): vid is string => Boolean(vid))
-      
-      const toDelete = existingIds.filter(eid => !incomingIds.includes(eid))
-      if (toDelete.length > 0) {
-        await tx.productVariant.deleteMany({
-          where: { id: { in: toDelete } }
+      await tx.productVariant.deleteMany({ where: { productId: id } })
+      if (input.variants?.length) {
+        await tx.productVariant.createMany({
+          data: input.variants.map((v) => ({
+            productId: id,
+            name: v.name,
+            weight: v.weight ?? null,
+            sku: v.sku,
+            price: v.price,
+            mrp: v.mrp ?? null,
+            discountPercent: v.discountPercent ?? null,
+            stock: v.stock ?? 0,
+            isDefault: Boolean(v.isDefault),
+          })),
         })
-      }
-
-      for (const v of incoming) {
-        const variantData = {
-          name: v.name,
-          weight: v.weight ?? null,
-          sku: v.sku,
-          price: v.price,
-          mrp: v.mrp ?? null,
-          discountPercent: v.discountPercent ?? null,
-          stock: v.stock,
-          isDefault: Boolean(v.isDefault),
+        if (!("totalStock" in input)) {
+          const totalStock = input.variants.reduce((sum, v) => sum + (v.stock ?? 0), 0)
+          await tx.product.update({
+            where: { id },
+            data: {
+              totalStock,
+              stockStatus: totalStock > 0 ? "in_stock" : "out_of_stock",
+            },
+          })
         }
-
-        if (v.id && existingIds.includes(v.id)) {
-          await tx.productVariant.update({ where: { id: v.id }, data: variantData })
-        } else {
-          await tx.productVariant.create({ data: { ...variantData, productId: id } })
-        }
-      }
-
-      if (!("totalStock" in input)) {
-        const totalStock = incoming.reduce((sum, v) => sum + (v.stock ?? 0), 0)
-        await tx.product.update({
-          where: { id },
-          data: {
-            totalStock,
-            stockStatus: totalStock > 0 ? "in_stock" : "out_of_stock",
-          },
-        })
       }
     }
     if ("images" in input) {

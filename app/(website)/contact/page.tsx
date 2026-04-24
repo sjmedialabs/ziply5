@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import Image from "next/image"
 import { useForm } from "react-hook-form"
 import { toast } from "@/lib/toast"
@@ -14,12 +14,29 @@ type FormData = {
 
 export default function ContactUsPage() {
     const [loading, setLoading] = useState(false)
+    const [cmsData, setCmsData] = useState<any>(null)
     const {
         register,
         handleSubmit,
         reset,
         formState: { errors },
     } = useForm<FormData>()
+
+    useEffect(() => {
+        const fetchCmsData = async () => {
+            try {
+                const res = await fetch("/api/v1/cms/pages?slug=contact")
+                const json = await res.json()
+                if (json.data) {
+                    const contactDetails = json.data.sections?.find((s: any) => s.sectionType === 'contact-details')?.contentJson || {}
+                    setCmsData(contactDetails)
+                }
+            } catch (err) {
+                console.error("Failed to load CMS data", err)
+            }
+        }
+        fetchCmsData()
+    }, [])
 
     const onSubmit = async (data: FormData) => {
         setLoading(true)
@@ -52,15 +69,15 @@ export default function ContactUsPage() {
             <section
                 className="w-full h-[280px] md:h-[320px] flex flex-col items-center justify-center text-center bg-cover bg-center"
                 style={{
-                    backgroundImage: "url('/contactUsBg.png')",
+                    backgroundImage: `url('${cmsData?.bgImage || '/contactUsBg.png'}')`,
                 }}
             >
                 <h1 className="font-melon text-primary text-3xl md:text-4xl font--medium">
-                    Contact us
+                    {cmsData?.title || "Contact us"}
                 </h1>
 
-                <p className="text-sm text-gray-600 mt-2">
-                    Some of the queries you want to know about us.
+                <p className="text-sm text-gray-600 mt-2 max-w-2xl px-4">
+                    {cmsData?.description || "Some of the queries you want to know about us."}
                 </p>
 
                 <div className="mt-4 px-4 py-2 bg-white rounded-full text-sm shadow">
@@ -75,13 +92,11 @@ export default function ContactUsPage() {
             <section className="max-w-6xl mx-auto px-4 py-12">
 
                 <h2 className="font-melon text-primary text-2xl md:text-3xl text-center font-medium">
-                    Get In Touch
+                    {cmsData?.mainTitle || "Get In Touch"}
                 </h2>
 
                 <p className="text-center text-gray-500 mt-2 max-w-xl mx-auto text-sm">
-                    Lorem ipsum dolor sit amet consectetur adipisicing elit.
-                    Expedita quaerat unde quam dolor quia veritatis inventore,
-                    aut commodi cum veniam vel.
+                    {cmsData?.mainDescription || "Lorem ipsum dolor sit amet consectetur adipisicing elit. Expedita quaerat unde quam dolor quia veritatis inventore, aut commodi cum veniam vel."}
                 </p>
 
                 {/* CONTACT CARDS */}
@@ -92,7 +107,7 @@ export default function ContactUsPage() {
 
                     <div className="bg-gray-50 rounded-xl p-6 text-center shadow-sm">
                         <Image
-                            src="/assets/contact us/location.png"
+                            src={cmsData?.addressIcon || "/assets/contact us/location.png"}
                             alt="location"
                             width={40}
                             height={40}
@@ -100,11 +115,11 @@ export default function ContactUsPage() {
                         />
 
                         <h3 className="mt-4 font-semibold text-gray-800 text-sm">
-                            102 Street 2714 Donavan
+                            {cmsData?.address || "102 Street 2714 Donavan"}
                         </h3>
 
                         <p className="text-gray-500 text-xs mt-1">
-                            Lorem ipsum dolor sit amet dicont
+                            {cmsData?.addressDescription || "Lorem ipsum dolor sit amet dicont"}
                         </p>
                     </div>
 
@@ -112,7 +127,7 @@ export default function ContactUsPage() {
 
                     <div className="bg-gray-50 rounded-xl p-6 text-center shadow-sm">
                         <Image
-                            src="/assets/contact us/phone.png"
+                            src={cmsData?.phoneIcon || "/assets/contact us/phone.png"}
                             alt="phone"
                             width={40}
                             height={40}
@@ -120,11 +135,11 @@ export default function ContactUsPage() {
                         />
 
                         <h3 className="mt-4 font-semibold text-gray-800 text-sm">
-                            +02 1234 567 88
+                            {cmsData?.phone || "+02 1234 567 88"}
                         </h3>
 
                         <p className="text-gray-500 text-xs mt-1">
-                            Lorem ipsum dolor sit amet dicont
+                            {cmsData?.phoneDescription || "Lorem ipsum dolor sit amet dicont"}
                         </p>
                     </div>
 
@@ -132,7 +147,7 @@ export default function ContactUsPage() {
 
                     <div className="bg-gray-50 rounded-xl p-6 text-center shadow-sm">
                         <Image
-                            src="/assets/contact us/message.png"
+                            src={cmsData?.emailIcon || "/assets/contact us/message.png"}
                             alt="email"
                             width={40}
                             height={40}
@@ -140,11 +155,11 @@ export default function ContactUsPage() {
                         />
 
                         <h3 className="mt-4 font-semibold text-gray-800 text-sm">
-                            info@example.com
+                            {cmsData?.email || "info@example.com"}
                         </h3>
 
                         <p className="text-gray-500 text-xs mt-1">
-                            Lorem ipsum dolor sit amet dicont
+                            {cmsData?.emailDescription || "Lorem ipsum dolor sit amet dicont"}
                         </p>
                     </div>
 
@@ -159,13 +174,11 @@ export default function ContactUsPage() {
                 <div className="bg-white shadow-md rounded-2xl p-6 md:p-10">
 
                     <h2 className="font-melon text-primary text-xl md:text-2xl text-center">
-                        Send Us
+                        {cmsData?.formTitle || "Send Us"}
                     </h2>
 
                     <p className="text-center text-gray-500 text-sm mt-2">
-                        Contact us for all your questions and opinions, or you can
-                        solve your problems in a shorter time with our contact
-                        offices.
+                        {cmsData?.formDescription || "Contact us for all your questions and opinions, or you can solve your problems in a shorter time with our contact offices."}
                     </p>
 
                     <div className="border-t mt-6 mb-8"></div>
