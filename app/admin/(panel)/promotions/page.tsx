@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, useRef } from "react";
 import { authedFetch, authedPost, authedPatch } from "@/lib/dashboard-fetch";
 import {
   ConsoleTable,
@@ -104,6 +104,8 @@ export default function AdminPromotionsPage() {
   const [productDropdownOpen, setProductDropdownOpen] =
     useState(false);
 
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
   const filteredProducts = products.filter((p) =>
     p.name.toLowerCase().includes(productSearch.toLowerCase())
   );
@@ -157,6 +159,22 @@ export default function AdminPromotionsPage() {
     loadProducts();
 
   }, [load, loadProducts]);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setProductDropdownOpen(false);
+      }
+    };
+
+    if (productDropdownOpen) {
+      document.addEventListener("mousedown", handleClickOutside);
+    }
+
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [productDropdownOpen]);
 
   /* ---------------- PRODUCT SELECT ---------------- */
 
@@ -442,7 +460,7 @@ export default function AdminPromotionsPage() {
 
           Select Products
 
-          <div className="relative mt-1">
+          <div className="relative mt-1" ref={dropdownRef}>
             {/* Display / Toggle button */}
             <div
               className="flex min-h-[38px] w-full cursor-pointer flex-wrap items-center gap-1 rounded-lg border border-[#D9D9D1] bg-white px-3 py-1.5 text-sm normal-case"
@@ -794,6 +812,17 @@ export default function AdminPromotionsPage() {
             </tr>
             );
           })}
+
+          {!rows.length && (
+            <tr>
+              <td
+                className="px-3 py-6 text-center text-sm text-[#646464]"
+                colSpan={5}
+              >
+                No promotions yet.
+              </td>
+            </tr>
+          )}
 
         </ConsoleTable>
 

@@ -28,6 +28,8 @@ export default function MarketingCouponsPage() {
   const [viewCoupon, setViewCoupon] = useState<CouponRow | null>(null)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [togglingId, setTogglingId] = useState<string | null>(null)
+  const [searchQuery, setSearchQuery] = useState("")
+  const [statusFilter, setStatusFilter] = useState("all")
   const [formErrors, setFormErrors] = useState({
     code: "",
     discountValue: "",
@@ -245,6 +247,26 @@ const validateForm = () => {
     }
 
   }
+
+  const filteredItems = items.filter((item) => {
+    const matchesSearch =
+      item.code.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (item.description?.toLowerCase() || "").includes(searchQuery.toLowerCase());
+
+    const isExpired = item.endsAt ? new Date(item.endsAt) < new Date() : false;
+    const isActive = item.active ?? (item as any).status;
+
+    let matchesStatus = true;
+    if (statusFilter === "active") {
+      matchesStatus = isActive && !isExpired;
+    } else if (statusFilter === "inactive") {
+      matchesStatus = !isActive && !isExpired;
+    } else if (statusFilter === "expired") {
+      matchesStatus = isExpired;
+    }
+
+    return matchesSearch && matchesStatus;
+  });
 
   return (
 
@@ -582,6 +604,43 @@ const validateForm = () => {
 
 </form>
 
+      {/* FILTERS */}
+
+      <div className="flex flex-col  mb-1 md:flex-row md:items-center md:justify-between">
+        <h3 className="text-lg font-medium text-[#4A1D1F]  font-melon">Coupons</h3>
+        <div className="flex flex-row gap-3">
+            <input
+              type="text"
+              placeholder="Search by code"
+              className="w-full  rounded border bg-white px-3 py-2 text-sm md:max-w-[250px]"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+            />
+            <select
+              className="w-full rounded border bg-white px-3 py-2 text-sm md:max-w-[150px]"
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+            >
+              <option value="all">All Status</option>
+              <option value="active">Active</option>
+              <option value="inactive">Inactive</option>
+              <option value="expired">Expired</option>
+            </select>
+          
+              <button
+                type="button"
+                onClick={() => {
+                  setSearchQuery("");
+                  setStatusFilter("all");
+                }}
+                className="w-full text-sm cursor-pointer  border bg-[#6C1C10] px-3 py-2  text-[#fff] rounded-full md:w-auto"
+              >
+                Clear
+              </button>
+          </div>
+        
+      </div>
+
       {/* TABLE */}
 
       <div className="rounded-xl border bg-white">
@@ -605,7 +664,7 @@ const validateForm = () => {
 
           <tbody>
 
-            {items.map((item) => {
+            {filteredItems.map((item) => {
               const isExpired = item.endsAt ? new Date(item.endsAt) < new Date() : false;
               return (
                 <tr key={item.id} className="border-t">
@@ -700,7 +759,7 @@ const validateForm = () => {
               );
             })}
 
-            {!items.length && (
+            {!filteredItems.length && (
 
               <tr>
 
