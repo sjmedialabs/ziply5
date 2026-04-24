@@ -15,6 +15,9 @@ const resolveAccessScope = (user: AppTokenPayload | null): { scope: ListProducts
   if (user.role === "super_admin" || user.role === "admin") return { scope: "admin" } 
   return { scope: "public" }
 }
+const PRODUCT_BY_SLUG_TTL_MS = 90_000
+const PRODUCT_BY_SLUG_STALE_MS = 10 * 60_000
+const bySlugRefreshInFlight = new Map<string, Promise<void>>()
 
 // function applyPromotionToProduct(product: any) {
 
@@ -238,31 +241,58 @@ export async function GET(request: NextRequest, ctx: { params: Promise<{ slug: s
     const { scope } = resolveAccessScope(user)
     const cacheKey = buildProductBySlugCacheKey(slug, scope)
 
-    const cached = await getProductCache<any>(cacheKey, 90_000)
-    if (cached) {
+    const buildPayload = async () => {
+      let product = await getProductBySlug(slug)
+      if (!product) return null
+      product = applyPromotionToProduct(product)
+      if (!product) return null
+      if (!canAccessProduct(product, scope)) return null
+      return product
+    }
+
+    const cached = await getProductCache<any>(cacheKey, PRODUCT_BY_SLUG_STALE_MS)
+    if (cached && cached.ageMs <= PRODUCT_BY_SLUG_TTL_MS) {
       console.info("[products:by-slug] cache hit", {
         slug,
         scope,
+        ageMs: cached.ageMs,
         tookMs: Date.now() - startedAt,
       })
-      return ok(cached, "Product fetched")
+      return ok(cached.value, "Product fetched")
     }
 
-    let product = await getProductBySlug(slug)
+    if (cached && cached.ageMs > PRODUCT_BY_SLUG_TTL_MS) {
+      if (!bySlugRefreshInFlight.has(cacheKey)) {
+        const refreshPromise = (async () => {
+          try {
+            const fresh = await buildPayload()
+            if (fresh) {
+              await setProductCache(cacheKey, fresh, PRODUCT_BY_SLUG_STALE_MS)
+            }
+          } finally {
+            bySlugRefreshInFlight.delete(cacheKey)
+          }
+        })()
+        bySlugRefreshInFlight.set(cacheKey, refreshPromise)
+      }
+      console.info("[products:by-slug] stale cache hit", {
+        slug,
+        scope,
+        ageMs: cached.ageMs,
+        tookMs: Date.now() - startedAt,
+      })
+      return ok(cached.value, "Product fetched")
+    }
 
+    let product = await buildPayload()
     if (!product) return fail("Product not found", 404)
-
-    product = applyPromotionToProduct(product)
-  if (!product) return fail("Product not found", 404)
-  // if (await isProductSoftDeleted(product.id)) return fail("Product not found", 404)
-  if (!canAccessProduct(product, scope)) return fail("Product not found", 404)
-  await setProductCache(cacheKey, product, 90_000)
-  console.info("[products:by-slug] cache miss", {
-    slug,
-    scope,
-    tookMs: Date.now() - startedAt,
-  })
-  return ok(product, "Product fetched")
+    await setProductCache(cacheKey, product, PRODUCT_BY_SLUG_STALE_MS)
+    console.info("[products:by-slug] cache miss", {
+      slug,
+      scope,
+      tookMs: Date.now() - startedAt,
+    })
+    return ok(product, "Product fetched")
   } catch (error) {
     const diagnostics = await getProductApiDiagnostics()
     console.error("Product by-slug API failed", {

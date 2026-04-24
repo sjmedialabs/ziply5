@@ -15,6 +15,8 @@ import {
 import type { AppTokenPayload } from "@/src/server/core/security/jwt"
 
 const PRODUCT_LIST_TTL_MS = 60_000
+const PRODUCT_LIST_STALE_MS = 5 * 60_000
+const listRefreshInFlight = new Map<string, Promise<void>>()
 
 const resolveListScope = (user: AppTokenPayload | null): { scope: ListProductsScope } => {
   if (!user) return { scope: "public" }
@@ -57,23 +59,8 @@ export async function GET(request: NextRequest) {
     user: user?.role ?? "public"
   })
 
-  const cached = await getProductCache<unknown>(cacheKey, PRODUCT_LIST_TTL_MS)
-  if (cached) {
-    console.info("[products:list] cache hit", {
-      scope,
-      page,
-      limit,
-      tookMs: Date.now() - startedAt,
-    })
-    return ok(cached, "Products fetched")
-  }
-
-  /* ===============================
-     FETCH PRODUCTS
-     =============================== */
-
-  const data =
-    await listProducts(
+  const buildPayload = async () => {
+    const data = await listProducts(
       page,
       limit,
       scope,
@@ -82,44 +69,64 @@ export async function GET(request: NextRequest) {
           scope === "admin"
             ? status
             : undefined,
-
         q: q ?? undefined,
-
         inStockOnly,
       }
     )
 
-    //  console.log("Fetched products::::", data);
+    const updatedProducts =
+      data.items?.map((product: any) =>
+        applyPromotionToProduct(product)
+      )
 
-  /* ===============================
-     APPLY PROMOTION TO EACH PRODUCT
-     =============================== */
-
-  const updatedProducts =
-    data.items?.map((product: any) =>
-      applyPromotionToProduct(product)
-    )
-
-  /* ===============================
-     KEEP SAME RESPONSE STRUCTURE
-     =============================== */
-
-  const updatedData = {
-    ...data,
-    products: updatedProducts
+    return {
+      ...data,
+      products: updatedProducts,
+    }
   }
 
-  /* ===============================
-     CACHE UPDATED DATA
-     =============================== */
+  const cached = await getProductCache<unknown>(cacheKey, PRODUCT_LIST_STALE_MS)
+  if (cached && cached.ageMs <= PRODUCT_LIST_TTL_MS) {
+    console.info("[products:list] cache hit", {
+      scope,
+      page,
+      limit,
+      ageMs: cached.ageMs,
+      tookMs: Date.now() - startedAt,
+    })
+    return ok(cached.value, "Products fetched")
+  }
 
-  await setProductCache(cacheKey, updatedData, PRODUCT_LIST_TTL_MS)
+  if (cached && cached.ageMs > PRODUCT_LIST_TTL_MS) {
+    if (!listRefreshInFlight.has(cacheKey)) {
+      const refreshPromise = (async () => {
+        try {
+          const fresh = await buildPayload()
+          await setProductCache(cacheKey, fresh, PRODUCT_LIST_STALE_MS)
+        } finally {
+          listRefreshInFlight.delete(cacheKey)
+        }
+      })()
+      listRefreshInFlight.set(cacheKey, refreshPromise)
+    }
+    console.info("[products:list] stale cache hit", {
+      scope,
+      page,
+      limit,
+      ageMs: cached.ageMs,
+      tookMs: Date.now() - startedAt,
+    })
+    return ok(cached.value, "Products fetched")
+  }
+
+  const updatedData = await buildPayload()
+  await setProductCache(cacheKey, updatedData, PRODUCT_LIST_STALE_MS)
 
   console.info("[products:list] cache miss", {
     scope,
     page,
     limit,
-    itemCount: updatedProducts?.length ?? 0,
+    itemCount: Array.isArray((updatedData as any)?.products) ? (updatedData as any).products.length : 0,
     tookMs: Date.now() - startedAt,
   })
 

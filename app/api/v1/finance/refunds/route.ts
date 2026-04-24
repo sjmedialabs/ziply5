@@ -18,8 +18,12 @@ export async function GET(request: NextRequest) {
   if (denied) return denied
   const page = Number(request.nextUrl.searchParams.get("page") ?? "1")
   const limit = Number(request.nextUrl.searchParams.get("limit") ?? "20")
-  const rows = await listRefunds(page, limit)
-  return ok(rows, "Refunds")
+  try {
+    const rows = await listRefunds(page, limit)
+    return ok(rows, "Refunds")
+  } catch {
+    return ok([], "Refunds")
+  }
 }
 
 export async function POST(request: NextRequest) {
