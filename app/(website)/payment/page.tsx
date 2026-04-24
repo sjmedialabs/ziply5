@@ -197,6 +197,17 @@ export default function PaymentPage() {
           if (!verifyRes.ok || verifyJson.success === false) {
             throw new Error(verifyJson.message ?? "Payment verification failed")
           }
+
+          // Automatically transition the order status to 'confirmed' upon successful verification
+          await fetch(`/api/v1/orders/${orderId}`, {
+            method: "PATCH",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${token}`,
+            },
+            body: JSON.stringify({ status: "confirmed" }),
+          })
+
           setStatusText("Payment successful.");
           window.localStorage.removeItem("ziply5_pending_order_id");
           setCartItems([]);
