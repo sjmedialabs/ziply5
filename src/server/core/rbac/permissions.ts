@@ -82,6 +82,7 @@ export const permissionsByRole: Record<RoleKey, string[]> = {
     "addresses.write",
     "reviews.create",
     "returns.create",
+    "coupons.read",
   ],
 }
 

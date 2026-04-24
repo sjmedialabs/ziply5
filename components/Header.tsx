@@ -33,6 +33,7 @@ export default function Header() {
   const [profileHref, setProfileHref] = useState("/login")
   const [menuCategories, setMenuCategories] = useState<MenuCategory[]>([])
   const closeCartTimeoutRef = useRef<number | null>(null)
+  const [cmsData, setCmsData] = useState<any>(null)
 
   const productRef = useRef<HTMLDivElement>(null)
   const [arrowLeft, setArrowLeft] = useState(0)
@@ -137,9 +138,23 @@ export default function Header() {
       setProfileHref("/profile")
     }
 
+    const fetchCmsData = async () => {
+      try {
+        const res = await fetch("/api/v1/cms/pages?slug=header")
+        const json = await res.json()
+        if (json.data) {
+          const headerContent = json.data.sections?.find((s: any) => s.sectionType === 'header')?.contentJson || {}
+          setCmsData(headerContent)
+        }
+      } catch (err) {
+        console.error("Failed to load header CMS data", err)
+      }
+    }
+
     syncCart()
     syncProfileHref()
     void loadMenuData()
+    void fetchCmsData()
 
     window.addEventListener("ziply5:cart-updated", syncCart)
     window.addEventListener("storage", syncProfileHref)
@@ -262,19 +277,19 @@ export default function Header() {
               </div>
             </div>
 
-            <Link href="/#best-sellers" className="font-extrabold text-black hover:text-[#f97316] transition-colors text-[15px]">
-              Best Sellers
+            <Link href={cmsData?.link1Url || "/#best-sellers"} className="font-extrabold text-black hover:text-[#f97316] transition-colors text-[15px]">
+              {cmsData?.link1Title || "Best Sellers"}
             </Link>
 
-            <Link href="/#combos" className="font-extrabold text-black hover:text-[#f97316] transition-colors text-[15px]">
-              Combos
+            <Link href={cmsData?.link2Url || "/#combos"} className="font-extrabold text-black hover:text-[#f97316] transition-colors text-[15px]">
+              {cmsData?.link2Title || "Combos"}
             </Link>
           </div>
 
           <div className="flex-1 lg:flex-none flex justify-center">
             <Link href="/" className="flex items-center">
               <Image
-                src="/primaryLogo.png"
+                src={cmsData?.logo || "/primaryLogo.png"}
                 alt="ZiPLY5 Logo"
                 width={180}
                 height={80}
@@ -343,11 +358,11 @@ export default function Header() {
           <Link href="/products" onClick={() => setMenuOpen(false)} className="block font-semibold text-black">
             Products
           </Link>
-          <Link href="/#best-sellers" onClick={() => setMenuOpen(false)} className="block font-semibold text-black">
-            Best Sellers
+          <Link href={cmsData?.link1Url || "/#best-sellers"} onClick={() => setMenuOpen(false)} className="block font-semibold text-black">
+            {cmsData?.link1Title || "Best Sellers"}
           </Link>
-          <Link href="/#combos" onClick={() => setMenuOpen(false)} className="block font-semibold text-black">
-            Combos
+          <Link href={cmsData?.link2Url || "/#combos"} onClick={() => setMenuOpen(false)} className="block font-semibold text-black">
+            {cmsData?.link2Title || "Combos"}
           </Link>
           <Link href={profileHref} onClick={() => setMenuOpen(false)} className="block font-semibold text-black">
             Profile

@@ -6,12 +6,18 @@ import { usePathname } from "next/navigation"
 import { useEffect, useState, type ReactNode } from "react"
 import type { LucideIcon } from "lucide-react"
 import { Menu, X } from "lucide-react"
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
 import { authFetch, clearSession } from "@/lib/auth-session"
 
 export type DashboardNavItem = {
-  href: string
+  href?: string
   label: string
   icon: LucideIcon
+  subItems?: {
+    href: string
+    label: string
+    icon: LucideIcon
+  }[]
 }
 
 type MePayload = {
@@ -64,19 +70,51 @@ export function DashboardChrome({
 
   const NavList = ({ onNavigate }: { onNavigate?: () => void }) => (
     <nav className="flex flex-col gap-0.5 px-2 py-3">
-      {navItems.map(({ href, label, icon: Icon }) => {
+      {navItems.map(({ href, label, icon: Icon, subItems }) => {
+        if (subItems && subItems.length > 0) {
+          const isGroupActive = subItems.some((item) => isActive(item.href))
+          return (
+            <Accordion key={label} type="single" collapsible defaultValue={isGroupActive ? label : undefined}>
+              <AccordionItem value={label} className="border-b-0">
+                <AccordionTrigger
+                  className={`flex w-full items-center justify-between gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors hover:bg-[#F5F1E6] hover:no-underline ${
+                    isGroupActive ? "bg-[#FFC222] text-[#4A1D1F] shadow-sm" : "text-[#2A1810]"
+                  }`}
+                >
+                  <div className="flex items-center gap-3">
+                    <Icon className="h-4 w-4 shrink-0 opacity-90" strokeWidth={2} />
+                    {label}
+                  </div>
+                </AccordionTrigger>
+                <AccordionContent className="pb-0 pl-6 pt-1">
+                  <nav className="flex flex-col gap-0.5">
+                    {subItems.map((subItem) => {
+                      const active = isActive(subItem.href)
+                      return (
+                        <Link
+                          key={subItem.href}
+                          href={subItem.href}
+                          onClick={onNavigate}
+                          className={`flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors ${
+                            active ? "bg-[#FFC222] text-[#4A1D1F] shadow-sm" : "text-[#2A1810] hover:bg-[#F5F1E6]"
+                          }`}
+                        >
+                          <subItem.icon className="h-4 w-4 shrink-0 opacity-90" strokeWidth={2} />
+                          {subItem.label}
+                        </Link>
+                      )
+                    })}
+                  </nav>
+                </AccordionContent>
+              </AccordionItem>
+            </Accordion>
+          )
+        }
+
+        if (!href) return null
         const active = isActive(href)
         return (
-          <Link
-            key={href}
-            href={href}
-            onClick={onNavigate}
-            className={`flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors ${
-              active
-                ? "bg-[#FFC222] text-[#4A1D1F] shadow-sm"
-                : "text-[#2A1810] hover:bg-[#F5F1E6]"
-            }`}
-          >
+          <Link key={href} href={href} onClick={onNavigate} className={`flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors ${active ? "bg-[#FFC222] text-[#4A1D1F] shadow-sm" : "text-[#2A1810] hover:bg-[#F5F1E6]"}`}>
             <Icon className="h-4 w-4 shrink-0 opacity-90" strokeWidth={2} />
             {label}
           </Link>

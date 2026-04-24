@@ -39,6 +39,7 @@ export default function PromoSectionEditor({ value = [], onChange }: PromoSectio
     <div className="space-y-5">
       <div className="flex items-center justify-between">
         <Label className="text-sm font-bold text-[#4A1D1F]">Promo Setup</Label>
+        <div className="flex items-center gap-5">
         <div className="flex items-center gap-2">
           <Label className="text-xs font-semibold text-[#646464]">Active</Label>
           <input
@@ -67,6 +68,7 @@ export default function PromoSectionEditor({ value = [], onChange }: PromoSectio
             className="accent-[#7B3010] cursor-pointer w-4 h-4"
             title="Limit to new users only"
           />
+        </div>
         </div>
       </div>
       
@@ -208,7 +210,7 @@ export default function PromoSectionEditor({ value = [], onChange }: PromoSectio
           })}
           className="bg-orange-500 text-white px-3 py-1.5 rounded-md text-xs font-semibold hover:bg-orange-600 transition-colors"
         >
-          Save Coupon to Database
+          Save Coupon
         </button>
       </div>
     </div>
