@@ -41,12 +41,12 @@ export default function BannerSection({
   }}
     >
       {/* Overlay */}
-      {bgImage && (
+      {/* {bgImage && (
         <div
           className="absolute inset-0"
           style={{ background: overlayColor }}
         />
-      )}
+      )} */}
 
       <div className="relative z-10 text-center max-w-7xl mx-auto px-4 flex flex-col items-center justify-center gap-2">
         <div>

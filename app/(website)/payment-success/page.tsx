@@ -1,72 +1,78 @@
-"use client";
+"use client"
 
-import { Check } from "lucide-react";
-import { useSearchParams } from "next/navigation";
+import { Suspense, useEffect, useState } from "react"
+import { useRouter, useSearchParams } from "next/navigation"
+import Link from "next/link"
+import { CheckCircle2 } from "lucide-react"
 
-export default function PaymentSuccess() {
-  const searchParams = useSearchParams();
-  const orderId = searchParams.get("orderId");
+function PaymentSuccessContent() {
+  const router = useRouter()
+  const searchParams = useSearchParams()
+  const orderId = searchParams.get("orderId")
+  const [countdown, setCountdown] = useState(5)
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setCountdown((prev) => {
+        if (prev <= 1) {
+          clearInterval(timer)
+          // Redirect to the profile page with the orders tab active
+          router.push("/profile?tab=orders")
+          return 0
+        }
+        return prev - 1
+      })
+    }, 1000)
+
+    return () => clearInterval(timer)
+  }, [router])
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-[#F5F1E6] p-4">
-
-      <div className="bg-[#FFC222] rounded-3xl p-8 w-full max-w-md text-center shadow-md">
-
-        {/* Icon */}
-        <div className="w-16 h-16 bg-green-400 rounded-full flex items-center justify-center mx-auto mb-4">
-          <Check className="text-white" />
-        </div>
-
-        {/* Title */}
-        <p className="text-[#646464]">Payment Success!</p>
-
-        <h2 className="text-2xl font-bold mt-2">
-          INR 3770.00
-        </h2>
-
-        <div className="border-t my-6" />
-
-        {/* Details */}
-        <div className="text-sm space-y-3 text-left">
-
-          <div className="flex justify-between">
-            <span>Ref Number</span>
-            <span>{orderId ? `${orderId.slice(0, 12)}...` : "000085752257"}</span>
-          </div>
-
-          <div className="flex justify-between">
-            <span>Payment Time</span>
-            <span>25-02-2023, 13:22:16</span>
-          </div>
-
-          <div className="flex justify-between">
-            <span>Payment Method</span>
-            <span>Phonepe</span>
-          </div>
-
-          <div className="flex justify-between">
-            <span>Sender Name</span>
-            <span>Keshav krishna</span>
-          </div>
-
-        </div>
-
-        <div className="border-t border-dashed my-6" />
-
-        {/* Bottom */}
-        <div className="text-sm space-y-2 text-left">
-          <div className="flex justify-between">
-            <span>Amount</span>
-            <span>INR 3770.00</span>
-          </div>
-
-          <div className="flex justify-between">
-            <span>Discount</span>
-            <span>Rs.17.00</span>
+      <div className="w-full max-w-md bg-white rounded-3xl p-8 shadow-sm border text-center">
+        <div className="flex justify-center mb-6">
+          <div className="rounded-full bg-green-100 p-3">
+            <CheckCircle2 className="text-green-600 w-12 h-12" />
           </div>
         </div>
-
+        <h1 className="font-melon text-2xl mb-2 text-[#4A1D1F]">Payment Successful!</h1>
+        <p className="text-gray-600 mb-6 text-sm">
+          Thank you for your purchase. Your order {orderId ? `#${orderId.slice(0, 8)}` : ""} has been confirmed.
+        </p>
+        <div className="space-y-4">
+          <p className="text-xs text-gray-500">
+            Redirecting to your order history in <span className="font-bold text-orange-600">{countdown}</span> seconds...
+          </p>
+          <div className="flex flex-col gap-3">
+            <button
+              onClick={() => router.push("/profile?tab=orders")}
+              className="w-full bg-[#5A272A] text-white py-3 rounded-full text-sm font-semibold uppercase tracking-wide shadow-md hover:bg-[#451f21] transition-all"
+            >
+              View Order History
+            </button>
+            <Link
+              href="/"
+              className="text-xs font-semibold text-gray-400 hover:text-[#5A272A] transition-colors"
+            >
+              Return to Home
+            </Link>
+          </div>
+        </div>
       </div>
     </div>
-  );
+  )
+}
+
+export default function PaymentSuccessPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex min-h-screen items-center justify-center bg-[#F5F1E6]">
+          <div className="text-sm text-[#5A272A] font-medium">Loading...</div>
+        </div>
+      }
+    >
+      <PaymentSuccessContent />
+    </Suspense>
+  )
 }
