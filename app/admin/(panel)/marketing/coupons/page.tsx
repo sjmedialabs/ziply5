@@ -768,7 +768,7 @@ const validateForm = () => {
                   colSpan={6}
                 >
 
-                  No coupons found.
+                  No coupons yet.
 
                 </td>
 

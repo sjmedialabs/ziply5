@@ -101,7 +101,7 @@ const productSelect = {
   createdById: true,
   managedById: true,
   brandId: true,
-  name: true,
+  name: true, 
   slug: true,
   description: true,
   type: true,
@@ -249,50 +249,427 @@ const normalizeSections = (
   return []
 }
 
+export function applyPromotionToProduct(product: any) {
+
+  console.log(
+    "Applying promotion to product::::",
+    product.promotionLinks[0]?.promotion
+  )
+
+  /* ===========================================================
+     SIMPLE PRODUCT LOGIC
+     =========================================================== */
+
+  if (product.type === "simple") {
+
+    const basePrice =
+      Number(product.basePrice ?? product.price)
+
+    let discountPercent = 0
+    let saleName: string | null = null
+
+    /* ---------- PRODUCT PROMOTION ---------- */
+
+    if (product.promotionLinks?.length) {
+
+      const promo =
+        product.promotionLinks[0]?.promotion
+
+      const discount =
+        promo?.metadata?.products
+          ?.find(
+            (p: any) =>
+              p.productId === product.id
+          )
+          ?.discountPercent ?? 0
+
+      if (discount > 0) {
+
+        discountPercent = discount
+        saleName = promo?.name ?? null
+
+      }
+
+    }
+
+    /* ---------- NORMAL PRODUCT DISCOUNT ---------- */
+
+    if (discountPercent === 0) {
+
+      discountPercent =
+        Number(product.discountPercent ?? 0)
+
+    }
+
+    /* ---------- FINAL PRICE ---------- */
+
+    const finalPrice =
+      basePrice -
+      (basePrice * discountPercent / 100)
+
+    /* ---------- RENAME FIELDS ---------- */
+
+    product.oldPrice = basePrice
+    product.price = Math.round(finalPrice)
+
+    product.discountPercent =
+      discountPercent
+
+    product.saleName =
+      saleName
+
+    delete product.finalPrice
+    delete product.promotionLinks
+
+    product.variants =
+      product.variants?.map((variant: any) => {
+
+        delete variant.promotionLinks
+
+        return variant
+
+      })
+
+    return product
+  }
+
+
+
+  /* ===========================================================
+     PRODUCT LEVEL (VARIANT PRODUCTS)
+     =========================================================== */
+
+  if (product.promotionLinks?.length) {
+
+    const promo =
+      product.promotionLinks[0]?.promotion
+
+    const discount =
+      promo?.metadata?.discountPercent ?? 0
+
+    if (discount > 0) {
+
+      const basePrice =
+        Number(product.basePrice ?? product.price)
+
+      const finalPrice =
+        basePrice -
+        (basePrice * discount / 100)
+
+      /* ---------- RENAME ---------- */
+
+      product.oldPrice = basePrice
+      product.price = Math.round(finalPrice)
+
+      product.discountPercent =
+        discount
+
+      product.promotion = {
+        name: promo.name,
+        kind: promo.kind
+      }
+
+    }
+
+  }
+  else {
+
+    product.oldPrice =
+      Number(product.price)
+
+    product.price =
+      Number(product.price)
+
+    product.discountPercent =
+      Number(product.discountPercent ?? 0)
+
+  }
+
+
+
+  /* ===========================================================
+     VARIANT LEVEL
+     =========================================================== */
+
+  product.variants =
+    product.variants?.map((variant: any) => {
+
+      const originalPrice =
+        Number(
+          variant.mrp ??
+          variant.price
+        )
+
+      if (variant.promotionLinks?.length) {
+
+        const promo =
+          variant.promotionLinks[0]?.promotion
+
+        const discount =
+          variant.promotionLinks[0]
+            ?.metadata?.discountPercent ?? 0
+
+        if (discount > 0) {
+
+          const finalPrice =
+            originalPrice -
+            (originalPrice * discount / 100)
+
+          /* ---------- RENAME ---------- */
+
+          variant.oldPrice =
+            originalPrice
+
+          variant.price =
+            Math.round(finalPrice)
+
+          variant.discountPercent =
+            discount
+
+          variant.promotion = {
+
+            name: promo.name,
+
+            kind: promo.kind
+
+          }
+
+        }
+
+      }
+      else {
+
+        variant.oldPrice =
+          originalPrice
+
+        variant.price =
+          Number(variant.price)
+
+        variant.discountPercent =
+          Number(
+            variant.discountPercent ?? 0
+          )
+
+      }
+
+      delete variant.promotionLinks
+
+      return variant
+
+    })
+
+  delete product.promotionLinks
+
+  return product
+
+}
+
 export const listProducts = async (
   page = 1,
   limit = 20,
   scope: ListProductsScope,
   filters?: { status?: string; q?: string },
 ) => {
+
+  const now = new Date()
+
   const skip = (page - 1) * limit
+
   const where: Prisma.ProductWhereInput = {}
 
+  /* ===============================
+     STATUS FILTER
+     =============================== */
+
   if (scope === "public") {
+
     where.status = "published"
-  } else if (scope === "admin" && filters?.status) {
-    where.status = filters.status as ProductStatus
+
   }
+  else if (
+    scope === "admin" &&
+    filters?.status
+  ) {
+
+    where.status =
+      filters.status as ProductStatus
+
+  }
+
+  /* ===============================
+     SEARCH FILTER
+     =============================== */
 
   if (filters?.q?.trim()) {
+
     const q = filters.q.trim()
+
     where.OR = [
-      { name: { contains: q, mode: "insensitive" } },
-      { slug: { contains: q, mode: "insensitive" } },
-      { sku: { contains: q, mode: "insensitive" } },
+
+      {
+        name: {
+          contains: q,
+          mode: "insensitive"
+        }
+      },
+
+      {
+        slug: {
+          contains: q,
+          mode: "insensitive"
+        }
+      },
+
+      {
+        sku: {
+          contains: q,
+          mode: "insensitive"
+        }
+      },
+
     ]
+
   }
 
-  // const [items, total] = await Promise.all([
-  //   prisma.product.findMany({
-  //     where,
-  //     orderBy: { createdAt: "desc" },
-  //     skip,
-  //     take: limit,
-  //     select: productSelect,
-  //   }),
-  //   prisma.product.count({ where }),
-  // ])
-  const items = await prisma.product.findMany({
-    where,
-    orderBy: { createdAt: "desc" },
-    skip,
-    take: limit,
-    select: scope === "public" ? productSelectPublicList : productSelect,
-  })
-const total = await prisma.product.count({ where })
+  /* ===============================
+     FETCH PRODUCTS WITH PROMOTIONS
+     =============================== */
 
-  return { items, total, page, limit }
+  const items = await prisma.product.findMany({
+
+    where,
+
+    orderBy: {
+      createdAt: "desc"
+    },
+
+    skip,
+
+    take: limit,
+
+    select: {
+
+      ...(scope === "public"
+        ? productSelectPublicList
+        : productSelect),
+
+      /* 🔥 PRODUCT LEVEL PROMOTIONS */
+
+      promotionLinks: {
+
+        where: {
+
+          promotion: {
+
+            active: true,
+
+            AND: [
+
+              {
+                OR: [
+                  { startsAt: null },
+                  { startsAt: { lte: now } }
+                ]
+              },
+
+              {
+                OR: [
+                  { endsAt: null },
+                  { endsAt: { gte: now } }
+                ]
+              }
+
+            ]
+
+          }
+
+        },
+
+        include: {
+
+          promotion: true
+
+        }
+
+      },
+
+      /* 🔥 VARIANT LEVEL PROMOTIONS */
+
+      variants: {
+
+        include: {
+
+          promotionLinks: {
+
+            where: {
+
+              promotion: {
+
+                active: true,
+
+                AND: [
+
+                  {
+                    OR: [
+                      { startsAt: null },
+                      { startsAt: { lte: now } }
+                    ]
+                  },
+
+                  {
+                    OR: [
+                      { endsAt: null },
+                      { endsAt: { gte: now } }
+                    ]
+                  }
+
+                ]
+
+              }
+
+            },
+
+            include: {
+
+              promotion: true
+
+            }
+
+          }
+
+        }
+
+      }
+
+    }
+
+  })
+
+  /* ===============================
+     TOTAL COUNT
+     =============================== */
+
+  const total =
+    await prisma.product.count({
+      where
+    })
+
+  /* ===============================
+     RETURN (UNCHANGED STRUCTURE)
+     =============================== */
+
+  return {
+
+    items,
+
+    total,
+
+    page,
+
+    limit
+
+  }
+
 }
 
 export const getProductById = async (id: string) => {
@@ -354,7 +731,7 @@ export const getProductBySlug = async (slug: string) => {
 
       },
 
-      /* 🔥 Variant-level promotions */
+      /*  Variant-level promotions */
 
       variants: {
 

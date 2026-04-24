@@ -4,7 +4,7 @@ import { requireAuth } from "@/src/server/middleware/auth"
 import { optionalAuth } from "@/src/server/middleware/optionalAuth"
 import { requirePermission } from "@/src/server/middleware/rbac"
 import { createProductSchema } from "@/src/server/modules/products/products.validator"
-import { createProduct, listProducts, type ListProductsScope } from "@/src/server/modules/products/products.service"
+import { createProduct, listProducts,applyPromotionToProduct, type ListProductsScope } from "@/src/server/modules/products/products.service"
 import { logActivity } from "@/src/server/modules/activity/activity.service"
 import type { AppTokenPayload } from "@/src/server/core/security/jwt"
 
@@ -18,27 +18,113 @@ const resolveListScope = (user: AppTokenPayload | null): { scope: ListProductsSc
 }
 
 export async function GET(request: NextRequest) {
-  const page = Number(request.nextUrl.searchParams.get("page") ?? "1")
-  const limit = Number(request.nextUrl.searchParams.get("limit") ?? "20")
-  const status = request.nextUrl.searchParams.get("status") ?? undefined
-  const q = request.nextUrl.searchParams.get("q") ?? undefined
-  const inStockOnly = request.nextUrl.searchParams.get("inStockOnly") === "true"
+
+  const page = Number(
+    request.nextUrl.searchParams.get("page") ?? "1"
+  )
+
+  const limit = Number(
+    request.nextUrl.searchParams.get("limit") ?? "20"
+  )
+
+  const status =
+    request.nextUrl.searchParams.get("status") ?? undefined
+
+  const q =
+    request.nextUrl.searchParams.get("q") ?? undefined
+
+  const inStockOnly =
+    request.nextUrl.searchParams.get("inStockOnly") === "true"
 
   const user = optionalAuth(request)
-  const { scope } = resolveListScope(user)
-  const cacheKey = JSON.stringify({ page, limit, status, q, inStockOnly, scope, user: user?.role ?? "public" })
-  const cached = productListCache.get(cacheKey)
-  if (cached && Date.now() - cached.at < PRODUCT_LIST_TTL_MS) {
-    return ok(cached.payload, "Products fetched")
+
+  const { scope } =
+    resolveListScope(user)
+
+  const cacheKey = JSON.stringify({
+    page,
+    limit,
+    status,
+    q,
+    inStockOnly,
+    scope,
+    user: user?.role ?? "public"
+  })
+
+  const cached =
+    productListCache.get(cacheKey)
+
+  if (
+    cached &&
+    Date.now() - cached.at < PRODUCT_LIST_TTL_MS
+  ) {
+
+    return ok(
+      cached.payload,
+      "Products fetched"
+    )
+
   }
 
-  const data = await listProducts(page, limit, scope, {
-    status: scope === "admin" ? status : undefined,
-    q: q ?? undefined,
-    inStockOnly,
-  })
-  productListCache.set(cacheKey, { at: Date.now(), payload: data })
-  return ok(data, "Products fetched")
+  /* ===============================
+     FETCH PRODUCTS
+     =============================== */
+
+  const data =
+    await listProducts(
+      page,
+      limit,
+      scope,
+      {
+        status:
+          scope === "admin"
+            ? status
+            : undefined,
+
+        q: q ?? undefined,
+
+        inStockOnly,
+      }
+    )
+
+    //  console.log("Fetched products::::", data);
+
+  /* ===============================
+     APPLY PROMOTION TO EACH PRODUCT
+     =============================== */
+
+  const updatedProducts =
+    data.items?.map((product: any) =>
+      applyPromotionToProduct(product)
+    )
+
+  /* ===============================
+     KEEP SAME RESPONSE STRUCTURE
+     =============================== */
+
+  const updatedData = {
+    ...data,
+    products: updatedProducts
+  }
+
+  /* ===============================
+     CACHE UPDATED DATA
+     =============================== */
+
+  productListCache.set(
+    cacheKey,
+    {
+      at: Date.now(),
+      payload: updatedData
+    }
+  )
+
+    // console.log("Updated products with promotion::::", updatedProducts);
+
+  return ok(
+    updatedData,
+    "Products fetched"
+  )
 }
 
 export async function POST(request: NextRequest) {
