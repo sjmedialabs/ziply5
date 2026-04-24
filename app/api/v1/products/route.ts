@@ -5,6 +5,7 @@ import { optionalAuth } from "@/src/server/middleware/optionalAuth"
 import { requirePermission } from "@/src/server/middleware/rbac"
 import { createProductSchema } from "@/src/server/modules/products/products.validator"
 import { createProduct, listProducts, type ListProductsScope } from "@/src/server/modules/products/products.service"
+import { getProductApiDiagnostics } from "@/src/server/modules/products/products.diagnostics"
 import { logActivity } from "@/src/server/modules/activity/activity.service"
 import type { AppTokenPayload } from "@/src/server/core/security/jwt"
 
@@ -32,13 +33,22 @@ export async function GET(request: NextRequest) {
     return ok(cached.payload, "Products fetched")
   }
 
-  const data = await listProducts(page, limit, scope, {
-    status: scope === "admin" ? status : undefined,
-    q: q ?? undefined,
-    inStockOnly,
-  })
-  productListCache.set(cacheKey, { at: Date.now(), payload: data })
-  return ok(data, "Products fetched")
+  try {
+    const data = await listProducts(page, limit, scope, {
+      status: scope === "admin" ? status : undefined,
+      q: q ?? undefined,
+      inStockOnly,
+    })
+    productListCache.set(cacheKey, { at: Date.now(), payload: data })
+    return ok(data, "Products fetched")
+  } catch (error) {
+    const diagnostics = await getProductApiDiagnostics()
+    console.error("Products API failed to load products", {
+      error: error instanceof Error ? error.message : String(error),
+      diagnostics,
+    })
+    return fail("Product loading failed", 500, diagnostics)
+  }
 }
 
 export async function POST(request: NextRequest) {

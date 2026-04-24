@@ -27,18 +27,34 @@ const mapJson = (value: unknown) => {
   return {}
 }
 
+const isMissingMasterTablesError = (error: unknown) => {
+  if (!error || typeof error !== "object") return false
+  const prismaCode = (error as { code?: string }).code
+  if (prismaCode !== "P2010") return false
+  const meta = (error as { meta?: { code?: string; message?: string } }).meta
+  if (meta?.code !== "42P01") return false
+  const message = (meta.message ?? "").toLowerCase()
+  return message.includes("master_groups") || message.includes("master_values")
+}
+
 export const listMasterGroups = async (opts?: { activeOnly?: boolean }) => {
-  const rows = await prisma.$queryRaw<
-    Array<{ id: string; key: string; name: string; description: string | null; is_active: boolean }>
-  >(
-    Prisma.sql`
-      SELECT id, key, name, description, is_active
-      FROM master_groups
-      WHERE 1=1
-      ${opts?.activeOnly ? Prisma.sql`AND is_active = true` : Prisma.empty}
-      ORDER BY name ASC
-    `,
-  )
+  let rows: Array<{ id: string; key: string; name: string; description: string | null; is_active: boolean }> = []
+  try {
+    rows = await prisma.$queryRaw<
+      Array<{ id: string; key: string; name: string; description: string | null; is_active: boolean }>
+    >(
+      Prisma.sql`
+        SELECT id, key, name, description, is_active
+        FROM master_groups
+        WHERE 1=1
+        ${opts?.activeOnly ? Prisma.sql`AND is_active = true` : Prisma.empty}
+        ORDER BY name ASC
+      `,
+    )
+  } catch (error) {
+    if (!isMissingMasterTablesError(error)) throw error
+    console.warn("Master tables are not initialized yet. Returning empty groups.")
+  }
   return rows.map((row) => ({
     id: row.id,
     key: row.key,
@@ -49,27 +65,42 @@ export const listMasterGroups = async (opts?: { activeOnly?: boolean }) => {
 }
 
 export const listMasterValues = async (groupKey: string, opts?: { activeOnly?: boolean }) => {
-  const rows = await prisma.$queryRaw<
-    Array<{
-      id: string
-      group_id: string
-      group_key: string
-      label: string
-      value: string
-      sort_order: number
-      metadata: unknown
-      is_active: boolean
-    }>
-  >(
-    Prisma.sql`
-      SELECT mv.id, mv.group_id, mg.key as group_key, mv.label, mv.value, mv.sort_order, mv.metadata, mv.is_active
-      FROM master_values mv
-      INNER JOIN master_groups mg ON mg.id = mv.group_id
-      WHERE mg.key = ${groupKey}
-      ${opts?.activeOnly ? Prisma.sql`AND mg.is_active = true AND mv.is_active = true` : Prisma.empty}
-      ORDER BY mv.sort_order ASC, mv.label ASC
-    `,
-  )
+  let rows: Array<{
+    id: string
+    group_id: string
+    group_key: string
+    label: string
+    value: string
+    sort_order: number
+    metadata: unknown
+    is_active: boolean
+  }> = []
+  try {
+    rows = await prisma.$queryRaw<
+      Array<{
+        id: string
+        group_id: string
+        group_key: string
+        label: string
+        value: string
+        sort_order: number
+        metadata: unknown
+        is_active: boolean
+      }>
+    >(
+      Prisma.sql`
+        SELECT mv.id, mv.group_id, mg.key as group_key, mv.label, mv.value, mv.sort_order, mv.metadata, mv.is_active
+        FROM master_values mv
+        INNER JOIN master_groups mg ON mg.id = mv.group_id
+        WHERE mg.key = ${groupKey}
+        ${opts?.activeOnly ? Prisma.sql`AND mg.is_active = true AND mv.is_active = true` : Prisma.empty}
+        ORDER BY mv.sort_order ASC, mv.label ASC
+      `,
+    )
+  } catch (error) {
+    if (!isMissingMasterTablesError(error)) throw error
+    console.warn("Master tables are not initialized yet. Returning empty values.")
+  }
   return rows.map((row) => ({
     id: row.id,
     groupId: row.group_id,
@@ -84,26 +115,42 @@ export const listMasterValues = async (groupKey: string, opts?: { activeOnly?: b
 
 export const getAllMasterData = async (activeOnly = true) => {
   const groups = await listMasterGroups({ activeOnly: false })
-  const valuesRows = await prisma.$queryRaw<
-    Array<{
-      id: string
-      group_id: string
-      group_key: string
-      label: string
-      value: string
-      sort_order: number
-      metadata: unknown
-      is_active: boolean
-      group_active: boolean
-    }>
-  >(
-    Prisma.sql`
-      SELECT mv.id, mv.group_id, mg.key as group_key, mv.label, mv.value, mv.sort_order, mv.metadata, mv.is_active, mg.is_active as group_active
-      FROM master_values mv
-      INNER JOIN master_groups mg ON mg.id = mv.group_id
-      ORDER BY mg.key ASC, mv.sort_order ASC, mv.label ASC
-    `,
-  )
+  let valuesRows: Array<{
+    id: string
+    group_id: string
+    group_key: string
+    label: string
+    value: string
+    sort_order: number
+    metadata: unknown
+    is_active: boolean
+    group_active: boolean
+  }> = []
+  try {
+    valuesRows = await prisma.$queryRaw<
+      Array<{
+        id: string
+        group_id: string
+        group_key: string
+        label: string
+        value: string
+        sort_order: number
+        metadata: unknown
+        is_active: boolean
+        group_active: boolean
+      }>
+    >(
+      Prisma.sql`
+        SELECT mv.id, mv.group_id, mg.key as group_key, mv.label, mv.value, mv.sort_order, mv.metadata, mv.is_active, mg.is_active as group_active
+        FROM master_values mv
+        INNER JOIN master_groups mg ON mg.id = mv.group_id
+        ORDER BY mg.key ASC, mv.sort_order ASC, mv.label ASC
+      `,
+    )
+  } catch (error) {
+    if (!isMissingMasterTablesError(error)) throw error
+    console.warn("Master tables are not initialized yet. Returning empty master values.")
+  }
   const grouped = valuesRows.reduce<Record<string, MasterValueRow[]>>((acc, row) => {
     if (activeOnly && (!row.group_active || !row.is_active)) return acc
     const entry: MasterValueRow = {

@@ -40,7 +40,20 @@ export async function GET(request: NextRequest) {
   if (!slug) return fail("slug query parameter is required (or use list=1 for admin index)", 422)
   try {
     const page = await getCmsPageBySlug(slug)
-    if (!page) return fail("CMS page not found", 404)
+    if (!page) {
+      if (slug === "header" || slug === "footer") {
+        return ok(
+          {
+            slug,
+            title: slug === "header" ? "Header Settings" : "Footer Settings",
+            status: "draft",
+            sections: [],
+          },
+          "CMS page defaulted",
+        )
+      }
+      return fail("CMS page not found", 404)
+    }
     return ok(page, "CMS page fetched")
   } catch (error) {
     const message = error instanceof Error ? error.message : "CMS fetch failed"

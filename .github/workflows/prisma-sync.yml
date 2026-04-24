@@ -1,0 +1,47 @@
+name: Prisma Schema Sync
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - master
+
+jobs:
+  prisma-sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+      uses: actions/checkout@v4
+
+      - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: 22
+        cache: pnpm
+
+      - name: Setup pnpm
+      uses: pnpm/action-setup@v4
+      with:
+        version: 10.18.3
+
+      - name: Install dependencies
+      run: pnpm install --frozen-lockfile
+
+      - name: Ensure migration files exist
+      run: pnpm prisma:check-sync --require-migrations
+
+      - name: Validate migration history
+      run: npx prisma migrate status
+      env:
+        DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        DIRECT_URL: ${{ secrets.DIRECT_URL }}
+
+      - name: Deploy migrations
+      run: npx prisma migrate deploy
+      env:
+        DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        DIRECT_URL: ${{ secrets.DIRECT_URL }}
+
+      - name: Generate Prisma client
+      run: npx prisma generate
