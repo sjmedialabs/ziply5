@@ -361,8 +361,8 @@ export const createOrderFromCheckout = async (input: {
       paymentId: input.paymentId ?? null,
       paymentMethod: input.gateway,
 
-      createdById: null,
-      managedById: null,
+      createdById: undefined,
+      managedById: undefined,
       status: "pending",
       currency: input.currency ?? "INR",
       subtotal,

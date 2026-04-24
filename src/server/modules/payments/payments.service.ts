@@ -168,15 +168,15 @@ export const verifyRazorpayPayment = async (input: {
       where: { id: tx.id },
       data: {
         status: "paid",
-        externalId: input.razorpayOrderId,
+        externalId: input.razorpayPaymentId,
       },
     })
-    await db.$executeRawUnsafe(
-      'UPDATE "Transaction" SET "razorpayPaymentId" = $1, "razorpaySignature" = $2 WHERE id = $3',
-      input.razorpayPaymentId,
-      input.razorpaySignature,
-      tx.id,
-    )
+    // await db.$executeRawUnsafe(
+    //   'UPDATE "Transaction" SET "razorpayPaymentId" = $1, "razorpaySignature" = $2 WHERE id = $3',
+    //   input.razorpayPaymentId,
+    //   input.razorpaySignature,
+    //   tx.id,
+    // )
     await db.order.update({
       where: { id: input.orderId },
       data: {

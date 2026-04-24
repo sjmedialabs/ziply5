@@ -97,7 +97,6 @@ export default function PaymentPage() {
       return intentJson.data;
     },
   });
-
   useEffect(() => {
     const token = window.localStorage.getItem("ziply5_access_token");
     if (!token) {
@@ -206,6 +205,17 @@ export default function PaymentPage() {
           if (!verifyRes.ok || verifyJson.success === false) {
             throw new Error(verifyJson.message ?? "Payment verification failed")
           }
+
+          // Automatically transition the order status to 'confirmed' upon successful verification
+          await fetch(`/api/v1/orders/${orderId}`, {
+            method: "PATCH",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${token}`,
+            },
+            body: JSON.stringify({ status: "confirmed" }),
+          })
+
           setStatusText("Payment successful.");
           window.localStorage.removeItem("ziply5_pending_order_id");
           window.localStorage.removeItem("ziply5_checkout_ref");

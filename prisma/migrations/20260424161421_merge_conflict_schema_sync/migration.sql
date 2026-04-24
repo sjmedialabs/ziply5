@@ -1,0 +1,2 @@
+-- No-op migration for merge conflict resolution.
+-- Keeps Prisma migration history in sync with schema-only merge changes.

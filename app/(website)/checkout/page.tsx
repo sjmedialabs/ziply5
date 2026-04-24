@@ -3,8 +3,9 @@
 import BannerSection from "@/components/BannerSection";
 import { ArrowLeft } from "lucide-react";
 import Link from "next/link";
-import { useLocation } from "@/hooks/useLocation";
-import { getCartItems, type CartItem, setCartItems } from "@/lib/cart";
+import { useLocation } from "@/hooks/useLocation"; // Custom hook to manage state/city selection
+import { getCartItems, type CartItem, setCartItems, validateCartItems } from "@/lib/cart"; 
+import { useStorefrontProducts } from "@/hooks/useStorefrontProducts";
 import {
   Select,
   SelectContent,
@@ -14,7 +15,7 @@ import {
 } from "@/components/ui/select";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { authedFetch, authedPost, authedPatch } from "@/lib/dashboard-fetch";
+import { authedFetch, authedPost, authedPatch } from "@/lib/dashboard-fetch"; // Utility functions for authenticated API calls
 
 type Addr = {
   id: string;
@@ -32,6 +33,14 @@ type Addr = {
   isDefault: boolean;
 };
 
+type ValidatedCartItem = CartItem & {
+  isOutdated?: boolean;
+  stock: number;
+  variantError: boolean;
+  productName: string;
+  basePrice?: number;
+};
+
 export default function CheckoutPage() {
   const {
     state,
@@ -42,6 +51,18 @@ export default function CheckoutPage() {
     cities,
   } = useLocation();
   const router = useRouter();
+  const { products } = useStorefrontProducts(200);
+
+  const sessionKey = useMemo(() => {
+    if (typeof window === "undefined") return "";
+    let key = window.localStorage.getItem("ziply5_session_key");
+    if (!key) {
+      key = "sess_" + Math.random().toString(36).substring(2, 15);
+      window.localStorage.setItem("ziply5_session_key", key);
+    }
+    return key;
+  }, []);
+
   const [items, setItems] = useState<CartItem[]>([]);
   const [placing, setPlacing] = useState(false);
   const [orderError, setOrderError] = useState("");
@@ -88,8 +109,65 @@ export default function CheckoutPage() {
       window.removeEventListener("storage", syncCart);
     };
   }, [loadAddresses]);
+useEffect(() => {
+  if (!products.length) return;
 
-  const subTotal = items.reduce((acc, item) => acc + item.price * item.quantity, 0);
+  const cleaned = items.filter(item => {
+    const p = products.find(p => p.id === item.productId || p.slug === item.slug);
+    if (!p) return false;
+
+    // remove invalid variant items
+    if (p.productKind === "variant") {
+      return item.variantId && p.variants.some(v => v.id === item.variantId);
+    }
+
+    return true;
+  });
+
+  if (cleaned.length !== items.length) {
+    setCartItems(cleaned);
+    setItems(cleaned);
+  }
+}, [products]);
+  // Validate items against current product/variant data from DB
+  const validatedItems = useMemo<ValidatedCartItem[]>(() => {
+    console.log("Validating cart items against latest product data...", { items, products });
+    return items.map((item) => {
+      const p = products.find((prod) => prod.id === item.productId || prod.slug === item.slug);
+      if (!p) {
+        return {
+          ...item,
+          isOutdated: true,
+          stock: 0,
+          variantError: false,
+          productName: item.name,
+          basePrice: item.price,
+        };
+      }
+
+      let price = p.price;
+      let basePrice = p.oldPrice;
+      let stock = p.stock ?? 0;
+      let variantError = false;
+
+      if (p.productKind === "variant") {
+        console.log("varient id matching", { itemVariantId: item.variantId, productVariants: p.variants })
+        const v = p.variants.find((v) => v.id === item.variantId);
+        if (v) {
+          price = v.price;
+          basePrice = v.mrp || p.oldPrice;
+          stock = v.stock;
+        } else {
+          variantError = true;
+        }
+      }
+
+      return { ...item, price, basePrice, stock, variantError, productName: p.name };
+    });
+  }, [items, products]);
+
+  const subTotal = validatedItems.reduce((acc, item) => acc + item.price * item.quantity, 0);
+  const hasValidationErrors = validatedItems.some(i => i.variantError || i.stock < i.quantity);
 
   const shipping = items.length === 0 ? 0 : 20;
   const total = Math.max(subTotal - couponDiscount, 0) + shipping;
@@ -159,6 +237,10 @@ export default function CheckoutPage() {
       window.alert("Your cart is empty.");
       return;
     }
+    if (hasValidationErrors) {
+  setOrderError("Some items in your cart are invalid. Please update your cart.");
+  return;
+}
     setPlacing(true);
     setOrderError("");
     try {
@@ -243,12 +325,10 @@ export default function CheckoutPage() {
           : `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`);
       window.localStorage.setItem("ziply5_checkout_ref", checkoutRef);
 
-      const orderRes = await fetch("/api/orders/create", {
+      // Save as Abandoned Cart instead of creating an actual Order
+      const abandonRes = await fetch("/api/v1/abandoned-carts", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           items: items.map((item) => ({
             slug: item.slug,
@@ -264,11 +344,10 @@ export default function CheckoutPage() {
           paymentId: `checkout_ref:${checkoutRef}`,
         }),
       });
-      const orderJson = (await orderRes.json()) as { success?: boolean; message?: string; data?: { id: string } };
-      if (!orderRes.ok || orderJson.success === false || !orderJson.data?.id) {
-        throw new Error(orderJson.message ?? "Unable to place order.");
+      if (!abandonRes.ok) {
+        console.warn("Failed to update abandoned cart record.");
       }
-      window.localStorage.setItem("ziply5_pending_order_id", orderJson.data.id);
+
       router.push("/payment");
     } catch (e) {
       setOrderError(e instanceof Error ? e.message : "Unable to continue to payment. Please try again.");
@@ -484,17 +563,24 @@ export default function CheckoutPage() {
             </div>
             <div className="w-full h-0.5 bg-black mt-4"></div>
             <div className="space-y-4 py-8">
-              {items.map((item) => (
+              {validatedItems.map((item) => (
                 <div key={item.id}>
                 <div className="flex justify-between text-sm pb-2">
                   <div>
-                    <p className="font-medium font-melon text-[#C03621] tracking-wide">{item.name}</p>
+                    <p className="font-medium font-melon text-[#C03621] tracking-wide">
+                      {item.productName || item.name}
+                      {item.variantError && <span className="block text-[10px] text-red-700">! Variant required</span>}
+                      {item.stock < item.quantity && <span className="block text-[10px] text-red-700">! Out of stock</span>}
+                    </p>
                     <p className="text-xs text-[#646464]">
                       Qty: {item.quantity} | Net wt. {item.weight}
                     </p>
                   </div>
 
                   <span className="text-[#C03621] font-medium font-melon tracking-wide">
+                    {item.basePrice && item.basePrice > item.price && (
+                      <span className="text-[10px] line-through mr-1 opacity-50">Rs.{item.basePrice.toFixed(2)}</span>
+                    )}
                     Rs.{(item.price * item.quantity).toFixed(2)}
                   </span>
                 </div>

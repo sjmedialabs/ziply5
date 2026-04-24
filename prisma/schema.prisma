@@ -539,7 +539,6 @@ model Order {
   createdAt       DateTime             @default(now())
   updatedAt       DateTime             @updatedAt
   createdById     String?
-  appliedCouponId String?
   managedById     String?
   customerAddress String?
   customerName    String?
@@ -547,6 +546,7 @@ model Order {
   paymentId       String?
   paymentMethod   String?
   paymentStatus   String?
+  appliedCouponId String?
   codSettlement   CodSettlement?
   invoice         Invoice?
   createdBy       User?                @relation("OrderCreatedBy", fields: [createdById], references: [id])
@@ -568,11 +568,11 @@ model Order {
 model OrderItem {
   id                 String              @id @default(cuid())
   orderId            String
-  variantId          String?
   productId          String
   quantity           Int
   unitPrice          Decimal             @db.Decimal(10, 2)
   lineTotal          Decimal             @db.Decimal(10, 2)
+  variantId          String?
   order              Order               @relation(fields: [orderId], references: [id], onDelete: Cascade)
   product            Product             @relation(fields: [productId], references: [id])
   returnRequestItems ReturnRequestItem[]
@@ -594,20 +594,19 @@ model Coupon {
   id                String    @id @default(cuid())
   code              String    @unique
   discountType      String
-  description       String?
   discountValue     Decimal   @db.Decimal(10, 2)
   active            Boolean   @default(true)
   startsAt          DateTime?
   endsAt            DateTime?
   createdAt         DateTime  @default(now())
   minOrderAmount    Decimal?  @db.Decimal(10, 2)
-  maxDiscountAmount Decimal?  @db.Decimal(10, 2) 
+  maxDiscountAmount Decimal?  @db.Decimal(10, 2)
   usageLimitTotal   Int?
   usageLimitPerUser Int?
   stackable         Boolean   @default(false)
   firstOrderOnly    Boolean   @default(false)
-
   usedCount         Int       @default(0)
+  description       String?
 }
 
 model CmsPage {
@@ -1111,4 +1110,33 @@ enum PromotionKind {
   FEATURED_DEAL
   FEATURED_ONLY
   CUSTOM
+}
+
+model MasterGroup {
+  id          String        @id @default(cuid())
+  key         String        @unique
+  name        String
+  description String?
+  isActive    Boolean       @default(true) @map("is_active")
+  createdAt   DateTime      @default(now()) @map("created_at")
+  updatedAt   DateTime      @updatedAt @map("updated_at")
+  values      MasterValue[]
+
+  @@map("master_groups")
+}
+
+model MasterValue {
+  id        String      @id @default(cuid())
+  groupId   String      @map("group_id")
+  label     String
+  value     String
+  sortOrder Int?        @default(0) @map("sort_order")
+  metadata  Json?
+  isActive  Boolean     @default(true) @map("is_active")
+  createdAt DateTime    @default(now()) @map("created_at")
+  updatedAt DateTime    @updatedAt @map("updated_at")
+  group     MasterGroup @relation(fields: [groupId], references: [id])
+
+  @@unique([groupId, value])
+  @@map("master_values")
 }

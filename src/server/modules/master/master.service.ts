@@ -1,5 +1,6 @@
 import { Prisma } from "@prisma/client"
 import { prisma } from "@/src/server/db/prisma"
+import { randomUUID } from "crypto"
 
 export type MasterGroupRow = {
   id: string
@@ -183,12 +184,13 @@ export const createMasterGroup = async (input: {
   description?: string | null
   isActive?: boolean
 }) => {
+  const id = randomUUID()
   const rows = await prisma.$queryRaw<
     Array<{ id: string; key: string; name: string; description: string | null; is_active: boolean }>
   >(
     Prisma.sql`
-      INSERT INTO master_groups (key, name, description, is_active)
-      VALUES (${input.key.trim().toUpperCase()}, ${input.name.trim()}, ${input.description ?? null}, ${input.isActive ?? true})
+      INSERT INTO master_groups (id, key, name, description, is_active, updated_at)
+      VALUES (${id}, ${input.key.trim().toUpperCase()}, ${input.name.trim()}, ${input.description ?? null}, ${input.isActive ?? true}, now())
       RETURNING id, key, name, description, is_active
     `,
   )
@@ -207,29 +209,21 @@ export const updateMasterGroup = async (
   id: string,
   input: { name?: string; description?: string | null; isActive?: boolean },
 ) => {
-  const assignments: Prisma.Sql[] = []
-  if (input.name !== undefined) assignments.push(Prisma.sql`name = ${input.name.trim()}`)
-  if (input.description !== undefined) assignments.push(Prisma.sql`description = ${input.description ?? null}`)
-  if (input.isActive !== undefined) assignments.push(Prisma.sql`is_active = ${input.isActive}`)
-  assignments.push(Prisma.sql`updated_at = now()`)
-  const rows = await prisma.$queryRaw<
-    Array<{ id: string; key: string; name: string; description: string | null; is_active: boolean }>
-  >(
-    Prisma.sql`
-      UPDATE master_groups
-      SET ${Prisma.join(assignments, Prisma.sql`, `)}
-      WHERE id = ${id}
-      RETURNING id, key, name, description, is_active
-    `,
-  )
-  if (!rows[0]) throw new Error("Master group not found")
-  const row = rows[0]
+  const row = await prisma.masterGroup.update({
+    where: { id },
+    data: {
+      ...(input.name !== undefined && { name: input.name.trim() }),
+      ...(input.description !== undefined && { description: input.description }),
+      ...(input.isActive !== undefined && { isActive: input.isActive }),
+    },
+  })
+
   return {
     id: row.id,
     key: row.key,
     name: row.name,
     description: row.description,
-    isActive: mapBool(row.is_active),
+    isActive: mapBool(row.isActive),
   }
 }
 
@@ -246,6 +240,7 @@ export const createMasterValue = async (input: {
   metadata?: Record<string, unknown>
   isActive?: boolean
 }) => {
+  const id = randomUUID()
   const rows = await prisma.$queryRaw<
     Array<{
       id: string
@@ -259,8 +254,8 @@ export const createMasterValue = async (input: {
     }>
   >(
     Prisma.sql`
-      INSERT INTO master_values (group_id, label, value, sort_order, metadata, is_active)
-      SELECT mg.id, ${input.label.trim()}, ${input.value.trim()}, ${input.sortOrder ?? 0}, ${JSON.stringify(input.metadata ?? {})}::jsonb, ${input.isActive ?? true}
+      INSERT INTO master_values (id, group_id, label, value, sort_order, metadata, is_active, updated_at)
+      SELECT ${id}, mg.id, ${input.label.trim()}, ${input.value.trim()}, ${input.sortOrder ?? 0}, ${JSON.stringify(input.metadata ?? {})}::jsonb, ${input.isActive ?? true}, now()
       FROM master_groups mg
       WHERE mg.key = ${input.groupKey.trim().toUpperCase()}
       RETURNING id, group_id, ${input.groupKey.trim().toUpperCase()} as group_key, label, value, sort_order, metadata, is_active
@@ -290,46 +285,27 @@ export const updateMasterValue = async (
     isActive?: boolean
   },
 ) => {
-  const assignments: Prisma.Sql[] = []
-  if (input.label !== undefined) assignments.push(Prisma.sql`label = ${input.label.trim()}`)
-  if (input.value !== undefined) assignments.push(Prisma.sql`value = ${input.value.trim()}`)
-  if (input.sortOrder !== undefined) assignments.push(Prisma.sql`sort_order = ${input.sortOrder}`)
-  if (input.metadata !== undefined) assignments.push(Prisma.sql`metadata = ${JSON.stringify(input.metadata)}::jsonb`)
-  if (input.isActive !== undefined) assignments.push(Prisma.sql`is_active = ${input.isActive}`)
-  assignments.push(Prisma.sql`updated_at = now()`)
+  const row = await prisma.masterValue.update({
+    where: { id },
+    data: {
+      ...(input.label !== undefined && { label: input.label.trim() }),
+      ...(input.value !== undefined && { value: input.value.trim() }),
+      ...(input.sortOrder !== undefined && { sortOrder: input.sortOrder }),
+      ...(input.metadata !== undefined && { metadata: input.metadata as any }),
+      ...(input.isActive !== undefined && { isActive: input.isActive }),
+    },
+    include: { group: true }
+  })
 
-  const rows = await prisma.$queryRaw<
-    Array<{
-      id: string
-      group_id: string
-      group_key: string
-      label: string
-      value: string
-      sort_order: number
-      metadata: unknown
-      is_active: boolean
-    }>
-  >(
-    Prisma.sql`
-      UPDATE master_values mv
-      SET ${Prisma.join(assignments, Prisma.sql`, `)}
-      FROM master_groups mg
-      WHERE mv.group_id = mg.id
-        AND mv.id = ${id}
-      RETURNING mv.id, mv.group_id, mg.key as group_key, mv.label, mv.value, mv.sort_order, mv.metadata, mv.is_active
-    `,
-  )
-  if (!rows[0]) throw new Error("Master value not found")
-  const row = rows[0]
   return {
     id: row.id,
-    groupId: row.group_id,
-    groupKey: row.group_key,
+    groupId: row.groupId,
+    groupKey: row.group.key,
     label: row.label,
     value: row.value,
-    sortOrder: mapNum(row.sort_order),
+    sortOrder: mapNum(row.sortOrder),
     metadata: mapJson(row.metadata),
-    isActive: mapBool(row.is_active),
+    isActive: mapBool(row.isActive),
   }
 }
 

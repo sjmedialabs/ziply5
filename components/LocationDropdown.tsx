@@ -1,27 +1,26 @@
 "use client"
 
 import { useState, useRef, useEffect } from "react"
-import { MapPin, ChevronDown, } from "lucide-react"
+import { MapPin, ChevronDown } from "lucide-react"
+import { useLocations } from "../hooks/useLocations"
 
-const locations = [
-  "Hyderabad",
-  "Bangalore",
-  "Chennai",
-  "Mumbai",
-  "Delhi",
-  "Pune",
-  "Kolkata",
-  "Ahmedabad",
-  "Jaipur",
-  "Coimbatore",
-]
-
-export default function LocationDropdown() {
+export default function LocationDropdown({
+  type = 'city',
+  value,
+  onChange,
+  parentState,
+}: {
+  type?: 'warehouse' | 'state' | 'city'
+  value?: string
+  onChange?: (value: string, label: string) => void
+  parentState?: string
+}) {
   const [open, setOpen] = useState(false)
   const [search, setSearch] = useState("")
-  const [selected, setSelected] = useState("Select Location")
+  const [selected, setSelected] = useState(value || `Select ${type}`)
 
   const ref = useRef<HTMLDivElement>(null)
+  const { data: locations, loading } = useLocations(type, parentState)
 
   // Close on outside click
   useEffect(() => {
@@ -35,7 +34,7 @@ export default function LocationDropdown() {
   }, [])
 
   const filtered = locations.filter((loc) =>
-    loc.toLowerCase().includes(search.toLowerCase())
+    loc.label.toLowerCase().includes(search.toLowerCase())
   )
 
   return (
@@ -44,47 +43,50 @@ export default function LocationDropdown() {
       {/* BUTTON */}
       <button
         onClick={() => setOpen(!open)}
-        className="flex items-center gap-2 cursor-pointer rounded-full px-4 py-2 text-sm text-black hover:text-[#f97316] transition"
+        className="flex items-center gap-2 cursor-pointer rounded-full px-4 py-2 text-sm text-[#2A1810] bg-white border border-[#D9D9D1] hover:text-[#7B3010] hover:bg-[#FFFBF3] transition shadow-sm"
       >
         <MapPin size={16} />
-        <span>{selected}</span>
+        <span className="truncate max-w-[150px]">{selected}</span>
         <ChevronDown size={16} />
       </button>
 
       {/* DROPDOWN */}
       {open && (
-        <div className="absolute right-0 mt-3 w-64 bg-white border border-zinc-200 rounded-xl shadow-lg z-50">
+        <div className="absolute right-0 left-0 lg:left-auto mt-3 w-64 bg-white border border-zinc-200 rounded-xl shadow-lg z-50">
           
           {/* SEARCH */}
           <div className="p-3 border-b">
             <input
               type="text"
-              placeholder="Search location..."
+              placeholder={`Search ${type}...`}
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="w-full  px-3 py-2 border rounded-lg text-sm focus:outline-none focus:border-amber-500"
+              className="w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:border-[#7B3010]"
             />
           </div>
 
           {/* LIST */}
           <div className="max-h-60 overflow-y-auto">
-            {filtered.length > 0 ? (
+            {loading ? (
+              <p className="px-4 py-3 text-sm text-zinc-500 text-center">Loading...</p>
+            ) : filtered.length > 0 ? (
               filtered.map((loc) => (
                 <button
-                  key={loc}
+                  key={loc.value}
                   onClick={() => {
-                    setSelected(loc)
+                    setSelected(loc.label)
+                    if (onChange) onChange(loc.value, loc.label)
                     setOpen(false)
                     setSearch("")
                   }}
-                  className="w-full text-left px-4 py-2 text-sm hover:bg-[#51282b] cursor-pointer hover:text-white transition"
+                  className="w-full text-left px-4 py-2 text-sm hover:bg-[#7B3010] cursor-pointer hover:text-white transition"
                 >
-                  {loc}
+                  {loc.label}
                 </button>
               ))
             ) : (
               <p className="px-4 py-3 text-sm text-zinc-500">
-                No locations found
+                No {type} found
               </p>
             )}
           </div>
