@@ -1,12 +1,12 @@
 "use client"
 import { useRouter } from "next/navigation"
-import Link from "next/link"
 import Image from "next/image"
 import { useEffect, useMemo, useState } from "react"
 import SectionHeader from "./SectionHeader"
-import { getCartItems, setCartItemQuantity } from "@/lib/cart"
-import { getFavoriteSlugs, toggleFavoriteSlug } from "@/lib/favorites"
-import { useStorefrontProducts } from "@/hooks/useStorefrontProducts"
+import { getCartItems, setCartItemQuantity, getCartQuantity } from "@/lib/cart" // utility functions for managing cart in localStorage
+import { getFavoriteSlugs, toggleFavoriteSlug } from "@/lib/favorites" // utility functions for managing favorites in localStorage
+import { useStorefrontProducts } from "@/hooks/useStorefrontProducts" // hook for getting api data for products
+import { X } from "lucide-react"
 
 export default function BestSellers({ cmsData }: { cmsData?: any }) {
   const { products } = useStorefrontProducts(20)
@@ -47,6 +47,22 @@ export default function BestSellers({ cmsData }: { cmsData?: any }) {
     }
   }, [])
 
+  const [selectedProduct, setSelectedProduct] = useState<any | null>(null)
+
+  const updateVariantQty = (product: any, variant: any, nextQty: number) => {
+    const vId = variant.id ? String(variant.id) : (variant.sku || variant.weight || variant.name);
+    setCartItemQuantity({
+      productId: String(product.id),
+      variantId: vId,
+      slug: product.slug,
+      name: product.name,
+      price: variant.price,
+      image: product.image,
+      weight: variant.weight || variant.name,
+      sku: variant.sku
+    }, nextQty)
+  }
+
   return (
     <section id="best-sellers" className="bg-[#FFF5C5] py-12 md:py-16 lg:py-20">
       <div className="max-w-7xl mx-auto px-4">
@@ -55,7 +71,7 @@ export default function BestSellers({ cmsData }: { cmsData?: any }) {
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 md:gap-8 justify-items-center">
           {bestSellers.map((product) => (
             <div key={product.id} className="w-full max-w-sm group cursor-pointer font-melon" onClick={() =>
-              router.push(`/product/${product.name.toLowerCase().replace(/\s+/g, "-")}`)
+              router.push(`/product/${product.slug}`)
             }>
               <div
                 className="rounded-2xl px-8 relative overflow-hidden transition-all duration-300 group-hover:ring-4 group-hover:ring-[#F36E21] group-hover:shadow-xl h-full flex flex-col"
@@ -94,9 +110,14 @@ export default function BestSellers({ cmsData }: { cmsData?: any }) {
                   <p className="text-[#FFF5C5] text-[11px] uppercase tracking-wide line-clamp-1">
                     {product.description}
                   </p>
+                  {product.productKind === "simple" && product.totalStock > 0 && (
+                    <p className="mt-1 text-[10px] font-bold text-orange-200 uppercase">
+                      {product.totalStock < 5 ? `Hurry up only ${product.totalStock} left` : `${product.totalStock} in stock`}
+                    </p>
+                  )}
 
                   <div className="mt-3 flex items-center justify-between gap-2">
-                    {(cartQtyBySlug[product.slug] ?? 0) > 0 ? (
+                    {(cartQtyBySlug[product.slug] ?? 0) > 0 && product.productKind === "simple" ? (
                       <div className="flex items-center rounded-md border border-[#d5c4b8] bg-white/95 px-1 py-0.5">
                         <button
                           type="button"
@@ -127,7 +148,11 @@ export default function BestSellers({ cmsData }: { cmsData?: any }) {
                         type="button"
                         onClick={(e) => {
                           e.stopPropagation();
-                          setCartItemQuantity(product, 1);
+                          if (product.productKind === "variant") {
+                            setSelectedProduct(product);
+                          } else {
+                            setCartItemQuantity(product, 1);
+                          }
                         }}
                         className="rounded-lg border border-white tracking-wide px-4 py-1.5 text-[12px] font-light text-white hover:bg-primary hover:text-white transition-all "
                       >
@@ -137,7 +162,14 @@ export default function BestSellers({ cmsData }: { cmsData?: any }) {
                     <button
                       onClick={(e) => {
                         e.stopPropagation()
-                        router.push("/checkout")
+                        if (product.productKind === "variant") {
+                          setSelectedProduct(product);
+                        } else {
+                          if ((cartQtyBySlug[product.slug] ?? 0) === 0) {
+                            setCartItemQuantity(product, 1);
+                          }
+                          router.push("/checkout");
+                        }
                       }} className="rounded-lg bg-primary tracking-wide px-3 py-1.5 text-[12px] font-light text-white hover:bg-[#2d1011]">
                       Buy Now
                     </button>
@@ -150,6 +182,64 @@ export default function BestSellers({ cmsData }: { cmsData?: any }) {
           ))}
         </div>
       </div>
+
+      {/* VARIANT SELECTION MODAL */}
+      {selectedProduct && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm" onClick={() => setSelectedProduct(null)}>
+          <div className="w-full max-w-md overflow-hidden rounded-3xl bg-white shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between bg-primary p-5 text-white">
+              <h3 className="font-melon text-lg font-bold uppercase tracking-wider">Select Options</h3>
+              <button onClick={() => setSelectedProduct(null)} className="rounded-full bg-white/20 p-1 hover:bg-white/30 transition-colors">
+                <X size={20} />
+              </button>
+            </div>
+            
+            <div className="p-6">
+              <div className="mb-4 flex gap-4">
+                <div className="relative h-20 w-20 shrink-0 rounded-xl bg-gray-100 p-2">
+                  <Image src={selectedProduct.image} alt={selectedProduct.name} fill className="object-contain" />
+                </div>
+                <div>
+                  <h4 className="font-melon text-base font-bold text-[#4A1D1F]">{selectedProduct.name}</h4>
+                  <p className="text-xs text-gray-500 line-clamp-2">{selectedProduct.description}</p>
+                </div>
+              </div>
+
+              <div className="space-y-3 max-h-[40vh] overflow-y-auto pr-1">
+                {selectedProduct.variants.map((v: any) => {
+                  const vId = v.id ? String(v.id) : (v.sku || v.weight || v.name);
+                  const qty = getCartQuantity(String(selectedProduct.id), vId)
+                  return (
+                    <div key={v.id} className="flex items-center justify-between rounded-2xl border border-gray-100 bg-gray-50/50 p-4 transition-all hover:border-orange-200">
+                      <div>
+                        <p className="font-melon text-sm font-bold text-[#4A1D1F]">{v.weight || v.name}</p>
+                        <p className="text-sm font-bold text-orange-500">Rs. {v.price.toFixed(2)}</p>
+                      </div>
+                      
+                      <div className="flex items-center gap-3">
+                        {qty > 0 ? (
+                          <div className="flex items-center rounded-lg border border-orange-200 bg-white px-2 py-1 shadow-sm">
+                            <button onClick={(e) => { e.stopPropagation(); updateVariantQty(selectedProduct, v, qty - 1); }} className="h-6 w-6 font-bold text-primary hover:scale-110 transition-transform">-</button>
+                            <span className="min-w-6 text-center text-xs font-bold text-gray-700">{qty}</span>
+                            <button onClick={(e) => { e.stopPropagation(); updateVariantQty(selectedProduct, v, qty + 1); }} className="h-6 w-6 font-bold text-primary hover:scale-110 transition-transform">+</button>
+                          </div>
+                        ) : (
+                          <button
+                            onClick={(e) => { e.stopPropagation(); updateVariantQty(selectedProduct, v, 1); }}
+                            className="rounded-full bg-primary px-5 py-1.5 text-[11px] font-bold text-white shadow-md hover:bg-[#3a1517] transition-all"
+                          >
+                            ADD
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </section>
   )
 }

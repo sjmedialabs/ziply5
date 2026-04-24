@@ -546,6 +546,7 @@ model Order {
   paymentId       String?
   paymentMethod   String?
   paymentStatus   String?
+  appliedCouponId String?
   codSettlement   CodSettlement?
   invoice         Invoice?
   createdBy       User?                @relation("OrderCreatedBy", fields: [createdById], references: [id])
@@ -571,6 +572,7 @@ model OrderItem {
   quantity           Int
   unitPrice          Decimal             @db.Decimal(10, 2)
   lineTotal          Decimal             @db.Decimal(10, 2)
+  variantId          String?
   order              Order               @relation(fields: [orderId], references: [id], onDelete: Cascade)
   product            Product             @relation(fields: [productId], references: [id])
   returnRequestItems ReturnRequestItem[]
@@ -1035,6 +1037,32 @@ model DeliveryEtaRule {
   createdAt                     DateTime           @default(now())
   updatedAt                     DateTime           @default(now()) @updatedAt
   zone                          ServiceabilityZone @relation(fields: [zoneId], references: [id], onDelete: Cascade)
+}
+
+model master_groups {
+  id            String          @id
+  key           String          @unique
+  name          String
+  description   String?
+  is_active     Boolean         @default(true)
+  created_at    DateTime        @default(now())
+  updated_at    DateTime
+  master_values master_values[]
+}
+
+model master_values {
+  id            String        @id
+  group_id      String
+  label         String
+  value         String
+  sort_order    Int?          @default(0)
+  metadata      Json?
+  is_active     Boolean       @default(true)
+  created_at    DateTime      @default(now())
+  updated_at    DateTime
+  master_groups master_groups @relation(fields: [group_id], references: [id])
+
+  @@unique([group_id, value])
 }
 
 enum UserStatus {
