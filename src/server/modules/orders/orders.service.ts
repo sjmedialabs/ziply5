@@ -270,7 +270,9 @@ export const createOrderFromCheckout = async (input: {
 
     const created = await tx.order.create({
       data: {
-      userId: input.userId ?? undefined,
+      user: input.userId
+  ? { connect: { id: input.userId } }
+  : undefined,
 
       // 🔥 CUSTOMER SNAPSHOT (VERY IMPORTANT)
       customerName: input.billingAddress?.fullName ?? null,
@@ -285,8 +287,8 @@ export const createOrderFromCheckout = async (input: {
       paymentMethod: input.gateway,
       appliedCouponId,
 
-      createdById: null,
-      managedById: null,
+      createdById: undefined,
+      managedById: undefined,
       status: "pending",
       currency: input.currency ?? "INR",
       subtotal,

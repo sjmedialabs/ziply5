@@ -38,9 +38,11 @@ const FALLBACK_STATUSES = [
 ] as const;
 
 export default function AdminOrdersPage() {
-  const statusMasterQuery = useMasterValues("ORDER_STATUS");
+  const statusMasterQuery = useMasterValues("ORDER_STATUSES");
   const [rows, setRows] = useState<OrderRow[]>([]);
-  const statuses = (statusMasterQuery.data?.map((item) => item.value) ?? FALLBACK_STATUSES) as string[];
+  const statuses = statusMasterQuery.data?.length
+    ? statusMasterQuery.data.map((item) => ({ label: item.label, value: item.value }))
+    : FALLBACK_STATUSES.map((s) => ({ label: s.replace(/_/g, " "), value: s }));
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
   const [canFetch, setCanFetch] = useState(false);
@@ -227,8 +229,8 @@ export default function AdminOrdersPage() {
                       </SelectTrigger>
                       <SelectContent>
                         {statuses.map((s) => (
-                          <SelectItem key={s} value={s}>
-                            {s}
+                          <SelectItem key={s.value} value={s.value}>
+                            <span className="capitalize">{s.label}</span>
                           </SelectItem>
                         ))}
                       </SelectContent>

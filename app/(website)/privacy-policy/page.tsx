@@ -1,11 +1,8 @@
 import BannerSection from "@/components/BannerSection";
-import { prisma } from "@/src/server/db/prisma";
+import { getCmsPageSafe } from "@/src/server/modules/cms/cms.safe";
 
 export default async function PrivacyPolicyPage() {
-  const page = await prisma.cmsPage.findUnique({
-    where: { slug: "privacy" },
-    include: { sections: true },
-  });
+  const page = await getCmsPageSafe("privacy");
 
   const sectionData = page?.sections.find(s => s.sectionType === "privacy-content")?.contentJson as any;
   let privacyContent = sectionData?.content;

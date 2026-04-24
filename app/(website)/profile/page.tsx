@@ -116,7 +116,7 @@ function ProfilePageContent() {
     },
   })
 
-  const runOrderAction = async (orderId: string, action: "cancel_request" | "return_request") => {
+  const runOrderAction = async (orderId: string, action: "cancel_request" | "return_request" | "cancel_pending") => {
     const token = window.localStorage.getItem("ziply5_access_token")
     if (!token) return
     setOrderActionBusy(`${orderId}:${action}`)
@@ -201,7 +201,25 @@ function ProfilePageContent() {
       router.push("/login")
     }
   }
+const cancelPendingOrder = async (orderId: string) => {
+  const token = window.localStorage.getItem("ziply5_access_token")
+  if (!token) return
 
+  setOrderActionBusy(`${orderId}:cancel`)
+
+  try {
+    await fetch(`/api/v1/orders/${orderId}/cancel`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+    })
+  } finally {
+    setOrderActionBusy(null)
+    void queryClient.invalidateQueries({ queryKey: ["profile-orders"] })
+  }
+}
   return (
     <div className="min-h-screen bg-[#f6f0dc] py-10 md:py-16 px-4">
       <div className="max-w-5xl mx-auto md:flex gap-30">
@@ -218,11 +236,10 @@ function ProfilePageContent() {
           {/* TAB ITEM */}
           <div
             onClick={() => setActiveTab("about")}
-            className={`flex-1 md:flex-none flex items-center justify-center md:justify-start gap-3 px-3 md:px-5 py-4 cursor-pointer border-b md:border-b ${
-              activeTab === "about"
+            className={`flex-1 md:flex-none flex items-center justify-center md:justify-start gap-3 px-3 md:px-5 py-4 cursor-pointer border-b md:border-b ${activeTab === "about"
                 ? "bg-white text-orange-500 md:border-r-4 shadow-[inset_-4px_0_6px_rgba(0,0,0,0.1)] border-orange-500"
                 : "text-gray-400"
-            }`}
+              }`}
           >
             <User size={18} />
             <span className="font-medium">About Me</span>
@@ -230,11 +247,10 @@ function ProfilePageContent() {
 
           <div
             onClick={() => setActiveTab("favorite")}
-            className={`flex-1 md:flex-none flex items-center justify-center md:justify-start gap-3 px-3 md:px-5 py-4 cursor-pointer border-b md:border-b ${
-              activeTab === "favorite"
+            className={`flex-1 md:flex-none flex items-center justify-center md:justify-start gap-3 px-3 md:px-5 py-4 cursor-pointer border-b md:border-b ${activeTab === "favorite"
                 ? "bg-white text-orange-500 md:border-r-4 shadow-[inset_-4px_0_6px_rgba(0,0,0,0.1)] border-orange-500"
                 : "text-gray-400"
-            }`}
+              }`}
           >
             <Star size={18} />
             <span className="font-medium">Favorite</span>
@@ -242,11 +258,10 @@ function ProfilePageContent() {
 
           <div
             onClick={() => setActiveTab("orders")}
-            className={`flex-1 md:flex-none flex items-center justify-center md:justify-start gap-3 px-3 md:px-5 py-4 cursor-pointer ${
-              activeTab === "orders"
+            className={`flex-1 md:flex-none flex items-center justify-center md:justify-start gap-3 px-3 md:px-5 py-4 cursor-pointer ${activeTab === "orders"
                 ? "bg-white text-orange-500 md:border-r-4 shadow-[inset_-4px_0_6px_rgba(0,0,0,0.1)] border-orange-500"
                 : "text-gray-400"
-            }`}
+              }`}
           >
             <Package size={18} />
             <span className="font-medium">Order history</span>
@@ -391,52 +406,52 @@ function ProfilePageContent() {
                         </button>
                       </div> */}
                       <div className="mt-3 flex items-center justify-between gap-2">
-                    {(cartQtyBySlug[product.slug] ?? 0) > 0 ? (
-                      <div className="flex items-center rounded-md border border-[#d5c4b8] bg-white/95 px-1 py-0.5">
+                        {(cartQtyBySlug[product.slug] ?? 0) > 0 ? (
+                          <div className="flex items-center rounded-md border border-[#d5c4b8] bg-white/95 px-1 py-0.5">
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setCartItemQuantity(product, Math.max(0, (cartQtyBySlug[product.slug] ?? 0) - 1));
+                              }}
+                              className="h-6 w-6 rounded text-sm font-light text-[#5A272A] hover:bg-[#f4efec]"
+                            >
+                              -
+                            </button>
+                            <span className="min-w-5 text-center text-xs font-light text-[#5A272A]">
+                              {cartQtyBySlug[product.slug] ?? 0}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setCartItemQuantity(product, (cartQtyBySlug[product.slug] ?? 0) + 1);
+                              }}
+                              className="h-6 w-6 rounded text-sm font-light text-[#5A272A] hover:bg-[#f4efec]"
+                            >
+                              +
+                            </button>
+                          </div>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setCartItemQuantity(product, 1);
+                            }}
+                            className="rounded-lg border border-white tracking-wide px-4 py-1.5 text-[12px] font-light text-white hover:bg-primary hover:text-white transition-all "
+                          >
+                            Add to Cart
+                          </button>
+                        )}
                         <button
-                          type="button"
                           onClick={(e) => {
-                            e.stopPropagation();
-                            setCartItemQuantity(product, Math.max(0, (cartQtyBySlug[product.slug] ?? 0) - 1));
-                          }}
-                          className="h-6 w-6 rounded text-sm font-light text-[#5A272A] hover:bg-[#f4efec]"
-                        >
-                          -
-                        </button>
-                        <span className="min-w-5 text-center text-xs font-light text-[#5A272A]">
-                          {cartQtyBySlug[product.slug] ?? 0}
-                        </span>
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setCartItemQuantity(product, (cartQtyBySlug[product.slug] ?? 0) + 1);
-                          }}
-                          className="h-6 w-6 rounded text-sm font-light text-[#5A272A] hover:bg-[#f4efec]"
-                        >
-                          +
+                            e.stopPropagation()
+                            router.push("/checkout")
+                          }} className="rounded-lg bg-primary tracking-wide px-3 py-1.5 text-[12px] font-light text-white hover:bg-[#2d1011]">
+                          Buy Now
                         </button>
                       </div>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setCartItemQuantity(product, 1);
-                        }}
-                        className="rounded-lg border border-white tracking-wide px-4 py-1.5 text-[12px] font-light text-white hover:bg-primary hover:text-white transition-all "
-                      >
-                        Add to Cart
-                      </button>
-                    )}
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        router.push("/checkout")
-                      }} className="rounded-lg bg-primary tracking-wide px-3 py-1.5 text-[12px] font-light text-white hover:bg-[#2d1011]">
-                      Buy Now
-                    </button>
-                  </div>
                     </article>
                   ))}
                 </div>
@@ -465,8 +480,9 @@ function ProfilePageContent() {
                 !ordersQuery.isLoading &&
                 !ordersQuery.error &&
                 orders.length === 0 && <p className="text-gray-500">No orders yet.</p>}
-              {authSnapshot.token && authSnapshot.role === "customer" && orders.map((order) => (
-                <div
+              {authSnapshot.token && authSnapshot.role === "customer" && orders.map((order) => {
+                const paymentStatus = order.paymentStatus ?? (order.transactions?.some((tx) => tx.status === "paid") ? "paid" : "pending")
+                return (<div
                   key={order.id}
                   className="rounded-xl border border-gray-200 bg-white/80 p-4 shadow-sm"
                 >
@@ -490,9 +506,20 @@ function ProfilePageContent() {
                   <p className="mt-2 font-semibold text-[#5A272A]">
                     Total: Rs.{Number(order.total).toFixed(2)}
                   </p>
-                  <p className="mt-1 text-xs text-[#646464]">
+                  {(<p className="mt-1 text-xs text-[#646464]">
                     Refund status: {(order.refunds?.[0]?.status ?? "pending").toUpperCase()}
-                  </p>
+                  </p>)}
+                  <div className="flex gap-1">
+                  {paymentStatus.toLowerCase() === "pending" && order.status.toLowerCase() === "pending" && (
+                <button className="mt-2 rounded-md border border-[#E8DCC8] bg-white px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-[#4A1D1F]" type="button"  onClick={() => void runOrderAction(order.id, "cancel_pending")}>
+                     Cancel Order
+                    </button>
+                  )}
+                  {paymentStatus.toLowerCase() === "pending" && (
+                    <button   className="mt-2 rounded-md border border-[#E8DCC8] bg-white px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-[#4A1D1F]" type="button" >
+                      Pay Now
+                    </button>
+                  )}
                   {(order.paymentStatus ?? "").toUpperCase() === "SUCCESS" &&
                     ["confirmed", "packed"].includes(order.status.toLowerCase()) && (
                       <button
@@ -521,8 +548,9 @@ function ProfilePageContent() {
                   >
                     View details
                   </button>
-                </div>
-              ))}
+                  </div>
+                </div>)
+              })}
             </div>
           )}
         </div>

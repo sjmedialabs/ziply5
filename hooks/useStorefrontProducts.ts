@@ -38,7 +38,7 @@ export function useStorefrontProducts(limit = 200) {
           setError("")
         })
         .catch(() => {
-          if (!cancelled) setError("Failed to load products")
+          if (!cancelled) setError("Unable to load products")
         })
         .finally(() => {
           if (!cancelled) setLoading(false)
@@ -67,7 +67,13 @@ export function useStorefrontProducts(limit = 200) {
         setError("")
       })
       .catch(() => {
-        if (!cancelled) setError("Failed to load products")
+        if (!cancelled) {
+          const lastCached = storefrontProductsCache.get(limit)
+          if (lastCached?.products?.length) {
+            setProducts(lastCached.products)
+          }
+          setError("Unable to load products")
+        }
       })
       .finally(() => {
         inFlightFetches.delete(limit)

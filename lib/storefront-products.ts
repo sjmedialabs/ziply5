@@ -6,7 +6,6 @@ export type StorefrontProduct = {
   productKind: "simple" | "variant"
   price: number
   oldPrice: number
-  discountPercent?: number
   stockStatus?: string
   stock?: number
   description: string
@@ -15,12 +14,13 @@ export type StorefrontProduct = {
   videoUrl: string | null
   weight: string
   type: "veg" | "non-veg"
+  saleName?: string | null
   category: string
   labels: Array<{ label: string; color: string | null }>
   features: Array<{ title: string; icon: string | null }>
   details: Array<{ title: string; content: string }>
   sections: Array<{ id: string; title: string; description: string; sortOrder: number; isActive: boolean }>
-  variants: Array<{ id: string; name: string; weight: string; price: number; sku: string; stock: number; isDefault: boolean; discountPercent?: number | null; finalPrice?: number | null; promotion?: { name: string; kind: string } | null }>
+  variants: Array<{ id: string; name: string; weight: string; price: number; sku: string; stock: number; isDefault: boolean; discountPercent?: number | null; mrp?: number | null; promotion?: { name: string; kind: string } | null }>
   discountPercent?: number | null
   finalPrice?: number | null
   promotion?: { name: string; kind: string } | null
@@ -33,7 +33,7 @@ type ApiProduct = {
   sku: string
   description?: string
   stockStatus?: string
-  stock?: number
+  totalStock?: number
   price: string | number
   basePrice?: string | number | null
   salePrice?: string | number | null
@@ -44,7 +44,8 @@ type ApiProduct = {
   videoUrl?: string | null
   images?: Array<{ url: string }>
   type?: "simple" | "variant"
-  variants?: Array<{ id: string; name: string; weight?: string | null; price: string | number; sku: string; stock: number; isDefault?: boolean; discountPercent?: number | null; finalPrice?: number | null; promotion?: { name: string; kind: string } | null }>
+  saleName?: string | null
+  variants?: Array<{ id: string; name: string; weight?: string | null; price: string | number; sku: string; stock: number; isDefault?: boolean; discountPercent?: number | null; mrp?: number | null; promotion?: { name: string; kind: string } | null }>
   tags?: Array<{ tag: { name: string } }>
   labels?: Array<{ label: string; color: string | null }>
   features?: Array<{ title: string; icon: string | null }>
@@ -87,6 +88,7 @@ const normalizeMediaUrl = (value: string | null | undefined) => {
 
 export const toStorefrontProduct = (p: ApiProduct): StorefrontProduct => {
   const variants = p.variants ?? []
+  console.log("Normalizing product", { id: p.id, name: p.name, variantCount: variants.length })
   const firstVariant = variants[0]
   const sale = Number(p.price ?? firstVariant?.price ?? p.price ?? 0)
   const oldPrice = Number(p.basePrice ?? sale * 1.2)
@@ -109,6 +111,8 @@ export const toStorefrontProduct = (p: ApiProduct): StorefrontProduct => {
     sku: p.sku || p.slug.replace(/-/g, "").slice(0, 6).toUpperCase(),
     productKind: p.type ?? (variants.length ? "variant" : "simple"),
     price: sale || 0,
+    stockStatus: p.stockStatus ?? "out_of_stock",
+    stock: p.type === "variant" ? 0 : p.totalStock || 0,
     oldPrice: oldPrice || 0,
     discountPercent: p.discountPercent ? Number(p.discountPercent) : null,
     finalPrice: p.finalPrice ? Number(p.finalPrice) : null,
@@ -132,12 +136,12 @@ export const toStorefrontProduct = (p: ApiProduct): StorefrontProduct => {
       id: v.id,
       name: v.name,
       weight: v.weight ?? v.name ?? "",
-     oldPrice: Number(v.oldPrice ?? 0),
+      mrp: Number(v.mrp) || 0,
       sku: v.sku,
       stock: v.stock ?? 0,
       isDefault: Boolean(v.isDefault),
       discountPercent: v.discountPercent ? Number(v.discountPercent) : null,
-      price: v.price ? Number(v.price) : null,
+      price: v.price ? Number(v.price) : 0,
       promotion: v.promotion ?? null,
     })) || [], } 
 }

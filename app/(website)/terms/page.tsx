@@ -1,11 +1,8 @@
 import BannerSection from "@/components/BannerSection";
-import { prisma } from "@/src/server/db/prisma";
+import { getCmsPageSafe } from "@/src/server/modules/cms/cms.safe";
 
 export default async function TermsPage() {
-  const page = await prisma.cmsPage.findUnique({
-    where: { slug: "terms" },
-    include: { sections: true },
-  });
+  const page = await getCmsPageSafe("terms");
 
   const sectionData = page?.sections.find(s => s.sectionType === "terms-content")?.contentJson as any;
   let termsContent = sectionData?.content;

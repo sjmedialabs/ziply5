@@ -11,6 +11,7 @@ import { prisma } from "@/src/server/db/prisma"
 const schema = z.object({
   action: z.enum([
     "cancel_request",
+    "cancel_pending",
     "return_request",
     "approve_order",
     "approve_cancel",
@@ -59,7 +60,14 @@ export async function POST(request: NextRequest, ctx: { params: Promise<{ id: st
       }
       return ok(updated, "Cancel requested")
     }
+    if (parsed.data.action === "cancel_pending") {
+      await updateOrderStatus(order.id, "cancelled", auth.user.sub, {
+        reasonCode: "cancel_pending",
+        note: parsed.data.reason ?? "Customer cancelled pending order",
+      })
 
+      return ok({ id: order.id }, "Pending order cancelled")
+    }
     if (parsed.data.action === "return_request") {
       if (order.status !== "delivered") return fail("Return is allowed only for delivered orders", 422)
       const deliveredAt = order.statusHistory.find((entry) => entry.toStatus === "delivered")?.changedAt ?? order.updatedAt

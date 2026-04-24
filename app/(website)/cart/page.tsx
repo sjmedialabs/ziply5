@@ -1,7 +1,7 @@
 "use client";
 
 import BannerSection from "@/components/BannerSection";
-import { getCartItems, setCartItems, type CartItem } from "@/lib/cart";
+import { getCartItems, setCartItems, type CartItem } from "@/lib/cart"; // utils to manage cart items in localStorage
 import { ArrowLeft, Minus, Plus, X } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useState } from "react";

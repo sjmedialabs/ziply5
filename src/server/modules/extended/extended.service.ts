@@ -649,3 +649,9 @@ export const createSavedPaymentMethod = (
   userId: string,
   data: { provider: string; externalRef: string; last4?: string; brand?: string; isDefault?: boolean },
 ) => prisma.savedPaymentMethod.create({ data: { ...data, userId } })
+
+export async function deleteAbandonedCartBySession(sessionKey: string) {
+  return prisma.abandonedCart.deleteMany({
+    where: { sessionKey },
+  });
+}

@@ -225,19 +225,26 @@ const resolveAccessScope = (user: AppTokenPayload | null): { scope: ListProducts
 
 // }
 export async function GET(request: NextRequest, ctx: { params: Promise<{ slug: string }> }) {
-  const { slug } = await ctx.params
-  const user = optionalAuth(request)
-  const { scope } = resolveAccessScope(user)
-  let product = await getProductBySlug(slug)
+  try {
+    const { slug } = await ctx.params
+    const user = optionalAuth(request)
+    const { scope } = resolveAccessScope(user)
+    let product = await getProductBySlug(slug)
 
-if (!product)
-  return fail("Product not found", 404)
+    if (!product) return fail("Product not found", 404)
 
-product =
-  applyPromotionToProduct(product)
-  console.log("Product after applying promotion is:::::", product)
+    product = applyPromotionToProduct(product)
+    console.log("Product after applying promotion is:::::", product)
   if (!product) return fail("Product not found", 404)
   // if (await isProductSoftDeleted(product.id)) return fail("Product not found", 404)
   if (!canAccessProduct(product, scope)) return fail("Product not found", 404)
   return ok(product, "Product fetched")
+  } catch (error) {
+    const diagnostics = await getProductApiDiagnostics()
+    console.error("Product by-slug API failed", {
+      error: error instanceof Error ? error.message : String(error),
+      diagnostics,
+    })
+    return fail("Product loading failed", 500, diagnostics)
+  }
 }

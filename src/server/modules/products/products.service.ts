@@ -35,6 +35,7 @@ type CreateProductInput = {
   categoryId?: string | null
   brandId?: string | null
   variants?: Array<{
+    id?: string
     name: string
     weight?: string | null
     price: number
@@ -79,6 +80,7 @@ type UpdateProductInput = Partial<{
   categoryId: string | null
   brandId: string | null
   variants: Array<{
+    id?: string
     name: string
     weight?: string | null
     price: number
@@ -108,13 +110,10 @@ const productSelect = {
   basePrice: true,
   salePrice: true,
   discountPercent: true,
-  weight: true,
   taxIncluded: true,
   stockStatus: true,
   totalStock: true,
   shelfLife: true,
-  preparationType: true,
-  spiceLevel: true,
   isActive: true,
   isFeatured: true,
   isBestSeller: true,
@@ -147,13 +146,11 @@ const productSelectPublicList = {
   description: true,
   basePrice: true,
   salePrice: true,
-  weight: true,
   price: true,
   taxIncluded: true,
   stockStatus: true,
   totalStock: true,
   shelfLife: true,
-  spiceLevel: true,
   isActive: true,
   isFeatured: true,
   isBestSeller: true,
@@ -171,6 +168,7 @@ const productSelectPublicList = {
   // Weight/sku/stock are needed for product-card rendering.
   variants: {
     select: {
+      id: true,
       name: true,
       weight: true,
       price: true,
@@ -680,9 +678,6 @@ export const getProductById = async (id: string) => {
 }
 
 export const getProductBySlug = async (slug: string) => {
-
-  const now = new Date()
-
   return prisma.product.findUnique({
 
     where: { slug }, // ✅ correct (you passed slug)

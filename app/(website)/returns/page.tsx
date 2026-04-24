@@ -1,11 +1,8 @@
 import BannerSection from "@/components/BannerSection";
-import { prisma } from "@/src/server/db/prisma";
+import { getCmsPageSafe } from "@/src/server/modules/cms/cms.safe";
 
 export default async function ReturnsPage() {
-  const page = await prisma.cmsPage.findUnique({
-    where: { slug: "returns" },
-    include: { sections: true },
-  });
+  const page = await getCmsPageSafe("returns");
 
   const sectionData = page?.sections.find(s => s.sectionType === "return-content")?.contentJson as any;
   let returnsContent = sectionData?.content;
