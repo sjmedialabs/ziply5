@@ -1,6 +1,7 @@
 "use client"
 
 import { useQuery } from "@tanstack/react-query"
+import { authedFetch } from "@/lib/dashboard-fetch"
 
 type MasterValue = {
   id: string
@@ -19,24 +20,15 @@ type MasterGroup = {
   isActive: boolean
 }
 
-const fetchJson = async <T,>(url: string): Promise<T> => {
-  const res = await fetch(url)
-  const payload = (await res.json()) as { success?: boolean; message?: string; data?: T }
-  if (!res.ok || payload.success === false || payload.data === undefined) {
-    throw new Error(payload.message ?? "Request failed")
-  }
-  return payload.data
-}
-
-export const useMasterValues = (groupKey: string, enabled = true) => {
+export const useMasterValues = (groupKey: string, enabled = true, activeOnly = true) => {
   return useQuery({
-    queryKey: ["master-values", groupKey],
+    queryKey: ["master-values", groupKey, activeOnly],
     enabled: enabled && Boolean(groupKey),
     staleTime: 5 * 60_000,
     retry: 1,
     queryFn: () =>
-      fetchJson<MasterValue[]>(
-        `/api/master/values?group=${encodeURIComponent(groupKey)}&activeOnly=true`,
+      authedFetch<MasterValue[]>(
+        `/api/master/values?group=${encodeURIComponent(groupKey)}&activeOnly=${activeOnly}`,
       ),
   })
 }
@@ -47,7 +39,7 @@ export const useMasterGroups = (enabled = true) => {
     enabled,
     staleTime: 5 * 60_000,
     retry: 1,
-    queryFn: () => fetchJson<MasterGroup[]>("/api/master/groups?activeOnly=true"),
+    queryFn: () => authedFetch<MasterGroup[]>("/api/master/groups?activeOnly=true"),
   })
 }
 
@@ -57,6 +49,6 @@ export const useAllMasterData = (enabled = true) => {
     enabled,
     staleTime: 5 * 60_000,
     retry: 1,
-    queryFn: () => fetchJson<Array<MasterGroup & { values: MasterValue[] }>>("/api/master/all"),
+    queryFn: () => authedFetch<Array<MasterGroup & { values: MasterValue[] }>>("/api/master/all"),
   })
 }

@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useMasterValues, useMasterGroups } from "@/hooks/useMasterData";
 import { authedFetch } from "@/lib/dashboard-fetch";
+import { Edit2, Check, X } from "lucide-react";
 
 type Props = {
   groupKey: string;
@@ -10,21 +11,24 @@ type Props = {
 };
 
 export default function MasterDataCreatorForm({ groupKey, groupName }: Props) {
-  const { data: values, refetch, isLoading } = useMasterValues(groupKey);
+  const { data: values, refetch, isLoading } = useMasterValues(groupKey, true, false);
   const { data: groups, refetch: refetchGroups } = useMasterGroups();
   
   const [label, setLabel] = useState("");
-  const [value, setValue] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState("");
 
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editLabel, setEditLabel] = useState("");
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!label || !value) return;
+    if (!label) return;
     setIsSubmitting(true);
     setError("");
 
     try {
+      const finalValue = label.toLowerCase().replace(/[^a-z0-9_]/g, "_");
       // Auto-create Master Group if it doesn't exist yet
       const groupExists = groups?.find((g) => g.key === groupKey);
       if (!groupExists) {
@@ -41,19 +45,54 @@ export default function MasterDataCreatorForm({ groupKey, groupName }: Props) {
         body: JSON.stringify({
           groupKey,
           label,
-          value,
+          value: finalValue,
           sortOrder: values ? values.length + 1 : 0,
           isActive: true,
         }),
       });
 
       setLabel("");
-      setValue("");
       refetch();
     } catch (err: any) {
       setError(err.message || "Failed to add value");
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  const handleToggle = async (id: string, currentStatus: boolean) => {
+    try {
+      await authedFetch("/api/master/values", {
+        method: "PATCH",
+        body: JSON.stringify({ id, isActive: !currentStatus }),
+      });
+      refetch();
+    } catch (err: any) {
+      setError(err.message || "Failed to update status");
+    }
+  };
+
+  const startEdit = (id: string, currentLabel: string) => {
+    setEditingId(id);
+    setEditLabel(currentLabel);
+  };
+
+  const cancelEdit = () => {
+    setEditingId(null);
+    setEditLabel("");
+  };
+
+  const saveEdit = async (id: string) => {
+    if (!editLabel) return;
+    try {
+      await authedFetch("/api/master/values", {
+        method: "PATCH",
+        body: JSON.stringify({ id, label: editLabel }),
+      });
+      setEditingId(null);
+      refetch();
+    } catch (err: any) {
+      setError(err.message || "Failed to update item");
     }
   };
 
@@ -65,17 +104,7 @@ export default function MasterDataCreatorForm({ groupKey, groupName }: Props) {
           className="w-full rounded-md border border-[#E8DCC8] px-3 py-2 text-sm outline-none focus:border-[#7B3010]"
           placeholder="Label (e.g. Processing)"
           value={label}
-          onChange={(e) => {
-            setLabel(e.target.value);
-            if (!value) setValue(e.target.value.toLowerCase().replace(/\s+/g, "_"));
-          }}
-          required
-        />
-        <input
-          className="w-full rounded-md border border-[#E8DCC8] px-3 py-2 text-sm outline-none focus:border-[#7B3010]"
-          placeholder="Value (e.g. processing)"
-          value={value}
-          onChange={(e) => setValue(e.target.value.toLowerCase().replace(/\s+/g, "_"))}
+          onChange={(e) => setLabel(e.target.value)}
           required
         />
         <button disabled={isSubmitting} className="rounded-md bg-[#4A1D1F] px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">
@@ -85,9 +114,39 @@ export default function MasterDataCreatorForm({ groupKey, groupName }: Props) {
       {error && <p className="mt-2 text-xs text-red-600">{error}</p>}
       <div className="mt-4 flex flex-col gap-1 max-h-64 overflow-y-auto">
         {isLoading ? <p className="text-xs text-gray-500">Loading...</p> : values?.map((v) => (
-          <div key={v.id} className="flex justify-between rounded-md bg-gray-50 px-3 py-2 text-sm border border-gray-100">
-            <span>{v.label}</span>
-            <span className="font-mono text-xs text-gray-500">{v.value}</span>
+          <div key={v.id} className="flex justify-between items-center rounded-md bg-gray-50 px-3 py-2 text-sm border border-gray-100 min-h-[40px]">
+            {editingId === v.id ? (
+              <div className="flex flex-1 items-center gap-2 mr-2">
+                <input
+                  className="w-full rounded border border-[#E8DCC8] px-2 py-1 text-sm outline-none focus:border-[#7B3010]"
+                  value={editLabel}
+                  onChange={(e) => setEditLabel(e.target.value)}
+                  autoFocus
+                />
+                <button type="button" onClick={() => saveEdit(v.id)} className="text-green-600 hover:text-green-800">
+                  <Check size={16} />
+                </button>
+                <button type="button" onClick={cancelEdit} className="text-red-600 hover:text-red-800">
+                  <X size={16} />
+                </button>
+              </div>
+            ) : (
+              <>
+                <span className={v.isActive ? "text-gray-900" : "text-gray-400 line-through"}>{v.label}</span>
+                <div className="flex items-center gap-3">
+                  <button type="button" onClick={() => startEdit(v.id, v.label)} className="text-gray-400 hover:text-[#7B3010] transition-colors">
+                    <Edit2 size={14} />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleToggle(v.id, v.isActive)}
+                    className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none ${v.isActive ? 'bg-[#7B3010]' : 'bg-gray-300'}`}
+                  >
+                    <span className={`inline-block h-3 w-3 transform rounded-full bg-white transition-transform ${v.isActive ? 'translate-x-5' : 'translate-x-1'}`} />
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         ))}
       </div>

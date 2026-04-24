@@ -5,6 +5,7 @@ import { authedFetch } from "@/lib/dashboard-fetch";
 import { ConsoleTable, ConsoleTd } from "@/components/dashboard/ConsoleTable";
 import LocationCreatorForm from "../../../../components/ui/LocationCreatorForm";
 import { useLocations } from "../../../../hooks/useLocations";
+import MasterDataCreatorForm from "../../../../components/ui/MasterDataCreatorForm";
 import { Trash2 } from "lucide-react";
 
 type SettingRow = {
@@ -18,7 +19,7 @@ export default function AdminSettingsPage() {
   const [rows, setRows] = useState<SettingRow[]>([]);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<"generic" | "locations">("generic");
+  const [activeTab, setActiveTab] = useState<"generic" | "locations" | "master_data">("generic");
 
   const { data: warehouses, refetch: refetchWarehouses, loading: loadingWarehouses } = useLocations("warehouse", undefined);
   const { data: states, refetch: refetchStates, loading: loadingStates } = useLocations("state", undefined);
@@ -92,7 +93,13 @@ export default function AdminSettingsPage() {
           className={`pb-2 text-sm font-semibold transition-colors ${activeTab === 'locations' ? 'border-b-2 border-[#7B3010] text-[#7B3010]' : 'text-[#646464] hover:text-[#2A1810]'}`}
           onClick={() => setActiveTab('locations')}
         >
-          📍 Location Management
+          Location Management
+        </button>
+        <button
+          className={`pb-2 text-sm font-semibold transition-colors ${activeTab === 'master_data' ? 'border-b-2 border-[#7B3010] text-[#7B3010]' : 'text-[#646464] hover:text-[#2A1810]'}`}
+          onClick={() => setActiveTab('master_data')}
+        >
+          Dropdowns 
         </button>
       </div>
 
@@ -178,6 +185,13 @@ export default function AdminSettingsPage() {
             </div>
           </div>
         </>
+      )}
+
+      {!loading && activeTab === 'master_data' && (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <MasterDataCreatorForm groupKey="ORDER_STATUSES" groupName="Order Statuses" />
+          <MasterDataCreatorForm groupKey="RETURN_REASONS" groupName="Return Reasons" />
+        </div>
       )}
     </section>
   );
