@@ -51,7 +51,8 @@ function ProductsPageContent() {
     return () => {
       cancelled = true
     }
-  }, [])
+  }, []) 
+  console.log("fetcheed products", products);
 
   useEffect(() => {
     const syncFavorites = () => setFavoriteSlugs(getFavoriteSlugs())
@@ -275,12 +276,20 @@ function ProductsPageContent() {
           <p className="mb-4 rounded-lg bg-white px-4 py-3 text-sm text-[#646464]">No products available.</p>
         )}
         <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
-          {filteredProducts.map((product, idx) => (
-            <article
-              key={`${product.id || product.slug || "product"}-${idx}`}
-              className="group relative rounded-2xl border-2 border-transparent p-4 transition-all duration-300 hover:ring-4 hover:ring-[#F36E21] hover:shadow-xl]"
-              style={{ backgroundColor: "#3EA6CF" }}
-            >
+          {filteredProducts.map((product, idx) => {
+            const displayPrice = (product as any).variants?.length
+              ? Number(
+                  (product as any).variants.find((v: any) => v.isDefault)?.price ||
+                    (product as any).variants[0].price
+                )
+              : Number(product.price || 0);
+
+            return (
+              <article
+                key={`${product.id || product.slug || "product"}-${idx}`}
+                className="group relative rounded-2xl border-2 border-transparent p-4 transition-all duration-300 hover:ring-4 hover:ring-[#F36E21] hover:shadow-xl]"
+                style={{ backgroundColor: "#3EA6CF" }}
+              >
               <button
                 type="button"
                 onClick={() => {
@@ -384,7 +393,8 @@ function ProductsPageContent() {
                   </button>
                 </div>
               </article>
-            ))}
+            );
+          })}
         </div>
       </div>
 
