@@ -187,6 +187,7 @@ model ProductTag {
   tag       Tag     @relation(fields: [tagId], references: [id], onDelete: Cascade)
 
   @@id([productId, tagId])
+  @@index([tagId])
 }
 
 model AttributeDef {
@@ -288,6 +289,7 @@ model PromotionProduct {
   promotion   Promotion @relation(fields: [promotionId], references: [id], onDelete: Cascade)
 
   @@unique([promotionId, productId])
+  @@index([productId])
 }
 
 model PromotionVariant {
@@ -299,6 +301,7 @@ model PromotionVariant {
   variant     ProductVariant @relation(fields: [variantId], references: [id], onDelete: Cascade)
 
   @@unique([promotionId, variantId])
+  @@index([variantId])
 }
 
 model Promotion {
@@ -313,6 +316,8 @@ model Promotion {
   kind      PromotionKind
   products  PromotionProduct[]
   variants  PromotionVariant[]
+
+  @@index([active, startsAt, endsAt])
 }
 
 model WithdrawalRequest {
@@ -423,6 +428,7 @@ model Product {
 
   @@index([createdById])
   @@index([managedById])
+  @@index([status, createdAt])
 }
 
 model ProductSection {
@@ -459,6 +465,7 @@ model ProductVariant {
   promotionLinks  PromotionVariant[]
 
   @@index([productId])
+  @@index([productId, isDefault])
 }
 
 model ProductImage {
@@ -511,6 +518,7 @@ model ProductCategory {
   product    Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
 
   @@id([productId, categoryId])
+  @@index([categoryId])
 }
 
 model InventoryItem {

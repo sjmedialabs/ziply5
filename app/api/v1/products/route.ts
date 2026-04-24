@@ -6,10 +6,15 @@ import { requirePermission } from "@/src/server/middleware/rbac"
 import { createProductSchema } from "@/src/server/modules/products/products.validator"
 import { createProduct, listProducts,applyPromotionToProduct, type ListProductsScope } from "@/src/server/modules/products/products.service"
 import { logActivity } from "@/src/server/modules/activity/activity.service"
+import {
+  buildProductListCacheKey,
+  getProductCache,
+  invalidateProductCache,
+  setProductCache,
+} from "@/src/server/modules/products/products.cache"
 import type { AppTokenPayload } from "@/src/server/core/security/jwt"
 
-const PRODUCT_LIST_TTL_MS = 30_000
-const productListCache = new Map<string, { at: number; payload: unknown }>()
+const PRODUCT_LIST_TTL_MS = 60_000
 
 const resolveListScope = (user: AppTokenPayload | null): { scope: ListProductsScope } => {
   if (!user) return { scope: "public" }
@@ -18,6 +23,7 @@ const resolveListScope = (user: AppTokenPayload | null): { scope: ListProductsSc
 }
 
 export async function GET(request: NextRequest) {
+  const startedAt = Date.now()
 
   const page = Number(
     request.nextUrl.searchParams.get("page") ?? "1"
@@ -41,7 +47,7 @@ export async function GET(request: NextRequest) {
   const { scope } =
     resolveListScope(user)
 
-  const cacheKey = JSON.stringify({
+  const cacheKey = buildProductListCacheKey({
     page,
     limit,
     status,
@@ -51,19 +57,15 @@ export async function GET(request: NextRequest) {
     user: user?.role ?? "public"
   })
 
-  const cached =
-    productListCache.get(cacheKey)
-
-  if (
-    cached &&
-    Date.now() - cached.at < PRODUCT_LIST_TTL_MS
-  ) {
-
-    return ok(
-      cached.payload,
-      "Products fetched"
-    )
-
+  const cached = await getProductCache<unknown>(cacheKey, PRODUCT_LIST_TTL_MS)
+  if (cached) {
+    console.info("[products:list] cache hit", {
+      scope,
+      page,
+      limit,
+      tookMs: Date.now() - startedAt,
+    })
+    return ok(cached, "Products fetched")
   }
 
   /* ===============================
@@ -111,13 +113,15 @@ export async function GET(request: NextRequest) {
      CACHE UPDATED DATA
      =============================== */
 
-  productListCache.set(
-    cacheKey,
-    {
-      at: Date.now(),
-      payload: updatedData
-    }
-  )
+  await setProductCache(cacheKey, updatedData, PRODUCT_LIST_TTL_MS)
+
+  console.info("[products:list] cache miss", {
+    scope,
+    page,
+    limit,
+    itemCount: updatedProducts?.length ?? 0,
+    tookMs: Date.now() - startedAt,
+  })
 
     // console.log("Updated products with promotion::::", updatedProducts);
 
@@ -155,7 +159,7 @@ export async function POST(request: NextRequest) {
       entityType: "Product",
       entityId: product.id,
     })
-    productListCache.clear()
+    await invalidateProductCache()
 
     return ok(product, "Product created", 201)
   } catch (error) {

@@ -1,7 +1,13 @@
 import { NextRequest } from "next/server"
 import { fail, ok } from "@/src/server/core/http/response"
 import { optionalAuth } from "@/src/server/middleware/optionalAuth"
-import { canAccessProduct, getProductBySlug, applyPromotionToProduct,isProductSoftDeleted, type ListProductsScope } from "@/src/server/modules/products/products.service"
+import { canAccessProduct, getProductBySlug, applyPromotionToProduct, type ListProductsScope } from "@/src/server/modules/products/products.service"
+import { getProductApiDiagnostics } from "@/src/server/modules/products/products.diagnostics"
+import {
+  buildProductBySlugCacheKey,
+  getProductCache,
+  setProductCache,
+} from "@/src/server/modules/products/products.cache"
 import type { AppTokenPayload } from "@/src/server/core/security/jwt"
 
 const resolveAccessScope = (user: AppTokenPayload | null): { scope: ListProductsScope } => {
@@ -225,19 +231,37 @@ const resolveAccessScope = (user: AppTokenPayload | null): { scope: ListProducts
 
 // }
 export async function GET(request: NextRequest, ctx: { params: Promise<{ slug: string }> }) {
+  const startedAt = Date.now()
   try {
     const { slug } = await ctx.params
     const user = optionalAuth(request)
     const { scope } = resolveAccessScope(user)
+    const cacheKey = buildProductBySlugCacheKey(slug, scope)
+
+    const cached = await getProductCache<any>(cacheKey, 90_000)
+    if (cached) {
+      console.info("[products:by-slug] cache hit", {
+        slug,
+        scope,
+        tookMs: Date.now() - startedAt,
+      })
+      return ok(cached, "Product fetched")
+    }
+
     let product = await getProductBySlug(slug)
 
     if (!product) return fail("Product not found", 404)
 
     product = applyPromotionToProduct(product)
-    console.log("Product after applying promotion is:::::", product)
   if (!product) return fail("Product not found", 404)
   // if (await isProductSoftDeleted(product.id)) return fail("Product not found", 404)
   if (!canAccessProduct(product, scope)) return fail("Product not found", 404)
+  await setProductCache(cacheKey, product, 90_000)
+  console.info("[products:by-slug] cache miss", {
+    slug,
+    scope,
+    tookMs: Date.now() - startedAt,
+  })
   return ok(product, "Product fetched")
   } catch (error) {
     const diagnostics = await getProductApiDiagnostics()
