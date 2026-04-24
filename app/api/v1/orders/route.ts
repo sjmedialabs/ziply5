@@ -17,8 +17,13 @@ export async function GET(request: NextRequest) {
   const page = Number(request.nextUrl.searchParams.get("page") ?? "1")
   const limit = Number(request.nextUrl.searchParams.get("limit") ?? "20")
 
-  const data = await listOrders(page, limit, auth.user.role, auth.user.sub)
-  return ok(data, "Orders fetched")
+  try {
+    const data = await listOrders(page, limit, auth.user.role, auth.user.sub)
+    return ok(data, "Orders fetched")
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Orders load failed"
+    return fail(message, 500)
+  }
 }
 
 export async function POST(request: NextRequest) {

@@ -122,6 +122,25 @@ const isMissingOrderItemVariantColumnError = (error: unknown) => {
   return meta?.column === "variantId"
 }
 
+const isMissingOrderJoinDataError = (error: unknown) => {
+  if (!error || typeof error !== "object") return false
+  const code = (error as { code?: string }).code
+  if (code === "P2021" || code === "P2022") return true
+  const message = error instanceof Error ? error.message : String(error)
+  return /ReturnRequest|RefundRecord|OrderStatusHistory|Transaction|Invoice|Shipment/i.test(message)
+}
+
+const tableExists = async (tableName: string) => {
+  try {
+    const rows = (await prisma.$queryRawUnsafe(
+      `SELECT to_regclass('public."${tableName}"') AS table_name`,
+    )) as Array<{ table_name: string | null }>
+    return Boolean(rows?.[0]?.table_name)
+  } catch {
+    return false
+  }
+}
+
 const reserveInventoryForOrder = async (
   tx: Prisma.TransactionClient,
   lines: Array<{ productId: string; variantId?: string | null; quantity: number }>,
@@ -313,7 +332,11 @@ export const createOrderFromCheckout = async (input: {
 
   const total = Math.max(subtotal + shipping - discount, 0)
 
-  const createOrderTx = async (includeVariantId: boolean) =>
+  const hasInventoryItemTable = await tableExists("InventoryItem")
+  const hasOrderStatusHistoryTable = await tableExists("OrderStatusHistory")
+  const hasTransactionTable = await tableExists("Transaction")
+
+  const createOrderTx = async (includeVariantId: boolean, includeStatusHistory: boolean) =>
     prisma.$transaction(async (tx) => {
       if (input.paymentId?.trim()) {
         const paymentRef = input.paymentId.trim()
@@ -341,10 +364,12 @@ export const createOrderFromCheckout = async (input: {
         if (existingLocked) return existingLocked
       }
 
-      await reserveInventoryForOrder(
-        tx,
-        lines.map((line) => ({ productId: line.productId, variantId: line.variantId, quantity: line.quantity })),
-      )
+      if (hasInventoryItemTable) {
+        await reserveInventoryForOrder(
+          tx,
+          lines.map((line) => ({ productId: line.productId, variantId: line.variantId, quantity: line.quantity })),
+        )
+      }
 
       const baseData = {
         userId: input.userId ?? undefined,
@@ -377,13 +402,17 @@ export const createOrderFromCheckout = async (input: {
             lineTotal: l.lineTotal,
           })),
         },
-        statusHistory: {
-          create: {
-            toStatus: "pending_payment",
-            notes: "Order created, awaiting payment",
-            changedById: input.userId ?? undefined,
-          },
-        },
+        ...(includeStatusHistory
+          ? {
+              statusHistory: {
+                create: {
+                  toStatus: "pending_payment",
+                  notes: "Order created, awaiting payment",
+                  changedById: input.userId ?? undefined,
+                },
+              },
+            }
+          : {}),
       }
 
       const created = await tx.order.create({
@@ -391,26 +420,32 @@ export const createOrderFromCheckout = async (input: {
         select: orderCheckoutSelect,
       })
 
-      await tx.transaction.create({
+      return created
+    })
+
+  let order
+  try {
+    order = await createOrderTx(true, hasOrderStatusHistoryTable)
+  } catch (error) {
+    if (!isMissingOrderItemVariantColumnError(error)) throw error
+    console.warn("OrderItem.variantId column missing. Falling back to create order items without variantId.")
+    order = await createOrderTx(false, hasOrderStatusHistoryTable)
+  }
+
+  if (hasTransactionTable) {
+    try {
+      await prisma.transaction.create({
         data: {
-          orderId: created.id,
+          orderId: order.id,
           gateway: input.gateway,
           amount: total,
           status: input.paymentStatus === "paid" ? "paid" : input.paymentStatus === "failed" ? "failed" : "pending",
           externalId: input.paymentId ?? null,
         },
       })
-
-      return created
-    })
-
-  let order
-  try {
-    order = await createOrderTx(true)
-  } catch (error) {
-    if (!isMissingOrderItemVariantColumnError(error)) throw error
-    console.warn("OrderItem.variantId column missing. Falling back to create order items without variantId.")
-    order = await createOrderTx(false)
+    } catch {
+      // Non-blocking side effect
+    }
   }
 
   await logActivity({
@@ -455,42 +490,91 @@ export const listOrders = async (
     where.userId = userId
   }
 
-  const [items, total] = await Promise.all([
-    prisma.order.findMany({
-      where,
-      orderBy: { createdAt: "desc" },
-      skip,
-      take: limit,
-      include: {
-        items: { include: { product: { select: { id: true, name: true, slug: true } } } },
-        transactions: true,
-        user: { select: { id: true, name: true, email: true } },
-        returnRequests: { select: { id: true, status: true } },
-        refunds: { select: { id: true, status: true, amount: true } },
-        statusHistory: { orderBy: { changedAt: "desc" }, take: 6, select: { toStatus: true, changedAt: true } },
-      },
-    }),
-    prisma.order.count({ where }),
-  ])
+  let items: any[] = []
+  let total = 0
+  try {
+    ;[items, total] = await Promise.all([
+      prisma.order.findMany({
+        where,
+        orderBy: { createdAt: "desc" },
+        skip,
+        take: limit,
+        include: {
+          items: { include: { product: { select: { id: true, name: true, slug: true } } } },
+          transactions: true,
+          user: { select: { id: true, name: true, email: true } },
+          returnRequests: { select: { id: true, status: true } },
+          refunds: { select: { id: true, status: true, amount: true } },
+          statusHistory: { orderBy: { changedAt: "desc" }, take: 6, select: { toStatus: true, changedAt: true } },
+        },
+      }),
+      prisma.order.count({ where }),
+    ])
+  } catch (error) {
+    if (!isMissingOrderJoinDataError(error)) throw error
+    const [baseItems, baseTotal] = await Promise.all([
+      prisma.order.findMany({
+        where,
+        orderBy: { createdAt: "desc" },
+        skip,
+        take: limit,
+        include: {
+          items: { include: { product: { select: { id: true, name: true, slug: true } } } },
+          user: { select: { id: true, name: true, email: true } },
+        },
+      }),
+      prisma.order.count({ where }),
+    ])
+    items = baseItems.map((order) => ({
+      ...order,
+      transactions: [],
+      returnRequests: [],
+      refunds: [],
+      statusHistory: [],
+    }))
+    total = baseTotal
+  }
 
   return { items, total, page, limit }
 }
 
 export const getOrderById = async (id: string) => {
-  return prisma.order.findUnique({
-    where: { id },
-    include: {
-      items: { include: { product: true } },
-      transactions: true,
-      statusHistory: { orderBy: { changedAt: "desc" } },
-      notes: { orderBy: { createdAt: "desc" } },
-      fulfillment: true,
-      shipments: { orderBy: { createdAt: "desc" } },
-      returnRequests: { orderBy: { createdAt: "desc" }, include: { pickup: true, items: true } },
-      refunds: { orderBy: { createdAt: "desc" } },
-      invoice: true,
-    },
-  })
+  try {
+    return await prisma.order.findUnique({
+      where: { id },
+      include: {
+        items: { include: { product: true } },
+        transactions: true,
+        statusHistory: { orderBy: { changedAt: "desc" } },
+        notes: { orderBy: { createdAt: "desc" } },
+        fulfillment: true,
+        shipments: { orderBy: { createdAt: "desc" } },
+        returnRequests: { orderBy: { createdAt: "desc" }, include: { pickup: true, items: true } },
+        refunds: { orderBy: { createdAt: "desc" } },
+        invoice: true,
+      },
+    })
+  } catch (error) {
+    if (!isMissingOrderJoinDataError(error)) throw error
+    const base = await prisma.order.findUnique({
+      where: { id },
+      include: {
+        items: { include: { product: true } },
+      },
+    })
+    if (!base) return null
+    return {
+      ...base,
+      transactions: [],
+      statusHistory: [],
+      notes: [],
+      fulfillment: null,
+      shipments: [],
+      returnRequests: [],
+      refunds: [],
+      invoice: null,
+    } as any
+  }
 }
 
 export const getOrderForActor = async (id: string, role: string, userId: string) => {
