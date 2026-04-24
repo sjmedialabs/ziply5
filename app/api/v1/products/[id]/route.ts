@@ -11,6 +11,7 @@ import {
   updateProduct,
   type ListProductsScope,
 } from "@/src/server/modules/products/products.service"
+import { invalidateProductCache } from "@/src/server/modules/products/products.cache"
 import type { AppTokenPayload } from "@/src/server/core/security/jwt"
 
 const resolveAccessScope = (user: AppTokenPayload | null): { scope: ListProductsScope } => {
@@ -53,6 +54,7 @@ export async function PATCH(request: NextRequest, ctx: { params: Promise<{ id: s
       role: auth.user.role,
       userId: auth.user.sub,
     })
+    await invalidateProductCache()
     return ok(product, "Product updated")
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unexpected error"
@@ -76,6 +78,7 @@ export async function DELETE(request: NextRequest, ctx: { params: Promise<{ id: 
 
   try {
     await deleteProduct(id, { role: auth.user.role, userId: auth.user.sub })
+    await invalidateProductCache()
     return ok({ id }, "Product deleted")
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unexpected error"

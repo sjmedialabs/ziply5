@@ -3,6 +3,7 @@ import { fail, ok } from "@/src/server/core/http/response"
 import { requireAuth } from "@/src/server/middleware/auth"
 import { requirePermission } from "@/src/server/middleware/rbac"
 import { updatePromotion } from "@/src/server/modules/extended/extended.service"
+import { invalidateProductCache } from "@/src/server/modules/products/products.cache"
 import { z } from "zod"
 
 const patchSchema = z.object({
@@ -119,6 +120,7 @@ export async function PATCH(
   try { 
 
     const row = await updatePromotion(id, data)
+    await invalidateProductCache()
 
     return ok(row, "Updated")
 

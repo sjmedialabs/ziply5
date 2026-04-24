@@ -248,12 +248,6 @@ const normalizeSections = (
 }
 
 export function applyPromotionToProduct(product: any) {
-
-  console.log(
-    "Applying promotion to product::::",
-    product.promotionLinks[0]?.promotion
-  )
-
   /* ===========================================================
      SIMPLE PRODUCT LOGIC
      =========================================================== */
@@ -466,7 +460,7 @@ export const listProducts = async (
   page = 1,
   limit = 20,
   scope: ListProductsScope,
-  filters?: { status?: string; q?: string },
+  filters?: { status?: string; q?: string; inStockOnly?: boolean },
 ) => {
 
   const now = new Date()
@@ -492,6 +486,10 @@ export const listProducts = async (
     where.status =
       filters.status as ProductStatus
 
+  }
+
+  if (scope === "public" && filters?.inStockOnly) {
+    where.totalStock = { gt: 0 }
   }
 
   /* ===============================
@@ -533,6 +531,26 @@ export const listProducts = async (
      FETCH PRODUCTS WITH PROMOTIONS
      =============================== */
 
+  const activePromotionWhere = {
+    promotion: {
+      active: true,
+      AND: [
+        { OR: [{ startsAt: null }, { startsAt: { lte: now } }] },
+        { OR: [{ endsAt: null }, { endsAt: { gte: now } }] },
+      ],
+    },
+  }
+
+  const promotionSelect = {
+    id: true,
+    name: true,
+    kind: true,
+    metadata: true,
+    active: true,
+    startsAt: true,
+    endsAt: true,
+  } as const
+
   const items = await prisma.product.findMany({
 
     where,
@@ -547,97 +565,47 @@ export const listProducts = async (
 
     select: {
 
-      ...(scope === "public"
-        ? productSelectPublicList
-        : productSelect),
-
-      /* 🔥 PRODUCT LEVEL PROMOTIONS */
-
+      ...(scope === "public" ? productSelectPublicList : productSelect),
       promotionLinks: {
-
-        where: {
-
-          promotion: {
-
-            active: true,
-
-            AND: [
-
-              {
-                OR: [
-                  { startsAt: null },
-                  { startsAt: { lte: now } }
-                ]
-              },
-
-              {
-                OR: [
-                  { endsAt: null },
-                  { endsAt: { gte: now } }
-                ]
-              }
-
-            ]
-
-          }
-
+        where: activePromotionWhere,
+        take: 1,
+        select: {
+          promotion: { select: promotionSelect },
         },
-
-        include: {
-
-          promotion: true
-
-        }
-
       },
-
-      /* 🔥 VARIANT LEVEL PROMOTIONS */
-
-      variants: {
-
-        include: {
-
-          promotionLinks: {
-
-            where: {
-
-              promotion: {
-
-                active: true,
-
-                AND: [
-
-                  {
-                    OR: [
-                      { startsAt: null },
-                      { startsAt: { lte: now } }
-                    ]
+      variants:
+        scope === "public"
+          ? {
+              select: {
+                id: true,
+                name: true,
+                weight: true,
+                price: true,
+                sku: true,
+                stock: true,
+                isDefault: true,
+                promotionLinks: {
+                  where: activePromotionWhere,
+                  take: 1,
+                  select: {
+                    metadata: true,
+                    promotion: { select: promotionSelect },
                   },
-
-                  {
-                    OR: [
-                      { endsAt: null },
-                      { endsAt: { gte: now } }
-                    ]
-                  }
-
-                ]
-
-              }
-
-            },
-
-            include: {
-
-              promotion: true
-
+                },
+              },
             }
-
-          }
-
-        }
-
-      }
+          : {
+              include: {
+                promotionLinks: {
+                  where: activePromotionWhere,
+                  take: 1,
+                  select: {
+                    metadata: true,
+                    promotion: { select: promotionSelect },
+                  },
+                },
+              },
+            },
 
     }
 
@@ -678,6 +646,27 @@ export const getProductById = async (id: string) => {
 }
 
 export const getProductBySlug = async (slug: string) => {
+  const now = new Date()
+  const activePromotionWhere = {
+    promotion: {
+      active: true,
+      AND: [
+        { OR: [{ startsAt: null }, { startsAt: { lte: now } }] },
+        { OR: [{ endsAt: null }, { endsAt: { gte: now } }] },
+      ],
+    },
+  }
+
+  const promotionSelect = {
+    id: true,
+    name: true,
+    kind: true,
+    metadata: true,
+    active: true,
+    startsAt: true,
+    endsAt: true,
+  } as const
+
   return prisma.product.findUnique({
 
     where: { slug }, // ✅ correct (you passed slug)
@@ -689,40 +678,11 @@ export const getProductBySlug = async (slug: string) => {
       /* 🔥 Product-level promotions */
 
       promotionLinks: {
-
-        where: {
-
-          promotion: {
-
-            active: true,
-
-            AND: [
-
-              {
-                OR: [
-                  { startsAt: null },
-                  { startsAt: { lte: now } }
-                ]
-              },
-
-              {
-                OR: [
-                  { endsAt: null },
-                  { endsAt: { gte: now } }
-                ]
-              }
-
-            ]
-
-          }
-
+        where: activePromotionWhere,
+        take: 1,
+        select: {
+          promotion: { select: promotionSelect },
         },
-
-        include: {
-
-          promotion: true
-
-        }
 
       },
 
@@ -733,40 +693,12 @@ export const getProductBySlug = async (slug: string) => {
         include: {
 
           promotionLinks: {
-
-            where: {
-
-              promotion: {
-
-                active: true,
-
-                AND: [
-
-                  {
-                    OR: [
-                      { startsAt: null },
-                      { startsAt: { lte: now } }
-                    ]
-                  },
-
-                  {
-                    OR: [
-                      { endsAt: null },
-                      { endsAt: { gte: now } }
-                    ]
-                  }
-
-                ]
-
-              }
-
+            where: activePromotionWhere,
+            take: 1,
+            select: {
+              metadata: true,
+              promotion: { select: promotionSelect },
             },
-
-            include: {
-
-              promotion: true
-
-            }
 
           }
 

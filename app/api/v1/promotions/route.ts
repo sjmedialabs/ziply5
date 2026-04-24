@@ -3,6 +3,7 @@ import { fail, ok } from "@/src/server/core/http/response"
 import { requireAuth } from "@/src/server/middleware/auth"
 import { requirePermission } from "@/src/server/middleware/rbac"
 import { createPromotion, listPromotions } from "@/src/server/modules/extended/extended.service"
+import { invalidateProductCache } from "@/src/server/modules/products/products.cache"
 import { z } from "zod"
 
 const createSchema = z.object({
@@ -197,5 +198,6 @@ export async function POST(request: NextRequest) {
     products: parsed.data.products,
   })
 
+  await invalidateProductCache()
   return ok(row, "Promotion created", 201)
 }
