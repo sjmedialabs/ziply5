@@ -4,13 +4,10 @@ import TrendingFood from "@/components/TrendingFood"
 import BestSellers from "@/components/BestSellers"
 import CollectionBanner from "@/components/CollectionBanner"
 import CravingsGallery from "@/components/CravingsGallery"
-import { prisma } from "@/src/server/db/prisma"
+import { getCmsPageSafe } from "@/src/server/modules/cms/cms.safe"
 
 export default async function HomePage() {
-  const page = await prisma.cmsPage.findUnique({
-    where: { slug: "home" },
-    include: { sections: { orderBy: { position: "asc" } } },
-  })
+  const page = await getCmsPageSafe("home")
 
   const sections = page?.status === "published" ? page.sections : []
 

@@ -110,13 +110,10 @@ const productSelect = {
   basePrice: true,
   salePrice: true,
   discountPercent: true,
-  weight: true,
   taxIncluded: true,
   stockStatus: true,
   totalStock: true,
   shelfLife: true,
-  preparationType: true,
-  spiceLevel: true,
   isActive: true,
   isFeatured: true,
   isBestSeller: true,
@@ -149,13 +146,11 @@ const productSelectPublicList = {
   description: true,
   basePrice: true,
   salePrice: true,
-  weight: true,
   price: true,
   taxIncluded: true,
   stockStatus: true,
   totalStock: true,
   shelfLife: true,
-  spiceLevel: true,
   isActive: true,
   isFeatured: true,
   isBestSeller: true,
@@ -305,109 +300,10 @@ export const getProductById = async (id: string) => {
 }
 
 export const getProductBySlug = async (slug: string) => {
-
-  const now = new Date()
-
   return prisma.product.findUnique({
-
-    where: { slug }, // ✅ correct (you passed slug)
-
-    select: {
-
-      ...productSelect,
-
-      /* 🔥 Product-level promotions */
-
-      promotionLinks: {
-
-        where: {
-
-          promotion: {
-
-            active: true,
-
-            AND: [
-
-              {
-                OR: [
-                  { startsAt: null },
-                  { startsAt: { lte: now } }
-                ]
-              },
-
-              {
-                OR: [
-                  { endsAt: null },
-                  { endsAt: { gte: now } }
-                ]
-              }
-
-            ]
-
-          }
-
-        },
-
-        include: {
-
-          promotion: true
-
-        }
-
-      },
-
-      /* 🔥 Variant-level promotions */
-
-      variants: {
-
-        include: {
-
-          promotionLinks: {
-
-            where: {
-
-              promotion: {
-
-                active: true,
-
-                AND: [
-
-                  {
-                    OR: [
-                      { startsAt: null },
-                      { startsAt: { lte: now } }
-                    ]
-                  },
-
-                  {
-                    OR: [
-                      { endsAt: null },
-                      { endsAt: { gte: now } }
-                    ]
-                  }
-
-                ]
-
-              }
-
-            },
-
-            include: {
-
-              promotion: true
-
-            }
-
-          }
-
-        }
-
-      }
-
-    }
-
+    where: { slug },
+    select: productSelect,
   })
-
 }
 export const canAccessProduct = (
   product: { status: string },
