@@ -236,6 +236,13 @@ export default function CheckoutPage() {
         }
       }
 
+      const checkoutRef =
+        window.localStorage.getItem("ziply5_checkout_ref") ??
+        (typeof crypto !== "undefined" && "randomUUID" in crypto
+          ? crypto.randomUUID()
+          : `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`);
+      window.localStorage.setItem("ziply5_checkout_ref", checkoutRef);
+
       const orderRes = await fetch("/api/orders/create", {
         method: "POST",
         headers: {
@@ -254,6 +261,7 @@ export default function CheckoutPage() {
           gateway: "razorpay",
           billingAddress: payload,
           paymentStatus: "pending",
+          paymentId: `checkout_ref:${checkoutRef}`,
         }),
       });
       const orderJson = (await orderRes.json()) as { success?: boolean; message?: string; data?: { id: string } };

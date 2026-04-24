@@ -74,6 +74,54 @@ const normalizePaymentStatus = (status?: string | null) => {
   return "PENDING"
 }
 
+const orderCheckoutSelect = {
+  id: true,
+  userId: true,
+  status: true,
+  currency: true,
+  subtotal: true,
+  shipping: true,
+  total: true,
+  createdAt: true,
+  updatedAt: true,
+  createdById: true,
+  managedById: true,
+  customerAddress: true,
+  customerName: true,
+  customerPhone: true,
+  paymentId: true,
+  paymentMethod: true,
+  paymentStatus: true,
+  items: {
+    select: {
+      id: true,
+      orderId: true,
+      productId: true,
+      quantity: true,
+      unitPrice: true,
+      lineTotal: true,
+      product: { select: { id: true, name: true, slug: true } },
+    },
+  },
+  transactions: true,
+} as const
+
+const isMissingAppliedCouponColumnError = (error: unknown) => {
+  if (!error || typeof error !== "object") return false
+  const code = (error as { code?: string }).code
+  if (code !== "P2022") return false
+  const meta = (error as { meta?: { column?: string } }).meta
+  return meta?.column === "appliedCouponId"
+}
+
+const isMissingOrderItemVariantColumnError = (error: unknown) => {
+  if (!error || typeof error !== "object") return false
+  const code = (error as { code?: string }).code
+  if (code !== "P2022") return false
+  const meta = (error as { meta?: { column?: string } }).meta
+  return meta?.column === "variantId"
+}
+
 const reserveInventoryForOrder = async (
   tx: Prisma.TransactionClient,
   lines: Array<{ productId: string; variantId?: string | null; quantity: number }>,
@@ -145,10 +193,16 @@ export async function validatePromoCode(code: string, subtotal: number, userId?:
 
   // USAGE LIMIT (existing orders count as usage)
   if (coupon.usageLimitPerUser && userId) {
-    const userUsages = await prisma.order.count({
-      where: { appliedCouponId: coupon.id, userId, status: { notIn: ['cancelled', 'failed'] } }
-    });
-    if (userUsages >= coupon.usageLimitPerUser) return { valid: false, error: 'Usage limit reached for this promo code' };
+    try {
+      const userUsages = await prisma.order.count({
+        where: { appliedCouponId: coupon.id, userId, status: { notIn: ['cancelled', 'failed'] } }
+      });
+      if (userUsages >= coupon.usageLimitPerUser) return { valid: false, error: 'Usage limit reached for this promo code' };
+    } catch (error) {
+      if (!isMissingAppliedCouponColumnError(error)) throw error
+      // Older databases may not have appliedCouponId yet; skip per-user coupon usage enforcement.
+      console.warn("Skipping coupon usage-per-user check because appliedCouponId column is missing.")
+    }
   }
 
   const discount = coupon.discountType === 'percentage'
@@ -192,10 +246,7 @@ export const createOrderFromCheckout = async (input: {
         paymentId: input.paymentId.trim(),
         ...(input.userId ? { userId: input.userId } : {}),
       },
-      include: {
-        items: { include: { product: { select: { id: true, name: true, slug: true } } } },
-        transactions: true,
-      },
+      select: orderCheckoutSelect,
     })
     if (existing) return existing
   }
@@ -262,15 +313,41 @@ export const createOrderFromCheckout = async (input: {
 
   const total = Math.max(subtotal + shipping - discount, 0)
 
-  const order = await prisma.$transaction(async (tx) => {
-    await reserveInventoryForOrder(
-      tx,
-      lines.map((line) => ({ productId: line.productId, variantId: line.variantId, quantity: line.quantity })),
-    )
+  const createOrderTx = async (includeVariantId: boolean) =>
+    prisma.$transaction(async (tx) => {
+      if (input.paymentId?.trim()) {
+        const paymentRef = input.paymentId.trim()
+        const lockRows = await tx.$queryRaw<Array<{ locked: boolean }>>`
+          SELECT pg_try_advisory_xact_lock(hashtext(${paymentRef})) AS locked
+        `
+        if (!lockRows[0]?.locked) {
+          const existingConcurrent = await tx.order.findFirst({
+            where: {
+              paymentId: paymentRef,
+              ...(input.userId ? { userId: input.userId } : {}),
+            },
+            select: orderCheckoutSelect,
+          })
+          if (existingConcurrent) return existingConcurrent
+          throw new Error("Another checkout request is in progress. Please retry.")
+        }
+        const existingLocked = await tx.order.findFirst({
+          where: {
+            paymentId: paymentRef,
+            ...(input.userId ? { userId: input.userId } : {}),
+          },
+          select: orderCheckoutSelect,
+        })
+        if (existingLocked) return existingLocked
+      }
 
-    const created = await tx.order.create({
-      data: {
-      userId: input.userId ?? undefined,
+      await reserveInventoryForOrder(
+        tx,
+        lines.map((line) => ({ productId: line.productId, variantId: line.variantId, quantity: line.quantity })),
+      )
+
+      const baseData = {
+        userId: input.userId ?? undefined,
 
       // 🔥 CUSTOMER SNAPSHOT (VERY IMPORTANT)
       customerName: input.billingAddress?.fullName ?? null,
@@ -283,7 +360,6 @@ export const createOrderFromCheckout = async (input: {
       paymentStatus: normalizePaymentStatus(input.paymentStatus),
       paymentId: input.paymentId ?? null,
       paymentMethod: input.gateway,
-      appliedCouponId,
 
       createdById: null,
       managedById: null,
@@ -291,41 +367,51 @@ export const createOrderFromCheckout = async (input: {
       currency: input.currency ?? "INR",
       subtotal,
       shipping,
-      total,
-      items: {
-        create: lines.map((l) => ({
-          productId: l.productId,
-          variantId: l.variantId ?? null,
-          quantity: l.quantity,
-          unitPrice: l.unitPrice,
-          lineTotal: l.lineTotal,
-        })),
-      },
-      statusHistory: {
-        create: {
-          toStatus: "pending_payment",
-          notes: "Order created, awaiting payment",
-          changedById: input.userId ?? undefined,
+        total,
+        items: {
+          create: lines.map((l) => ({
+            productId: l.productId,
+            ...(includeVariantId ? { variantId: l.variantId ?? null } : {}),
+            quantity: l.quantity,
+            unitPrice: l.unitPrice,
+            lineTotal: l.lineTotal,
+          })),
         },
-      },
-    },
-      include: {
-      items: { include: { product: { select: { id: true, name: true, slug: true } } } },
-    },
+        statusHistory: {
+          create: {
+            toStatus: "pending_payment",
+            notes: "Order created, awaiting payment",
+            changedById: input.userId ?? undefined,
+          },
+        },
+      }
+
+      const created = await tx.order.create({
+        data: baseData,
+        select: orderCheckoutSelect,
+      })
+
+      await tx.transaction.create({
+        data: {
+          orderId: created.id,
+          gateway: input.gateway,
+          amount: total,
+          status: input.paymentStatus === "paid" ? "paid" : input.paymentStatus === "failed" ? "failed" : "pending",
+          externalId: input.paymentId ?? null,
+        },
+      })
+
+      return created
     })
 
-  await tx.transaction.create({
-    data: {
-      orderId: created.id,
-      gateway: input.gateway,
-      amount: total,
-      status: input.paymentStatus === "paid" ? "paid" : input.paymentStatus === "failed" ? "failed" : "pending",
-      externalId: input.paymentId ?? null,
-    },
-  })
-
-  return created
-})
+  let order
+  try {
+    order = await createOrderTx(true)
+  } catch (error) {
+    if (!isMissingOrderItemVariantColumnError(error)) throw error
+    console.warn("OrderItem.variantId column missing. Falling back to create order items without variantId.")
+    order = await createOrderTx(false)
+  }
 
   await logActivity({
     actorId: input.userId ?? undefined,

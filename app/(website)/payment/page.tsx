@@ -37,6 +37,13 @@ export default function PaymentPage() {
 
   const createOrderMutation = useMutation({
     mutationFn: async (token: string) => {
+      const checkoutRef =
+        window.localStorage.getItem("ziply5_checkout_ref") ??
+        (typeof crypto !== "undefined" && "randomUUID" in crypto
+          ? crypto.randomUUID()
+          : `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`);
+      window.localStorage.setItem("ziply5_checkout_ref", checkoutRef);
+
       const res = await fetch("/api/orders/create", {
         method: "POST",
         headers: {
@@ -52,6 +59,7 @@ export default function PaymentPage() {
           gateway: "razorpay",
           billingAddress,
           paymentStatus: "pending",
+          paymentId: `checkout_ref:${checkoutRef}`,
         }),
       });
       const json = (await res.json()) as { success?: boolean; message?: string; data?: { id: string } };
@@ -200,6 +208,7 @@ export default function PaymentPage() {
           }
           setStatusText("Payment successful.");
           window.localStorage.removeItem("ziply5_pending_order_id");
+          window.localStorage.removeItem("ziply5_checkout_ref");
           setCartItems([]);
           router.push(`/payment-success?orderId=${orderId}`);
         } catch (error) {
