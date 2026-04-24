@@ -2,6 +2,7 @@
 
 import { FormEvent, useEffect, useState } from "react"
 import { authedFetch } from "@/lib/dashboard-fetch"
+import { useMasterValues } from "@/hooks/useMasterData"
 
 type CouponRow = {
   id: string
@@ -21,6 +22,24 @@ type CouponRow = {
 }
 
 export default function MarketingCouponsPage() {
+  const couponTypeMasterQuery = useMasterValues("COUPON_DISCOUNT_TYPE")
+  const couponStatusMasterQuery = useMasterValues("COUPON_STATUS_FILTER")
+  const discountTypeOptions =
+    couponTypeMasterQuery.data?.length
+      ? couponTypeMasterQuery.data.map((item) => ({ label: item.label, value: item.value }))
+      : [
+          { label: "Percentage", value: "percentage" },
+          { label: "Flat", value: "flat" },
+        ]
+  const statusFilterOptions =
+    couponStatusMasterQuery.data?.length
+      ? couponStatusMasterQuery.data.map((item) => ({ label: item.label, value: item.value }))
+      : [
+          { label: "All Status", value: "all" },
+          { label: "Active", value: "active" },
+          { label: "Inactive", value: "inactive" },
+          { label: "Expired", value: "expired" },
+        ]
 
   const [items, setItems] = useState<CouponRow[]>([])
   const [error, setError] = useState("")
@@ -359,14 +378,11 @@ const validateForm = () => {
         }))
       }
     >
-      <option value="percentage">
-        Percentage
-      </option>
-
-      <option value="flat">
-        Flat
-      </option>
-
+      {discountTypeOptions.map((option) => (
+        <option key={option.value} value={option.value}>
+          {option.label}
+        </option>
+      ))}
     </select>
   </div>
 
@@ -621,10 +637,11 @@ const validateForm = () => {
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
             >
-              <option value="all">All Status</option>
-              <option value="active">Active</option>
-              <option value="inactive">Inactive</option>
-              <option value="expired">Expired</option>
+              {statusFilterOptions.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
             </select>
           
               <button

@@ -2,6 +2,7 @@
 
 import { FormEvent, useEffect, useState } from "react"
 import { authedFetch } from "@/lib/dashboard-fetch"
+import { useMasterValues } from "@/hooks/useMasterData"
 
 type ReturnItem = {
   id: string
@@ -14,6 +15,24 @@ type ReturnItem = {
 }
 
 export default function MyReturnsPage() {
+  const requestTypeMasterQuery = useMasterValues("RETURN_REQUEST_TYPE")
+  const reasonMasterQuery = useMasterValues("RETURN_REASON")
+  const requestTypeOptions =
+    requestTypeMasterQuery.data?.length
+      ? requestTypeMasterQuery.data.map((item) => ({ label: item.label, value: item.value }))
+      : [
+          { label: "Return", value: "return" },
+          { label: "Replace", value: "replace" },
+        ]
+  const reasonOptions =
+    reasonMasterQuery.data?.length
+      ? reasonMasterQuery.data.map((item) => ({ label: item.label, value: item.value }))
+      : [
+          { label: "Damaged", value: "Damaged" },
+          { label: "Wrong Product", value: "Wrong Product" },
+          { label: "Not Satisfied", value: "Not Satisfied" },
+          { label: "Other", value: "Other" },
+        ]
   const [items, setItems] = useState<ReturnItem[]>([])
   const [error, setError] = useState("")
   const [saving, setSaving] = useState(false)
@@ -68,14 +87,18 @@ export default function MyReturnsPage() {
         <input className="rounded border px-3 py-2 text-sm" placeholder="Order ID" value={form.orderId} onChange={(e) => setForm((prev) => ({ ...prev, orderId: e.target.value }))} />
         <input className="rounded border px-3 py-2 text-sm" placeholder="Order Item ID" value={form.orderItemId} onChange={(e) => setForm((prev) => ({ ...prev, orderItemId: e.target.value }))} />
         <select className="rounded border px-3 py-2 text-sm" value={form.type} onChange={(e) => setForm((prev) => ({ ...prev, type: e.target.value as "return" | "replace" }))}>
-          <option value="return">Return</option>
-          <option value="replace">Replace</option>
+          {requestTypeOptions.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
         </select>
         <select className="rounded border px-3 py-2 text-sm" value={form.reason} onChange={(e) => setForm((prev) => ({ ...prev, reason: e.target.value }))}>
-          <option value="Damaged">Damaged</option>
-          <option value="Wrong Product">Wrong Product</option>
-          <option value="Not Satisfied">Not Satisfied</option>
-          <option value="Other">Other</option>
+          {reasonOptions.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
         </select>
         <textarea className="rounded border px-3 py-2 text-sm md:col-span-2" rows={3} placeholder="Optional notes" value={form.notes} onChange={(e) => setForm((prev) => ({ ...prev, notes: e.target.value }))} />
         <button disabled={saving} className="rounded-full bg-[#7B3010] px-4 py-2 text-xs font-semibold uppercase text-white disabled:opacity-40">Submit Request</button>

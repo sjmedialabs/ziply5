@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { authedFetch, authedPatch, authedPost } from "@/lib/dashboard-fetch";
 import { ConsoleTable, ConsoleTd } from "@/components/dashboard/ConsoleTable";
 import { useRealtimeTables } from "@/hooks/useRealtimeTables";
+import { useMasterValues } from "@/hooks/useMasterData";
 
 type Summary = {
   grossSales: string | number;
@@ -31,9 +32,9 @@ type Transaction = {
   createdAt: string;
 };
 
-const RF_STATUSES = ["pending", "completed", "rejected"] as const;
-
 export default function AdminFinancePage() {
+  const refundStatusMasterQuery = useMasterValues("REFUND_STATUS")
+  const transactionStatusMasterQuery = useMasterValues("TRANSACTION_STATUS")
   const [summary, setSummary] = useState<Summary | null>(null);
   const [refunds, setRefunds] = useState<Refund[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
@@ -53,6 +54,18 @@ export default function AdminFinancePage() {
   const [transactionStatusFilter, setTransactionStatusFilter] = useState("all");
   const [transactionPage, setTransactionPage] = useState(1);
   const TRANSACTIONS_PER_PAGE = 10;
+  const refundStatusOptions =
+    refundStatusMasterQuery.data?.length
+      ? refundStatusMasterQuery.data.map((item) => ({ label: item.label, value: item.value }))
+      : [
+          { label: "pending", value: "pending" },
+          { label: "completed", value: "completed" },
+          { label: "rejected", value: "rejected" },
+        ]
+  const transactionStatusOptions =
+    transactionStatusMasterQuery.data?.length
+      ? transactionStatusMasterQuery.data.map((item) => ({ label: item.label, value: item.value }))
+      : Array.from(new Set(transactions.map((t) => t.status))).map((status) => ({ label: status, value: status }))
 
   const load = useCallback(() => {
     setLoading(true);
@@ -268,9 +281,9 @@ export default function AdminFinancePage() {
                   className="rounded-lg border border-[#D9D9D1] bg-white px-2 py-1.5 text-xs capitalize focus:border-[#7B3010] focus:outline-none"
                 >
                   <option value="all">All Statuses</option>
-                  {RF_STATUSES.map((s) => (
-                    <option key={s} value={s}>
-                      {s}
+                  {refundStatusOptions.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
                     </option>
                   ))}
                 </select>
@@ -306,9 +319,9 @@ export default function AdminFinancePage() {
                         onChange={(e) => setRfDraft((d) => ({ ...d, [r.id]: e.target.value }))}
                         className="rounded-lg border border-[#D9D9D1] bg-white px-2 py-1 text-xs capitalize"
                       >
-                        {RF_STATUSES.map((s) => (
-                          <option key={s} value={s}>
-                            {s}
+                        {refundStatusOptions.map((option) => (
+                          <option key={option.value} value={option.value}>
+                            {option.label}
                           </option>
                         ))}
                       </select>
@@ -398,9 +411,9 @@ export default function AdminFinancePage() {
                 className="rounded-lg border border-[#D9D9D1] bg-white px-2 py-1.5 text-xs capitalize focus:border-[#7B3010] focus:outline-none"
               >
                 <option value="all">All Statuses</option>
-                {Array.from(new Set(transactions.map((t) => t.status))).map((s) => (
-                  <option key={s} value={s}>
-                    {s}
+                {transactionStatusOptions.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
                   </option>
                 ))}
               </select>

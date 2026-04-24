@@ -3,6 +3,7 @@
 import { FormEvent, useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { authedFetch } from "@/lib/dashboard-fetch"
+import { useMasterValues } from "@/hooks/useMasterData"
 
 type SupportTicket = {
   id: string
@@ -14,6 +15,15 @@ type SupportTicket = {
 }
 
 export default function SupportPage() {
+  const categoryMasterQuery = useMasterValues("SUPPORT_CATEGORY")
+  const categoryOptions =
+    categoryMasterQuery.data?.length
+      ? categoryMasterQuery.data.map((item) => ({ label: item.label, value: item.value }))
+      : [
+          { label: "Order Issue", value: "order_issue" },
+          { label: "Payment Issue", value: "payment_issue" },
+          { label: "Technical Issue", value: "technical_issue" },
+        ]
   const router = useRouter()
   const [items, setItems] = useState<SupportTicket[]>([])
   const [error, setError] = useState("")
@@ -82,9 +92,11 @@ export default function SupportPage() {
 
       <form onSubmit={onCreate} className="grid gap-2 rounded border bg-white p-4 md:grid-cols-2">
         <select className="rounded border px-3 py-2 text-sm" value={form.category} onChange={(e) => setForm((prev) => ({ ...prev, category: e.target.value as "order_issue" | "payment_issue" | "technical_issue" }))}>
-          <option value="order_issue">Order Issue</option>
-          <option value="payment_issue">Payment Issue</option>
-          <option value="technical_issue">Technical Issue</option>
+          {categoryOptions.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
         </select>
         <input className="rounded border px-3 py-2 text-sm" placeholder="Order ID (optional)" value={form.orderId} onChange={(e) => setForm((prev) => ({ ...prev, orderId: e.target.value }))} />
         <input className="rounded border px-3 py-2 text-sm md:col-span-2" placeholder="Subject" value={form.subject} onChange={(e) => setForm((prev) => ({ ...prev, subject: e.target.value }))} />

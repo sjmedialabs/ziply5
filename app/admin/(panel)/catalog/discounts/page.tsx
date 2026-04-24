@@ -2,6 +2,7 @@
 
 import { FormEvent, useEffect, useState } from "react"
 import { authedFetch } from "@/lib/dashboard-fetch"
+import { useMasterValues } from "@/hooks/useMasterData"
 
 type ProductLite = { id: string; name: string; slug: string }
 type DiscountRow = {
@@ -15,6 +16,14 @@ type DiscountRow = {
 }
 
 export default function ProductDiscountsPage() {
+  const discountTypeMasterQuery = useMasterValues("DISCOUNT_TYPE")
+  const discountTypeOptions =
+    discountTypeMasterQuery.data?.length
+      ? discountTypeMasterQuery.data.map((item) => ({ label: item.label, value: item.value }))
+      : [
+          { label: "Percentage", value: "percentage" },
+          { label: "Flat", value: "flat" },
+        ]
   const [products, setProducts] = useState<ProductLite[]>([])
   const [discounts, setDiscounts] = useState<DiscountRow[]>([])
   const [error, setError] = useState("")
@@ -85,8 +94,11 @@ export default function ProductDiscountsPage() {
           ))}
         </select>
         <select className="rounded border px-3 py-2 text-sm" value={form.discountType} onChange={(e) => setForm((prev) => ({ ...prev, discountType: e.target.value as "percentage" | "flat" }))}>
-          <option value="percentage">Percentage</option>
-          <option value="flat">Flat</option>
+          {discountTypeOptions.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
         </select>
         <input className="rounded border px-3 py-2 text-sm" type="number" value={form.discountValue} onChange={(e) => setForm((prev) => ({ ...prev, discountValue: e.target.value }))} placeholder="Value" />
         <label className="flex items-center gap-2 text-xs font-semibold uppercase">

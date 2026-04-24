@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { authedFetch, authedPatch } from "@/lib/dashboard-fetch";
 import { ConsoleTable, ConsoleTd } from "@/components/dashboard/ConsoleTable";
 import { useRealtimeTables } from "@/hooks/useRealtimeTables";
+import { useMasterValues } from "@/hooks/useMasterData";
 
 type ReturnRow = {
   id: string;
@@ -14,9 +15,11 @@ type ReturnRow = {
   order: { id: string; total: string | number; status: string };
 };
 
-const STATUSES = ["requested", "approved", "rejected", "received", "refunded", "cancelled"] as const;
-
 export default function AdminReturnsPage() {
+  const returnStatusMasterQuery = useMasterValues("RETURN_STATUS");
+  const statuses = returnStatusMasterQuery.data?.length
+    ? returnStatusMasterQuery.data.map((item) => item.value)
+    : ["requested", "approved", "rejected", "received", "refunded", "cancelled"];
   const [rows, setRows] = useState<ReturnRow[]>([]);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
@@ -130,7 +133,7 @@ export default function AdminReturnsPage() {
                     onChange={(e) => setDraft((d) => ({ ...d, [r.id]: e.target.value }))}
                     className="w-full max-w-[140px] rounded-lg border border-[#D9D9D1] bg-white px-2 py-1 text-xs capitalize"
                   >
-                    {STATUSES.map((s) => (
+                    {statuses.map((s) => (
                       <option key={s} value={s}>
                         {s}
                       </option>

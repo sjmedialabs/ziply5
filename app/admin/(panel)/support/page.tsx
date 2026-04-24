@@ -2,6 +2,7 @@
 
 import { FormEvent, useEffect, useState } from "react"
 import { authedFetch } from "@/lib/dashboard-fetch"
+import { useMasterValues } from "@/hooks/useMasterData"
 
 type Ticket = {
   id: string
@@ -12,6 +13,16 @@ type Ticket = {
 }
 
 export default function AdminSupportV2Page() {
+  const statusMasterQuery = useMasterValues("SUPPORT_STATUS")
+  const statusOptions =
+    statusMasterQuery.data?.length
+      ? statusMasterQuery.data.map((item) => ({ label: item.label, value: item.value }))
+      : [
+          { label: "Open", value: "open" },
+          { label: "In progress", value: "in_progress" },
+          { label: "Resolved", value: "resolved" },
+          { label: "Closed", value: "closed" },
+        ]
   const [items, setItems] = useState<Ticket[]>([])
   const [ticketId, setTicketId] = useState("")
   const [status, setStatus] = useState<"open" | "in_progress" | "resolved" | "closed">("in_progress")
@@ -86,10 +97,11 @@ export default function AdminSupportV2Page() {
       <form onSubmit={reply} className="grid gap-2 rounded border bg-white p-4 md:grid-cols-4">
         <input className="rounded border px-3 py-2 text-sm md:col-span-2" placeholder="Ticket UUID" value={ticketId} onChange={(e) => setTicketId(e.target.value)} />
         <select className="rounded border px-3 py-2 text-sm" value={status} onChange={(e) => setStatus(e.target.value as "open" | "in_progress" | "resolved" | "closed")}>
-          <option value="open">Open</option>
-          <option value="in_progress">In progress</option>
-          <option value="resolved">Resolved</option>
-          <option value="closed">Closed</option>
+          {statusOptions.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
         </select>
         <button disabled={saving} className="rounded-full bg-[#7B3010] px-4 py-2 text-xs font-semibold uppercase text-white disabled:opacity-40">Reply</button>
         <textarea className="rounded border px-3 py-2 text-sm md:col-span-4" rows={4} value={message} onChange={(e) => setMessage(e.target.value)} placeholder="Reply message" />

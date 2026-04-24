@@ -38,7 +38,7 @@ const FALLBACK_STATUSES = [
 ] as const;
 
 export default function AdminOrdersPage() {
-  const statusMasterQuery = useMasterValues("ORDER_STATUSES");
+  const statusMasterQuery = useMasterValues("ORDER_STATUS");
   const [rows, setRows] = useState<OrderRow[]>([]);
   const statuses = statusMasterQuery.data?.length
     ? statusMasterQuery.data.map((item) => ({ label: item.label, value: item.value }))

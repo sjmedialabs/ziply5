@@ -74,6 +74,14 @@ const normalizePaymentStatus = (status?: string | null) => {
   return "PENDING"
 }
 
+const deriveEffectivePaymentStatus = (order: { paymentStatus?: string | null; transactions?: Array<{ status?: string | null }> }) => {
+  const normalized = normalizePaymentStatus(order.paymentStatus)
+  const txStatuses = (order.transactions ?? []).map((tx) => (tx.status ?? "").toUpperCase())
+  if (txStatuses.some((s) => ["PAID", "CAPTURED", "SUCCESS"].includes(s))) return "SUCCESS"
+  if (txStatuses.some((s) => ["FAILED", "FAILURE"].includes(s))) return "FAILED"
+  return normalized
+}
+
 const orderCheckoutSelect = {
   id: true,
   userId: true,
@@ -104,6 +112,79 @@ const orderCheckoutSelect = {
     },
   },
   transactions: true,
+} as const
+
+const orderListSelect = {
+  id: true,
+  userId: true,
+  status: true,
+  currency: true,
+  subtotal: true,
+  shipping: true,
+  total: true,
+  createdAt: true,
+  updatedAt: true,
+  customerAddress: true,
+  customerName: true,
+  customerPhone: true,
+  paymentId: true,
+  paymentMethod: true,
+  paymentStatus: true,
+  items: {
+    select: {
+      id: true,
+      orderId: true,
+      productId: true,
+      quantity: true,
+      unitPrice: true,
+      lineTotal: true,
+      product: { select: { id: true, name: true, slug: true } },
+    },
+  },
+  transactions: true,
+  user: { select: { id: true, name: true, email: true } },
+  returnRequests: { select: { id: true, status: true } },
+  refunds: { select: { id: true, status: true, amount: true } },
+  statusHistory: { orderBy: { changedAt: "desc" as const }, take: 6, select: { toStatus: true, changedAt: true } },
+} as const
+
+const orderDetailSelect = {
+  id: true,
+  userId: true,
+  status: true,
+  currency: true,
+  subtotal: true,
+  shipping: true,
+  total: true,
+  createdAt: true,
+  updatedAt: true,
+  createdById: true,
+  managedById: true,
+  customerAddress: true,
+  customerName: true,
+  customerPhone: true,
+  paymentId: true,
+  paymentMethod: true,
+  paymentStatus: true,
+  items: {
+    select: {
+      id: true,
+      orderId: true,
+      productId: true,
+      quantity: true,
+      unitPrice: true,
+      lineTotal: true,
+      product: true,
+    },
+  },
+  transactions: true,
+  statusHistory: { orderBy: { changedAt: "desc" as const } },
+  notes: { orderBy: { createdAt: "desc" as const } },
+  fulfillment: true,
+  shipments: { orderBy: { createdAt: "desc" as const } },
+  returnRequests: { orderBy: { createdAt: "desc" as const }, include: { pickup: true, items: true } },
+  refunds: { orderBy: { createdAt: "desc" as const } },
+  invoice: true,
 } as const
 
 const isMissingAppliedCouponColumnError = (error: unknown) => {
@@ -499,14 +580,7 @@ export const listOrders = async (
         orderBy: { createdAt: "desc" },
         skip,
         take: limit,
-        include: {
-          items: { include: { product: { select: { id: true, name: true, slug: true } } } },
-          transactions: true,
-          user: { select: { id: true, name: true, email: true } },
-          returnRequests: { select: { id: true, status: true } },
-          refunds: { select: { id: true, status: true, amount: true } },
-          statusHistory: { orderBy: { changedAt: "desc" }, take: 6, select: { toStatus: true, changedAt: true } },
-        },
+        select: orderListSelect,
       }),
       prisma.order.count({ where }),
     ])
@@ -518,9 +592,12 @@ export const listOrders = async (
         orderBy: { createdAt: "desc" },
         skip,
         take: limit,
-        include: {
-          items: { include: { product: { select: { id: true, name: true, slug: true } } } },
-          user: { select: { id: true, name: true, email: true } },
+        select: {
+          ...orderListSelect,
+          transactions: false as never,
+          returnRequests: false as never,
+          refunds: false as never,
+          statusHistory: false as never,
         },
       }),
       prisma.order.count({ where }),
@@ -535,36 +612,64 @@ export const listOrders = async (
     total = baseTotal
   }
 
-  return { items, total, page, limit }
+  const hydratedItems = items.map((order) => ({
+    ...order,
+    paymentStatus: deriveEffectivePaymentStatus(order),
+  }))
+
+  return { items: hydratedItems, total, page, limit }
 }
 
 export const getOrderById = async (id: string) => {
   try {
-    return await prisma.order.findUnique({
+    const order = await prisma.order.findUnique({
       where: { id },
-      include: {
-        items: { include: { product: true } },
-        transactions: true,
-        statusHistory: { orderBy: { changedAt: "desc" } },
-        notes: { orderBy: { createdAt: "desc" } },
-        fulfillment: true,
-        shipments: { orderBy: { createdAt: "desc" } },
-        returnRequests: { orderBy: { createdAt: "desc" }, include: { pickup: true, items: true } },
-        refunds: { orderBy: { createdAt: "desc" } },
-        invoice: true,
-      },
+      select: orderDetailSelect,
     })
+    if (!order) return null
+    return {
+      ...order,
+      paymentStatus: deriveEffectivePaymentStatus(order),
+    }
   } catch (error) {
     if (!isMissingOrderJoinDataError(error)) throw error
     const base = await prisma.order.findUnique({
       where: { id },
-      include: {
-        items: { include: { product: true } },
+      select: {
+        id: true,
+        userId: true,
+        status: true,
+        currency: true,
+        subtotal: true,
+        shipping: true,
+        total: true,
+        createdAt: true,
+        updatedAt: true,
+        createdById: true,
+        managedById: true,
+        customerAddress: true,
+        customerName: true,
+        customerPhone: true,
+        paymentId: true,
+        paymentMethod: true,
+        paymentStatus: true,
+        items: {
+          select: {
+            id: true,
+            orderId: true,
+            productId: true,
+            quantity: true,
+            unitPrice: true,
+            lineTotal: true,
+            product: true,
+          },
+        },
       },
     })
     if (!base) return null
     return {
       ...base,
+      paymentStatus: deriveEffectivePaymentStatus(base),
       transactions: [],
       statusHistory: [],
       notes: [],
