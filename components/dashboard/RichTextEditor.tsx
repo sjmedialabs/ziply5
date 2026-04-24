@@ -24,7 +24,10 @@ export function RichTextEditor({
     content: value || "<p></p>",
     immediatelyRender: false,
     onUpdate: ({ editor: instance }) => {
-      onChange(instance.getHTML())
+      // Inject <br> into empty paragraphs so hitting "Enter" preserves the gap on the frontend
+      let html = instance.getHTML();
+      html = html.replace(/<p([^>]*)><\/p>/g, '<p$1><br></p>');
+      onChange(html);
     },
     parseOptions: {
       preserveWhitespace: "full",
@@ -38,7 +41,11 @@ export function RichTextEditor({
 
   useEffect(() => {
     if (!editor) return
-    if (editor.getHTML() !== value) {
+    
+    const currentHtml = editor.getHTML();
+    const currentHtmlWithBr = currentHtml.replace(/<p([^>]*)><\/p>/g, '<p$1><br></p>');
+    
+    if (currentHtml !== value && currentHtmlWithBr !== value) {
       editor.commands.setContent(value || "<p></p>", { emitUpdate: false })
     }
   }, [editor, value])

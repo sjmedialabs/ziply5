@@ -2,31 +2,9 @@
 
 import { useEffect, useState } from "react";
 
-const fallbackFaqs = [
-  {
-    question: "Do you offer dairy-free or vegan options?",
-    answer:
-      "Yes, we offer a variety of dairy-free and vegan-friendly options made with plant-based ingredients.",
-  },
-  {
-    question: "What ingredients do you use in your ice cream?",
-    answer:
-      "We use high-quality natural ingredients including fresh milk, fruits, and premium flavorings.",
-  },
-  {
-    question: "Do you have gluten-free ice cream?",
-    answer:
-      "Yes, many of our flavors are gluten-free. Please check product labels or contact us for details.",
-  },
-  {
-    question: "Can I order ice cream online?",
-    answer:
-      "Absolutely! You can place your order directly through our website for home delivery.",
-  },
-];
-
 export default function FAQPage() {
-  const [faqs, setFaqs] = useState<any[]>(fallbackFaqs);
+  const [cmsData, setCmsData] = useState<any>(null);
+  const [faqs, setFaqs] = useState<any[]>([]);
   const [openIndex, setOpenIndex] = useState<number | null>(null);
 
   useEffect(() => {
@@ -35,23 +13,31 @@ export default function FAQPage() {
         const res = await fetch("/api/v1/cms/pages?slug=faq");
         const json = await res.json();
 
-        const faqSection =
+        const content =
           json?.data?.sections?.find(
             (s: any) => s.sectionType === "faq"
-          )?.contentJson || [];
+          )?.contentJson;
 
-        //  Use CMS if available, else fallback
-        if (faqSection.length > 0) {
-          // Filter out explicitly hidden FAQs
-          setFaqs(faqSection.filter((faq: any) => faq.isVisible !== false));
+        if (content) {
+          // Normalize data to support both the new object structure and the old array structure
+          const isLegacyArray = Array.isArray(content);
+          const normalizedContent = isLegacyArray ? { items: content } : content;
+          setCmsData(normalizedContent);
+
+          const items = normalizedContent.items || [];
+          if (items.length > 0) {
+            setFaqs(items.filter((faq: any) => faq.isVisible !== false));
+          } else {
+            setFaqs([]);
+          }
         } else {
-          setFaqs(fallbackFaqs);
+          setFaqs([]);
         }
       } catch (err) {
         console.error("Failed to load FAQs", err);
 
         //  fallback on error
-        setFaqs(fallbackFaqs);
+        setFaqs([]);
       }
     };
 
@@ -66,16 +52,20 @@ export default function FAQPage() {
       <section
         className="w-full h-[280px] md:h-[320px] flex flex-col items-center justify-center text-center bg-cover bg-center"
         style={{
-          backgroundImage: "url('/contactUsBg.png')",
+          backgroundImage: `url('${cmsData?.bgImage || '/contactUsBg.png'}')`,
         }}
       >
-        <h1 className="font-melon text-primary text-3xl md:text-4xl font-medium">
-          Frequently Asked Questions
-        </h1>
+        {cmsData?.title && (
+          <h1 className="font-melon text-primary text-3xl md:text-4xl font-medium">
+            {cmsData.title}
+          </h1>
+        )}
 
-        <p className="text-sm text-gray-600 mt-2">
-          Some of the queries you want to know about us.
-        </p>
+        {cmsData?.description && (
+          <p className="text-sm text-gray-600 mt-2">
+            {cmsData.description}
+          </p>
+        )}
 
         <div className="mt-4 px-4 py-2 bg-white rounded-full text-sm shadow">
           <span className="text-primary">Home</span>

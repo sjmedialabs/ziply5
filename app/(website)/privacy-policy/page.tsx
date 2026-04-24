@@ -7,7 +7,8 @@ export default async function PrivacyPolicyPage() {
     include: { sections: true },
   });
 
-  let privacyContent = page?.sections.find(s => s.sectionType === "privacy-content")?.contentJson?.content;
+  const sectionData = page?.sections.find(s => s.sectionType === "privacy-content")?.contentJson as any;
+  let privacyContent = sectionData?.content;
 
   // Treat empty Tiptap editor states as null so the fallback shows
   if (!privacyContent || privacyContent.trim() === "<p></p>" || privacyContent.trim() === "<p><br></p>") {
@@ -17,8 +18,9 @@ export default async function PrivacyPolicyPage() {
   return (
     <div>
       <BannerSection
-        title="Privacy Policy"
-        subtitle="How ziply5 handles your information."
+        title={sectionData?.title || "Privacy Policy"}
+        subtitle={sectionData?.description || "How ziply5 handles your information."}
+        bgImage={sectionData?.bgImage}
         gradient="linear-gradient(to right, #EFD7EF 0%, #F5F9FC 30%, #F8EAE1 60%, #EAF8F9 100%)"
       />
 
