@@ -7,12 +7,15 @@ import { createCoupon, listCoupons } from "@/src/server/modules/coupons/coupons.
 
 export async function GET(request: NextRequest) {
   const auth = requireAuth(request)
-  if ("status" in auth) return auth
 
+  console.log("Auth result:", auth) // Debug log
+  if ("status" in auth) return auth
+ 
   const forbidden = requirePermission(auth.user.role, "coupons.read")
   if (forbidden) return forbidden
 
-  const items = await listCoupons()
+  const items = await listCoupons(auth.user.role)
+  // console.log("Fetched coupons:", items) // Debug log
   return ok(items, "Coupons fetched")
 }
 
@@ -24,17 +27,18 @@ export async function POST(request: NextRequest) {
   if (forbidden) return forbidden
 
   const body = await request.json()
+  //  console.log("Received body:", body) // Debug log
   const parsed = createCouponSchema.safeParse(body)
+
+  // console.log("Validation result:", parsed) // Debug log
   if (!parsed.success) {
     return fail("Validation failed", 422, parsed.error.flatten())
   }
 
-  const { startsAt, endsAt, ...rest } = parsed.data
-  const coupon = await createCoupon({
-    ...rest,
-    startsAt: startsAt ? new Date(startsAt) : null,
-    endsAt: endsAt ? new Date(endsAt) : null,
-  })
+  // const { startsAt, endsAt, ...rest } = parsed.data
+  const coupon = await createCoupon(
+    parsed.data
+  )
 
   return ok(coupon, "Coupon created", 201)
 }

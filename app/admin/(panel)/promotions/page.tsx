@@ -87,6 +87,9 @@ export default function AdminPromotionsPage() {
   const [togglingId, setTogglingId] =
     useState<string | null>(null);
 
+  const [viewPromo, setViewPromo] =
+    useState<Promo | null>(null);
+
   /* ---------- Products ---------- */
 
   const [products, setProducts] =
@@ -739,8 +742,20 @@ export default function AdminPromotionsPage() {
               </ConsoleTd>
 
               <ConsoleTd>
-                {!isExpired && (
-                  <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setViewPromo(r)}
+                    className="flex items-center justify-center rounded-full border border-[#646464] p-1.5 text-[#646464] hover:bg-gray-50"
+                    title="View Details"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z" />
+                      <circle cx="12" cy="12" r="3" />
+                    </svg>
+                  </button>
+                  {!isExpired && (
+                    <>
                     <button
                       type="button"
                       onClick={() => handleEdit(r)}
@@ -771,8 +786,9 @@ export default function AdminPromotionsPage() {
                         }`}
                       />
                     </button>
-                  </div>
-                )}
+                    </>
+                  )}
+                </div>
               </ConsoleTd>
 
             </tr>
@@ -781,6 +797,108 @@ export default function AdminPromotionsPage() {
 
         </ConsoleTable>
 
+      )}
+
+      {/* VIEW PROMO MODAL */}
+      {viewPromo && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-2xl bg-white p-6 shadow-xl">
+            <div className="flex items-center justify-between border-b border-[#E8DCC8] pb-4">
+              <h2 className="font-melon text-xl font-bold text-[#4A1D1F]">Promotion Details</h2>
+              <button
+                onClick={() => setViewPromo(null)}
+                className="text-[#646464] hover:text-red-700 transition-colors"
+                title="Close"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M18 6 6 18" />
+                  <path d="m6 6 12 12" />
+                </svg>
+              </button>
+            </div>
+            
+            <div className="mt-5 space-y-6">
+              <div className="grid grid-cols-2 gap-4 rounded-xl bg-[#FFFBF3] p-4 border border-[#E8DCC8]">
+                <div>
+                  <p className="text-[10px] font-semibold uppercase tracking-wider text-[#646464]">Name</p>
+                  <p className="mt-1 font-medium text-[#4A1D1F]">{viewPromo.name}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] font-semibold uppercase tracking-wider text-[#646464]">Kind</p>
+                  <p className="mt-1 font-medium capitalize text-[#4A1D1F]">{viewPromo.kind.replace("_", " ")}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] font-semibold uppercase tracking-wider text-[#646464]">Status</p>
+                  <p className="mt-1 font-medium text-[#4A1D1F]">
+                    {viewPromo.endsAt && new Date(viewPromo.endsAt) < new Date() 
+                      ? "Expired" 
+                      : viewPromo.active ? "Active" : "Inactive"}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-[10px] font-semibold uppercase tracking-wider text-[#646464]">Window</p>
+                  <p className="mt-1 text-sm text-[#4A1D1F]">
+                    {viewPromo.startsAt ? new Date(viewPromo.startsAt).toLocaleString() : "—"} <br/>
+                    to <br/>
+                    {viewPromo.endsAt ? new Date(viewPromo.endsAt).toLocaleString() : "—"}
+                  </p>
+                </div>
+              </div>
+  
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-[#646464] mb-3">Included Products</p>
+                <div className="space-y-3">
+                  {(() => {
+                    const mappedProducts = (viewPromo.products || []).map((sp: any) => {
+                      const variants = sp.variants || sp.productVariants || [];
+                      return {
+                        productId: sp.productId || sp.product?.id || sp.id,
+                        discountPercent: sp.discountPercent ?? sp.discountPercentage ?? sp.discount ?? sp.discountValue ?? 0,
+                        variants: variants.map((sv: any) => ({
+                          variantId: sv.variantId || sv.variant?.id || sv.id,
+                          discountPercent: sv.discountPercent ?? sv.discountPercentage ?? sv.discount ?? sv.discountValue ?? 0,
+                        })),
+                      };
+                    });
+  
+                    if (mappedProducts.length === 0) {
+                      return <p className="text-sm text-[#646464] italic">No products selected for this promotion.</p>;
+                    }
+  
+                    return mappedProducts.map((sp: any, idx: number) => {
+                      const product = products.find((p) => p.id === sp.productId);
+                      return (
+                        <div key={idx} className="rounded-lg border border-[#D9D9D1] p-3">
+                          <div className="flex items-center justify-between">
+                            <span className="font-semibold text-[#4A1D1F]">{product?.name || "Unknown Product"}</span>
+                            {(!product?.variants?.length || sp.variants?.length === 0) && (
+                              <span className="rounded bg-green-100 px-2 py-0.5 text-xs font-semibold text-green-800">
+                                {sp.discountPercent}% OFF
+                              </span>
+                            )}
+                          </div>
+                          {product?.variants && product.variants.length > 0 && sp.variants && sp.variants.length > 0 && (
+                            <div className="mt-3 space-y-2 border-t border-[#E8DCC8] pt-2">
+                              {sp.variants.map((sv: any, vIdx: number) => {
+                                const variant = product.variants?.find((v) => v.id === sv.variantId);
+                                return (
+                                  <div key={vIdx} className="flex justify-between items-center text-sm pl-2">
+                                    <span className="text-[#646464]">{variant?.name || "Unknown Variant"}</span>
+                                    <span className="font-medium text-[#7B3010]">{sv.discountPercent}% OFF</span>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    });
+                  })()}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
 
     </section>
