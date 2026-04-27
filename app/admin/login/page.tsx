@@ -1,5 +1,10 @@
+import { Suspense } from "react";
 import AuthLoginCard from "@/components/AuthLoginCard";
 
 export default function AdminLoginPage() {
-  return <AuthLoginCard title="ADMIN LOGIN" portal="admin" />;
+  return (
+    <Suspense fallback={null}>
+      <AuthLoginCard title="ADMIN LOGIN" portal="admin" />
+    </Suspense>
+  );
 }
