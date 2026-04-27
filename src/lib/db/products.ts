@@ -1,5 +1,4 @@
 import { getSupabaseAdmin } from "@/src/lib/supabase/admin"
-import { readFromCandidateTables } from "@/src/lib/db/_shared"
 
 type ProductRow = Record<string, unknown>
 
@@ -49,10 +48,16 @@ export const listProductsSupabaseBasic = async (input: {
 
 export const getProductBySlugSupabaseBasic = async (slug: string) => {
   const client = getSupabaseAdmin()
-  const rows = await readFromCandidateTables<ProductRow>(client, PRODUCT_TABLES, "*", {
-    limit: 1,
-  })
-  return rows.find((row) => String((row as any).slug ?? "") === slug) ?? null
+  for (const table of PRODUCT_TABLES) {
+    const { data, error } = await client
+      .from(table)
+      .select("*")
+      .eq("slug", slug)
+      .maybeSingle()
+    if (error) continue
+    if (data) return data as ProductRow
+  }
+  return null
 }
 
 const extractId = (row: ProductRow): string | null =>
