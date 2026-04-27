@@ -3,8 +3,20 @@ import { prisma } from "@/src/server/db/prisma"
 import { computeCouponDiscount } from "@/src/server/modules/coupons/coupons.service"
 import { logActivity } from "@/src/server/modules/activity/activity.service"
 import { emailTemplates, enqueueEmail } from "@/src/server/modules/notifications/email.service"
+import { markCartConverted } from "@/src/server/modules/abandoned-carts/recovery.service"
+import { cache } from "@/lib/cache/redis"
+import { cacheKeys } from "@/lib/cache/cacheKeys"
+import {
+  listOrderIdsSupabase,
+  mirrorOrderStatusSupabase,
+  orderExistsByIdSupabase,
+  setOrderCancelReasonSupabase,
+  setOrderReturnReasonSupabase,
+} from "@/src/lib/db/orders"
+import { logger } from "@/lib/logger"
 import { enqueueOutboxEvent } from "@/src/server/modules/integrations/outbox.service"
 import { assertMasterValueExists } from "@/src/server/modules/master/master.service"
+import { syncOrderStatusFromShiprocket } from "@/src/server/modules/integrations/shiprocket.service"
 
 export type OrderLifecycleStatus =
   | "pending"
@@ -82,6 +94,12 @@ const deriveEffectivePaymentStatus = (order: { paymentStatus?: string | null; tr
   return normalized
 }
 
+const deriveLifecycleFromPayment = (status: string) => {
+  if (status === "SUCCESS") return "admin_approval_pending" as const
+  if (status === "FAILED") return "failed" as const
+  return null
+}
+
 const orderCheckoutSelect = {
   id: true,
   userId: true,
@@ -142,6 +160,8 @@ const orderListSelect = {
     },
   },
   transactions: true,
+  shipments: { orderBy: { createdAt: "desc" as const }, take: 3, select: { id: true, carrier: true, trackingNo: true, shipmentStatus: true, shippedAt: true } },
+  fulfillment: { select: { fulfillmentStatus: true, deliveredAt: true, shippedAt: true } },
   user: { select: { id: true, name: true, email: true } },
   returnRequests: { select: { id: true, status: true } },
   refunds: { select: { id: true, status: true, amount: true } },
@@ -166,6 +186,7 @@ const orderDetailSelect = {
   paymentId: true,
   paymentMethod: true,
   paymentStatus: true,
+  user: { select: { id: true, name: true, email: true } },
   items: {
     select: {
       id: true,
@@ -186,6 +207,15 @@ const orderDetailSelect = {
   refunds: { orderBy: { createdAt: "desc" as const } },
   invoice: true,
 } as const
+
+const getInitialLifecycleStatus = (gateway: string, paymentStatus?: string | null): OrderLifecycleStatus => {
+  const normalizedGateway = gateway.trim().toLowerCase()
+  const normalizedPayment = normalizePaymentStatus(paymentStatus)
+  if (normalizedGateway === "cod") return "pending"
+  if (normalizedPayment === "SUCCESS") return "payment_success"
+  if (normalizedPayment === "FAILED") return "failed"
+  return "pending_payment"
+}
 
 const isMissingAppliedCouponColumnError = (error: unknown) => {
   if (!error || typeof error !== "object") return false
@@ -221,6 +251,8 @@ const tableExists = async (tableName: string) => {
     return false
   }
 }
+
+const shouldAutoSyncOrders = () => process.env.ORDER_AUTO_SYNC_ENABLED === "true"
 
 const reserveInventoryForOrder = async (
   tx: Prisma.TransactionClient,
@@ -329,6 +361,7 @@ export const createOrderFromCheckout = async (input: {
   // 🔥 ADD THIS
   billingAddress?: {
     fullName: string
+    email?: string
     line1: string
     city: string
     state: string
@@ -351,6 +384,8 @@ export const createOrderFromCheckout = async (input: {
     if (existing) return existing
   }
 
+  const initialLifecycleStatus = getInitialLifecycleStatus(input.gateway, input.paymentStatus)
+  const initialPersistedStatus = persistedOrderStatus(initialLifecycleStatus)
   const shipping = input.shipping ?? 0
   const slugs = [...new Set(input.items.map((i) => i.slug).filter(Boolean))] as string[]
   const productIds = [...new Set(input.items.map((i) => i.productId).filter(Boolean))] as string[]
@@ -469,7 +504,7 @@ export const createOrderFromCheckout = async (input: {
 
       createdById: undefined,
       managedById: undefined,
-      status: "pending",
+      status: initialPersistedStatus,
       currency: input.currency ?? "INR",
       subtotal,
       shipping,
@@ -487,8 +522,15 @@ export const createOrderFromCheckout = async (input: {
           ? {
               statusHistory: {
                 create: {
-                  toStatus: "pending_payment",
-                  notes: "Order created, awaiting payment",
+                  toStatus: initialLifecycleStatus,
+                  notes:
+                    initialLifecycleStatus === "pending"
+                      ? "Order created with COD; awaiting admin acceptance"
+                      : initialLifecycleStatus === "payment_success"
+                        ? "Order created after successful payment"
+                        : initialLifecycleStatus === "failed"
+                          ? "Order created with failed payment state"
+                          : "Order created, awaiting payment",
                   changedById: input.userId ?? undefined,
                 },
               },
@@ -556,6 +598,16 @@ await enqueueOutboxEvent({
   payload: { orderId: order.id, total, currency: input.currency ?? "INR" },
 }).catch(() => null)
 
+await markCartConverted({
+  email: input.billingAddress?.email ?? null,
+  mobile: input.billingAddress?.phone ?? null,
+  orderId: order.id,
+  revenue: total,
+  channel: "checkout",
+}).catch(() => null)
+
+await cache.delMany([cacheKeys.dashboardSummary("admin"), cacheKeys.dashboardSummary("super_admin"), cacheKeys.financeSummary()]).catch(() => null)
+
 return order
 }
 
@@ -565,26 +617,58 @@ export const listOrders = async (
   role: string,
   userId: string,
 ) => {
+  const autoSyncFromPayment = async (orderId: string, currentStatus: string, paymentStatus: string) => {
+    const derived = deriveLifecycleFromPayment(paymentStatus)
+    if (!derived) return
+    const lifecycle = currentStatus as OrderLifecycleStatus
+    if (lifecycle === derived || lifecycle === "confirmed") return
+    await updateOrderStatus(orderId, derived, undefined, {
+      reasonCode: "payment_status_sync",
+      note: `Auto-updated from payment status ${paymentStatus}`,
+    }).catch(() => null)
+  }
+
   const skip = (page - 1) * limit
   const where: Prisma.OrderWhereInput = {}
   if (role === "customer") {
     where.userId = userId
   }
 
+  const queryOrdersPrisma = async (idScope?: string[]) => {
+    if (idScope?.length) {
+      const hydrated = await prisma.order.findMany({
+        where: { id: { in: idScope } },
+        select: orderListSelect,
+      })
+      const byId = new Map(hydrated.map((row) => [row.id, row]))
+      return idScope.map((id) => byId.get(id)).filter(Boolean) as typeof hydrated
+    }
+    return prisma.order.findMany({
+      where,
+      orderBy: { createdAt: "desc" },
+      skip,
+      take: limit,
+      select: orderListSelect,
+    })
+  }
+
   let items: any[] = []
   let total = 0
+  const supabaseReadsEnabled = process.env.SUPABASE_ORDERS_READ_ENABLED === "true"
   try {
-    ;[items, total] = await Promise.all([
-      prisma.order.findMany({
-        where,
-        orderBy: { createdAt: "desc" },
-        skip,
-        take: limit,
-        select: orderListSelect,
-      }),
-      prisma.order.count({ where }),
-    ])
+    if (supabaseReadsEnabled) {
+      const idPayload = await listOrderIdsSupabase({ page, limit, role, userId })
+      total = idPayload.total
+      items = idPayload.ids.length ? await queryOrdersPrisma(idPayload.ids) : []
+    } else {
+      ;[items, total] = await Promise.all([queryOrdersPrisma(), prisma.order.count({ where })])
+    }
   } catch (error) {
+    if (supabaseReadsEnabled) {
+      logger.warn("orders.list.supabase_fallback_prisma", {
+        error: error instanceof Error ? error.message : "unknown",
+      })
+    }
     if (!isMissingOrderJoinDataError(error)) throw error
     const [baseItems, baseTotal] = await Promise.all([
       prisma.order.findMany({
@@ -598,6 +682,8 @@ export const listOrders = async (
           returnRequests: false as never,
           refunds: false as never,
           statusHistory: false as never,
+          shipments: false as never,
+          fulfillment: false as never,
         },
       }),
       prisma.order.count({ where }),
@@ -608,6 +694,8 @@ export const listOrders = async (
       returnRequests: [],
       refunds: [],
       statusHistory: [],
+      shipments: [],
+      fulfillment: null,
     }))
     total = baseTotal
   }
@@ -617,19 +705,63 @@ export const listOrders = async (
     paymentStatus: deriveEffectivePaymentStatus(order),
   }))
 
+  if (shouldAutoSyncOrders()) {
+    await Promise.allSettled(
+      hydratedItems.map(async (order) => {
+        await autoSyncFromPayment(order.id, order.status, order.paymentStatus)
+        await syncOrderStatusFromShiprocket(order.id)
+      }),
+    )
+  }
+
   return { items: hydratedItems, total, page, limit }
 }
 
 export const getOrderById = async (id: string) => {
+  const autoSyncFromPayment = async (orderId: string, currentStatus: string, paymentStatus: string) => {
+    const derived = deriveLifecycleFromPayment(paymentStatus)
+    if (!derived) return
+    const lifecycle = currentStatus as OrderLifecycleStatus
+    if (lifecycle === derived || lifecycle === "confirmed") return
+    await updateOrderStatus(orderId, derived, undefined, {
+      reasonCode: "payment_status_sync",
+      note: `Auto-updated from payment status ${paymentStatus}`,
+    }).catch(() => null)
+  }
+
   try {
+    if (process.env.SUPABASE_ORDERS_READ_ENABLED === "true") {
+      try {
+        const exists = await orderExistsByIdSupabase(id)
+        if (!exists) return null
+      } catch (error) {
+        logger.warn("orders.by_id.supabase_check_fallback_prisma", {
+          orderId: id,
+          error: error instanceof Error ? error.message : "unknown",
+        })
+      }
+    }
     const order = await prisma.order.findUnique({
       where: { id },
       select: orderDetailSelect,
     })
     if (!order) return null
-    return {
+    const hydrated = {
       ...order,
       paymentStatus: deriveEffectivePaymentStatus(order),
+    }
+    if (shouldAutoSyncOrders()) {
+      await autoSyncFromPayment(hydrated.id, hydrated.status, hydrated.paymentStatus)
+      await syncOrderStatusFromShiprocket(hydrated.id)
+    }
+    const refreshed = await prisma.order.findUnique({
+      where: { id: hydrated.id },
+      select: orderDetailSelect,
+    })
+    if (!refreshed) return hydrated
+    return {
+      ...refreshed,
+      paymentStatus: deriveEffectivePaymentStatus(refreshed),
     }
   } catch (error) {
     if (!isMissingOrderJoinDataError(error)) throw error
@@ -667,7 +799,7 @@ export const getOrderById = async (id: string) => {
       },
     })
     if (!base) return null
-    return {
+    const fallback = {
       ...base,
       paymentStatus: deriveEffectivePaymentStatus(base),
       transactions: [],
@@ -679,6 +811,9 @@ export const getOrderById = async (id: string) => {
       refunds: [],
       invoice: null,
     } as any
+    await autoSyncFromPayment(fallback.id, fallback.status, fallback.paymentStatus)
+    await syncOrderStatusFromShiprocket(fallback.id)
+    return fallback
   }
 }
 
@@ -802,7 +937,47 @@ export const updateOrderStatus = async (
     payload: { orderId: id, fromStatus, toStatus: status, reasonCode: options?.reasonCode ?? null },
   }).catch(() => null)
 
+  if (process.env.SUPABASE_ORDERS_WRITE_ENABLED === "true") {
+    mirrorOrderStatusSupabase(id, persistedOrderStatus(status)).catch((error) => {
+      logger.warn("orders.status.mirror_supabase_failed", {
+        orderId: id,
+        status,
+        error: error instanceof Error ? error.message : "unknown",
+      })
+    })
+  }
+
   return order
+}
+
+export const setOrderCancelReason = async (orderId: string, reason: string) => {
+  if (process.env.SUPABASE_ORDERS_WRITE_ENABLED === "true") {
+    try {
+      const mirrored = await setOrderCancelReasonSupabase(orderId, reason)
+      if (mirrored) return
+    } catch (error) {
+      logger.warn("orders.cancel_reason.supabase_fallback_prisma", {
+        orderId,
+        error: error instanceof Error ? error.message : "unknown",
+      })
+    }
+  }
+  await prisma.$executeRawUnsafe('UPDATE "Order" SET "cancelReason" = $1 WHERE id = $2', reason, orderId)
+}
+
+export const setOrderReturnReason = async (orderId: string, reason: string) => {
+  if (process.env.SUPABASE_ORDERS_WRITE_ENABLED === "true") {
+    try {
+      const mirrored = await setOrderReturnReasonSupabase(orderId, reason)
+      if (mirrored) return
+    } catch (error) {
+      logger.warn("orders.return_reason.supabase_fallback_prisma", {
+        orderId,
+        error: error instanceof Error ? error.message : "unknown",
+      })
+    }
+  }
+  await prisma.$executeRawUnsafe('UPDATE "Order" SET "returnReason" = $1 WHERE id = $2', reason, orderId)
 }
 
 export const addOrderNote = async (input: {
@@ -857,6 +1032,18 @@ export const createOrderShipment = async (input: {
     include: { items: true, statusHistory: { orderBy: { changedAt: "desc" }, take: 1 } },
   })
   if (!order) throw new Error("Order not found")
+  const paymentStatus = normalizePaymentStatus(order.paymentStatus)
+  const fromStatus = (order.statusHistory?.[0]?.toStatus as OrderLifecycleStatus | undefined) ??
+    (order.status as OrderLifecycleStatus)
+  if (["cancelled", "returned", "delivered"].includes(fromStatus)) {
+    throw new Error("Shipment cannot be created for cancelled/returned/delivered order")
+  }
+  if (paymentStatus !== "SUCCESS" && (order.paymentMethod ?? "").toLowerCase() !== "cod") {
+    throw new Error("Shipment can be created only after payment success for prepaid orders")
+  }
+  if (!["confirmed", "packed", "shipped"].includes(fromStatus)) {
+    throw new Error(`Invalid status transition: ${fromStatus} -> shipped`)
+  }
   const itemById = new Map(order.items.map((item) => [item.id, item]))
   for (const allocation of input.itemAllocations) {
     const item = itemById.get(allocation.orderItemId)
@@ -885,8 +1072,6 @@ export const createOrderShipment = async (input: {
       include: { items: true },
     })
 
-    const fromStatus = (order.statusHistory?.[0]?.toStatus as OrderLifecycleStatus | undefined) ??
-      (order.status as OrderLifecycleStatus)
     await tx.order.update({
       where: { id: input.orderId },
       data: {

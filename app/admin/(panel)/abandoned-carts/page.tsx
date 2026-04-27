@@ -1,78 +1,248 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { authedFetch } from "@/lib/dashboard-fetch";
+import Link from "next/link";
+import { authedFetch, authedPost } from "@/lib/dashboard-fetch";
 import { ConsoleTable, ConsoleTd } from "@/components/dashboard/ConsoleTable";
 
 type CartRow = {
   id: string;
-  sessionKey: string;
+  session_key: string;
   email: string | null;
+  mobile: string | null;
+  user_id: string | null;
   total: string | number | null;
-  updatedAt: string;
-  itemsJson: unknown;
+  updated_at: string;
+  items_json: unknown;
+  abandoned_at: string | null;
+  messages_sent: number;
+  last_message_at: string | null;
+  converted_at: string | null;
+  status: string;
 };
 
 export default function AdminAbandonedCartsPage() {
   const [rows, setRows] = useState<CartRow[]>([]);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
+  const [timeline, setTimeline] = useState<null | {
+    events: Array<{ id: string; event_type: string; created_at: string }>;
+    messages: Array<{ id: string; channel: string; status: string; sent_at: string; sent_to: string | null }>;
+    queue: Array<{ id: string; step_no: number; channel: string; status: string; scheduled_at: string; sent_at: string | null; error_message: string | null }>;
+  }>(null);
+  const [q, setQ] = useState("");
+  const [converted, setConverted] = useState<"all" | "yes" | "no">("all");
+  const [userType, setUserType] = useState<"all" | "guest" | "registered">("all");
+  const [analytics, setAnalytics] = useState<{
+    totalAbandoned: number;
+    recoveredCount: number;
+    recoveryRate: number;
+    recoveredRevenue: number;
+  } | null>(null);
 
   const load = useCallback(() => {
     setLoading(true);
     setError("");
-    authedFetch<CartRow[]>("/api/v1/abandoned-carts")
-      .then(setRows)
+    const params = new URLSearchParams();
+    if (q.trim()) params.set("q", q.trim());
+    if (converted !== "all") params.set("converted", converted);
+    if (userType !== "all") params.set("userType", userType);
+    Promise.all([
+      authedFetch<CartRow[]>(`/api/admin/abandoned-carts?${params.toString()}`),
+      authedFetch<{ totalAbandoned: number; recoveredCount: number; recoveryRate: number; recoveredRevenue: number }>("/api/admin/abandoned-carts/analytics"),
+    ])
+      .then(([carts, kpi]) => {
+        setRows(carts);
+        setAnalytics(kpi);
+      })
       .catch((e: Error) => setError(e.message))
       .finally(() => setLoading(false));
-  }, []);
+  }, [converted, q, userType]);
 
   useEffect(() => {
     load();
   }, [load]);
+
+  const openTimeline = async (id: string) => {
+    try {
+      const data = await authedFetch<typeof timeline extends null ? never : NonNullable<typeof timeline>>(`/api/admin/abandoned-carts/${id}`);
+      setTimeline(data);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to load timeline");
+    }
+  };
+
+  const sendNow = async (id: string, channels: Array<"email" | "sms" | "whatsapp"> = ["email", "sms", "whatsapp"]) => {
+    try {
+      await authedPost("/api/admin/abandoned-carts/send-now", { cartId: id, channels });
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to queue recovery");
+    }
+  };
+
+  const runAction = async (cartId: string, action: "disable_recovery" | "mark_ignore") => {
+    try {
+      await authedPost("/api/admin/abandoned-carts/actions", { cartId, action });
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to run action");
+    }
+  };
+
+  const triggerDetection = async () => {
+    try {
+      await authedPost("/api/admin/abandoned-carts", { action: "detect_now" });
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to run detection");
+    }
+  };
 
   return (
     <section className="mx-auto max-w-7xl space-y-4">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="font-melon text-2xl font-bold text-[#4A1D1F]">Abandoned carts</h1>
-          <p className="text-sm text-[#646464]">Recovered checkout sessions (beacon from storefront optional).</p>
+          <p className="text-sm text-[#646464]">Abandonment detection, recovery actions, and conversion tracking.</p>
         </div>
-        <button
-          type="button"
-          onClick={() => load()}
-          className="rounded-full border border-[#E8DCC8] bg-white px-4 py-2 text-xs font-semibold uppercase tracking-wide text-[#4A1D1F] hover:bg-[#FFFBF3]"
-        >
-          Refresh
-        </button>
+        <div className="flex flex-wrap gap-2">
+          <Link href="/admin/abandoned-carts/settings" className="rounded-full border border-[#E8DCC8] bg-white px-4 py-2 text-xs font-semibold uppercase tracking-wide text-[#4A1D1F] hover:bg-[#FFFBF3]">
+            Recovery Settings
+          </Link>
+          <button type="button" onClick={() => void triggerDetection()} className="rounded-full border border-[#E8DCC8] bg-white px-4 py-2 text-xs font-semibold uppercase tracking-wide text-[#4A1D1F] hover:bg-[#FFFBF3]">
+            Detect Now
+          </button>
+          <button type="button" onClick={() => load()} className="rounded-full border border-[#E8DCC8] bg-white px-4 py-2 text-xs font-semibold uppercase tracking-wide text-[#4A1D1F] hover:bg-[#FFFBF3]">
+            Refresh
+          </button>
+        </div>
+      </div>
+      <div className="grid gap-2 rounded-xl border border-[#E8DCC8] bg-white p-3 md:grid-cols-4">
+        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search session/email/mobile" className="rounded border px-3 py-2 text-sm" />
+        <select value={converted} onChange={(e) => setConverted(e.target.value as "all" | "yes" | "no")} className="rounded border px-3 py-2 text-sm">
+          <option value="all">All conversions</option>
+          <option value="yes">Converted</option>
+          <option value="no">Unconverted</option>
+        </select>
+        <select value={userType} onChange={(e) => setUserType(e.target.value as "all" | "guest" | "registered")} className="rounded border px-3 py-2 text-sm">
+          <option value="all">All users</option>
+          <option value="guest">Guest</option>
+          <option value="registered">Registered</option>
+        </select>
+        <button type="button" onClick={() => load()} className="rounded bg-[#7B3010] px-3 py-2 text-xs font-semibold uppercase tracking-wide text-white">Apply Filters</button>
       </div>
 
       {error && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-800">{error}</p>}
+      {analytics ? (
+        <div className="grid gap-2 md:grid-cols-4">
+          <div className="rounded-xl border border-[#E8DCC8] bg-white p-3 text-sm"><p className="text-[#7A7A7A]">Total Abandoned</p><p className="font-semibold text-[#4A1D1F]">{analytics.totalAbandoned}</p></div>
+          <div className="rounded-xl border border-[#E8DCC8] bg-white p-3 text-sm"><p className="text-[#7A7A7A]">Recovered</p><p className="font-semibold text-[#4A1D1F]">{analytics.recoveredCount}</p></div>
+          <div className="rounded-xl border border-[#E8DCC8] bg-white p-3 text-sm"><p className="text-[#7A7A7A]">Recovery Rate</p><p className="font-semibold text-[#4A1D1F]">{analytics.recoveryRate.toFixed(1)}%</p></div>
+          <div className="rounded-xl border border-[#E8DCC8] bg-white p-3 text-sm"><p className="text-[#7A7A7A]">Recovered Revenue</p><p className="font-semibold text-[#4A1D1F]">Rs.{analytics.recoveredRevenue.toFixed(2)}</p></div>
+        </div>
+      ) : null}
       {loading && <p className="text-sm text-[#646464]">Loading…</p>}
 
       {!loading && (
-        <ConsoleTable headers={["Session", "Email", "Total", "Updated", "Items (preview)"]}>
+        <ConsoleTable headers={["Cart ID", "Customer", "Type", "Items", "Cart Value", "Last Active", "Since Abandoned", "Recovery", "Actions"]}>
           {rows.length === 0 ? (
             <tr>
-              <ConsoleTd className="py-8 text-center text-[#646464]" colSpan={5}>
+              <ConsoleTd className="py-8 text-center text-[#646464]" colSpan={9}>
                 No abandoned carts recorded.
               </ConsoleTd>
             </tr>
           ) : (
             rows.map((r) => (
               <tr key={r.id} className="hover:bg-[#FFFBF3]/80">
-                <ConsoleTd className="font-mono text-[11px]">{r.sessionKey.slice(0, 24)}…</ConsoleTd>
-                <ConsoleTd className="text-xs">{r.email ?? "—"}</ConsoleTd>
+                <ConsoleTd className="font-mono text-[11px]">{r.session_key.slice(0, 16)}…</ConsoleTd>
+                <ConsoleTd className="text-xs">
+                  <div>{r.email ?? "No email"}</div>
+                  <div className="text-[11px] text-[#646464]">{r.mobile ?? "No mobile"}</div>
+                </ConsoleTd>
+                <ConsoleTd className="text-xs">{r.user_id ? "Registered" : "Guest"}</ConsoleTd>
+                <ConsoleTd className="text-xs">{Array.isArray(r.items_json) ? r.items_json.length : 0}</ConsoleTd>
                 <ConsoleTd>{r.total != null ? `Rs.${Number(r.total).toFixed(2)}` : "—"}</ConsoleTd>
-                <ConsoleTd className="text-xs">{new Date(r.updatedAt).toLocaleString()}</ConsoleTd>
-                <ConsoleTd className="max-w-md truncate font-mono text-[10px] text-[#646464]">
-                  {JSON.stringify(r.itemsJson).slice(0, 120)}…
+                <ConsoleTd className="text-xs">{new Date(r.updated_at).toLocaleString()}</ConsoleTd>
+                <ConsoleTd className="text-xs">
+                  {r.abandoned_at ? `${Math.floor((Date.now() - new Date(r.abandoned_at).getTime()) / 60000)} min` : "Not abandoned"}
+                </ConsoleTd>
+                <ConsoleTd className="text-xs">
+                  <div>{r.converted_at ? "Converted" : "Pending"}</div>
+                  <div className="text-[11px] text-[#646464]">Sent: {r.messages_sent}</div>
+                  <div className="text-[11px] text-[#646464]">Last: {r.last_message_at ? new Date(r.last_message_at).toLocaleString() : "—"}</div>
+                </ConsoleTd>
+                <ConsoleTd className="text-xs">
+                  <div className="flex flex-wrap gap-1">
+                    <button type="button" className="rounded border px-2 py-1 text-[10px]" onClick={() => void sendNow(r.id)}>
+                      Send Recovery Now
+                    </button>
+                    <button type="button" className="rounded border px-2 py-1 text-[10px]" onClick={() => void openTimeline(r.id)}>
+                      View Timeline
+                    </button>
+                    <button type="button" className="rounded border px-2 py-1 text-[10px]" onClick={() => void runAction(r.id, "disable_recovery")}>
+                      Disable Recovery
+                    </button>
+                    <button type="button" className="rounded border px-2 py-1 text-[10px]" onClick={() => void runAction(r.id, "mark_ignore")}>
+                      Mark Ignore
+                    </button>
+                    <a className="rounded border px-2 py-1 text-[10px]" href={`/cart/recover/${encodeURIComponent(r.session_key)}`} target="_blank" rel="noreferrer">
+                      View Cart
+                    </a>
+                  </div>
                 </ConsoleTd>
               </tr>
             ))
           )}
         </ConsoleTable>
       )}
+      {timeline ? (
+        <div className="rounded-xl border border-[#E8DCC8] bg-white p-4">
+          <div className="mb-2 flex items-center justify-between">
+            <h2 className="font-semibold text-[#4A1D1F]">Timeline</h2>
+            <button type="button" className="rounded border px-3 py-1 text-xs" onClick={() => setTimeline(null)}>
+              Close
+            </button>
+          </div>
+          <div className="grid gap-4 md:grid-cols-3">
+            <div>
+              <h3 className="text-xs font-semibold uppercase text-[#7A7A7A]">Events</h3>
+              <div className="space-y-1 text-xs">
+                {timeline.events.map((e) => (
+                  <div key={e.id} className="rounded border px-2 py-1">
+                    <div>{e.event_type}</div>
+                    <div className="text-[11px] text-[#646464]">{new Date(e.created_at).toLocaleString()}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div>
+              <h3 className="text-xs font-semibold uppercase text-[#7A7A7A]">Queue</h3>
+              <div className="space-y-1 text-xs">
+                {timeline.queue.map((e) => (
+                  <div key={e.id} className="rounded border px-2 py-1">
+                    <div>Step {e.step_no} · {e.channel}</div>
+                    <div>{e.status}</div>
+                    <div className="text-[11px] text-[#646464]">{new Date(e.scheduled_at).toLocaleString()}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div>
+              <h3 className="text-xs font-semibold uppercase text-[#7A7A7A]">Messages</h3>
+              <div className="space-y-1 text-xs">
+                {timeline.messages.map((e) => (
+                  <div key={e.id} className="rounded border px-2 py-1">
+                    <div>{e.channel} · {e.status}</div>
+                    <div>{e.sent_to ?? "—"}</div>
+                    <div className="text-[11px] text-[#646464]">{new Date(e.sent_at).toLocaleString()}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </section>
   );
 }

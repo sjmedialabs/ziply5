@@ -46,7 +46,7 @@ export default function AdminDashboardPage() {
   return (
     <section className="mx-auto max-w-7xl">
       <h1 className="font-melon text-2xl font-bold tracking-wide text-[#4A1D1F] md:text-3xl">Admin Dashboard</h1>
-      <p className="mt-2 text-sm text-[#646464]">Live metrics from your database (safe fallbacks if some tables are empty).</p>
+      <p className="mt-2 text-sm text-[#646464]">Overview of orders, users, and all-time revenue.</p>
 
       {error && (
         <div className="mt-6 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
@@ -70,10 +70,6 @@ export default function AdminDashboardPage() {
             <p className="mt-2 text-2xl font-bold text-[#4A1D1F]">{summary.totalUsers}</p>
           </div>
           <div className="rounded-2xl border border-[#E8DCC8] bg-white p-5 shadow-sm">
-            <p className="text-xs font-semibold uppercase tracking-wide text-[#646464]">Seller roles (legacy)</p>
-            <p className="mt-2 text-2xl font-bold text-[#4A1D1F]">{summary.totalSellers}</p>
-          </div>
-          <div className="rounded-2xl border border-[#E8DCC8] bg-white p-5 shadow-sm sm:col-span-2 lg:col-span-4">
             <p className="text-xs font-semibold uppercase tracking-wide text-[#646464]">Revenue (all time)</p>
             <p className="mt-2 text-2xl font-bold text-[#4A1D1F]">Rs.{Number(summary.totalRevenue).toFixed(2)}</p>
           </div>

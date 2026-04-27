@@ -3,6 +3,8 @@ import Stripe from "stripe"
 import { prisma } from "@/src/server/db/prisma"
 import { env } from "@/src/server/core/config/env"
 import { isAutoApproveOrdersEnabled, updateOrderStatus } from "@/src/server/modules/orders/orders.service"
+import { markOrderPaymentSuccessSupabase, upsertPaidTransactionSupabase } from "@/src/lib/db/orders"
+import { logger } from "@/lib/logger"
 
 export type PaymentProvider = "razorpay" | "stripe" | "mock"
 
@@ -112,6 +114,12 @@ export const createPaymentIntent = async (input: {
   }
 
   await upsertTransaction(input.orderId, provider, externalId, amount)
+  await prisma.order.update({
+    where: { id: input.orderId },
+    data: {
+      paymentStatus: toPaymentStatus("PENDING"),
+    },
+  }).catch(() => null)
 
   return {
     provider,
@@ -160,53 +168,75 @@ export const verifyRazorpayPayment = async (input: {
   if (!valid) throw new Error("Invalid Razorpay signature")
 
   let txId: string | null = null
-  try {
-    const tx = await prisma.transaction.findFirst({
-      where: {
+  const supabaseWritesEnabled = process.env.SUPABASE_ORDERS_WRITE_ENABLED === "true"
+  if (supabaseWritesEnabled) {
+    try {
+      txId = await upsertPaidTransactionSupabase({
         orderId: input.orderId,
-        OR: [
-          { externalId: input.razorpayOrderId },
-          { externalId: input.razorpayPaymentId },
-        ],
-      },
-      orderBy: { createdAt: "desc" },
-    })
-
-    if (tx?.status === "paid") {
-      txId = tx.id
-    } else if (tx) {
-      const updated = await prisma.transaction.update({
-        where: { id: tx.id },
-        data: {
-          status: "paid",
-          externalId: input.razorpayPaymentId,
-        },
+        razorpayOrderId: input.razorpayOrderId,
+        razorpayPaymentId: input.razorpayPaymentId,
       })
-      txId = updated.id
-    } else {
-      const created = await prisma.transaction.create({
-        data: {
-          orderId: input.orderId,
-          gateway: "razorpay",
-          amount: 0,
-          status: "paid",
-          externalId: input.razorpayPaymentId,
-        },
+      const mirrored = await markOrderPaymentSuccessSupabase(input.orderId, input.razorpayPaymentId)
+      if (!mirrored) {
+        logger.warn("payments.verify.supabase_order_update_noop", { orderId: input.orderId })
+      }
+    } catch (error) {
+      logger.warn("payments.verify.supabase_fallback_prisma", {
+        orderId: input.orderId,
+        error: error instanceof Error ? error.message : "unknown",
       })
-      txId = created.id
     }
-  } catch (error) {
-    if (!isMissingTransactionInfraError(error)) throw error
-    // Schema drift: transaction table may be unavailable; continue with order payment update.
   }
 
-  await prisma.order.update({
-    where: { id: input.orderId },
-    data: {
-      paymentStatus: toPaymentStatus("SUCCESS"),
-      paymentId: input.razorpayPaymentId,
-    },
-  })
+  if (!supabaseWritesEnabled) {
+    try {
+      const tx = await prisma.transaction.findFirst({
+        where: {
+          orderId: input.orderId,
+          OR: [
+            { externalId: input.razorpayOrderId },
+            { externalId: input.razorpayPaymentId },
+          ],
+        },
+        orderBy: { createdAt: "desc" },
+      })
+
+      if (tx?.status === "paid") {
+        txId = tx.id
+      } else if (tx) {
+        const updated = await prisma.transaction.update({
+          where: { id: tx.id },
+          data: {
+            status: "paid",
+            externalId: input.razorpayPaymentId,
+          },
+        })
+        txId = updated.id
+      } else {
+        const created = await prisma.transaction.create({
+          data: {
+            orderId: input.orderId,
+            gateway: "razorpay",
+            amount: 0,
+            status: "paid",
+            externalId: input.razorpayPaymentId,
+          },
+        })
+        txId = created.id
+      }
+    } catch (error) {
+      if (!isMissingTransactionInfraError(error)) throw error
+      // Schema drift: transaction table may be unavailable; continue with order payment update.
+    }
+
+    await prisma.order.update({
+      where: { id: input.orderId },
+      data: {
+        paymentStatus: toPaymentStatus("SUCCESS"),
+        paymentId: input.razorpayPaymentId,
+      },
+    })
+  }
 
   await updateOrderStatus(input.orderId, "payment_success", undefined, {
     reasonCode: "payment_success",

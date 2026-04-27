@@ -2,11 +2,15 @@ import { NextRequest } from "next/server"
 import { z } from "zod"
 import { fail, ok } from "@/src/server/core/http/response"
 import { requireAuth } from "@/src/server/middleware/auth"
-import { getOrderById, updateOrderStatus } from "@/src/server/modules/orders/orders.service"
+import {
+  getOrderById,
+  setOrderCancelReason,
+  setOrderReturnReason,
+  updateOrderStatus,
+} from "@/src/server/modules/orders/orders.service"
 import { createRefund } from "@/src/server/modules/extended/extended.service"
 import { triggerRazorpayRefund } from "@/src/server/modules/payments/payments.service"
 import { env } from "@/src/server/core/config/env"
-import { prisma } from "@/src/server/db/prisma"
 
 const schema = z.object({
   action: z.enum([
@@ -14,6 +18,7 @@ const schema = z.object({
     "cancel_pending",
     "return_request",
     "approve_order",
+    "reject_order",
     "approve_cancel",
     "reject_cancel",
     "approve_return",
@@ -56,7 +61,7 @@ export async function POST(request: NextRequest, ctx: { params: Promise<{ id: st
         note: parsed.data.reason ?? "Customer requested cancellation",
       })
       if (parsed.data.reason?.trim()) {
-        await prisma.$executeRawUnsafe('UPDATE "Order" SET "cancelReason" = $1 WHERE id = $2', parsed.data.reason.trim(), order.id)
+        await setOrderCancelReason(order.id, parsed.data.reason.trim())
       }
       return ok(updated, "Cancel requested")
     }
@@ -81,7 +86,7 @@ export async function POST(request: NextRequest, ctx: { params: Promise<{ id: st
         note: parsed.data.reason ?? "Customer requested return",
       })
       if (parsed.data.reason?.trim()) {
-        await prisma.$executeRawUnsafe('UPDATE "Order" SET "returnReason" = $1 WHERE id = $2', parsed.data.reason.trim(), order.id)
+        await setOrderReturnReason(order.id, parsed.data.reason.trim())
       }
       return ok(updated, "Return requested")
     }
@@ -89,11 +94,44 @@ export async function POST(request: NextRequest, ctx: { params: Promise<{ id: st
     if (!isAdmin) return fail("Forbidden", 403)
 
     if (parsed.data.action === "approve_order") {
+      const stockCheck = order.items.every((item) => {
+        if (item.product?.type === "variant") {
+          const variants = item.product?.variants ?? []
+          const variant = variants.find((v) => v.id === (item as { variantId?: string | null }).variantId)
+          return Number(variant?.stock ?? 0) >= Number(item.quantity ?? 0)
+        }
+        return Number(item.product?.totalStock ?? 0) >= Number(item.quantity ?? 0)
+      })
+      const serviceableCheck = Boolean(order.customerAddress?.trim())
+      const fraudCheckPassed = true
+      if (!stockCheck || !serviceableCheck || !fraudCheckPassed) {
+        const reasons = [
+          !stockCheck ? "Stock unavailable for one or more items" : null,
+          !serviceableCheck ? "Delivery address/serviceability check failed" : null,
+          !fraudCheckPassed ? "Fraud check failed" : null,
+        ].filter(Boolean)
+        return fail("Order cannot be accepted", 422, { reasons })
+      }
       const updated = await updateOrderStatus(order.id, "confirmed", auth.user.sub, {
         reasonCode: "admin_approved",
         note: parsed.data.reason ?? "Admin approved order",
       })
       return ok(updated, "Order approved")
+    }
+
+    if (parsed.data.action === "reject_order") {
+      const paymentStatus = normalizePaymentStatus(order.paymentStatus)
+      const updated = await updateOrderStatus(order.id, "cancelled", auth.user.sub, {
+        reasonCode: "admin_rejected",
+        note: parsed.data.reason ?? "Admin rejected order",
+      })
+      if (paymentStatus === "SUCCESS") {
+        const amount = parsed.data.amount ?? Number(order.total)
+        const refund = await createRefund(order.id, amount, "Order rejected by admin")
+        const triggered = await triggerRazorpayRefund({ refundRecordId: refund.id })
+        return ok({ updated, refund, triggered }, "Order rejected and refund initiated")
+      }
+      return ok(updated, "Order rejected")
     }
 
     if (parsed.data.action === "approve_cancel") {
@@ -136,9 +174,7 @@ export async function POST(request: NextRequest, ctx: { params: Promise<{ id: st
     const paymentStatus = normalizePaymentStatus(order.paymentStatus)
     if (paymentStatus !== "SUCCESS") return fail("Refund allowed only when payment_status = SUCCESS", 422)
     const latestRefund = order.refunds?.[0] ?? null
-    let refund = latestRefund
-      ? await prisma.refundRecord.findUnique({ where: { id: latestRefund.id } })
-      : null
+    let refund = latestRefund ?? null
 
     if (!refund || ["completed", "initiated"].includes(refund.status)) {
       const amount = parsed.data.amount ?? Number(order.total)

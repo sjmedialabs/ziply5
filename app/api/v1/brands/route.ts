@@ -4,6 +4,9 @@ import { requireAuth } from "@/src/server/middleware/auth"
 import { requirePermission } from "@/src/server/middleware/rbac"
 import { createBrand, listBrands } from "@/src/server/modules/extended/extended.service"
 import { z } from "zod"
+import { cacheKeys } from "@/lib/cache/cacheKeys"
+import { cache, withCache } from "@/lib/cache/redis"
+import { measureAsync } from "@/lib/performance"
 
 const createSchema = z.object({
   name: z.string().min(1),
@@ -11,7 +14,9 @@ const createSchema = z.object({
 })
 
 export async function GET() {
-  const rows = await listBrands()
+  const rows = await measureAsync("api.brands.list", () =>
+    withCache(cacheKeys.brands(), 30 * 60_000, () => listBrands()),
+  )
   return ok(rows, "Brands")
 }
 
@@ -25,6 +30,7 @@ export async function POST(request: NextRequest) {
   if (!parsed.success) return fail("Validation failed", 422, parsed.error.flatten())
   try {
     const row = await createBrand(parsed.data.name, parsed.data.slug)
+    await cache.del(cacheKeys.brands())
     return ok(row, "Brand created", 201)
   } catch (e) {
     return fail(e instanceof Error ? e.message : "Error", 400)

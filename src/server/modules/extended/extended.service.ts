@@ -1,9 +1,31 @@
 import { prisma } from "@/src/server/db/prisma"
+import { createBrandSupabase, listBrandsSupabase } from "@/src/lib/db/brands"
+import {
+  createUserAddressSupabase,
+  deleteUserAddressSupabase,
+  listUserAddressesSupabase,
+  updateUserAddressSupabase,
+} from "@/src/lib/db/users"
+import { logger } from "@/lib/logger"
 
-export const listBrands = () => prisma.brand.findMany({ orderBy: { name: "asc" } })
+export const listBrands = async () => {
+  try {
+    return await listBrandsSupabase()
+  } catch (error) {
+    logger.warn("brands.list.supabase_fallback_prisma", {
+      error: error instanceof Error ? error.message : "unknown",
+    })
+    return prisma.brand.findMany({ orderBy: { name: "asc" } })
+  }
+}
 
 export const createBrand = (name: string, slug: string) =>
-  prisma.brand.create({ data: { name, slug: slug.trim().toLowerCase().replace(/\s+/g, "-") } })
+  createBrandSupabase({ name, slug }).catch((error) => {
+    logger.warn("brands.create.supabase_fallback_prisma", {
+      error: error instanceof Error ? error.message : "unknown",
+    })
+    return prisma.brand.create({ data: { name, slug: slug.trim().toLowerCase().replace(/\s+/g, "-") } })
+  })
 
 export const listTags = () => prisma.tag.findMany({ orderBy: { name: "asc" } })
 
@@ -594,7 +616,12 @@ export const reportPlatformPerformance = async () => {
 export const reportSellerPerformance = reportPlatformPerformance
 
 export const listUserAddresses = (userId: string) =>
-  prisma.userAddress.findMany({ where: { userId }, orderBy: { createdAt: "desc" } })
+  listUserAddressesSupabase(userId).catch((error) => {
+    logger.warn("addresses.list.supabase_fallback_prisma", {
+      error: error instanceof Error ? error.message : "unknown",
+    })
+    return prisma.userAddress.findMany({ where: { userId }, orderBy: { createdAt: "desc" } })
+  })
 
 export const createUserAddress = (
   userId: string,
@@ -612,7 +639,13 @@ export const createUserAddress = (
     phone?: string | null
     isDefault?: boolean
   },
-) => prisma.userAddress.create({ data: { ...data, userId } })
+) =>
+  createUserAddressSupabase(userId, data).catch((error) => {
+    logger.warn("addresses.create.supabase_fallback_prisma", {
+      error: error instanceof Error ? error.message : "unknown",
+    })
+    return prisma.userAddress.create({ data: { ...data, userId } })
+  })
 
 export const updateUserAddress = async (
   id: string,
@@ -632,15 +665,27 @@ export const updateUserAddress = async (
     isDefault?: boolean
   }>,
 ) => {
+  try {
+    const result = await updateUserAddressSupabase(id, userId, data)
+    if (result.count > 0) return result
+  } catch (error) {
+    logger.warn("addresses.update.supabase_fallback_prisma", {
+      error: error instanceof Error ? error.message : "unknown",
+    })
+  }
   const found = await prisma.userAddress.findFirst({ where: { id, userId } })
   if (!found) return { count: 0 }
-  console.log("Updating address", id, data)
   await prisma.userAddress.update({ where: { id }, data })
   return { count: 1 }
 }
 
 export const deleteUserAddress = (id: string, userId: string) =>
-  prisma.userAddress.deleteMany({ where: { id, userId } })
+  deleteUserAddressSupabase(id, userId).catch((error) => {
+    logger.warn("addresses.delete.supabase_fallback_prisma", {
+      error: error instanceof Error ? error.message : "unknown",
+    })
+    return prisma.userAddress.deleteMany({ where: { id, userId } })
+  })
 
 export const listSavedPaymentMethods = (userId: string) =>
   prisma.savedPaymentMethod.findMany({ where: { userId }, orderBy: { createdAt: "desc" } })

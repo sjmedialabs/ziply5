@@ -10,6 +10,8 @@ type AppEnv = {
   JWT_ACCESS_EXPIRES_IN: string
   JWT_REFRESH_EXPIRES_IN: string
   REDIS_URL?: string
+  REDIS_PASSWORD?: string
+  REDIS_ENABLED?: string
   STORAGE_LOCAL_PATH: string
   CDN_BASE_URL: string
   PAYMENT_PROVIDER_DEFAULT?: string
@@ -17,6 +19,12 @@ type AppEnv = {
   RAZORPAY_KEY_ID?: string
   RAZORPAY_KEY_SECRET?: string
   STRIPE_SECRET_KEY?: string
+  SHIPROCKET_EMAIL?: string
+  SHIPROCKET_PASSWORD?: string
+  SHIPROCKET_BASE_URL?: string
+  SHIPROCKET_MODE?: string
+  SHIPROCKET_WEBHOOK_SECRET?: string
+  SHIPROCKET_PICKUP_POSTCODE?: string
   OTP_TTL_SECONDS?: string
   RETURN_WINDOW_DAYS?: string
   OTP_MAX_ATTEMPTS?: string
@@ -32,6 +40,7 @@ type AppEnv = {
   SMTP_USER?: string
   SMTP_PASS?: string
   SMTP_FROM?: string
+  INTERNAL_JOB_SECRET?: string
 }
 
 const getEnv = (key: keyof AppEnv, fallback?: string) => {
@@ -53,6 +62,8 @@ export const env: AppEnv = {
   JWT_ACCESS_EXPIRES_IN: getEnv("JWT_ACCESS_EXPIRES_IN", "1h"),
   JWT_REFRESH_EXPIRES_IN: getEnv("JWT_REFRESH_EXPIRES_IN", "7d"),
   REDIS_URL: process.env.REDIS_URL,
+  REDIS_PASSWORD: process.env.REDIS_PASSWORD,
+  REDIS_ENABLED: process.env.REDIS_ENABLED,
   STORAGE_LOCAL_PATH: getEnv("STORAGE_LOCAL_PATH", "./storage/uploads"),
   CDN_BASE_URL: getEnv("CDN_BASE_URL", "https://cdn.ziply5.com"),
   PAYMENT_PROVIDER_DEFAULT: process.env.PAYMENT_PROVIDER_DEFAULT,
@@ -60,6 +71,12 @@ export const env: AppEnv = {
   RAZORPAY_KEY_ID: process.env.RAZORPAY_KEY_ID,
   RAZORPAY_KEY_SECRET: process.env.RAZORPAY_KEY_SECRET,
   STRIPE_SECRET_KEY: process.env.STRIPE_SECRET_KEY,
+  SHIPROCKET_EMAIL: process.env.SHIPROCKET_EMAIL,
+  SHIPROCKET_PASSWORD: process.env.SHIPROCKET_PASSWORD,
+  SHIPROCKET_BASE_URL: process.env.SHIPROCKET_BASE_URL,
+  SHIPROCKET_MODE: process.env.SHIPROCKET_MODE,
+  SHIPROCKET_WEBHOOK_SECRET: process.env.SHIPROCKET_WEBHOOK_SECRET,
+  SHIPROCKET_PICKUP_POSTCODE: process.env.SHIPROCKET_PICKUP_POSTCODE,
   OTP_TTL_SECONDS: process.env.OTP_TTL_SECONDS,
   RETURN_WINDOW_DAYS: process.env.RETURN_WINDOW_DAYS,
   OTP_MAX_ATTEMPTS: process.env.OTP_MAX_ATTEMPTS,
@@ -75,4 +92,5 @@ export const env: AppEnv = {
   SMTP_USER: process.env.SMTP_USER,
   SMTP_PASS: process.env.SMTP_PASS,
   SMTP_FROM: process.env.SMTP_FROM,
+  INTERNAL_JOB_SECRET: process.env.INTERNAL_JOB_SECRET,
 }

@@ -13,6 +13,7 @@ import {
   setProductCache,
 } from "@/src/server/modules/products/products.cache"
 import type { AppTokenPayload } from "@/src/server/core/security/jwt"
+import { logger } from "@/lib/logger"
 
 const PRODUCT_LIST_TTL_MS = 60_000
 const PRODUCT_LIST_STALE_MS = 5 * 60_000
@@ -87,7 +88,7 @@ export async function GET(request: NextRequest) {
 
   const cached = await getProductCache<unknown>(cacheKey, PRODUCT_LIST_STALE_MS)
   if (cached && cached.ageMs <= PRODUCT_LIST_TTL_MS) {
-    console.info("[products:list] cache hit", {
+    logger.debug("products.list.cache_hit", {
       scope,
       page,
       limit,
@@ -109,7 +110,7 @@ export async function GET(request: NextRequest) {
       })()
       listRefreshInFlight.set(cacheKey, refreshPromise)
     }
-    console.info("[products:list] stale cache hit", {
+    logger.debug("products.list.stale_cache_hit", {
       scope,
       page,
       limit,
@@ -122,7 +123,7 @@ export async function GET(request: NextRequest) {
   const updatedData = await buildPayload()
   await setProductCache(cacheKey, updatedData, PRODUCT_LIST_STALE_MS)
 
-  console.info("[products:list] cache miss", {
+  logger.debug("products.list.cache_miss", {
     scope,
     page,
     limit,

@@ -9,6 +9,7 @@ export const redis =
   globalForRedis.redis ??
   new Redis(env.REDIS_URL ?? "redis://127.0.0.1:6379", {
     lazyConnect: true,
+    password: env.REDIS_PASSWORD,
 
     //  REQUIRED for BullMQ workers
     maxRetriesPerRequest: null,

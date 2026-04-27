@@ -3,6 +3,9 @@ import { fail, ok } from "@/src/server/core/http/response"
 import { requireAuth } from "@/src/server/middleware/auth"
 import { requirePermission } from "@/src/server/middleware/rbac"
 import { financeSummary } from "@/src/server/modules/extended/extended.service"
+import { cacheKeys } from "@/lib/cache/cacheKeys"
+import { withCache } from "@/lib/cache/redis"
+import { measureAsync } from "@/lib/performance"
 
 export async function GET(request: NextRequest) {
   const auth = requireAuth(request)
@@ -11,7 +14,9 @@ export async function GET(request: NextRequest) {
   const denied = requirePermission(auth.user.role, "finance.read")
   if (denied) return denied
   try {
-    const data = await financeSummary()
+    const data = await measureAsync("api.finance.summary", () =>
+      withCache(cacheKeys.financeSummary(), 60_000, () => financeSummary()),
+    )
     return ok(data, "Finance summary")
   } catch {
     return ok(

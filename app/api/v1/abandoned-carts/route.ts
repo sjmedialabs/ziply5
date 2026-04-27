@@ -3,6 +3,7 @@ import { fail, ok } from "@/src/server/core/http/response"
 import { requireAuth } from "@/src/server/middleware/auth"
 import { requirePermission } from "@/src/server/middleware/rbac"
 import { listAbandonedCarts, upsertAbandonedCart, deleteAbandonedCartBySession } from "@/src/server/modules/extended/extended.service"
+import { trackCartEvent } from "@/src/server/modules/abandoned-carts/recovery.service"
 import { z } from "zod"
 
 const createSchema = z.object({
@@ -26,6 +27,13 @@ export async function POST(request: NextRequest) {
   const parsed = createSchema.safeParse(body)
   if (!parsed.success) return fail("Validation failed", 422, parsed.error.flatten())
   try {
+    await trackCartEvent({
+      sessionKey: parsed.data.sessionKey,
+      email: parsed.data.email ?? null,
+      itemsJson: parsed.data.itemsJson,
+      total: parsed.data.total ?? null,
+      eventType: "checkout_started",
+    })
     const row = await upsertAbandonedCart({
       sessionKey: parsed.data.sessionKey,
       email: parsed.data.email,

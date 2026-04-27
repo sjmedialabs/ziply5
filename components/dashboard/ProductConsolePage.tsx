@@ -13,6 +13,7 @@ import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
+import { Eye, Pencil, Save } from "lucide-react"
 import { toast } from "../ui/use-toast"
 import { useMasterValues } from "@/hooks/useMasterData"
 
@@ -165,7 +166,17 @@ export function ProductConsolePage({
   const [price, setPrice] = useState("")
   const [basePrice, setBasePrice] = useState("")
   const [salePrice, setSalePrice] = useState("")
+  const [costPrice, setCostPrice] = useState("")
   const [discountPercent, setDiscountPercent] = useState("")
+  const [discountRecordId, setDiscountRecordId] = useState<string | null>(null)
+  const [discountEnabled, setDiscountEnabled] = useState(false)
+  const [discountType, setDiscountType] = useState<"percentage" | "flat">("percentage")
+  const [discountValue, setDiscountValue] = useState("")
+  const [discountStartDate, setDiscountStartDate] = useState("")
+  const [discountEndDate, setDiscountEndDate] = useState("")
+  const [autoExpireDiscount, setAutoExpireDiscount] = useState(true)
+  const [showStrikeThroughPrice, setShowStrikeThroughPrice] = useState(true)
+  const [discountStackable, setDiscountStackable] = useState(false)
   const [simpleProductWeight, setSimpleProductWeight] = useState(""); // New state for simple product weight
   const [stockStatus, setStockStatus] = useState<"in_stock" | "out_of_stock">("in_stock")
   const [totalStock, setTotalStock] = useState("0")
@@ -306,9 +317,17 @@ export function ProductConsolePage({
     setLoading(true)
     setError("")
     try {
-      const [p, cats] = await Promise.all([
+      const [p, cats, discountRows] = await Promise.all([
         authedFetch<ProductDetail>(`/api/v1/products/${productId}`),
         authedFetch<CategoryRow[]>("/api/v1/categories").catch(() => []),
+        authedFetch<Array<{
+          id: string
+          discount_type: "percentage" | "flat"
+          discount_value: number
+          start_date: string | null
+          end_date: string | null
+          is_stackable: boolean
+        }>>(`/api/admin/product-discounts?productId=${productId}`).catch(() => []),
       ])
       const v = p.variants?.find((item) => item.isDefault) ?? p.variants?.[0]
       setCategories(cats.filter((c) => Boolean(c.id)))
@@ -321,6 +340,7 @@ export function ProductConsolePage({
       setPrice(String(Number(v?.price ?? p.price ?? 0)))
       setBasePrice(p.basePrice != null ? String(Number(p.basePrice)) : "")
       setSalePrice(p.salePrice != null ? String(Number(p.salePrice)) : "")
+      setCostPrice("")
       setDiscountPercent(p.discountPercent != null ? String(Number(p.discountPercent)) : "")
       setSimpleProductWeight(p.weight ?? ""); // Populate new weight field
       setStockStatus(p.stockStatus ?? "in_stock")
@@ -377,6 +397,24 @@ export function ProductConsolePage({
           ? nextSections.sort((a, b) => a.sortOrder - b.sortOrder)
           : [{ title: "Key Features", description: "<ul><li></li></ul>", sortOrder: 0, isActive: true }],
       )
+      const existingDiscount = discountRows?.[0]
+      if (existingDiscount) {
+        setDiscountRecordId(existingDiscount.id)
+        setDiscountEnabled(true)
+        setDiscountType(existingDiscount.discount_type)
+        setDiscountValue(String(Number(existingDiscount.discount_value)))
+        setDiscountStartDate(existingDiscount.start_date ? new Date(existingDiscount.start_date).toISOString().slice(0, 16) : "")
+        setDiscountEndDate(existingDiscount.end_date ? new Date(existingDiscount.end_date).toISOString().slice(0, 16) : "")
+        setDiscountStackable(Boolean(existingDiscount.is_stackable))
+      } else {
+        setDiscountRecordId(null)
+        setDiscountEnabled(false)
+        setDiscountType("percentage")
+        setDiscountValue("")
+        setDiscountStartDate("")
+        setDiscountEndDate("")
+        setDiscountStackable(false)
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not load product")
     } finally {
@@ -534,6 +572,34 @@ export function ProductConsolePage({
     }
 
     if (!isDraft) {
+      const baseMrp = toNumOrNull(basePrice)
+      const selling = toNumOrNull(price)
+      if (baseMrp != null && selling != null && selling > baseMrp) {
+        setError("Selling price cannot exceed MRP")
+        return
+      }
+      if (discountEnabled) {
+        const startAt = discountStartDate ? new Date(discountStartDate).getTime() : null
+        const endAt = discountEndDate ? new Date(discountEndDate).getTime() : null
+        if (startAt != null && endAt != null && endAt <= startAt) {
+          setError("Discount end date must be after start date")
+          return
+        }
+        const rawDiscount = Number(discountValue || 0)
+        if (!Number.isFinite(rawDiscount) || rawDiscount <= 0) {
+          setError("Discount value must be greater than zero")
+          return
+        }
+        const effectiveBase = baseMrp ?? selling ?? 0
+        const discounted =
+          discountType === "percentage"
+            ? effectiveBase - (effectiveBase * rawDiscount) / 100
+            : effectiveBase - rawDiscount
+        if (discounted < 0) {
+          setError("Discounted price cannot go below zero")
+          return
+        }
+      }
       if (payload.type === "simple" && !payload.salePrice && !payload.basePrice) {
         setError("Sale Price or Base Price is required")
         return
@@ -591,17 +657,49 @@ export function ProductConsolePage({
     setSaving(true)
     setError("")
     try {
+      let resolvedProductId = productId ?? ""
       if (mode === "edit" && productId) {
         await authedPatch(`/api/v1/products/${productId}`, payload)
+        resolvedProductId = productId
         // toast({ title: "Product updated successfully", variant: "default"})
         alert("Product updated successfully")
-        router.push(`${basePath}/${productId}`)
       } else {
-        await authedPost("/api/v1/products", payload)
+        const created = await authedPost<ProductDetail>("/api/v1/products", payload)
+        resolvedProductId = created.id
         alert("Product created successfully")
-        router.push(`${basePath}`)
         // toast({ title: "Product created successfully", variant: "default" })
       }
+      if (resolvedProductId && discountEnabled) {
+        const discountPayload = {
+          productId: resolvedProductId,
+          discountType,
+          discountValue: Number(discountValue || 0),
+          startDate: discountStartDate ? new Date(discountStartDate).toISOString() : null,
+          endDate: discountEndDate ? new Date(discountEndDate).toISOString() : null,
+          isStackable: discountStackable,
+        }
+        if (discountRecordId) {
+          await authedFetch("/api/admin/product-discounts", {
+            method: "PUT",
+            body: JSON.stringify({ id: discountRecordId, ...discountPayload }),
+          })
+        } else {
+          await authedFetch("/api/admin/product-discounts", {
+            method: "POST",
+            body: JSON.stringify(discountPayload),
+          })
+        }
+      }
+      if (resolvedProductId && !discountEnabled && discountRecordId) {
+        await authedFetch("/api/admin/product-discounts", {
+          method: "PUT",
+          body: JSON.stringify({
+            id: discountRecordId,
+            endDate: new Date().toISOString(),
+          }),
+        })
+      }
+      router.push(mode === "edit" ? `${basePath}/${resolvedProductId}` : `${basePath}`)
     } catch (e) {
       setError(e instanceof Error ? e.message : "Save failed")
     } finally {
@@ -882,10 +980,10 @@ export function ProductConsolePage({
         {error && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-800">{error}</p>}
         {loading && <p className="text-sm text-[#646464]">Loading...</p>}
         {!loading && (
-          <ConsoleTable headers={["Name", "Weight", "SKU", "Status", "Sale Price", "Active", "Actions"]}>
+          <ConsoleTable headers={["Product", "SKU", "Stock Available", "Status", "Sale Price", "Actions"]}>
             {filteredRows.length === 0 ? (
               <tr>
-                <ConsoleTd colSpan={7} className="py-8 text-center text-[#646464]">
+                <ConsoleTd colSpan={6} className="py-8 text-center text-[#646464]">
                   No products yet.
                 </ConsoleTd>
               </tr>
@@ -898,14 +996,14 @@ export function ProductConsolePage({
                     </Link>
                   </ConsoleTd>
                   <ConsoleTd className="align-middle">
-                    <span className="text-[11px] text-[#646464]">
-                      {p.type === "variant" 
-                        ? p.variants?.map(v => v.weight).filter(Boolean).join(", ") || "—"
-                        : p.weight || "—"}
-                    </span>
+                    <code className="text-[11px]">{p.sku}</code>
                   </ConsoleTd>
                   <ConsoleTd className="align-middle">
-                    <code className="text-[11px]">{p.sku}</code>
+                    <span className="text-[12px] font-semibold text-[#2A1810]">
+                      {p.type === "variant"
+                        ? (p.variants ?? []).reduce((sum, v) => sum + Number(v.stock ?? 0), 0)
+                        : Number(p.totalStock ?? 0)}
+                    </span>
                   </ConsoleTd>
                   <ConsoleTd className="align-middle">
                     <Select value={rowStatus[p.id] ?? p.status} onValueChange={(value) => setRowStatus((prev) => ({ ...prev, [p.id]: value }))}>
@@ -929,30 +1027,32 @@ export function ProductConsolePage({
                         : "—"}
                   </ConsoleTd>
                   <ConsoleTd className="align-middle">
-                    <button
-                      type="button"
-                      disabled={saving}
-                      onClick={() => toggleRowActive(p.id, p.isActive ?? false)}
-                      className={`rounded-full px-3 py-1.5 text-[11px] font-semibold uppercase ${p.isActive ? "bg-green-500 text-white" : "bg-gray-200 text-[#4A1D1F]"}`}
-                    >
-                      {p.isActive ? "Active" : "Inactive"}
-                    </button>
-                  </ConsoleTd>
-                  <ConsoleTd className="align-middle">
                     <div className="flex flex-wrap items-center gap-2">
-                      <Link href={`${basePath}/${p.id}`} className="rounded-full border border-[#7B3010] px-3 py-1.5 text-[11px] font-semibold uppercase text-[#7B3010] hover:bg-[#FFFBF3]">
-                        View
+                      <Link
+                        href={`${basePath}/${p.id}`}
+                        aria-label={`View ${p.name}`}
+                        title="View"
+                        className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-[#D9D9D1] text-[#4A1D1F] hover:bg-[#FFFBF3]"
+                      >
+                        <Eye className="h-4 w-4" />
                       </Link>
-                      <Link href={`${basePath}/${p.id}/edit`} className="rounded-full border border-[#7B3010] px-3 py-1.5 text-[11px] font-semibold uppercase text-[#7B3010] hover:bg-[#FFFBF3]">
-                        Edit
+                      <Link
+                        href={`${basePath}/${p.id}/edit`}
+                        aria-label={`Edit ${p.name}`}
+                        title="Edit"
+                        className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-[#D9D9D1] text-[#4A1D1F] hover:bg-[#FFFBF3]"
+                      >
+                        <Pencil className="h-4 w-4" />
                       </Link>
                       <button
                         type="button"
                         onClick={() => saveRowStatus(p.id)}
                         disabled={saving || (rowStatus[p.id] ?? p.status) === p.status}
-                        className="rounded-full bg-[#7B3010] px-3 py-1.5 text-[11px] font-semibold uppercase text-white disabled:opacity-40"
+                        aria-label={`Save ${p.name}`}
+                        title="Save"
+                        className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-[#7B3010] text-white disabled:opacity-40"
                       >
-                        Save
+                        <Save className="h-4 w-4" />
                       </button>
                     </div>
                   </ConsoleTd>
@@ -1269,6 +1369,104 @@ export function ProductConsolePage({
                 </Field>
               </>
             ) : null}
+            <Field label="Pricing & Discounts">
+              <div className="space-y-3 rounded-lg border border-[#E8DCC8] bg-[#FFFBF3] p-3">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-[#646464]">Pricing</p>
+                <div className="grid gap-2 md:grid-cols-4">
+                  <Input
+                    placeholder="Base Price"
+                    type="number"
+                    step="0.01"
+                    value={basePrice}
+                    onChange={(e) => setBasePrice(e.target.value)}
+                    className="rounded-lg border border-[#D9D9D1] bg-white px-3 py-2 text-sm"
+                  />
+                  <Input
+                    placeholder="MRP"
+                    type="number"
+                    step="0.01"
+                    value={basePrice}
+                    onChange={(e) => setBasePrice(e.target.value)}
+                    className="rounded-lg border border-[#D9D9D1] bg-white px-3 py-2 text-sm"
+                  />
+                  <Input
+                    placeholder="Selling Price"
+                    type="number"
+                    step="0.01"
+                    value={price}
+                    onChange={(e) => setPrice(e.target.value)}
+                    className="rounded-lg border border-[#D9D9D1] bg-white px-3 py-2 text-sm"
+                  />
+                  <Input
+                    placeholder="Cost Price"
+                    type="number"
+                    step="0.01"
+                    value={costPrice}
+                    onChange={(e) => setCostPrice(e.target.value)}
+                    className="rounded-lg border border-[#D9D9D1] bg-white px-3 py-2 text-sm"
+                  />
+                </div>
+
+                <div className="grid gap-2 md:grid-cols-2">
+                  <label className="flex items-center gap-2 text-xs font-semibold uppercase text-[#4A1D1F]">
+                    <Checkbox checked={discountEnabled} onCheckedChange={(checked) => setDiscountEnabled(Boolean(checked))} />
+                    Enable discount
+                  </label>
+                  <label className="flex items-center gap-2 text-xs font-semibold uppercase text-[#4A1D1F]">
+                    <Checkbox checked={discountStackable} onCheckedChange={(checked) => setDiscountStackable(Boolean(checked))} />
+                    Stackable with offers
+                  </label>
+                </div>
+
+                {discountEnabled && (
+                  <div className="grid gap-2 md:grid-cols-4">
+                    <Select value={discountType} onValueChange={(value) => setDiscountType(value as "percentage" | "flat")}>
+                      <SelectTrigger className="rounded-lg border border-[#D9D9D1] bg-white px-3 py-2 text-sm">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="percentage">Percentage</SelectItem>
+                        <SelectItem value="flat">Flat Amount</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <Input
+                      placeholder="Discount Value"
+                      type="number"
+                      step="0.01"
+                      value={discountValue}
+                      onChange={(e) => setDiscountValue(e.target.value)}
+                      className="rounded-lg border border-[#D9D9D1] bg-white px-3 py-2 text-sm"
+                    />
+                    <Input
+                      type="datetime-local"
+                      value={discountStartDate}
+                      onChange={(e) => setDiscountStartDate(e.target.value)}
+                      className="rounded-lg border border-[#D9D9D1] bg-white px-3 py-2 text-sm"
+                    />
+                    <Input
+                      type="datetime-local"
+                      value={discountEndDate}
+                      onChange={(e) => setDiscountEndDate(e.target.value)}
+                      className="rounded-lg border border-[#D9D9D1] bg-white px-3 py-2 text-sm"
+                    />
+                  </div>
+                )}
+
+                <div className="grid gap-2 md:grid-cols-2">
+                  <label className="flex items-center gap-2 text-xs font-semibold uppercase text-[#4A1D1F]">
+                    <Checkbox checked={autoExpireDiscount} onCheckedChange={(checked) => setAutoExpireDiscount(Boolean(checked))} />
+                    Auto-expire after date
+                  </label>
+                  <label className="flex items-center gap-2 text-xs font-semibold uppercase text-[#4A1D1F]">
+                    <Checkbox checked={showStrikeThroughPrice} onCheckedChange={(checked) => setShowStrikeThroughPrice(Boolean(checked))} />
+                    Show strike-through price on storefront
+                  </label>
+                </div>
+                <p className="text-[11px] text-[#646464]">
+                  Variant-level discount is supported via each variant row&apos;s discount %. Product-level discount is used as fallback.
+                </p>
+              </div>
+            </Field>
             {/* No. of stock for simple  */}
             {type === "simple" ? (
               <Field label="Total Stock">

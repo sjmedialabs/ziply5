@@ -821,9 +821,19 @@ model Shipment {
   id             String         @id @default(cuid())
   orderId        String
   shipmentNo     String?
+  shiprocketOrderId String?
+  shiprocketShipmentId String?
+  awbCode        String?
   carrier        String?
+  courierId      String?
+  pickupStatus   String?
+  trackingUrl    String?
+  shippingLabelUrl String?
+  manifestUrl    String?
   trackingNo     String?
   shipmentStatus String         @default("pending")
+  etaAt          DateTime?
+  lastSyncAt     DateTime?
   shippedAt      DateTime?
   deliveredAt    DateTime?
   createdAt      DateTime       @default(now())

@@ -4,6 +4,9 @@ import { requireAuth } from "@/src/server/middleware/auth"
 import { listMasterGroups, createMasterGroup } from "@/src/server/modules/master/master.service"
 import { createMasterGroupSchema } from "@/src/server/modules/master/master.validator"
 import { clearMasterCache, getMasterCache, setMasterCache } from "@/src/server/modules/master/master.cache"
+import { cacheKeys } from "@/lib/cache/cacheKeys"
+import { withCache } from "@/lib/cache/redis"
+import { logger } from "@/lib/logger"
 
 export async function GET(request: NextRequest) {
   try {
@@ -21,13 +24,18 @@ export async function GET(request: NextRequest) {
     const cached = getMasterCache<unknown[]>(cacheKey)
     if (cached) return ok(cached, "Master groups fetched")
     
-    const groups = await listMasterGroups({
-      activeOnly: role === "super_admin" ? false : activeOnly,
-    })
+    const groups = await withCache(
+      cacheKeys.masterGroups(role, activeOnly),
+      60 * 60_000,
+      () =>
+        listMasterGroups({
+          activeOnly: role === "super_admin" ? false : activeOnly,
+        }),
+    )
     setMasterCache(cacheKey, groups)
     return ok(groups, "Master groups fetched")
   } catch (error: any) {
-    console.error("[GET /api/master/groups] Error:", error.message || error)
+    logger.error("api.master.groups.get_failed", { error: error?.message ?? "unknown" })
     if (error?.message?.includes("does not exist") || error?.code === "P2010") {
       return ok([], "Master tables not created yet")
     }
@@ -49,7 +57,7 @@ export async function POST(request: NextRequest) {
     clearMasterCache()
     return ok(group, "Master group created", 201)
   } catch (error: any) {
-    console.error("[POST /api/master/groups] Error:", error.message || error)
+    logger.error("api.master.groups.post_failed", { error: error?.message ?? "unknown" })
     return fail(error.message || "Unexpected error", 500)
   }
 }

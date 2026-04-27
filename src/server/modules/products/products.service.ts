@@ -3,6 +3,8 @@ import type { Prisma, ProductStatus } from "@prisma/client"
 import { logActivity } from "@/src/server/modules/activity/activity.service"
 import sanitizeHtml from "sanitize-html"
 import { assertMasterValueExists } from "@/src/server/modules/master/master.service"
+import { getProductIdBySlugSupabase, listProductIdsSupabase } from "@/src/lib/db/products"
+import { logger } from "@/lib/logger"
 
 export type ListProductsScope = "public" | "admin"
 
@@ -551,74 +553,93 @@ export const listProducts = async (
     endsAt: true,
   } as const
 
-  const items = await prisma.product.findMany({
-
-    where,
-
-    orderBy: {
-      createdAt: "desc"
-    },
-
-    skip,
-
-    take: limit,
-
-    select: {
-
-      ...(scope === "public" ? productSelectPublicList : productSelect),
-      promotionLinks: {
-        where: activePromotionWhere,
-        take: 1,
-        select: {
-          promotion: { select: promotionSelect },
-        },
+  const queryByPrisma = async (idScope?: string[]) =>
+    prisma.product.findMany({
+      where: {
+        ...where,
+        ...(idScope?.length ? { id: { in: idScope } } : {}),
       },
-      variants:
-        scope === "public"
-          ? {
-              select: {
-                id: true,
-                name: true,
-                weight: true,
-                price: true,
-                sku: true,
-                stock: true,
-                isDefault: true,
-                promotionLinks: {
-                  where: activePromotionWhere,
-                  take: 1,
-                  select: {
-                    metadata: true,
-                    promotion: { select: promotionSelect },
+      orderBy: {
+        createdAt: "desc",
+      },
+      ...(!idScope ? { skip } : {}),
+      ...(!idScope ? { take: limit } : {}),
+      select: {
+        ...(scope === "public" ? productSelectPublicList : productSelect),
+        promotionLinks: {
+          where: activePromotionWhere,
+          take: 1,
+          select: {
+            promotion: { select: promotionSelect },
+          },
+        },
+        variants:
+          scope === "public"
+            ? {
+                select: {
+                  id: true,
+                  name: true,
+                  weight: true,
+                  price: true,
+                  sku: true,
+                  stock: true,
+                  isDefault: true,
+                  promotionLinks: {
+                    where: activePromotionWhere,
+                    take: 1,
+                    select: {
+                      metadata: true,
+                      promotion: { select: promotionSelect },
+                    },
+                  },
+                },
+              }
+            : {
+                include: {
+                  promotionLinks: {
+                    where: activePromotionWhere,
+                    take: 1,
+                    select: {
+                      metadata: true,
+                      promotion: { select: promotionSelect },
+                    },
                   },
                 },
               },
-            }
-          : {
-              include: {
-                promotionLinks: {
-                  where: activePromotionWhere,
-                  take: 1,
-                  select: {
-                    metadata: true,
-                    promotion: { select: promotionSelect },
-                  },
-                },
-              },
-            },
-
-    }
-
-  })
-
-  /* ===============================
-     TOTAL COUNT
-     =============================== */
-
-  const total =
-    await prisma.product.count({
-      where
+      },
     })
+
+  let items: any[] = []
+  let total = 0
+  const supabaseReadsEnabled = process.env.SUPABASE_PRODUCTS_READ_ENABLED === "true"
+  if (supabaseReadsEnabled) {
+    try {
+      const supabaseStatus = scope === "public" ? "published" : filters?.status
+      const idPayload = await listProductIdsSupabase({
+        page,
+        limit,
+        status: supabaseStatus,
+        q: filters?.q,
+      })
+      total = idPayload.total
+      if (idPayload.ids.length) {
+        const hydrated = await queryByPrisma(idPayload.ids)
+        const byId = new Map(hydrated.map((row) => [row.id, row]))
+        items = idPayload.ids.map((id) => byId.get(id)).filter(Boolean)
+      } else {
+        items = []
+      }
+    } catch (error) {
+      logger.warn("products.list.supabase_fallback_prisma", {
+        error: error instanceof Error ? error.message : "unknown",
+      })
+      items = await queryByPrisma()
+      total = await prisma.product.count({ where })
+    }
+  } else {
+    items = await queryByPrisma()
+    total = await prisma.product.count({ where })
+  }
 
   /* ===============================
      RETURN (UNCHANGED STRUCTURE)
@@ -667,48 +688,70 @@ export const getProductBySlug = async (slug: string) => {
     endsAt: true,
   } as const
 
-  return prisma.product.findUnique({
-
-    where: { slug }, // ✅ correct (you passed slug)
-
-    select: {
-
-      ...productSelect,
-
-      /* 🔥 Product-level promotions */
-
-      promotionLinks: {
-        where: activePromotionWhere,
-        take: 1,
-        select: {
-          promotion: { select: promotionSelect },
+  const queryBySlugPrisma = () =>
+    prisma.product.findUnique({
+      where: { slug },
+      select: {
+        ...productSelect,
+        promotionLinks: {
+          where: activePromotionWhere,
+          take: 1,
+          select: {
+            promotion: { select: promotionSelect },
+          },
         },
-
-      },
-
-      /*  Variant-level promotions */
-
-      variants: {
-
-        include: {
-
-          promotionLinks: {
-            where: activePromotionWhere,
-            take: 1,
-            select: {
-              metadata: true,
-              promotion: { select: promotionSelect },
+        variants: {
+          include: {
+            promotionLinks: {
+              where: activePromotionWhere,
+              take: 1,
+              select: {
+                metadata: true,
+                promotion: { select: promotionSelect },
+              },
             },
+          },
+        },
+      },
+    })
 
-          }
-
-        }
-
-      }
-
-    }
-
-  })
+  const supabaseReadsEnabled = process.env.SUPABASE_PRODUCTS_READ_ENABLED === "true"
+  if (!supabaseReadsEnabled) return queryBySlugPrisma()
+  try {
+    const supabaseId = await getProductIdBySlugSupabase(slug)
+    if (!supabaseId) return null
+    return prisma.product.findUnique({
+      where: { id: supabaseId },
+      select: {
+        ...productSelect,
+        promotionLinks: {
+          where: activePromotionWhere,
+          take: 1,
+          select: {
+            promotion: { select: promotionSelect },
+          },
+        },
+        variants: {
+          include: {
+            promotionLinks: {
+              where: activePromotionWhere,
+              take: 1,
+              select: {
+                metadata: true,
+                promotion: { select: promotionSelect },
+              },
+            },
+          },
+        },
+      },
+    })
+  } catch (error) {
+    logger.warn("products.by_slug.supabase_fallback_prisma", {
+      slug,
+      error: error instanceof Error ? error.message : "unknown",
+    })
+    return queryBySlugPrisma()
+  }
 
 }
 export const canAccessProduct = (
