@@ -9,6 +9,7 @@ import {
   setProductCache,
 } from "@/src/server/modules/products/products.cache"
 import type { AppTokenPayload } from "@/src/server/core/security/jwt"
+import { logger } from "@/lib/logger"
 
 const resolveAccessScope = (user: AppTokenPayload | null): { scope: ListProductsScope } => {
   if (!user) return { scope: "public" }
@@ -252,7 +253,7 @@ export async function GET(request: NextRequest, ctx: { params: Promise<{ slug: s
 
     const cached = await getProductCache<any>(cacheKey, PRODUCT_BY_SLUG_STALE_MS)
     if (cached && cached.ageMs <= PRODUCT_BY_SLUG_TTL_MS) {
-      console.info("[products:by-slug] cache hit", {
+      logger.debug("products.by_slug.cache_hit", {
         slug,
         scope,
         ageMs: cached.ageMs,
@@ -275,7 +276,7 @@ export async function GET(request: NextRequest, ctx: { params: Promise<{ slug: s
         })()
         bySlugRefreshInFlight.set(cacheKey, refreshPromise)
       }
-      console.info("[products:by-slug] stale cache hit", {
+      logger.debug("products.by_slug.stale_cache_hit", {
         slug,
         scope,
         ageMs: cached.ageMs,
@@ -287,7 +288,7 @@ export async function GET(request: NextRequest, ctx: { params: Promise<{ slug: s
     let product = await buildPayload()
     if (!product) return fail("Product not found", 404)
     await setProductCache(cacheKey, product, PRODUCT_BY_SLUG_STALE_MS)
-    console.info("[products:by-slug] cache miss", {
+    logger.debug("products.by_slug.cache_miss", {
       slug,
       scope,
       tookMs: Date.now() - startedAt,
@@ -295,7 +296,7 @@ export async function GET(request: NextRequest, ctx: { params: Promise<{ slug: s
     return ok(product, "Product fetched")
   } catch (error) {
     const diagnostics = await getProductApiDiagnostics()
-    console.error("Product by-slug API failed", {
+    logger.error("products.by_slug.failed", {
       error: error instanceof Error ? error.message : String(error),
       diagnostics,
     })

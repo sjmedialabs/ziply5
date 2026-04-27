@@ -4,6 +4,9 @@ import { requireAuth } from "@/src/server/middleware/auth"
 import { createMasterValueSchema } from "@/src/server/modules/master/master.validator"
 import { createMasterValue, listMasterValues, updateMasterValue } from "@/src/server/modules/master/master.service"
 import { clearMasterCache, getMasterCache, setMasterCache } from "@/src/server/modules/master/master.cache"
+import { withCache } from "@/lib/cache/redis"
+import { cacheKeys } from "@/lib/cache/cacheKeys"
+import { logger } from "@/lib/logger"
 
 export async function GET(request: NextRequest) {
   try {
@@ -25,13 +28,18 @@ export async function GET(request: NextRequest) {
     const cached = getMasterCache<unknown[]>(cacheKey)
     if (cached) return ok(cached, "Master values fetched")
     
-    const values = await listMasterValues(group, {
-      activeOnly: role === "super_admin" ? false : activeOnly,
-    })
+    const values = await withCache(
+      cacheKeys.masterValues(group, role, activeOnly),
+      60 * 60_000,
+      () =>
+        listMasterValues(group, {
+          activeOnly: role === "super_admin" ? false : activeOnly,
+        }),
+    )
     setMasterCache(cacheKey, values)
     return ok(values, "Master values fetched")
   } catch (error: any) {
-    console.error("[GET /api/master/values] Error:", error.message || error)
+    logger.error("api.master.values.get_failed", { error: error?.message ?? "unknown" })
     
     // If tables haven't been created in the database yet, fail gracefully with an empty array
     if (error?.message?.includes("does not exist") || error?.code === "P2010") {
@@ -58,7 +66,7 @@ export async function PATCH(request: NextRequest) {
     clearMasterCache()
     return ok(row, "Master value updated", 200)
   } catch (error: any) {
-    console.error("[PATCH /api/master/values] Error:", error.message || error)
+    logger.error("api.master.values.patch_failed", { error: error?.message ?? "unknown" })
     return fail(error.message || "Unexpected error", 500)
   }
 }
@@ -77,7 +85,7 @@ export async function POST(request: NextRequest) {
     clearMasterCache()
     return ok(row, "Master value created", 201)
   } catch (error: any) {
-    console.error("[POST /api/master/values] Error:", error.message || error)
+    logger.error("api.master.values.post_failed", { error: error?.message ?? "unknown" })
     return fail(error.message || "Unexpected error", 500)
   }
 }

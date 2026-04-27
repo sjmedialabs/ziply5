@@ -4,16 +4,16 @@ import { requireAuth } from "@/src/server/middleware/auth"
 import { requirePermission } from "@/src/server/middleware/rbac"
 import { createCategorySchema } from "@/src/server/modules/categories/categories.validator"
 import { createCategory, listCategories } from "@/src/server/modules/categories/categories.service"
+import { cacheKeys } from "@/lib/cache/cacheKeys"
+import { cache, withCache } from "@/lib/cache/redis"
+import { measureAsync } from "@/lib/performance"
 
-const CATEGORY_TTL_MS = 60_000
-let categoriesCache: { at: number; payload: unknown } | null = null
+const CATEGORY_TTL_MS = 30 * 60_000
 
 export async function GET() {
-  if (categoriesCache && Date.now() - categoriesCache.at < CATEGORY_TTL_MS) {
-    return ok(categoriesCache.payload, "Categories fetched")
-  }
-  const items = await listCategories()
-  categoriesCache = { at: Date.now(), payload: items }
+  const items = await measureAsync("api.categories.list", () =>
+    withCache(cacheKeys.categories(), CATEGORY_TTL_MS, () => listCategories()),
+  )
   return ok(items, "Categories fetched")
 }
 
@@ -32,7 +32,7 @@ export async function POST(request: NextRequest) {
 
   try {
     const category = await createCategory(parsed.data)
-    categoriesCache = null
+    await cache.del(cacheKeys.categories())
     return ok(category, "Category created", 201)
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unexpected error"

@@ -70,6 +70,8 @@ export default function CheckoutPage() {
   const [couponDiscount, setCouponDiscount] = useState(0);
   const [couponError, setCouponError] = useState("");
   const [applyingCoupon, setApplyingCoupon] = useState(false);
+  const [offerBreakdown, setOfferBreakdown] = useState<Array<{ label: string; amount: number; type: string }>>([]);
+  const [offerTotalDiscount, setOfferTotalDiscount] = useState(0);
   const [savedAddresses, setSavedAddresses] = useState<Addr[]>([]);
   const [selectedAddressId, setSelectedAddressId] = useState<string>("manual");
   const [originalAddress, setOriginalAddress] = useState<Addr | null>(null);
@@ -91,9 +93,7 @@ export default function CheckoutPage() {
     try {
       const data = await authedFetch<Addr[]>("/api/v1/me/addresses");
       setSavedAddresses(data);
-    } catch (e) {
-      console.error("Failed to load addresses", e);
-    }
+    } catch {}
   }, [router]);
 
   useEffect(() => {
@@ -131,7 +131,6 @@ useEffect(() => {
 }, [products]);
   // Validate items against current product/variant data from DB
   const validatedItems = useMemo<ValidatedCartItem[]>(() => {
-    console.log("Validating cart items against latest product data...", { items, products });
     return items.map((item) => {
       const p = products.find((prod) => prod.id === item.productId || prod.slug === item.slug);
       if (!p) {
@@ -151,7 +150,6 @@ useEffect(() => {
       let variantError = false;
 
       if (p.productKind === "variant") {
-        console.log("varient id matching", { itemVariantId: item.variantId, productVariants: p.variants })
         const v = p.variants.find((v) => v.id === item.variantId);
         if (v) {
           price = v.price;
@@ -170,7 +168,59 @@ useEffect(() => {
   const hasValidationErrors = validatedItems.some(i => i.variantError || i.stock < i.quantity);
 
   const shipping = items.length === 0 ? 0 : 20;
-  const total = Math.max(subTotal - couponDiscount, 0) + shipping;
+  const total = Math.max(subTotal - offerTotalDiscount, 0) + shipping;
+
+  const recalculateOffers = useCallback(
+    async (incomingCoupon?: string) => {
+      if (!validatedItems.length) {
+        setOfferBreakdown([]);
+        setOfferTotalDiscount(0);
+        setCouponDiscount(0);
+        return;
+      }
+      const token = window.localStorage.getItem("ziply5_access_token");
+      const response = await fetch("/api/v1/offers/calculate", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({
+          couponCode: (incomingCoupon ?? couponCode).trim() || null,
+          cartSubtotal: subTotal,
+          shippingAmount: shipping,
+          items: validatedItems.map((item) => ({
+            productId: item.productId,
+            categoryId: null,
+            quantity: item.quantity,
+            unitPrice: item.price,
+          })),
+        }),
+      });
+      const payload = (await response.json()) as {
+        success?: boolean;
+        message?: string;
+        data?: { breakdown: Array<{ label: string; amount: number; type: string }>; totalDiscount: number };
+      };
+      if (!response.ok || !payload.success || !payload.data) {
+        throw new Error(payload.message ?? "Unable to calculate offers.");
+      }
+      setOfferBreakdown(payload.data.breakdown ?? []);
+      setOfferTotalDiscount(Number(payload.data.totalDiscount ?? 0));
+      const couponSavings = (payload.data.breakdown ?? [])
+        .filter((entry) => entry.type === "coupon")
+        .reduce((sum, entry) => sum + Number(entry.amount), 0);
+      setCouponDiscount(couponSavings);
+    },
+    [couponCode, shipping, subTotal, validatedItems],
+  );
+
+  useEffect(() => {
+    void recalculateOffers().catch(() => {
+      setOfferBreakdown([]);
+      setOfferTotalDiscount(couponDiscount);
+    });
+  }, [couponCode, recalculateOffers]);
 
   const applyCoupon = async () => {
     if (!couponCode.trim()) {
@@ -202,8 +252,10 @@ useEffect(() => {
         throw new Error(payload.message ?? "Unable to apply coupon.");
       }
       setCouponDiscount(Number(payload.data.discount));
+      await recalculateOffers(couponCode.trim());
     } catch (error) {
       setCouponDiscount(0);
+      setOfferBreakdown((prev) => prev.filter((entry) => entry.type !== "coupon"));
       setCouponError(error instanceof Error ? error.message : "Unable to apply coupon.");
     } finally {
       setApplyingCoupon(false);
@@ -293,7 +345,7 @@ useEffect(() => {
                 postalCode: billing.postalCode,
                 phone: billing.phone || null,
               });
-            } catch (e) { console.error("Update failed", e); }
+            } catch {}
           }
         }
       } else if (selectedAddressId === "manual") {
@@ -312,9 +364,7 @@ useEffect(() => {
               country: "India",
               phone: billing.phone || null,
             });
-          } catch (e) {
-            console.error("Failed to auto-save address", e);
-          }
+          } catch {}
         }
       }
 
@@ -326,7 +376,7 @@ useEffect(() => {
       window.localStorage.setItem("ziply5_checkout_ref", checkoutRef);
 
       // Save as Abandoned Cart instead of creating an actual Order
-      const abandonRes = await fetch("/api/v1/abandoned-carts", {
+      await fetch("/api/v1/abandoned-carts", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -344,9 +394,6 @@ useEffect(() => {
           paymentId: `checkout_ref:${checkoutRef}`,
         }),
       });
-      if (!abandonRes.ok) {
-        console.warn("Failed to update abandoned cart record.");
-      }
 
       router.push("/payment");
     } catch (e) {
@@ -604,6 +651,18 @@ useEffect(() => {
             <div className="flex justify-between text-[#C03621] font-medium font-melon tracking-wide mt-2">
               <span>Coupon Discount</span>
               <span>-Rs.{couponDiscount.toFixed(2)}</span>
+            </div>
+            {offerBreakdown
+              .filter((entry) => entry.type !== "coupon")
+              .map((entry) => (
+                <div key={`${entry.type}-${entry.label}`} className="flex justify-between text-[#C03621] font-medium font-melon tracking-wide mt-2">
+                  <span>{entry.label}</span>
+                  <span>-Rs.{Number(entry.amount).toFixed(2)}</span>
+                </div>
+              ))}
+            <div className="flex justify-between text-[#C03621] font-medium font-melon tracking-wide mt-2">
+              <span>Total Savings</span>
+              <span>-Rs.{offerTotalDiscount.toFixed(2)}</span>
             </div>
             <div className="flex justify-between text-[#C03621] font-medium font-melon tracking-wide mt-2">
               <span>Grand Total</span>

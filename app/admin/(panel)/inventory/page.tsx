@@ -1,12 +1,5 @@
-"use client";
-
-import { InventoryConsolePage } from "@/components/dashboard/InventoryConsolePage";
+import { redirect } from "next/navigation"
 
 export default function AdminInventoryPage() {
-  return (
-    <InventoryConsolePage
-      title="Inventory"
-      subtitle="Warehouse rows and variant stock (global view)."
-    />
-  );
+  redirect("/admin/products")
 }

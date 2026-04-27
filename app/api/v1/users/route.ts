@@ -19,11 +19,15 @@ export async function GET(request: NextRequest) {
   const forbidden = requirePermission(auth.user.role, "users.read")
   if (forbidden) return forbidden
 
-  const page = Number(request.nextUrl.searchParams.get("page") ?? "1")
-  const limit = Number(request.nextUrl.searchParams.get("limit") ?? "20")
-
-  const data = await listUsers(page, limit)
-  return ok(data, "Users fetched")
+  try {
+    const page = Number(request.nextUrl.searchParams.get("page") ?? "1")
+    const limit = Number(request.nextUrl.searchParams.get("limit") ?? "20")
+    const data = await listUsers(page, limit)
+    return ok(data, "Users fetched")
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Users load failed"
+    return fail(message, 500)
+  }
 }
 
 export async function POST(request: NextRequest) {

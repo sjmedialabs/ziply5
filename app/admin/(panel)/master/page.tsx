@@ -1,9 +1,12 @@
 "use client"
 
-import { FormEvent, useMemo, useState } from "react"
+import { FormEvent, useEffect, useMemo, useState } from "react"
 import { useQueryClient } from "@tanstack/react-query"
 import { useAllMasterData } from "@/hooks/useMasterData"
 import { authedFetch } from "@/lib/dashboard-fetch"
+
+const normalizeRole = (value: string | null | undefined) =>
+  (value ?? "").trim().toLowerCase().replace(/[\s-]+/g, "_")
 
 type MasterValue = {
   id: string
@@ -33,7 +36,30 @@ export default function MasterDataPage() {
   const [valueSortOrder, setValueSortOrder] = useState("0")
   const [error, setError] = useState("")
   const [saving, setSaving] = useState(false)
-  const role = typeof window !== "undefined" ? window.localStorage.getItem("ziply5_user_role") : null
+  const [role, setRole] = useState<string | null>(null)
+  const [roleLoaded, setRoleLoaded] = useState(false)
+
+  useEffect(() => {
+    const syncRole = () => {
+      const roleFromKey = window.localStorage.getItem("ziply5_user_role")
+      const userRaw = window.localStorage.getItem("ziply5_user")
+      let roleFromUser: string | null = null
+      if (userRaw) {
+        try {
+          const parsed = JSON.parse(userRaw) as { role?: string | null }
+          roleFromUser = parsed?.role ?? null
+        } catch {
+          roleFromUser = null
+        }
+      }
+      const normalized = normalizeRole(roleFromKey || roleFromUser)
+      setRole(normalized || null)
+      setRoleLoaded(true)
+    }
+    syncRole()
+    window.addEventListener("storage", syncRole)
+    return () => window.removeEventListener("storage", syncRole)
+  }, [])
 
   const allQuery = useAllMasterData(true)
   const groups = (allQuery.data ?? []) as MasterGroup[]
@@ -180,7 +206,7 @@ export default function MasterDataPage() {
 
   return (
     <section className="mx-auto max-w-7xl space-y-4">
-      {role !== "super_admin" ? (
+      {roleLoaded && role !== "super_admin" ? (
         <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-800">
           Only super admin can manage master data.
         </p>

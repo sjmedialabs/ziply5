@@ -2,9 +2,10 @@ import { NextRequest } from "next/server"
 import { fail, ok } from "@/src/server/core/http/response"
 import { requireAuth } from "@/src/server/middleware/auth"
 import { requirePermission } from "@/src/server/middleware/rbac"
-import { prisma } from "@/src/server/db/prisma"
 import { enqueueEmail, emailTemplates } from "@/src/server/modules/notifications/email.service";
 import { z } from "zod"
+import { logger } from "@/lib/logger"
+import { getUserById, updateUserStatus } from "@/src/server/modules/users/users.service"
 
 //  Status schema using your enum
 const statusSchema = z.object({
@@ -42,22 +43,12 @@ export async function PUT(
     //  FIX — Await params
     const { id: userId } = await context.params
 
-    console.log("User ID:", userId)
-
     if (!userId) {
       return fail("User ID missing")
     }
 
     //  Find user
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
-      select: {
-        id: true,
-        name: true,
-        email: true,
-        status: true,
-      },
-    })
+    const user = await getUserById(userId)
 
     if (!user) {
       return fail("User not found")
@@ -69,10 +60,7 @@ export async function PUT(
     }
 
     //  Update status
-    const updatedUser = await prisma.user.update({
-      where: { id: userId },
-      data: { status },
-    })
+    const updatedUser = await updateUserStatus(userId, status)
 
     //  Send email
     try {
@@ -88,7 +76,10 @@ export async function PUT(
       })
 
     } catch (error) {
-      console.error("Email sending failed:", error)
+      logger.warn("users.status.email_failed", {
+        userId,
+        error: error instanceof Error ? error.message : "unknown",
+      })
     }
 
     return ok(
@@ -97,9 +88,9 @@ export async function PUT(
     )
 
   } catch (error: any) {
-
-    console.error(error)
-
+    logger.error("users.status.update_failed", {
+      error: error?.message ?? "unknown",
+    })
     return fail(
       error.message || "Failed to update status"
     )

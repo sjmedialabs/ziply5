@@ -1,0 +1,16 @@
+{
+  "available_couriers": [
+    {
+      "name": "BlueDart",
+      "eta_days": 2,
+      "rate": 65,
+      "courier_company_id": 12
+    },
+    {
+      "name": "Delhivery",
+      "eta_days": 3,
+      "rate": 55,
+      "courier_company_id": 25
+    }
+  ]
+}

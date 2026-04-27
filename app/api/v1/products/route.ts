@@ -13,6 +13,7 @@ import {
   setProductCache,
 } from "@/src/server/modules/products/products.cache"
 import type { AppTokenPayload } from "@/src/server/core/security/jwt"
+import { logger } from "@/lib/logger"
 
 const PRODUCT_LIST_TTL_MS = 60_000
 const PRODUCT_LIST_STALE_MS = 5 * 60_000
@@ -25,117 +26,70 @@ const resolveListScope = (user: AppTokenPayload | null): { scope: ListProductsSc
 }
 
 export async function GET(request: NextRequest) {
-  const startedAt = Date.now()
-
-  const page = Number(
-    request.nextUrl.searchParams.get("page") ?? "1"
-  )
-
-  const limit = Number(
-    request.nextUrl.searchParams.get("limit") ?? "20"
-  )
-
-  const status =
-    request.nextUrl.searchParams.get("status") ?? undefined
-
-  const q =
-    request.nextUrl.searchParams.get("q") ?? undefined
-
-  const inStockOnly =
-    request.nextUrl.searchParams.get("inStockOnly") === "true"
-
-  const user = optionalAuth(request)
-
-  const { scope } =
-    resolveListScope(user)
-
-  const cacheKey = buildProductListCacheKey({
-    page,
-    limit,
-    status,
-    q,
-    inStockOnly,
-    scope,
-    user: user?.role ?? "public"
-  })
-
-  const buildPayload = async () => {
-    const data = await listProducts(
+  try {
+    const startedAt = Date.now()
+    const page = Number(request.nextUrl.searchParams.get("page") ?? "1")
+    const limit = Number(request.nextUrl.searchParams.get("limit") ?? "20")
+    const status = request.nextUrl.searchParams.get("status") ?? undefined
+    const q = request.nextUrl.searchParams.get("q") ?? undefined
+    const inStockOnly = request.nextUrl.searchParams.get("inStockOnly") === "true"
+    const user = optionalAuth(request)
+    const { scope } = resolveListScope(user)
+    const cacheKey = buildProductListCacheKey({
       page,
       limit,
+      status,
+      q,
+      inStockOnly,
       scope,
-      {
-        status:
-          scope === "admin"
-            ? status
-            : undefined,
+      user: user?.role ?? "public"
+    })
+
+    const buildPayload = async () => {
+      const data = await listProducts(page, limit, scope, {
+        status: scope === "admin" ? status : undefined,
         q: q ?? undefined,
         inStockOnly,
+      })
+      const updatedProducts = data.items?.map((product: any) => applyPromotionToProduct(product))
+      return { ...data, products: updatedProducts }
+    }
+
+    const cached = await getProductCache<unknown>(cacheKey, PRODUCT_LIST_STALE_MS)
+    if (cached && cached.ageMs <= PRODUCT_LIST_TTL_MS) {
+      logger.debug("products.list.cache_hit", { scope, page, limit, ageMs: cached.ageMs, tookMs: Date.now() - startedAt })
+      return ok(cached.value, "Products fetched")
+    }
+    if (cached && cached.ageMs > PRODUCT_LIST_TTL_MS) {
+      if (!listRefreshInFlight.has(cacheKey)) {
+        const refreshPromise = (async () => {
+          try {
+            const fresh = await buildPayload()
+            await setProductCache(cacheKey, fresh, PRODUCT_LIST_STALE_MS)
+          } finally {
+            listRefreshInFlight.delete(cacheKey)
+          }
+        })()
+        listRefreshInFlight.set(cacheKey, refreshPromise)
       }
-    )
-
-    const updatedProducts =
-      data.items?.map((product: any) =>
-        applyPromotionToProduct(product)
-      )
-
-    return {
-      ...data,
-      products: updatedProducts,
+      logger.debug("products.list.stale_cache_hit", { scope, page, limit, ageMs: cached.ageMs, tookMs: Date.now() - startedAt })
+      return ok(cached.value, "Products fetched")
     }
-  }
 
-  const cached = await getProductCache<unknown>(cacheKey, PRODUCT_LIST_STALE_MS)
-  if (cached && cached.ageMs <= PRODUCT_LIST_TTL_MS) {
-    console.info("[products:list] cache hit", {
+    const updatedData = await buildPayload()
+    await setProductCache(cacheKey, updatedData, PRODUCT_LIST_STALE_MS)
+    logger.debug("products.list.cache_miss", {
       scope,
       page,
       limit,
-      ageMs: cached.ageMs,
+      itemCount: Array.isArray((updatedData as any)?.products) ? (updatedData as any).products.length : 0,
       tookMs: Date.now() - startedAt,
     })
-    return ok(cached.value, "Products fetched")
+    return ok(updatedData, "Products fetched")
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Products load failed"
+    return fail(message, 500)
   }
-
-  if (cached && cached.ageMs > PRODUCT_LIST_TTL_MS) {
-    if (!listRefreshInFlight.has(cacheKey)) {
-      const refreshPromise = (async () => {
-        try {
-          const fresh = await buildPayload()
-          await setProductCache(cacheKey, fresh, PRODUCT_LIST_STALE_MS)
-        } finally {
-          listRefreshInFlight.delete(cacheKey)
-        }
-      })()
-      listRefreshInFlight.set(cacheKey, refreshPromise)
-    }
-    console.info("[products:list] stale cache hit", {
-      scope,
-      page,
-      limit,
-      ageMs: cached.ageMs,
-      tookMs: Date.now() - startedAt,
-    })
-    return ok(cached.value, "Products fetched")
-  }
-
-  const updatedData = await buildPayload()
-  await setProductCache(cacheKey, updatedData, PRODUCT_LIST_STALE_MS)
-
-  console.info("[products:list] cache miss", {
-    scope,
-    page,
-    limit,
-    itemCount: Array.isArray((updatedData as any)?.products) ? (updatedData as any).products.length : 0,
-    tookMs: Date.now() - startedAt,
-  })
-
-    // console.log("Updated products with promotion::::", updatedProducts);
-
-  return ok(
-    updatedData,
-    "Products fetched"
-  )
 }
 
 export async function POST(request: NextRequest) {

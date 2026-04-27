@@ -1,8 +1,17 @@
-import { prisma } from "@/src/server/db/prisma"
-import type { Prisma, ProductStatus } from "@prisma/client"
 import { logActivity } from "@/src/server/modules/activity/activity.service"
 import sanitizeHtml from "sanitize-html"
 import { assertMasterValueExists } from "@/src/server/modules/master/master.service"
+import {
+  createProductSupabase,
+  deleteProductSupabaseBasic,
+  getProductByIdSupabaseBasic,
+  getProductIdBySlugSupabase,
+  getProductBySlugSupabaseBasic,
+  listProductIdsSupabase,
+  listProductsSupabaseBasic,
+  updateProductSupabase,
+} from "@/src/lib/db/products"
+import { logger } from "@/lib/logger"
 
 export type ListProductsScope = "public" | "admin"
 
@@ -462,254 +471,37 @@ export const listProducts = async (
   scope: ListProductsScope,
   filters?: { status?: string; q?: string; inStockOnly?: boolean },
 ) => {
-
-  const now = new Date()
-
-  const skip = (page - 1) * limit
-
-  const where: Prisma.ProductWhereInput = {}
-
-  /* ===============================
-     STATUS FILTER
-     =============================== */
-
-  if (scope === "public") {
-
-    where.status = "published"
-
+  if (process.env.SUPABASE_PRODUCTS_READ_ENABLED !== "true") {
+    throw new Error("SUPABASE_PRODUCTS_READ_ENABLED must be true")
   }
-  else if (
-    scope === "admin" &&
-    filters?.status
-  ) {
-
-    where.status =
-      filters.status as ProductStatus
-
-  }
-
-  if (scope === "public" && filters?.inStockOnly) {
-    where.totalStock = { gt: 0 }
-  }
-
-  /* ===============================
-     SEARCH FILTER
-     =============================== */
-
-  if (filters?.q?.trim()) {
-
-    const q = filters.q.trim()
-
-    where.OR = [
-
-      {
-        name: {
-          contains: q,
-          mode: "insensitive"
-        }
-      },
-
-      {
-        slug: {
-          contains: q,
-          mode: "insensitive"
-        }
-      },
-
-      {
-        sku: {
-          contains: q,
-          mode: "insensitive"
-        }
-      },
-
-    ]
-
-  }
-
-  /* ===============================
-     FETCH PRODUCTS WITH PROMOTIONS
-     =============================== */
-
-  const activePromotionWhere = {
-    promotion: {
-      active: true,
-      AND: [
-        { OR: [{ startsAt: null }, { startsAt: { lte: now } }] },
-        { OR: [{ endsAt: null }, { endsAt: { gte: now } }] },
-      ],
-    },
-  }
-
-  const promotionSelect = {
-    id: true,
-    name: true,
-    kind: true,
-    metadata: true,
-    active: true,
-    startsAt: true,
-    endsAt: true,
-  } as const
-
-  const items = await prisma.product.findMany({
-
-    where,
-
-    orderBy: {
-      createdAt: "desc"
-    },
-
-    skip,
-
-    take: limit,
-
-    select: {
-
-      ...(scope === "public" ? productSelectPublicList : productSelect),
-      promotionLinks: {
-        where: activePromotionWhere,
-        take: 1,
-        select: {
-          promotion: { select: promotionSelect },
-        },
-      },
-      variants:
-        scope === "public"
-          ? {
-              select: {
-                id: true,
-                name: true,
-                weight: true,
-                price: true,
-                sku: true,
-                stock: true,
-                isDefault: true,
-                promotionLinks: {
-                  where: activePromotionWhere,
-                  take: 1,
-                  select: {
-                    metadata: true,
-                    promotion: { select: promotionSelect },
-                  },
-                },
-              },
-            }
-          : {
-              include: {
-                promotionLinks: {
-                  where: activePromotionWhere,
-                  take: 1,
-                  select: {
-                    metadata: true,
-                    promotion: { select: promotionSelect },
-                  },
-                },
-              },
-            },
-
-    }
-
-  })
-
-  /* ===============================
-     TOTAL COUNT
-     =============================== */
-
-  const total =
-    await prisma.product.count({
-      where
-    })
-
-  /* ===============================
-     RETURN (UNCHANGED STRUCTURE)
-     =============================== */
-
-  return {
-
-    items,
-
-    total,
-
+  const payload = await listProductsSupabaseBasic({
     page,
-
-    limit
-
-  }
-
+    limit,
+    status: scope === "public" ? "published" : filters?.status,
+    q: filters?.q,
+  })
+  const items = (payload.items as any[]).filter((row) => {
+    if (scope === "public" && String(row.status ?? "") !== "published") return false
+    if (scope === "public" && filters?.inStockOnly) return Number(row.totalStock ?? row.total_stock ?? 0) > 0
+    return true
+  })
+  return { items, total: payload.total, page: payload.page, limit: payload.limit }
 }
 
 export const getProductById = async (id: string) => {
-  return prisma.product.findUnique({
-    where: { id },
-    select: productSelect,
-  })
+  if (process.env.SUPABASE_PRODUCTS_READ_ENABLED !== "true") {
+    throw new Error("SUPABASE_PRODUCTS_READ_ENABLED must be true")
+  }
+  return (await getProductByIdSupabaseBasic(id)) as any
 }
 
 export const getProductBySlug = async (slug: string) => {
-  const now = new Date()
-  const activePromotionWhere = {
-    promotion: {
-      active: true,
-      AND: [
-        { OR: [{ startsAt: null }, { startsAt: { lte: now } }] },
-        { OR: [{ endsAt: null }, { endsAt: { gte: now } }] },
-      ],
-    },
+  if (process.env.SUPABASE_PRODUCTS_READ_ENABLED !== "true") {
+    throw new Error("SUPABASE_PRODUCTS_READ_ENABLED must be true")
   }
-
-  const promotionSelect = {
-    id: true,
-    name: true,
-    kind: true,
-    metadata: true,
-    active: true,
-    startsAt: true,
-    endsAt: true,
-  } as const
-
-  return prisma.product.findUnique({
-
-    where: { slug }, // ✅ correct (you passed slug)
-
-    select: {
-
-      ...productSelect,
-
-      /* 🔥 Product-level promotions */
-
-      promotionLinks: {
-        where: activePromotionWhere,
-        take: 1,
-        select: {
-          promotion: { select: promotionSelect },
-        },
-
-      },
-
-      /*  Variant-level promotions */
-
-      variants: {
-
-        include: {
-
-          promotionLinks: {
-            where: activePromotionWhere,
-            take: 1,
-            select: {
-              metadata: true,
-              promotion: { select: promotionSelect },
-            },
-
-          }
-
-        }
-
-      }
-
-    }
-
-  })
-
+  const id = await getProductIdBySlugSupabase(slug)
+  if (id) return (await getProductByIdSupabaseBasic(id)) as any
+  return (await getProductBySlugSupabaseBasic(slug)) as any
 }
 export const canAccessProduct = (
   product: { status: string },
@@ -728,8 +520,7 @@ export const createProduct = async (input: CreateProductInput) => {
   const effectiveStockStatus = input.stockStatus ?? (effectiveTotalStock > 0 ? "in_stock" : "out_of_stock")
   const uniqueTags = [...new Set((input.tags ?? []).map((t) => t.trim()).filter(Boolean))]
   const sections = normalizeSections(input)
-  return prisma.product.create({
-    data: {
+  const baseData = {
       sellerId: null,
       createdById: input.createdById ?? null,
       managedById: input.managedById ?? input.createdById ?? null,
@@ -796,25 +587,34 @@ export const createProduct = async (input: CreateProductInput) => {
             })),
           }
         : undefined,
-      tags: uniqueTags.length
-        ? {
-            create: uniqueTags.map((raw) => {
-              const name = raw.trim()
-              const slug = slugify(name)
-              return {
-                tag: {
-                  connectOrCreate: {
-                    where: { slug },
-                    create: { name: name.toLowerCase(), slug },
-                  },
-                },
-              }
-            }),
-          }
-        : undefined,
-    },
-    select: productSelect,
-  })
+      tags: undefined,
+    }
+  if (process.env.SUPABASE_PRODUCTS_WRITE_ENABLED === "true") {
+    const created = await createProductSupabase({
+      base: baseData,
+      categoryId: input.categoryId ?? null,
+      variants: input.variants?.map((v) => ({
+        name: v.name,
+        weight: v.weight ?? null,
+        sku: v.sku,
+        price: v.price,
+        mrp: v.mrp ?? null,
+        discountPercent: v.discountPercent ?? null,
+        stock: v.stock ?? 0,
+        isDefault: Boolean(v.isDefault),
+      })),
+      images: input.images,
+      features: input.features,
+      labels: input.labels,
+      details: input.details,
+      sections,
+      tags: uniqueTags,
+    })
+    const supabaseHydrated = await getProductByIdSupabaseBasic(created.id)
+    if (supabaseHydrated) return supabaseHydrated as any
+    return { id: created.id } as any
+  }
+  throw new Error("SUPABASE_PRODUCTS_WRITE_ENABLED must be true")
 }
 
 export const updateProduct = async (
@@ -822,10 +622,9 @@ export const updateProduct = async (
   input: UpdateProductInput,
   opts: { role: string; userId: string },
 ) => {
-  const existing = await prisma.product.findUnique({
-    where: { id },
-    select: { id: true },
-  })
+  if (process.env.SUPABASE_PRODUCTS_READ_ENABLED !== "true") throw new Error("SUPABASE_PRODUCTS_READ_ENABLED must be true")
+  if (process.env.SUPABASE_PRODUCTS_WRITE_ENABLED !== "true") throw new Error("SUPABASE_PRODUCTS_WRITE_ENABLED must be true")
+  const existing: any = await getProductByIdSupabaseBasic(id)
   if (!existing) throw new Error("Product not found")
 
   const isAdmin = opts.role === "admin" || opts.role === "super_admin"
@@ -833,72 +632,58 @@ export const updateProduct = async (
     throw new Error("Forbidden")
   }
 
-  let tagRecords: Array<{ id: string }> | undefined
-  if ("tags" in input) {
-    const uniqueTags = [...new Set((input.tags ?? []).map((t) => t.trim()).filter(Boolean))]
-    if (uniqueTags.length) {
-      tagRecords = []
-      for (const raw of uniqueTags) {
-        const name = raw.trim().toLowerCase()
-        if (!name) continue
-        const slug = slugify(name)
-        const tag = await prisma.tag.upsert({
-          where: { slug },
-          create: { name, slug },
-          update: {},
-        })
-        tagRecords.push(tag)
-      }
-    }
-  }
+  const incomingRaw = input.sections?.length
+    ? input.sections
+    : (input.details ?? []).map((d) => ({
+        title: d.title,
+        description: d.content,
+        sortOrder: d.sortOrder,
+        isActive: true,
+      }))
+  const incomingSections = incomingRaw
+    .map((s, idx) => ({
+      id: "id" in s ? s.id : undefined,
+      title: s.title.trim(),
+      description: sanitizeSectionHtml(s.description),
+      sortOrder: s.sortOrder ?? idx,
+      isActive: s.isActive ?? true,
+    }))
+    .filter((s) => s.title && s.description)
+    .slice(0, 10)
 
-  await prisma.$transaction(
-    async (tx) => {
-      await tx.product.update({
-      where: { id },
-      data: {
-        ...("name" in input && input.name !== undefined ? { name: input.name } : {}),
-        ...("slug" in input && input.slug !== undefined ? { slug: input.slug } : {}),
-        ...("sku" in input && input.sku !== undefined ? { sku: input.sku } : {}),
-        ...("price" in input && input.price !== undefined ? { price: input.price } : {}),
-        ...("description" in input ? { description: input.description } : {}),
-        ...("type" in input && input.type !== undefined ? { type: input.type } : {}),
-        ...("basePrice" in input ? { basePrice: input.basePrice } : {}),
-        ...("salePrice" in input ? { salePrice: input.salePrice } : {}),
-        ...("discountPercent" in input ? { discountPercent: input.discountPercent } : {}),
-        ...("weight" in input ? { weight: input.weight } : {}),
-        ...("taxIncluded" in input && input.taxIncluded !== undefined ? { taxIncluded: input.taxIncluded } : {}),
-        ...("stockStatus" in input && input.stockStatus !== undefined ? { stockStatus: input.stockStatus } : {}),
-        ...("totalStock" in input && input.totalStock !== undefined ? { totalStock: input.totalStock } : {}),
-        ...("shelfLife" in input ? { shelfLife: input.shelfLife } : {}),
-        ...("preparationType" in input ? { preparationType: input.preparationType } : {}),
-        ...("spiceLevel" in input ? { spiceLevel: input.spiceLevel } : {}),
-        ...("isActive" in input && input.isActive !== undefined ? { isActive: input.isActive } : {}),
-        ...("isFeatured" in input && input.isFeatured !== undefined ? { isFeatured: input.isFeatured } : {}),
-        ...("isBestSeller" in input && input.isBestSeller !== undefined ? { isBestSeller: input.isBestSeller } : {}),
-        ...("thumbnail" in input ? { thumbnail: input.thumbnail } : {}),
-        ...("metaTitle" in input ? { metaTitle: input.metaTitle } : {}),
-        ...("metaDescription" in input ? { metaDescription: input.metaDescription } : {}),
-        ...("status" in input && input.status !== undefined ? { status: input.status } : {}),
-        ...("brandId" in input ? { brandId: input.brandId ?? null } : {}),
-        managedById: opts.userId,
-      },
-    })
-
-    if ("categoryId" in input) {
-      await tx.productCategory.deleteMany({ where: { productId: id } })
-      if (input.categoryId) {
-        await tx.productCategory.create({
-          data: { productId: id, categoryId: input.categoryId },
-        })
-      }
-    }
-    if ("variants" in input) {
-      await tx.productVariant.deleteMany({ where: { productId: id } })
-      if (input.variants?.length) {
-        await tx.productVariant.createMany({
-          data: input.variants.map((v) => ({
-            productId: id,
+  await updateProductSupabase({
+    productId: id,
+    baseUpdate: {
+      ...("name" in input && input.name !== undefined ? { name: input.name } : {}),
+      ...("slug" in input && input.slug !== undefined ? { slug: input.slug } : {}),
+      ...("sku" in input && input.sku !== undefined ? { sku: input.sku } : {}),
+      ...("price" in input && input.price !== undefined ? { price: input.price } : {}),
+      ...("description" in input ? { description: input.description } : {}),
+      ...("type" in input && input.type !== undefined ? { type: input.type } : {}),
+      ...("basePrice" in input ? { basePrice: input.basePrice } : {}),
+      ...("salePrice" in input ? { salePrice: input.salePrice } : {}),
+      ...("discountPercent" in input ? { discountPercent: input.discountPercent } : {}),
+      ...("weight" in input ? { weight: input.weight } : {}),
+      ...("taxIncluded" in input && input.taxIncluded !== undefined ? { taxIncluded: input.taxIncluded } : {}),
+      ...("stockStatus" in input && input.stockStatus !== undefined ? { stockStatus: input.stockStatus } : {}),
+      ...("totalStock" in input && input.totalStock !== undefined ? { totalStock: input.totalStock } : {}),
+      ...("shelfLife" in input ? { shelfLife: input.shelfLife } : {}),
+      ...("preparationType" in input ? { preparationType: input.preparationType } : {}),
+      ...("spiceLevel" in input ? { spiceLevel: input.spiceLevel } : {}),
+      ...("isActive" in input && input.isActive !== undefined ? { isActive: input.isActive } : {}),
+      ...("isFeatured" in input && input.isFeatured !== undefined ? { isFeatured: input.isFeatured } : {}),
+      ...("isBestSeller" in input && input.isBestSeller !== undefined ? { isBestSeller: input.isBestSeller } : {}),
+      ...("thumbnail" in input ? { thumbnail: input.thumbnail } : {}),
+      ...("metaTitle" in input ? { metaTitle: input.metaTitle } : {}),
+      ...("metaDescription" in input ? { metaDescription: input.metaDescription } : {}),
+      ...("status" in input && input.status !== undefined ? { status: input.status } : {}),
+      ...("brandId" in input ? { brandId: input.brandId ?? null } : {}),
+      managedById: opts.userId,
+    },
+    categoryId: "categoryId" in input ? (input.categoryId ?? null) : undefined,
+    variants:
+      "variants" in input
+        ? (input.variants ?? []).map((v) => ({
             name: v.name,
             weight: v.weight ?? null,
             sku: v.sku,
@@ -907,128 +692,16 @@ export const updateProduct = async (
             discountPercent: v.discountPercent ?? null,
             stock: v.stock ?? 0,
             isDefault: Boolean(v.isDefault),
-          })),
-        })
-        if (!("totalStock" in input)) {
-          const totalStock = input.variants.reduce((sum, v) => sum + (v.stock ?? 0), 0)
-          await tx.product.update({
-            where: { id },
-            data: {
-              totalStock,
-              stockStatus: totalStock > 0 ? "in_stock" : "out_of_stock",
-            },
-          })
-        }
-      }
-    }
-    if ("images" in input) {
-      await tx.productImage.deleteMany({ where: { productId: id } })
-      if (input.images?.length) {
-        await tx.productImage.createMany({
-          data: input.images.map((url, i) => ({ productId: id, url, position: i })),
-        })
-      }
-    }
-    if ("features" in input) {
-      await tx.productFeature.deleteMany({ where: { productId: id } })
-      if (input.features?.length) {
-        await tx.productFeature.createMany({
-          data: input.features.map((f) => ({ productId: id, title: f.title, icon: f.icon ?? null })),
-        })
-      }
-    }
-    if ("labels" in input) {
-      await tx.productLabel.deleteMany({ where: { productId: id } })
-      if (input.labels?.length) {
-        await tx.productLabel.createMany({
-          data: input.labels.map((l) => ({ productId: id, label: l.label, color: l.color ?? null })),
-        })
-      }
-    }
-    if ("details" in input) {
-      await tx.productDetailSection.deleteMany({ where: { productId: id } })
-      if (input.details?.length) {
-        await tx.productDetailSection.createMany({
-          data: input.details.map((d, i) => ({
-            productId: id,
-            title: d.title,
-            content: d.content,
-            sortOrder: d.sortOrder ?? i,
-          })),
-        })
-      }
-    }
-    if ("sections" in input || "details" in input) {
-      const incomingRaw = input.sections?.length
-        ? input.sections
-        : (input.details ?? []).map((d) => ({
-            title: d.title,
-            description: d.content,
-            sortOrder: d.sortOrder,
-            isActive: true,
           }))
-      const incoming = incomingRaw
-        .map((s, idx) => ({
-          id: "id" in s ? s.id : undefined,
-          title: s.title.trim(),
-          description: sanitizeSectionHtml(s.description),
-          sortOrder: s.sortOrder ?? idx,
-          isActive: s.isActive ?? true,
-        }))
-        .filter((s) => s.title && s.description)
-        .slice(0, 10)
-
-      const existing = await tx.productSection.findMany({
-        where: { productId: id },
-        select: { id: true },
-      })
-      const existingIds = new Set(existing.map((s) => s.id))
-      const incomingIds = new Set(incoming.map((s) => s.id).filter((x): x is string => Boolean(x)))
-      const removeIds = [...existingIds].filter((sid) => !incomingIds.has(sid))
-      if (removeIds.length) {
-        await tx.productSection.deleteMany({
-          where: { productId: id, id: { in: removeIds } },
-        })
-      }
-
-      for (const section of incoming) {
-        if (section.id && existingIds.has(section.id)) {
-          await tx.productSection.update({
-            where: { id: section.id },
-            data: {
-              title: section.title,
-              description: section.description,
-              sortOrder: section.sortOrder,
-              isActive: section.isActive,
-            },
-          })
-        } else {
-          await tx.productSection.create({
-            data: {
-              productId: id,
-              title: section.title,
-              description: section.description,
-              sortOrder: section.sortOrder,
-              isActive: section.isActive,
-            },
-          })
-        }
-      }
-    }
-    if ("tags" in input) {
-      await tx.productTag.deleteMany({ where: { productId: id } })
-      if (tagRecords?.length) {
-        await tx.productTag.createMany({
-          data: tagRecords.map((tag) => ({ productId: id, tagId: tag.id })),
-        })
-      }
-    }
-  }, { timeout: 10000 })
-
-  const hydrated = await prisma.product.findUnique({
-    where: { id },
-    select: productSelect,
+        : undefined,
+    images: "images" in input ? (input.images ?? []) : undefined,
+    features: "features" in input ? (input.features ?? []) : undefined,
+    labels: "labels" in input ? (input.labels ?? []) : undefined,
+    details: "details" in input ? (input.details ?? []) : undefined,
+    sections: "sections" in input || "details" in input ? incomingSections : undefined,
+    tags: "tags" in input ? [...new Set((input.tags ?? []).map((t) => t.trim()).filter(Boolean))] : undefined,
   })
+  const hydrated = await getProductByIdSupabaseBasic(id)
   if (!hydrated) throw new Error("Product not found")
 
   await logActivity({
@@ -1039,14 +712,13 @@ export const updateProduct = async (
     metadata: { fields: Object.keys(input) },
   })
 
-  return hydrated
+  return hydrated as any
 }
 
 export const deleteProduct = async (id: string, opts: { role: string; userId: string }) => {
-  const existing = await prisma.product.findUnique({
-    where: { id },
-    select: { id: true },
-  })
+  if (process.env.SUPABASE_PRODUCTS_READ_ENABLED !== "true") throw new Error("SUPABASE_PRODUCTS_READ_ENABLED must be true")
+  if (process.env.SUPABASE_PRODUCTS_WRITE_ENABLED !== "true") throw new Error("SUPABASE_PRODUCTS_WRITE_ENABLED must be true")
+  const existing: any = await getProductByIdSupabaseBasic(id)
   if (!existing) throw new Error("Product not found")
 
   const isAdmin = opts.role === "admin" || opts.role === "super_admin"
@@ -1054,7 +726,8 @@ export const deleteProduct = async (id: string, opts: { role: string; userId: st
     throw new Error("Forbidden")
   }
 
-  await prisma.product.delete({ where: { id } })
+  const deleted = await deleteProductSupabaseBasic(id)
+  if (!deleted) throw new Error("Supabase product delete failed")
 
   await logActivity({
     actorId: opts.userId,

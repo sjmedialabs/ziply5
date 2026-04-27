@@ -1,25 +1,22 @@
-import { prisma } from "@/src/server/db/prisma"
 import { hashPassword } from "@/src/server/core/security/password"
+import {
+  createUserByAdminSupabase,
+  getUserByIdWithRolesSupabase,
+  getUserByIdSupabase,
+  listUsersSupabase,
+  updateUserStatusSupabase,
+} from "@/src/lib/db/users"
+import { logger } from "@/lib/logger"
 
 export const listUsers = async (page = 1, limit = 20) => {
-  const skip = (page - 1) * limit
-  const [items, total] = await Promise.all([
-    prisma.user.findMany({
-      orderBy: { createdAt: "desc" },
-      skip,
-      take: limit,
-      select: {
-        id: true,
-        email: true,
-        name: true,
-        status: true,
-        createdAt: true,
-        roles: { include: { role: { select: { key: true, name: true } } } },
-      },
-    }),
-    prisma.user.count(),
-  ])
-  return { items, total, page, limit }
+  try {
+    return await listUsersSupabase({ page, limit })
+  } catch (error) {
+    logger.error("users.list.supabase_failed", {
+      error: error instanceof Error ? error.message : "unknown",
+    })
+    throw new Error("Unable to list users via Supabase")
+  }
 }
 
 export const createUserByAdmin = async (input: {
@@ -28,23 +25,37 @@ export const createUserByAdmin = async (input: {
   password: string
   roleKey: string
 }) => {
-  const existing = await prisma.user.findUnique({ where: { email: input.email.trim().toLowerCase() } })
-  if (existing) throw new Error("Email already in use")
-
   const passwordHash = await hashPassword(input.password)
-  const role = await prisma.role.upsert({
-    where: { key: input.roleKey },
-    update: { name: input.roleKey.replaceAll("_", " ") },
-    create: { key: input.roleKey, name: input.roleKey.replaceAll("_", " ") },
+  const created = await createUserByAdminSupabase({
+    email: input.email,
+    name: input.name,
+    passwordHash,
+    roleKey: input.roleKey,
   })
+  const hydrated = await getUserByIdWithRolesSupabase(created.id)
+  if (hydrated) return hydrated
+  return { id: created.id, email: input.email.trim().toLowerCase(), name: input.name, roles: [] } as any
+}
 
-  return prisma.user.create({
-    data: {
-      email: input.email.trim().toLowerCase(),
-      name: input.name,
-      passwordHash,
-      roles: { create: [{ roleId: role.id }] },
-    },
-    include: { roles: { include: { role: true } } },
-  })
+export const updateUserStatus = async (userId: string, status: "active" | "suspended" | "deleted") => {
+  const updated = await updateUserStatusSupabase(userId, status)
+  if (updated) return updated
+  throw new Error("Unable to update user status via Supabase")
+}
+
+export const getUserById = async (userId: string) => {
+  const row = await getUserByIdSupabase(userId)
+  if (row) return row
+  const withRoles = await getUserByIdWithRolesSupabase(userId)
+  if (withRoles) return withRoles
+  return null
+}
+
+export const assertUsersSupabaseEnabled = () => {
+  if (process.env.SUPABASE_USERS_READ_ENABLED !== "true" || process.env.SUPABASE_USERS_WRITE_ENABLED !== "true") {
+    logger.warn("users.supabase_flags_not_fully_enabled", {
+      read: process.env.SUPABASE_USERS_READ_ENABLED,
+      write: process.env.SUPABASE_USERS_WRITE_ENABLED,
+    })
+  }
 }

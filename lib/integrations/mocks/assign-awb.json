@@ -1,0 +1,6 @@
+{
+  "awb_code": "AWB123456789",
+  "courier_name": "BlueDart",
+  "courier_company_id": 12,
+  "tracking_url": "https://tracking.example.com/AWB123456789"
+}
