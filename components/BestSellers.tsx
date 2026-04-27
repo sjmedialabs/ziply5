@@ -13,7 +13,8 @@ export default function BestSellers({ cmsData }: { cmsData?: any }) {
   const { products } = useStorefrontProducts(20)
   const [favoriteSlugs, setFavoriteSlugs] = useState<string[]>([])
   const [cartQtyBySlug, setCartQtyBySlug] = useState<Record<string, number>>({})
-  const bestSellers = useMemo(() => products.slice(0, 6), [products])
+  const best = products.filter((p) => p.isBestSeller === true)
+  const bestSellers = useMemo(() => best.slice(0, 6), [best])
   const router = useRouter()
   const sectionTitle = cmsData?.title || "BEST SELLERS"
   const buttonText = cmsData?.buttonText || "view all"
@@ -111,7 +112,7 @@ export default function BestSellers({ cmsData }: { cmsData?: any }) {
       sku: variant.sku
     }, nextQty)
   }
-
+  if (bestSellers.length === 0) return null;
   return (
     <section id="best-sellers" className="bg-[#FFF5C5] py-12 md:py-16 lg:py-20">
       <div className="max-w-7xl mx-auto px-4">

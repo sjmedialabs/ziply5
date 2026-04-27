@@ -40,7 +40,8 @@ export default function TrendingFood({ cmsData }: { cmsData?: any }) {
   const { products } = useStorefrontProducts(20)
   const [favoriteSlugs, setFavoriteSlugs] = useState<string[]>([])
   const [cartQtyBySlug, setCartQtyBySlug] = useState<Record<string, number>>({})
-  const trendingProducts = useMemo(() => products.slice(0, 4), [products])
+  const trending = products.filter((p) => p.isFeatured === true)
+  const trendingProducts = useMemo(() => trending.slice(0, 4), [trending])
   const sectionTitle = cmsData?.title || "FOOD THAT'S TRENDING"
   const buttonText = cmsData?.buttonText || "view all"
   const buttonUrl = cmsData?.url || "/#trending"
@@ -135,7 +136,7 @@ export default function TrendingFood({ cmsData }: { cmsData?: any }) {
   }
 
   const visibleProducts = isLg ? trendingProducts.slice(0, 3) : trendingProducts
-
+if (trendingProducts.length === 0) return null;
   return (
     <section id="trending" className="py-12 md:py-16 lg:py-20">
       <div className="max-w-7xl mx-auto px-4">
