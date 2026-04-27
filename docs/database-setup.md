@@ -4,8 +4,6 @@
 
 Errors like `P2021` / `The table public.Product does not exist` mean the Postgres database you connect to with `DATABASE_URL` does not yet have the tables from `prisma/schema.prisma`.
 
-The public storefront can still show products if it reads from static JSON (`lib/products.ts`) instead of the API.
-
 ## Standard workflow
 
 1. Set **`DATABASE_URL`** to your Supabase **transaction pooler** URL (often port **6543** with `pgbouncer=true`).

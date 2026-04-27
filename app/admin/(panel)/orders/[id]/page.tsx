@@ -13,7 +13,12 @@ type OrderDetail = {
   shipping: string | number
   currency: string
   createdAt: string
-  items: Array<{ quantity: number; product: { id: string; name: string; slug: string } }>
+  items: Array<{
+    id?: string
+    quantity: number
+    product?: { id: string; name: string; slug: string } | null
+    productId?: string | null
+  }>
   transactions?: Array<{ id: string; gateway: string; amount: string | number; status: string; createdAt: string }>
   statusHistory?: Array<{ toStatus: string; changedAt: string; notes?: string | null; reasonCode?: string | null; changedById?: string | null }>
   notes?: Array<{ id: string; note: string; isInternal: boolean; createdAt: string }>
@@ -178,16 +183,24 @@ export default function AdminOrderDetailPage() {
 
             <div className="rounded-2xl border border-[#E8DCC8] bg-white p-4 shadow-sm">
               <h2 className="mb-3 text-base font-semibold text-[#4A1D1F]">Order items</h2>
-              <ul className="space-y-2">
-                {order.items.map((item) => (
-                  <li key={`${item.product.id}-${item.quantity}`} className="rounded-xl border border-[#EFE3D5] bg-[#FFFBF7] px-3 py-2">
-                    <div className="flex items-center justify-between gap-3 text-sm text-[#2A1810]">
-                      <span>{item.product.name}</span>
-                      <span className="font-semibold">x{item.quantity}</span>
-                    </div>
-                  </li>
-                ))}
-              </ul>
+              {(order.items ?? []).length === 0 ? (
+                <p className="text-sm text-[#646464]">No items in this order.</p>
+              ) : (
+                <ul className="space-y-2">
+                  {(order.items ?? []).map((item, idx) => {
+                    const productName = item.product?.name ?? "Deleted product"
+                    const key = item.id ?? `${item.product?.id ?? item.productId ?? "unknown"}-${idx}`
+                    return (
+                      <li key={key} className="rounded-xl border border-[#EFE3D5] bg-[#FFFBF7] px-3 py-2">
+                        <div className="flex items-center justify-between gap-3 text-sm text-[#2A1810]">
+                          <span>{productName}</span>
+                          <span className="font-semibold">x{item.quantity}</span>
+                        </div>
+                      </li>
+                    )
+                  })}
+                </ul>
+              )}
             </div>
 
             <div className="rounded-2xl border border-[#E8DCC8] bg-white p-4 shadow-sm">

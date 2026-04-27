@@ -27,7 +27,7 @@ export type SupabaseOrderRecord = {
   updatedAt?: string | Date | null
   customerAddress?: string | null
   items: any[]
-  statusHistory: Array<{ toStatus?: string; changedAt?: string | Date }>
+  statusHistory: Array<{ toStatus?: string; changedAt?: string | Date | null; [key: string]: unknown }>
   refunds: Array<{ id: string; status?: string; amount?: number }>
   notes?: any[]
   [key: string]: unknown
@@ -1145,39 +1145,220 @@ export const listOrdersSupabaseBasic = async (input: {
   return { items, total: payload.total, page: payload.page, limit: payload.limit }
 }
 
+const fetchRowsByForeignKey = async (
+  tables: string[],
+  foreignKey: { camel: string; snake: string },
+  value: string,
+  options?: { orderBy?: { camel: string; snake: string; ascending?: boolean } },
+): Promise<Array<Record<string, unknown>>> => {
+  if (!value) return []
+  const client = getSupabaseAdmin()
+  for (const table of tables) {
+    const attempts = [
+      () => {
+        let q = client.from(table).select("*").eq(foreignKey.camel, value)
+        if (options?.orderBy) q = q.order(options.orderBy.camel, { ascending: options.orderBy.ascending ?? true })
+        return q
+      },
+      () => {
+        let q = client.from(table).select("*").eq(foreignKey.snake, value)
+        if (options?.orderBy) q = q.order(options.orderBy.snake, { ascending: options.orderBy.ascending ?? true })
+        return q
+      },
+    ]
+    for (const run of attempts) {
+      const { data, error } = await run()
+      if (!error && Array.isArray(data)) return data as Array<Record<string, unknown>>
+    }
+  }
+  return []
+}
+
+const fetchRowsByIds = async (
+  tables: string[],
+  idColumn: string,
+  ids: string[],
+  selectClause = "*",
+): Promise<Array<Record<string, unknown>>> => {
+  if (!ids.length) return []
+  const unique = Array.from(new Set(ids.filter(Boolean)))
+  if (!unique.length) return []
+  const client = getSupabaseAdmin()
+  for (const table of tables) {
+    const { data, error } = await client.from(table).select(selectClause).in(idColumn, unique)
+    if (!error && Array.isArray(data)) return data as unknown as Array<Record<string, unknown>>
+  }
+  return []
+}
+
 export const getOrderByIdSupabaseBasic = async (orderId: string) => {
   const client = getSupabaseAdmin()
   for (const table of ORDER_TABLES) {
     const { data, error } = await client.from(table).select("*").eq("id", orderId).maybeSingle()
     if (!error && data) {
-      const itemRows: Array<Record<string, unknown>> = []
-      for (const itemTable of ORDER_ITEM_TABLES) {
-        const itemAttempts = [
-          () => client.from(itemTable).select("*").eq("orderId", orderId),
-          () => client.from(itemTable).select("*").eq("order_id", orderId),
-        ]
-        for (const runItems of itemAttempts) {
-          const itemsResult = await runItems()
-          if (!itemsResult.error) {
-            itemRows.push(...(itemsResult.data ?? []))
-            break
+      const itemRows = await fetchRowsByForeignKey(ORDER_ITEM_TABLES, { camel: "orderId", snake: "order_id" }, orderId)
+
+      // Hydrate each order item with its related product (id, name, slug, sku, weight).
+      const productIds = itemRows.map((row) => safeString(row.productId ?? row.product_id)).filter(Boolean)
+      const productRows = await fetchRowsByIds(
+        PRODUCT_TABLES,
+        "id",
+        productIds,
+        "id,name,slug,sku,weight,thumbnail",
+      )
+      const productById = new Map<string, Record<string, unknown>>()
+      for (const product of productRows) {
+        const id = safeString(product.id)
+        if (id) productById.set(id, product)
+      }
+
+      const variantIds = itemRows
+        .map((row) => safeString(row.variantId ?? row.variant_id))
+        .filter(Boolean)
+      const variantRows = await fetchRowsByIds(
+        PRODUCT_VARIANT_TABLES,
+        "id",
+        variantIds,
+        "id,name,sku,weight,price",
+      )
+      const variantById = new Map<string, Record<string, unknown>>()
+      for (const variant of variantRows) {
+        const id = safeString(variant.id)
+        if (id) variantById.set(id, variant)
+      }
+
+      const hydratedItems = itemRows.map((rowItem) => {
+        const productId = safeString(rowItem.productId ?? rowItem.product_id)
+        const product = productById.get(productId) ?? null
+        const variantId = safeString(rowItem.variantId ?? rowItem.variant_id)
+        const variant = variantId ? variantById.get(variantId) ?? null : null
+        return {
+          ...rowItem,
+          id: safeString(rowItem.id),
+          orderId: safeString(rowItem.orderId ?? rowItem.order_id) || orderId,
+          productId,
+          variantId: variantId || null,
+          quantity: safeNumber(rowItem.quantity, 0),
+          unitPrice: safeNumber(rowItem.unitPrice ?? rowItem.unit_price, 0),
+          lineTotal: safeNumber(rowItem.lineTotal ?? rowItem.line_total, 0),
+          // Always present so the UI never NPEs on a missing/deleted product.
+          product: product
+            ? {
+                id: safeString(product.id),
+                name: safeString(product.name) || "Product",
+                slug: safeString(product.slug) || safeString(product.id),
+                sku: safeString(product.sku) || null,
+                weight: safeString(product.weight) || null,
+                thumbnail: safeString(product.thumbnail) || null,
+              }
+            : {
+                id: productId || "",
+                name: "Deleted product",
+                slug: productId || "",
+                sku: null,
+                weight: null,
+                thumbnail: null,
+              },
+          variant: variant
+            ? {
+                id: safeString(variant.id),
+                name: safeString(variant.name) || null,
+                sku: safeString(variant.sku) || null,
+                weight: safeString(variant.weight) || null,
+                price: safeNumber(variant.price, 0),
+              }
+            : null,
+        }
+      })
+
+      const [transactionRows, noteRows, statusHistoryRows, refundRows] = await Promise.all([
+        fetchRowsByForeignKey(TRANSACTION_TABLES, { camel: "orderId", snake: "order_id" }, orderId, {
+          orderBy: { camel: "createdAt", snake: "created_at", ascending: false },
+        }),
+        fetchRowsByForeignKey(ORDER_NOTE_TABLES, { camel: "orderId", snake: "order_id" }, orderId, {
+          orderBy: { camel: "createdAt", snake: "created_at", ascending: false },
+        }),
+        fetchRowsByForeignKey(
+          ORDER_STATUS_HISTORY_TABLES,
+          { camel: "orderId", snake: "order_id" },
+          orderId,
+          { orderBy: { camel: "changedAt", snake: "changed_at", ascending: false } },
+        ),
+        fetchRowsByForeignKey(REFUND_RECORD_TABLES, { camel: "orderId", snake: "order_id" }, orderId, {
+          orderBy: { camel: "createdAt", snake: "created_at", ascending: false },
+        }),
+      ])
+
+      const row = data as Record<string, unknown>
+      const userId = safeString(row.userId ?? row.user_id) || null
+      let user: Record<string, unknown> | null = null
+      if (userId) {
+        const userRows = await fetchRowsByIds(USER_TABLES, "id", [userId], "id,name,email")
+        const found = userRows[0] ?? null
+        if (found) {
+          user = {
+            id: safeString(found.id),
+            name: safeString(found.name) || null,
+            email: safeString(found.email) || null,
           }
         }
       }
-      const row = data as Record<string, unknown>
+
+      const transactions = transactionRows.map((tx) => ({
+        id: safeString(tx.id),
+        gateway: safeString(tx.gateway),
+        amount: safeNumber(tx.amount, 0),
+        status: safeString(tx.status),
+        externalId: safeString(tx.externalId ?? tx.external_id) || null,
+        createdAt: (tx.createdAt ?? tx.created_at ?? null) as string | Date | null,
+      }))
+
+      const notes = noteRows.map((note) => ({
+        id: safeString(note.id),
+        note: safeString(note.note),
+        isInternal: Boolean(note.isInternal ?? note.is_internal),
+        createdAt: (note.createdAt ?? note.created_at ?? null) as string | Date | null,
+      }))
+
+      const statusHistory = statusHistoryRows.map((entry) => ({
+        id: safeString(entry.id),
+        fromStatus: safeString(entry.fromStatus ?? entry.from_status) || null,
+        toStatus: safeString(entry.toStatus ?? entry.to_status),
+        notes: safeString(entry.notes) || null,
+        reasonCode: safeString(entry.reasonCode ?? entry.reason_code) || null,
+        changedById: safeString(entry.changedById ?? entry.changed_by_id) || null,
+        changedAt: (entry.changedAt ?? entry.changed_at ?? null) as string | Date | null,
+      }))
+
+      const refunds = refundRows.map((refund) => ({
+        id: safeString(refund.id),
+        status: safeString(refund.status),
+        amount: safeNumber(refund.amount, 0),
+      }))
+
       return {
         ...row,
         id: safeString(row.id),
-        userId: safeString(row.userId ?? row.user_id) || null,
+        userId,
         status: safeString(row.status) || "pending",
         paymentStatus: safeString(row.paymentStatus ?? row.payment_status) || "PENDING",
         total: Number(row.total ?? 0),
-        updatedAt: (row.updatedAt ?? row.updated_at ?? null) as string | Date | null,
+        subtotal: Number(row.subtotal ?? 0),
+        shipping: Number(row.shipping ?? 0),
+        currency: safeString(row.currency) || "INR",
+        paymentMethod: safeString(row.paymentMethod ?? row.payment_method) || null,
+        paymentId: safeString(row.paymentId ?? row.payment_id) || null,
+        customerName: (row.customerName ?? row.customer_name ?? null) as string | null,
+        customerPhone: (row.customerPhone ?? row.customer_phone ?? null) as string | null,
         customerAddress: (row.customerAddress ?? row.customer_address ?? null) as string | null,
-        items: itemRows,
-        statusHistory: Array.isArray(row.statusHistory) ? (row.statusHistory as SupabaseOrderRecord["statusHistory"]) : [],
-        refunds: Array.isArray(row.refunds) ? (row.refunds as SupabaseOrderRecord["refunds"]) : [],
-        notes: Array.isArray(row.notes) ? row.notes : [],
+        createdAt: (row.createdAt ?? row.created_at ?? null) as string | Date | null,
+        updatedAt: (row.updatedAt ?? row.updated_at ?? null) as string | Date | null,
+        items: hydratedItems,
+        transactions,
+        statusHistory,
+        refunds,
+        notes,
+        user,
       } satisfies SupabaseOrderRecord
     }
   }
