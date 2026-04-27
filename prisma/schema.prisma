@@ -36,6 +36,7 @@ model User {
   ticketsCreated     Ticket[]             @relation("TicketCreatedBy")
   addresses          UserAddress[]
   profile            UserProfile?
+  favorites          UserFavorite[]
   roles              UserRole[]
   createdWithdrawals WithdrawalRequest[]  @relation("WithdrawalCreatedBy")
   managedWithdrawals WithdrawalRequest[]  @relation("WithdrawalManagedBy")
@@ -46,10 +47,21 @@ model UserProfile {
   id        String   @id @default(cuid())
   userId    String   @unique
   phone     String?  @unique
+  bio       String?
   avatarUrl String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model UserFavorite {
+  id        String   @id @default(cuid())
+  userId    String
+  productId String
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  @@unique([userId, productId])
 }
 
 model OtpChallenge {
@@ -401,6 +413,7 @@ model Product {
   temperatureSensitive Boolean                         @default(false)
   preparationType      String?
   spiceLevel           SpiceLevel?
+  amazonLink           String?
   weight               String?
   analyticsSnapshots   AnalyticsDailyProductSnapshot[]
   bundle               Bundle?                         @relation("BundleProduct")
@@ -424,6 +437,7 @@ model Product {
   tags                 ProductTag[]
   variants             ProductVariant[]
   promotionLinks       PromotionProduct[]
+  favoritedBy          UserFavorite[]
   sections             ProductSection[]
 
   @@index([createdById])
@@ -1147,4 +1161,14 @@ model MasterValue {
 
   @@unique([groupId, value])
   @@map("master_values")
+}
+
+model ContactMessage {
+  id        String   @id @default(cuid())
+  name      String
+  email     String
+  phone     String?
+  message   String
+  status    String   @default("open")
+  createdAt DateTime @default(now())
 }

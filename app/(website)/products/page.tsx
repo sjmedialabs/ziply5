@@ -16,6 +16,7 @@ import { getFavoriteSlugs, toggleFavoriteSlug } from "@/lib/favorites"
 import { type StorefrontProduct } from "@/lib/storefront-products"
 import { useStorefrontProducts } from "@/hooks/useStorefrontProducts"
 import { X } from "lucide-react"
+import { toast } from "@/lib/toast"
 
 type CategoryFilter = "all" | string
 type MealTypeFilter = "all" | "veg" | "non-veg"
@@ -83,6 +84,50 @@ function ProductsPageContent() {
       window.removeEventListener("storage", syncCartQty)
     }
   }, [])
+
+  // Fetch DB Favorites on mount if logged in
+  useEffect(() => {
+    const fetchDbFavorites = async () => {
+      const token = window.localStorage.getItem("ziply5_access_token");
+      const userStr = window.localStorage.getItem("ziply5_user");
+      const userId = userStr ? JSON.parse(userStr).id : null;
+      
+      if (token && userId) {
+        try {
+          const res = await fetch("/api/v1/favorites", {
+            headers: { 
+              Authorization: `Bearer ${token}`,
+              "x-user-id": userId 
+            },
+          });
+          const payload = await res.json();
+          if (payload.success && Array.isArray(payload.data)) {
+            window.localStorage.setItem("ziply5-favorites", JSON.stringify(payload.data));
+            setFavoriteSlugs(payload.data);
+          }
+        } catch (e) { /* silent fail */ }
+      }
+    };
+    fetchDbFavorites();
+  }, []);
+
+  const handleToggleFavorite = async (e: React.MouseEvent, slug: string) => {
+    e.stopPropagation();
+    const token = window.localStorage.getItem("ziply5_access_token");
+    if (!token) {
+      if (confirm("Log in to sync favorites across devices? Cancel to save locally.")) {
+        router.push("/login");
+        return;
+      }
+    }
+    const isAdded = await toggleFavoriteSlug(slug);
+    if (isAdded) {
+      toast.success("Added to favorites", "Product added to your wishlist.");
+    } else {
+      toast.info("Removed from favorites", "Product removed from your wishlist.");
+    }
+    setFavoriteSlugs(getFavoriteSlugs());
+  }
 
   const categories = useMemo(() => {
     if (categoryOptions.length > 0) return categoryOptions
@@ -292,10 +337,7 @@ function ProductsPageContent() {
               >
               <button
                 type="button"
-                onClick={() => {
-                  toggleFavoriteSlug(product.slug)
-                  setFavoriteSlugs(getFavoriteSlugs())
-                }}
+                onClick={(e) => handleToggleFavorite(e, product.slug)}
                 className="absolute left-3 top-3 z-20 text-lg text-white"
               >
                 {favoriteSlugs.includes(product.slug) ? "♥" : "♡"}

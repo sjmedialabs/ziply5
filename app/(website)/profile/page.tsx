@@ -3,15 +3,16 @@
 import { Suspense, useEffect, useMemo, useState } from "react"
 import Link from "next/link"
 import Image from "next/image"
-import { Facebook, Twitter, Linkedin } from "lucide-react"
+import { Facebook, Twitter, Linkedin, X } from "lucide-react"
 import { User, Star, Package } from "lucide-react"
 import { useRouter, useSearchParams } from "next/navigation"
-import { useQuery, useQueryClient } from "@tanstack/react-query"
+import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query"
 import { getFavoriteSlugs, toggleFavoriteSlug } from "@/lib/favorites"
 import { addToCart, getCartItems, setCartItemQuantity } from "@/lib/cart"
 import { useStorefrontProducts } from "@/hooks/useStorefrontProducts"
 import { useRealtimeTables } from "@/hooks/useRealtimeTables"
 import { clearSession } from "@/lib/auth-session"
+import { toast } from "@/lib/toast"
 
 type ApiOrderRow = {
   id: string
@@ -35,6 +36,8 @@ function ProfilePageContent() {
   const [orders, setOrders] = useState<ApiOrderRow[]>([])
   const [orderActionBusy, setOrderActionBusy] = useState<string | null>(null)
   const queryClient = useQueryClient()
+  const [isManageModalOpen, setIsManageModalOpen] = useState(false)
+  const [editForm, setEditForm] = useState({ name: "", bio: "", phone: "" })
   const [authSnapshot, setAuthSnapshot] = useState<{ token: string | null; role: string | null }>({
     token: null,
     role: null,
@@ -45,6 +48,79 @@ function ProfilePageContent() {
       setActiveTab(initialTab)
     }
   }, [initialTab])
+
+  // Fetch User Profile Data
+  const profileQuery = useQuery({
+    queryKey: ["user-profile"],
+    enabled: Boolean(authSnapshot.token),
+    queryFn: async () => {
+      const token = window.localStorage.getItem("ziply5_access_token");
+      const userId = JSON.parse(window.localStorage.getItem("ziply5_user") || "{}").id;
+      const res = await fetch("/api/v1/profile", {
+        headers: { 
+          Authorization: `Bearer ${token}`,
+          "x-user-id": userId 
+        },
+      });
+      const payload = await res.json();
+      if (!res.ok || !payload.success) throw new Error(payload.message || "Failed to load profile");
+      return payload.data;
+    },
+  });
+
+  useEffect(() => {
+    if (profileQuery.data) {
+      setEditForm({
+        name: profileQuery.data.name || "",
+        bio: profileQuery.data.profile?.bio || "",
+        phone: profileQuery.data.profile?.phone || "",
+      })
+    }
+  }, [profileQuery.data])
+
+  const updateProfileMutation = useMutation({
+    mutationFn: async (payload: typeof editForm) => {
+      const token = window.localStorage.getItem("ziply5_access_token")
+      const userId = JSON.parse(window.localStorage.getItem("ziply5_user") || "{}").id
+      const res = await fetch("/api/v1/profile", {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+          "x-user-id": userId,
+        },
+        body: JSON.stringify(payload),
+      })
+      const data = await res.json()
+      if (!data.success) throw new Error(data.message)
+      return data
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["user-profile"] })
+      setIsManageModalOpen(false)
+    },
+  })
+
+  const deleteProfileMutation = useMutation({
+    mutationFn: async () => {
+      const token = window.localStorage.getItem("ziply5_access_token")
+      const userId = JSON.parse(window.localStorage.getItem("ziply5_user") || "{}").id
+      const res = await fetch("/api/v1/profile", {
+        method: "DELETE",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "x-user-id": userId,
+        },
+      })
+      const data = await res.json()
+      if (!data.success) throw new Error(data.message)
+      return data
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["user-profile"] })
+      setIsManageModalOpen(false)
+    },
+  })
 
   useEffect(() => {
     const syncFavorites = () => setFavoriteSlugs(getFavoriteSlugs())
@@ -87,6 +163,29 @@ function ProfilePageContent() {
     window.addEventListener("storage", syncAuth)
     return () => window.removeEventListener("storage", syncAuth)
   }, [])
+
+  useEffect(() => {
+    const fetchDbFavorites = async () => {
+      if (!authSnapshot.token) return;
+      const userId = JSON.parse(window.localStorage.getItem("ziply5_user") || "{}").id;
+      if (!userId) return;
+
+      try {
+        const res = await fetch("/api/v1/favorites", {
+          headers: { 
+            Authorization: `Bearer ${authSnapshot.token}`,
+            "x-user-id": userId 
+          },
+        });
+        const payload = await res.json();
+        if (payload.success && Array.isArray(payload.data)) {
+          window.localStorage.setItem("ziply5-favorites", JSON.stringify(payload.data));
+          setFavoriteSlugs(payload.data);
+        }
+      } catch (e) { /* ignore */ }
+    };
+    fetchDbFavorites();
+  }, [authSnapshot.token]);
 
   const ordersQuery = useQuery({
     queryKey: ["profile-orders"],
@@ -172,8 +271,9 @@ function ProfilePageContent() {
     { icon: "G", link: "https://google.com" },
   ]
 
-  const removeFavorite = (slug: string) => {
-    toggleFavoriteSlug(slug)
+  const removeFavorite = async (slug: string) => {
+    await toggleFavoriteSlug(slug)
+    toast.info("Removed from wishlist", "The item has been removed from your favorites list.")
     setFavoriteSlugs(getFavoriteSlugs())
   }
 
@@ -225,6 +325,7 @@ const cancelPendingOrder = async (orderId: string) => {
       <div className="max-w-5xl mx-auto md:flex gap-30">
 
         {/* LEFT SIDEBAR */}
+        <div>
         <div
           className="
             w-full md:w-[260px]
@@ -267,39 +368,35 @@ const cancelPendingOrder = async (orderId: string) => {
             <span className="font-medium">Order history</span>
           </div>
         </div>
-
+        </div>
         {/* RIGHT CONTENT */}
         <div className="flex-1 mt-6 md:mt-0">
-          <div className="mb-5 flex justify-end">
-            <button
-              type="button"
-              onClick={handleLogout}
-              className="rounded-md bg-[#5A272A] px-4 py-2 text-xs font-semibold uppercase tracking-wide text-white hover:bg-[#451f21]"
-            >
-              Logout
-            </button>
-          </div>
 
           {activeTab === "about" && (
             <div className="space-y-6 text-sm gap-2">
 
               <div className="flex">
                 <p className="w-24 font-bold text-gray-700">Bio</p>
-                <p className="text-gray-600 max-w-md">
-                  When I first got into the advertising, I was looking for the magical combination that would put website into the top search engine rankings
+                <p className="text-gray-600 max-w-md italic">
+                  {profileQuery.data?.profile?.bio || "No bio set yet. Click edit to add one!"}
                 </p>
               </div>
 
               <div className="flex">
                 <p className="w-24 font-bold text-gray-700">Email</p>
-                <p className="text-gray-600">keshav krishan@gmail.com</p>
+                <p className="text-gray-600">{profileQuery.data?.email || "Loading..."}</p>
               </div>
 
               <div className="flex">
-                <p className="w-24 font-bold text-gray-700">contact</p>
-                <p className="text-gray-600">621-770-7689</p>
+                <p className="w-24 font-bold text-gray-700">Contact</p>
+                <p className="text-gray-600">{profileQuery.data?.profile?.phone || "Not provided"}</p>
               </div>
-
+              <div className="flex">
+                <p className="w-24 font-bold text-gray-700">Address</p>
+                <p className="text-gray-600">
+                  {profileQuery.data?.addresses?.[0]?.line1 || "No primary address set."}
+                </p>
+              </div>
               <div className="flex">
                 <p className="w-24 font-bold text-gray-700">Addresses</p>
                 <Link href="/addresses" className="text-orange-600 underline hover:text-orange-700">
@@ -307,7 +404,7 @@ const cancelPendingOrder = async (orderId: string) => {
                 </Link>
               </div>
 
-              <div className="flex">
+              {/* <div className="flex">
                 <p className="w-24 font-bold text-gray-700">Support</p>
                 <Link href="/support" className="text-orange-600 underline hover:text-orange-700">
                   Open support center
@@ -319,22 +416,27 @@ const cancelPendingOrder = async (orderId: string) => {
                 <Link href="/my-returns" className="text-orange-600 underline hover:text-orange-700">
                   Track return/replace
                 </Link>
-              </div>
-
-              <div className="flex">
-                <p className="w-24 font-bold text-gray-700">Address</p>
-                <p className="text-gray-600">
-                  27 street jonway, NY America USA
-                </p>
-              </div>
-
-              <div className="flex">
-                <p className="w-24 font-bold text-gray-700">Phone</p>
-                <p className="text-gray-600">439-582-1578</p>
-              </div>
+              </div> */}
+            <div className="flex justify-between items-center w-full">
+              <button
+                onClick={() => setIsManageModalOpen(true)}
+                className="mt-4 text-xs font-bold text-primary underline uppercase tracking-widest"
+              >
+                Manage Profile
+              </button>
+                        <div className="">
+            <button
+              type="button"
+              onClick={handleLogout}
+              className="rounded-md bg-[#5A272A] px-4 py-2 text-xs font-semibold uppercase tracking-wide text-white hover:bg-[#451f21]"
+            >
+              Logout
+            </button>
+          </div>
+          </div>
 
               {/* SOCIAL */}
-              <div className="flex items-center">
+              {/* <div className="flex items-center">
                 <p className="w-24 font-bold text-gray-700">Social</p>
 
                 <div className="flex gap-3">
@@ -360,8 +462,79 @@ const cancelPendingOrder = async (orderId: string) => {
                     )
                   })}
                 </div>
-              </div>
+              </div> */}
 
+            </div>
+          )}
+
+          {/* MANAGE PROFILE MODAL */}
+          {isManageModalOpen && (
+            <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm" onClick={() => setIsManageModalOpen(false)}>
+              <div className="w-full max-w-md overflow-hidden rounded-3xl bg-white shadow-2xl" onClick={(e) => e.stopPropagation()}>
+                <div className="flex items-center justify-between bg-primary p-5 text-white">
+                  <h3 className="font-melon text-lg font-bold uppercase tracking-wider">Manage Profile</h3>
+                  <button onClick={() => setIsManageModalOpen(false)} className="rounded-full bg-white/20 p-1 hover:bg-white/30 transition-colors">
+                    <X size={20} />
+                  </button>
+                </div>
+                
+                <form className="p-6 space-y-4" onSubmit={(e) => {
+                  e.preventDefault()
+                  updateProfileMutation.mutate(editForm)
+                }}>
+                  <div>
+                    <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Full Name</label>
+                    <input 
+                      type="text" 
+                      value={editForm.name}
+                      onChange={(e) => setEditForm({...editForm, name: e.target.value})}
+                      className="w-full rounded-xl border border-gray-200 px-4 py-3 text-sm focus:border-orange-500 focus:ring-1 focus:ring-orange-500 outline-none transition-all"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Bio</label>
+                    <textarea 
+                      rows={3}
+                      value={editForm.bio}
+                      onChange={(e) => setEditForm({...editForm, bio: e.target.value})}
+                      className="w-full rounded-xl border border-gray-200 px-4 py-3 text-sm focus:border-orange-500 focus:ring-1 focus:ring-orange-500 outline-none transition-all resize-none"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Contact Phone</label>
+                    <input 
+                      type="text" 
+                      value={editForm.phone}
+                      onChange={(e) => setEditForm({...editForm, phone: e.target.value})}
+                      className="w-full rounded-xl border border-gray-200 px-4 py-3 text-sm focus:border-orange-500 focus:ring-1 focus:ring-orange-500 outline-none transition-all"
+                    />
+                  </div>
+
+                  <div className="flex gap-3 pt-2">
+                    <button
+                      type="submit"
+                      disabled={updateProfileMutation.isPending}
+                      className="flex-1 rounded-xl bg-primary py-4 text-xs font-bold uppercase tracking-widest text-white shadow-lg hover:opacity-90 disabled:opacity-50 transition-all"
+                    >
+                      {updateProfileMutation.isPending ? "Updating..." : "Update Profile"}
+                    </button>
+                    {/* <button
+                      type="button"
+                      disabled={deleteProfileMutation.isPending}
+                      onClick={() => {
+                        if (confirm("Are you sure you want to clear your profile data?")) {
+                          deleteProfileMutation.mutate()
+                        }
+                      }}
+                      className="px-4 rounded-xl border-2 border-red-100 text-red-500 text-[10px] font-bold uppercase tracking-widest hover:bg-red-50 transition-all"
+                    >
+                      Delete
+                    </button> */}
+                  </div>
+                </form>
+              </div>
             </div>
           )}
 
@@ -377,7 +550,9 @@ const cancelPendingOrder = async (orderId: string) => {
                       className="relative rounded-2xl border-2 border-transparent p-4 transition-all duration-300 hover:border-[#F0E4A3]"
                       style={{ backgroundColor: "#3EA6CF" }}
                     >
-                      <span className="absolute right-3 top-3 text-lg text-white">♥</span>
+                      <span className="absolute right-3 top-3 text-lg text-white" onClick={() => removeFavorite(product.slug)}>
+                        ♥
+                      </span>
                       <Link href={`/product/${product.slug}`} className="block">
                         <div className="relative mx-auto h-[200px] w-full max-w-[130px]">
                           <Image src={product.image} alt={product.name} fill className="object-contain" />

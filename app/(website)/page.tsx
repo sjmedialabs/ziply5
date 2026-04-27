@@ -9,7 +9,8 @@ import { getCmsPageSafe } from "@/src/server/modules/cms/cms.safe"
 export default async function HomePage() {
   const page = await getCmsPageSafe("home")
 
-  const sections = page?.status === "published" ? page.sections : []
+  // Use page.sections directly if you want to see content regardless of status (e.g., during development)
+  const sections = page?.sections || []
 
   const getCmsData = (type: string) => {
     return sections.find(s => s.sectionType === type)?.contentJson

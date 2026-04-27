@@ -8,6 +8,7 @@ import { getFavoriteSlugs, toggleFavoriteSlug } from "@/lib/favorites"
 import { addToCart, getCartItems, getCartQuantity, setCartItemQuantity } from "@/lib/cart"
 import { toStorefrontProduct, type StorefrontProduct } from "@/lib/storefront-products"
 import Link from "next/link"
+import { toast } from "@/lib/toast"
 
 export default function ProductPage() {
   const params = useParams()
@@ -139,6 +140,50 @@ export default function ProductPage() {
       window.removeEventListener("storage", syncQty)
     }
   }, [activeVariant?.id, product])
+
+  // Fetch DB Favorites on mount if logged in
+  useEffect(() => {
+    const fetchDbFavorites = async () => {
+      const token = window.localStorage.getItem("ziply5_access_token");
+      const userStr = window.localStorage.getItem("ziply5_user");
+      const userId = userStr ? JSON.parse(userStr).id : null;
+      
+      if (token && userId) {
+        try {
+          const res = await fetch("/api/v1/favorites", {
+            headers: { 
+              Authorization: `Bearer ${token}`,
+              "x-user-id": userId 
+            },
+          });
+          const payload = await res.json();
+          if (payload.success && Array.isArray(payload.data)) {
+            window.localStorage.setItem("ziply5-favorites", JSON.stringify(payload.data));
+            if (product && payload.data.includes(product.slug)) setFavorite(true);
+          }
+        } catch (e) { /* silent fail */ }
+      }
+    };
+    fetchDbFavorites();
+  }, [product]);
+
+  const handleToggleFavorite = async (e: React.MouseEvent, slug: string) => {
+    e.stopPropagation();
+    const token = window.localStorage.getItem("ziply5_access_token");
+    if (!token) {
+      if (confirm("Log in to sync favorites across devices? Cancel to save locally.")) {
+        router.push("/login");
+        return;
+      }
+    }
+    const isNowFav = await toggleFavoriteSlug(slug);
+    if (isNowFav) {
+      toast.success("Added to favorites", "The product is now in your favorites.");
+    } else {
+      toast.info("Removed from favorites", "The product has been removed from your favorites.");
+    }
+    setFavorite(isNowFav);
+  }
 
   if (loading) {
     return <section className="flex min-h-[60vh] items-center justify-center bg-[#F3F3F3]">Loading...</section>
@@ -348,13 +393,21 @@ export default function ProductPage() {
                 Buy now
                 <img src="/assets/Productdetails/rightArrow.png" alt="Buy Now" className="inline-block h-4 w-4 ml-2 object-contain" />
               </button>
+
+              {(product as any).amazonLink && (
+                <a
+                  href={(product as any).amazonLink}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="font-medium font-melon tracking-wide rounded-2xl border border-[#FF9900] bg-[#FF9900] flex items-center px-6 py-2.5 text-xl leading-none text-white transition hover:bg-[#e68a00]"
+                >
+                  Buy @Amazon
+                </a>
+              )}
+
               <button
                 type="button"
-                onClick={() => {
-                  const isNowFav = toggleFavoriteSlug(product.slug)
-                  setFavorite(isNowFav)
-                  router.push("/profile?tab=favorite")
-                }}
+                onClick={(e) => handleToggleFavorite(e, product.slug)}
                 className="flex h-10 w-10 items-center justify-center rounded-md border border-[#E5E5E5] text-xl text-[#4C4C4C] hover:text-[#5A272A]"
               >
                 {favorite ? "♥" : "♡"}
