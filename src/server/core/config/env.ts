@@ -41,6 +41,8 @@ type AppEnv = {
   SMTP_PASS?: string
   SMTP_FROM?: string
   INTERNAL_JOB_SECRET?: string
+  PRISMA_FALLBACK_ENABLED?: string
+  SUPABASE_PRODUCTS_WRITE_ENABLED?: string
 }
 
 const getEnv = (key: keyof AppEnv, fallback?: string) => {
@@ -93,4 +95,6 @@ export const env: AppEnv = {
   SMTP_PASS: process.env.SMTP_PASS,
   SMTP_FROM: process.env.SMTP_FROM,
   INTERNAL_JOB_SECRET: process.env.INTERNAL_JOB_SECRET,
+  PRISMA_FALLBACK_ENABLED: process.env.PRISMA_FALLBACK_ENABLED,
+  SUPABASE_PRODUCTS_WRITE_ENABLED: process.env.SUPABASE_PRODUCTS_WRITE_ENABLED,
 }

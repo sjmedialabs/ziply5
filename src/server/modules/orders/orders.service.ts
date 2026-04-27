@@ -1,17 +1,34 @@
-import type { Prisma } from "@prisma/client"
-import { prisma } from "@/src/server/db/prisma"
-import { computeCouponDiscount } from "@/src/server/modules/coupons/coupons.service"
 import { logActivity } from "@/src/server/modules/activity/activity.service"
 import { emailTemplates, enqueueEmail } from "@/src/server/modules/notifications/email.service"
 import { markCartConverted } from "@/src/server/modules/abandoned-carts/recovery.service"
 import { cache } from "@/lib/cache/redis"
 import { cacheKeys } from "@/lib/cache/cacheKeys"
 import {
-  listOrderIdsSupabase,
+  appendOrderStatusHistorySupabase,
+  createOrderWithItemsSupabase,
+  createOrderNoteSupabase,
+  createTransactionSupabase,
+  createShipmentSupabase,
+  countCouponUsageByUserSupabase,
+  countNonCancelledOrdersByUserSupabase,
+  findOrderByPaymentRefSupabase,
+  getCodSettlementSupabase,
+  getCheckoutProductsSupabase,
+  getCouponByCodeSupabase,
+  getOrderByIdSupabaseBasic,
+  getOrderAutoApproveSettingSupabase,
+  getOrderWithOpsRelationsSupabase,
+  getUserEmailSupabase,
+  listOrderShipmentsSupabase,
+  listOrdersSupabaseBasic,
   mirrorOrderStatusSupabase,
   orderExistsByIdSupabase,
+  reserveInventorySupabase,
   setOrderCancelReasonSupabase,
   setOrderReturnReasonSupabase,
+  upsertCodSettlementSupabase,
+  markShipmentDeliveredSupabase,
+  upsertOrderFulfillmentSupabase,
 } from "@/src/lib/db/orders"
 import { logger } from "@/lib/logger"
 import { enqueueOutboxEvent } from "@/src/server/modules/integrations/outbox.service"
@@ -62,12 +79,8 @@ const persistedOrderStatus = (status: OrderLifecycleStatus): "pending" | "confir
 }
 
 export const isAutoApproveOrdersEnabled = async () => {
-  const row = await prisma.setting.findUnique({
-    where: { group_key: { group: "orders", key: "auto_approve_orders" } },
-    select: { valueJson: true },
-  })
-  if (!row) return false
-  const value = row.valueJson
+  const value = await getOrderAutoApproveSettingSupabase()
+  if (value == null) return false
   if (typeof value === "boolean") return value
   if (typeof value === "string") return value.toLowerCase() === "true"
   if (typeof value === "object" && value && "enabled" in value) {
@@ -217,124 +230,23 @@ const getInitialLifecycleStatus = (gateway: string, paymentStatus?: string | nul
   return "pending_payment"
 }
 
-const isMissingAppliedCouponColumnError = (error: unknown) => {
-  if (!error || typeof error !== "object") return false
-  const code = (error as { code?: string }).code
-  if (code !== "P2022") return false
-  const meta = (error as { meta?: { column?: string } }).meta
-  return meta?.column === "appliedCouponId"
-}
-
-const isMissingOrderItemVariantColumnError = (error: unknown) => {
-  if (!error || typeof error !== "object") return false
-  const code = (error as { code?: string }).code
-  if (code !== "P2022") return false
-  const meta = (error as { meta?: { column?: string } }).meta
-  return meta?.column === "variantId"
-}
-
-const isMissingOrderJoinDataError = (error: unknown) => {
-  if (!error || typeof error !== "object") return false
-  const code = (error as { code?: string }).code
-  if (code === "P2021" || code === "P2022") return true
-  const message = error instanceof Error ? error.message : String(error)
-  return /ReturnRequest|RefundRecord|OrderStatusHistory|Transaction|Invoice|Shipment/i.test(message)
-}
-
-const tableExists = async (tableName: string) => {
-  try {
-    const rows = (await prisma.$queryRawUnsafe(
-      `SELECT to_regclass('public."${tableName}"') AS table_name`,
-    )) as Array<{ table_name: string | null }>
-    return Boolean(rows?.[0]?.table_name)
-  } catch {
-    return false
-  }
-}
-
 const shouldAutoSyncOrders = () => process.env.ORDER_AUTO_SYNC_ENABLED === "true"
 
-const reserveInventoryForOrder = async (
-  tx: Prisma.TransactionClient,
-  lines: Array<{ productId: string; variantId?: string | null; quantity: number }>,
-) => {
-  for (const line of lines) {
-    const warehouseStock = await tx.inventoryItem.findFirst({
-      where: { productId: line.productId, available: { gte: line.quantity } },
-      orderBy: { updatedAt: "asc" },
-    })
-    if (warehouseStock) {
-      await tx.inventoryItem.update({
-        where: { id: warehouseStock.id },
-        data: {
-          available: { decrement: line.quantity },
-          reserved: { increment: line.quantity },
-        },
-      })
-      continue
-    }
-
-    if (line.variantId) {
-      const variantStock = await tx.productVariant.findFirst({
-        where: { id: line.variantId, productId: line.productId, stock: { gte: line.quantity } },
-      })
-      if (!variantStock) {
-        throw new Error("Insufficient variant inventory to reserve order")
-      }
-      await tx.productVariant.update({
-        where: { id: variantStock.id },
-        data: { stock: { decrement: line.quantity } },
-      })
-      continue
-    }
-
-    const product = await tx.product.findUnique({
-      where: { id: line.productId },
-      select: { totalStock: true },
-    })
-    if (!product || product.totalStock < line.quantity) {
-      throw new Error("Insufficient inventory to reserve order")
-    }
-    await tx.product.update({
-      where: { id: line.productId },
-      data: {
-        totalStock: { decrement: line.quantity },
-        stockStatus: product.totalStock - line.quantity > 0 ? "in_stock" : "out_of_stock",
-      },
-    })
-  }
-}
-
 export async function validatePromoCode(code: string, subtotal: number, userId?: string) {
-  const coupon = await prisma.coupon.findUnique({
-    where: { code: code.toUpperCase() }
-  });
-  
+  const coupon = await getCouponByCodeSupabase(code)
   if (!coupon || !coupon.active || (coupon.endsAt && new Date() > coupon.endsAt) ||
     (coupon.minOrderAmount && subtotal < Number(coupon.minOrderAmount))) {
     return { valid: false, error: 'Invalid, expired, or not eligible for this order amount' };
   }
 
-  // NEW USER CHECK
   if (coupon.firstOrderOnly && userId) {
-    const priorOrders = await prisma.order.count({
-      where: { userId, status: { notIn: ['cancelled', 'failed'] } }
-    });
+    const priorOrders = await countNonCancelledOrdersByUserSupabase(userId)
     if (priorOrders > 0) return { valid: false, error: 'This promo code is for first-time orders only' };
   }
 
-  // USAGE LIMIT (existing orders count as usage)
   if (coupon.usageLimitPerUser && userId) {
-    try {
-      const userUsages = await prisma.order.count({
-        where: { appliedCouponId: coupon.id, userId, status: { notIn: ['cancelled', 'failed'] } }
-      });
-      if (userUsages >= coupon.usageLimitPerUser) return { valid: false, error: 'Usage limit reached for this promo code' };
-    } catch (error) {
-      if (!isMissingAppliedCouponColumnError(error)) throw error
-      // Older databases may not have appliedCouponId yet; skip per-user coupon usage enforcement.
-      console.warn("Skipping coupon usage-per-user check because appliedCouponId column is missing.")
-    }
+    const userUsages = await countCouponUsageByUserSupabase({ userId, couponId: coupon.id })
+    if (userUsages >= coupon.usageLimitPerUser) return { valid: false, error: 'Usage limit reached for this promo code' };
   }
 
   const discount = coupon.discountType === 'percentage'
@@ -374,14 +286,14 @@ export const createOrderFromCheckout = async (input: {
   paymentId?: string
 }) => {
   if (input.paymentId?.trim()) {
-    const existing = await prisma.order.findFirst({
-      where: {
-        paymentId: input.paymentId.trim(),
-        ...(input.userId ? { userId: input.userId } : {}),
-      },
-      select: orderCheckoutSelect,
+    const existingId = await findOrderByPaymentRefSupabase({
+      paymentId: input.paymentId.trim(),
+      userId: input.userId ?? null,
     })
-    if (existing) return existing
+    if (existingId) {
+      const existing = await getOrderByIdSupabaseBasic(existingId)
+      if (existing) return existing
+    }
   }
 
   const initialLifecycleStatus = getInitialLifecycleStatus(input.gateway, input.paymentStatus)
@@ -389,20 +301,7 @@ export const createOrderFromCheckout = async (input: {
   const shipping = input.shipping ?? 0
   const slugs = [...new Set(input.items.map((i) => i.slug).filter(Boolean))] as string[]
   const productIds = [...new Set(input.items.map((i) => i.productId).filter(Boolean))] as string[]
-  const products = await prisma.product.findMany({
-    where: {
-      OR: [
-        slugs.length ? { slug: { in: slugs } } : undefined,
-        productIds.length ? { id: { in: productIds } } : undefined,
-      ].filter(Boolean) as Prisma.ProductWhereInput[],
-      status: "published",
-    },
-    include: {
-      variants: {
-        select: { id: true, price: true, stock: true, isDefault: true, weight: true, name: true, sku: true },
-      },
-    },
-  })
+  const products = await getCheckoutProductsSupabase({ slugs, productIds })
   const bySlug = Object.fromEntries(products.map((p) => [p.slug, p]))
   const byId = Object.fromEntries(products.map((p) => [p.id, p]))
 
@@ -442,134 +341,65 @@ export const createOrderFromCheckout = async (input: {
   if (input.couponCode?.trim()) {
     const validation = await validatePromoCode(input.couponCode.trim(), subtotal, input.userId ?? undefined)
     if (!validation.valid) throw new Error(validation.error)
-    discount = validation.discountAmount
-    appliedCouponId = validation.appliedCouponId
+    discount = validation.discountAmount ?? 0
+    appliedCouponId = validation.appliedCouponId ?? null
   }
 
   const total = Math.max(subtotal + shipping - discount, 0)
 
-  const hasInventoryItemTable = await tableExists("InventoryItem")
-  const hasOrderStatusHistoryTable = await tableExists("OrderStatusHistory")
-  const hasTransactionTable = await tableExists("Transaction")
+  await reserveInventorySupabase(lines.map((line) => ({ productId: line.productId, variantId: line.variantId, quantity: line.quantity })))
 
-  const createOrderTx = async (includeVariantId: boolean, includeStatusHistory: boolean) =>
-    prisma.$transaction(async (tx) => {
-      if (input.paymentId?.trim()) {
-        const paymentRef = input.paymentId.trim()
-        const lockRows = await tx.$queryRaw<Array<{ locked: boolean }>>`
-          SELECT pg_try_advisory_xact_lock(hashtext(${paymentRef})) AS locked
-        `
-        if (!lockRows[0]?.locked) {
-          const existingConcurrent = await tx.order.findFirst({
-            where: {
-              paymentId: paymentRef,
-              ...(input.userId ? { userId: input.userId } : {}),
-            },
-            select: orderCheckoutSelect,
-          })
-          if (existingConcurrent) return existingConcurrent
-          throw new Error("Another checkout request is in progress. Please retry.")
-        }
-        const existingLocked = await tx.order.findFirst({
-          where: {
-            paymentId: paymentRef,
-            ...(input.userId ? { userId: input.userId } : {}),
-          },
-          select: orderCheckoutSelect,
-        })
-        if (existingLocked) return existingLocked
-      }
-
-      if (hasInventoryItemTable) {
-        await reserveInventoryForOrder(
-          tx,
-          lines.map((line) => ({ productId: line.productId, variantId: line.variantId, quantity: line.quantity })),
-        )
-      }
-
-      const baseData = {
-        userId: input.userId ?? undefined,
-
-      // 🔥 CUSTOMER SNAPSHOT (VERY IMPORTANT)
+  const created = await createOrderWithItemsSupabase({
+    orderData: {
+      userId: input.userId ?? null,
       customerName: input.billingAddress?.fullName ?? null,
       customerPhone: input.billingAddress?.phone ?? null,
       customerAddress: input.billingAddress
         ? `${input.billingAddress.line1}, ${input.billingAddress.city}, ${input.billingAddress.state}, ${input.billingAddress.postalCode}, ${input.billingAddress.country}`
         : null,
-
-      // 🔥 PAYMENT DATA
       paymentStatus: normalizePaymentStatus(input.paymentStatus),
       paymentId: input.paymentId ?? null,
       paymentMethod: input.gateway,
-
-      createdById: undefined,
-      managedById: undefined,
       status: initialPersistedStatus,
       currency: input.currency ?? "INR",
+      appliedCouponId,
       subtotal,
       shipping,
-        total,
-        items: {
-          create: lines.map((l) => ({
-            productId: l.productId,
-            ...(includeVariantId ? { variantId: l.variantId ?? null } : {}),
-            quantity: l.quantity,
-            unitPrice: l.unitPrice,
-            lineTotal: l.lineTotal,
-          })),
-        },
-        ...(includeStatusHistory
-          ? {
-              statusHistory: {
-                create: {
-                  toStatus: initialLifecycleStatus,
-                  notes:
-                    initialLifecycleStatus === "pending"
-                      ? "Order created with COD; awaiting admin acceptance"
-                      : initialLifecycleStatus === "payment_success"
-                        ? "Order created after successful payment"
-                        : initialLifecycleStatus === "failed"
-                          ? "Order created with failed payment state"
-                          : "Order created, awaiting payment",
-                  changedById: input.userId ?? undefined,
-                },
-              },
-            }
-          : {}),
-      }
+      total,
+    },
+    itemRows: lines.map((l) => ({
+      productId: l.productId,
+      variantId: l.variantId ?? null,
+      quantity: l.quantity,
+      unitPrice: l.unitPrice,
+      lineTotal: l.lineTotal,
+    })),
+  })
+  if (!created?.id) throw new Error("Unable to create order via Supabase")
+  await appendOrderStatusHistorySupabase({
+    orderId: created.id,
+    fromStatus: initialLifecycleStatus,
+    toStatus: initialLifecycleStatus,
+    notes:
+      initialLifecycleStatus === "pending"
+        ? "Order created with COD; awaiting admin acceptance"
+        : initialLifecycleStatus === "payment_success"
+          ? "Order created after successful payment"
+          : initialLifecycleStatus === "failed"
+            ? "Order created with failed payment state"
+            : "Order created, awaiting payment",
+    changedById: input.userId ?? null,
+  }).catch(() => null)
+  const order = await getOrderByIdSupabaseBasic(created.id)
+  if (!order) throw new Error("Unable to hydrate created order via Supabase")
 
-      const created = await tx.order.create({
-        data: baseData,
-        select: orderCheckoutSelect,
-      })
-
-      return created
-    })
-
-  let order
-  try {
-    order = await createOrderTx(true, hasOrderStatusHistoryTable)
-  } catch (error) {
-    if (!isMissingOrderItemVariantColumnError(error)) throw error
-    console.warn("OrderItem.variantId column missing. Falling back to create order items without variantId.")
-    order = await createOrderTx(false, hasOrderStatusHistoryTable)
-  }
-
-  if (hasTransactionTable) {
-    try {
-      await prisma.transaction.create({
-        data: {
-          orderId: order.id,
-          gateway: input.gateway,
-          amount: total,
-          status: input.paymentStatus === "paid" ? "paid" : input.paymentStatus === "failed" ? "failed" : "pending",
-          externalId: input.paymentId ?? null,
-        },
-      })
-    } catch {
-      // Non-blocking side effect
-    }
-  }
+  await createTransactionSupabase({
+    orderId: String(order.id),
+    gateway: input.gateway,
+    amount: total,
+    status: input.paymentStatus === "paid" ? "paid" : input.paymentStatus === "failed" ? "failed" : "pending",
+    externalId: input.paymentId ?? null,
+  }).catch(() => null)
 
   await logActivity({
     actorId: input.userId ?? undefined,
@@ -580,11 +410,11 @@ export const createOrderFromCheckout = async (input: {
   })
 
 if (input.userId) {
-  const user = await prisma.user.findUnique({ where: { id: input.userId }, select: { email: true } })
-  if (user?.email) {
+  const userEmail = await getUserEmailSupabase(input.userId)
+  if (userEmail) {
     try {
       const mail = emailTemplates.orderPlaced(order.id)
-      await enqueueEmail({ to: user.email, ...mail })
+      await enqueueEmail({ to: userEmail, ...mail })
     } catch {
       // Non-blocking side effect
     }
@@ -628,77 +458,12 @@ export const listOrders = async (
     }).catch(() => null)
   }
 
-  const skip = (page - 1) * limit
-  const where: Prisma.OrderWhereInput = {}
-  if (role === "customer") {
-    where.userId = userId
+  if (process.env.SUPABASE_ORDERS_READ_ENABLED !== "true") {
+    throw new Error("SUPABASE_ORDERS_READ_ENABLED must be true")
   }
-
-  const queryOrdersPrisma = async (idScope?: string[]) => {
-    if (idScope?.length) {
-      const hydrated = await prisma.order.findMany({
-        where: { id: { in: idScope } },
-        select: orderListSelect,
-      })
-      const byId = new Map(hydrated.map((row) => [row.id, row]))
-      return idScope.map((id) => byId.get(id)).filter(Boolean) as typeof hydrated
-    }
-    return prisma.order.findMany({
-      where,
-      orderBy: { createdAt: "desc" },
-      skip,
-      take: limit,
-      select: orderListSelect,
-    })
-  }
-
-  let items: any[] = []
-  let total = 0
-  const supabaseReadsEnabled = process.env.SUPABASE_ORDERS_READ_ENABLED === "true"
-  try {
-    if (supabaseReadsEnabled) {
-      const idPayload = await listOrderIdsSupabase({ page, limit, role, userId })
-      total = idPayload.total
-      items = idPayload.ids.length ? await queryOrdersPrisma(idPayload.ids) : []
-    } else {
-      ;[items, total] = await Promise.all([queryOrdersPrisma(), prisma.order.count({ where })])
-    }
-  } catch (error) {
-    if (supabaseReadsEnabled) {
-      logger.warn("orders.list.supabase_fallback_prisma", {
-        error: error instanceof Error ? error.message : "unknown",
-      })
-    }
-    if (!isMissingOrderJoinDataError(error)) throw error
-    const [baseItems, baseTotal] = await Promise.all([
-      prisma.order.findMany({
-        where,
-        orderBy: { createdAt: "desc" },
-        skip,
-        take: limit,
-        select: {
-          ...orderListSelect,
-          transactions: false as never,
-          returnRequests: false as never,
-          refunds: false as never,
-          statusHistory: false as never,
-          shipments: false as never,
-          fulfillment: false as never,
-        },
-      }),
-      prisma.order.count({ where }),
-    ])
-    items = baseItems.map((order) => ({
-      ...order,
-      transactions: [],
-      returnRequests: [],
-      refunds: [],
-      statusHistory: [],
-      shipments: [],
-      fulfillment: null,
-    }))
-    total = baseTotal
-  }
+  const result = await listOrdersSupabaseBasic({ page, limit, role, userId })
+  const items = result.items
+  const total = result.total
 
   const hydratedItems = items.map((order) => ({
     ...order,
@@ -708,8 +473,8 @@ export const listOrders = async (
   if (shouldAutoSyncOrders()) {
     await Promise.allSettled(
       hydratedItems.map(async (order) => {
-        await autoSyncFromPayment(order.id, order.status, order.paymentStatus)
-        await syncOrderStatusFromShiprocket(order.id)
+        await autoSyncFromPayment(String(order.id), String(order.status), String(order.paymentStatus))
+        await syncOrderStatusFromShiprocket(String(order.id))
       }),
     )
   }
@@ -729,92 +494,22 @@ export const getOrderById = async (id: string) => {
     }).catch(() => null)
   }
 
-  try {
-    if (process.env.SUPABASE_ORDERS_READ_ENABLED === "true") {
-      try {
-        const exists = await orderExistsByIdSupabase(id)
-        if (!exists) return null
-      } catch (error) {
-        logger.warn("orders.by_id.supabase_check_fallback_prisma", {
-          orderId: id,
-          error: error instanceof Error ? error.message : "unknown",
-        })
-      }
-    }
-    const order = await prisma.order.findUnique({
-      where: { id },
-      select: orderDetailSelect,
-    })
-    if (!order) return null
-    const hydrated = {
-      ...order,
-      paymentStatus: deriveEffectivePaymentStatus(order),
-    }
-    if (shouldAutoSyncOrders()) {
-      await autoSyncFromPayment(hydrated.id, hydrated.status, hydrated.paymentStatus)
-      await syncOrderStatusFromShiprocket(hydrated.id)
-    }
-    const refreshed = await prisma.order.findUnique({
-      where: { id: hydrated.id },
-      select: orderDetailSelect,
-    })
-    if (!refreshed) return hydrated
-    return {
-      ...refreshed,
-      paymentStatus: deriveEffectivePaymentStatus(refreshed),
-    }
-  } catch (error) {
-    if (!isMissingOrderJoinDataError(error)) throw error
-    const base = await prisma.order.findUnique({
-      where: { id },
-      select: {
-        id: true,
-        userId: true,
-        status: true,
-        currency: true,
-        subtotal: true,
-        shipping: true,
-        total: true,
-        createdAt: true,
-        updatedAt: true,
-        createdById: true,
-        managedById: true,
-        customerAddress: true,
-        customerName: true,
-        customerPhone: true,
-        paymentId: true,
-        paymentMethod: true,
-        paymentStatus: true,
-        items: {
-          select: {
-            id: true,
-            orderId: true,
-            productId: true,
-            quantity: true,
-            unitPrice: true,
-            lineTotal: true,
-            product: true,
-          },
-        },
-      },
-    })
-    if (!base) return null
-    const fallback = {
-      ...base,
-      paymentStatus: deriveEffectivePaymentStatus(base),
-      transactions: [],
-      statusHistory: [],
-      notes: [],
-      fulfillment: null,
-      shipments: [],
-      returnRequests: [],
-      refunds: [],
-      invoice: null,
-    } as any
-    await autoSyncFromPayment(fallback.id, fallback.status, fallback.paymentStatus)
-    await syncOrderStatusFromShiprocket(fallback.id)
-    return fallback
+  if (process.env.SUPABASE_ORDERS_READ_ENABLED !== "true") {
+    throw new Error("SUPABASE_ORDERS_READ_ENABLED must be true")
   }
+  const exists = await orderExistsByIdSupabase(id)
+  if (!exists) return null
+  const order = await getOrderByIdSupabaseBasic(id)
+  if (!order) return null
+  const hydrated = {
+    ...order,
+    paymentStatus: deriveEffectivePaymentStatus(order as any),
+  }
+  if (shouldAutoSyncOrders()) {
+    await autoSyncFromPayment(String(hydrated.id), String(hydrated.status), String(hydrated.paymentStatus))
+    await syncOrderStatusFromShiprocket(String(hydrated.id))
+  }
+  return hydrated
 }
 
 export const getOrderForActor = async (id: string, role: string, userId: string) => {
@@ -833,19 +528,10 @@ export const updateOrderStatus = async (
 ) => {
   const allowed = await assertMasterValueExists("ORDER_STATUS", status)
   if (!allowed) throw new Error(`Invalid master value for ORDER_STATUS: ${status}`)
-  const existing = await prisma.order.findUnique({
-    where: { id },
-    select: {
-      id: true,
-      status: true,
-      paymentStatus: true,
-      statusHistory: { orderBy: { changedAt: "desc" }, take: 1, select: { toStatus: true } },
-    },
-  })
+  const existing = await getOrderByIdSupabaseBasic(id)
   if (!existing) throw new Error("Order not found")
-  const fromStatus = (existing.statusHistory[0]?.toStatus as OrderLifecycleStatus | undefined) ??
-    (existing.status as OrderLifecycleStatus)
-  const paymentStatus = normalizePaymentStatus(existing.paymentStatus)
+  const fromStatus = existing.status as OrderLifecycleStatus
+  const paymentStatus = normalizePaymentStatus((existing as any).paymentStatus)
   if (status === "confirmed" && paymentStatus !== "SUCCESS") {
     throw new Error("Order cannot move to CONFIRMED unless payment_status = SUCCESS")
   }
@@ -859,56 +545,34 @@ export const updateOrderStatus = async (
     throw new Error(`Invalid status transition: ${fromStatus} -> ${status}`)
   }
 
-  const order = await prisma.$transaction(async (tx) => {
-    const updated = await tx.order.update({
-      where: { id },
-      data: {
-        status: persistedOrderStatus(status),
-        statusHistory: {
-          create: {
-            fromStatus,
-            toStatus: status,
-            reasonCode: options?.reasonCode ?? null,
-            notes: options?.note ?? null,
-            changedById: actorId ?? undefined,
-          },
-        },
-      },
-      include: {
-        items: { include: { product: true } },
-        transactions: true,
-        statusHistory: { orderBy: { changedAt: "desc" } },
-        notes: { orderBy: { createdAt: "desc" } },
-      },
-    })
-
-    const fulfillmentStatusMap: Partial<Record<OrderLifecycleStatus, string>> = {
-      pending: "pending",
-      confirmed: "confirmed",
-      packed: "packed",
-      shipped: "shipped",
-      delivered: "delivered",
-      returned: "returned",
-      cancelled: "cancelled",
-    }
-    await tx.orderFulfillment.upsert({
-      where: { orderId: id },
-      create: {
-        orderId: id,
-        fulfillmentStatus: fulfillmentStatusMap[status] ?? status,
-        packedAt: status === "packed" ? new Date() : null,
-        shippedAt: status === "shipped" ? new Date() : null,
-        deliveredAt: status === "delivered" ? new Date() : null,
-      },
-      update: {
-        fulfillmentStatus: fulfillmentStatusMap[status] ?? status,
-        packedAt: status === "packed" ? new Date() : undefined,
-        shippedAt: status === "shipped" ? new Date() : undefined,
-        deliveredAt: status === "delivered" ? new Date() : undefined,
-      },
-    })
-    return updated
+  const statusApplied = await mirrorOrderStatusSupabase(id, persistedOrderStatus(status))
+  if (!statusApplied) throw new Error("Supabase order status update failed")
+  await appendOrderStatusHistorySupabase({
+    orderId: id,
+    fromStatus,
+    toStatus: status,
+    reasonCode: options?.reasonCode ?? null,
+    notes: options?.note ?? null,
+    changedById: actorId ?? null,
   })
+  const fulfillmentStatusMap: Partial<Record<OrderLifecycleStatus, string>> = {
+    pending: "pending",
+    confirmed: "confirmed",
+    packed: "packed",
+    shipped: "shipped",
+    delivered: "delivered",
+    returned: "returned",
+    cancelled: "cancelled",
+  }
+  await upsertOrderFulfillmentSupabase({
+    orderId: id,
+    fulfillmentStatus: fulfillmentStatusMap[status] ?? status,
+    packedAt: status === "packed" ? new Date() : undefined,
+    shippedAt: status === "shipped" ? new Date() : undefined,
+    deliveredAt: status === "delivered" ? new Date() : undefined,
+  })
+  const order = await getOrderByIdSupabaseBasic(id)
+  if (!order) throw new Error("Order not found after status update")
 
   await logActivity({
     actorId: actorId ?? undefined,
@@ -918,18 +582,6 @@ export const updateOrderStatus = async (
     metadata: { status },
   })
 
-  if (order.userId) {
-    const user = await prisma.user.findUnique({ where: { id: order.userId }, select: { email: true } })
-    if (user?.email) {
-      try {
-        const mail = emailTemplates.orderStatus(id, status)
-        await enqueueEmail({ to: user.email, ...mail })
-      } catch {
-        // Non-blocking side effect
-      }
-    }
-  }
-
   await enqueueOutboxEvent({
     eventType: "order.status.updated",
     aggregateType: "order",
@@ -937,47 +589,29 @@ export const updateOrderStatus = async (
     payload: { orderId: id, fromStatus, toStatus: status, reasonCode: options?.reasonCode ?? null },
   }).catch(() => null)
 
-  if (process.env.SUPABASE_ORDERS_WRITE_ENABLED === "true") {
-    mirrorOrderStatusSupabase(id, persistedOrderStatus(status)).catch((error) => {
-      logger.warn("orders.status.mirror_supabase_failed", {
-        orderId: id,
-        status,
-        error: error instanceof Error ? error.message : "unknown",
-      })
-    })
+  const maybeEmail = (order as any).user?.email
+  if (maybeEmail) {
+    const mail = emailTemplates.orderStatus(id, status)
+    await enqueueEmail({ to: maybeEmail, ...mail }).catch(() => null)
   }
 
   return order
 }
 
 export const setOrderCancelReason = async (orderId: string, reason: string) => {
-  if (process.env.SUPABASE_ORDERS_WRITE_ENABLED === "true") {
-    try {
-      const mirrored = await setOrderCancelReasonSupabase(orderId, reason)
-      if (mirrored) return
-    } catch (error) {
-      logger.warn("orders.cancel_reason.supabase_fallback_prisma", {
-        orderId,
-        error: error instanceof Error ? error.message : "unknown",
-      })
-    }
+  if (process.env.SUPABASE_ORDERS_WRITE_ENABLED !== "true") {
+    throw new Error("SUPABASE_ORDERS_WRITE_ENABLED must be true")
   }
-  await prisma.$executeRawUnsafe('UPDATE "Order" SET "cancelReason" = $1 WHERE id = $2', reason, orderId)
+  const updated = await setOrderCancelReasonSupabase(orderId, reason)
+  if (!updated) throw new Error("Supabase order cancel reason update failed")
 }
 
 export const setOrderReturnReason = async (orderId: string, reason: string) => {
-  if (process.env.SUPABASE_ORDERS_WRITE_ENABLED === "true") {
-    try {
-      const mirrored = await setOrderReturnReasonSupabase(orderId, reason)
-      if (mirrored) return
-    } catch (error) {
-      logger.warn("orders.return_reason.supabase_fallback_prisma", {
-        orderId,
-        error: error instanceof Error ? error.message : "unknown",
-      })
-    }
+  if (process.env.SUPABASE_ORDERS_WRITE_ENABLED !== "true") {
+    throw new Error("SUPABASE_ORDERS_WRITE_ENABLED must be true")
   }
-  await prisma.$executeRawUnsafe('UPDATE "Order" SET "returnReason" = $1 WHERE id = $2', reason, orderId)
+  const updated = await setOrderReturnReasonSupabase(orderId, reason)
+  if (!updated) throw new Error("Supabase order return reason update failed")
 }
 
 export const addOrderNote = async (input: {
@@ -986,16 +620,20 @@ export const addOrderNote = async (input: {
   actorId: string
   isInternal?: boolean
 }) => {
-  const order = await prisma.order.findUnique({ where: { id: input.orderId }, select: { id: true } })
+  const order = await getOrderByIdSupabaseBasic(input.orderId)
   if (!order) throw new Error("Order not found")
-  const created = await prisma.orderNote.create({
-    data: {
-      orderId: input.orderId,
-      note: input.note.trim(),
-      isInternal: input.isInternal ?? true,
-      createdById: input.actorId,
-    },
+  const cleanedNote = input.note.trim()
+  const internal = input.isInternal ?? true
+  if (process.env.SUPABASE_ORDERS_WRITE_ENABLED !== "true") {
+    throw new Error("SUPABASE_ORDERS_WRITE_ENABLED must be true")
+  }
+  const created = await createOrderNoteSupabase({
+    orderId: input.orderId,
+    note: cleanedNote,
+    actorId: input.actorId,
+    isInternal: internal,
   })
+  if (!created) throw new Error("Supabase order note create failed")
   await logActivity({
     actorId: input.actorId,
     action: "order.note.create",
@@ -1007,16 +645,9 @@ export const addOrderNote = async (input: {
 }
 
 export const listOrderShipments = async (orderId: string) => {
-  const order = await prisma.order.findUnique({
-    where: { id: orderId },
-    select: { id: true },
-  })
+  const order = await getOrderByIdSupabaseBasic(orderId)
   if (!order) throw new Error("Order not found")
-  return prisma.shipment.findMany({
-    where: { orderId },
-    orderBy: { createdAt: "desc" },
-    include: { items: true },
-  })
+  return listOrderShipmentsSupabase(orderId)
 }
 
 export const createOrderShipment = async (input: {
@@ -1027,13 +658,10 @@ export const createOrderShipment = async (input: {
   trackingNo?: string
   itemAllocations: Array<{ orderItemId: string; quantity: number }>
 }) => {
-  const order = await prisma.order.findUnique({
-    where: { id: input.orderId },
-    include: { items: true, statusHistory: { orderBy: { changedAt: "desc" }, take: 1 } },
-  })
+  const order = await getOrderWithOpsRelationsSupabase(input.orderId)
   if (!order) throw new Error("Order not found")
   const paymentStatus = normalizePaymentStatus(order.paymentStatus)
-  const fromStatus = (order.statusHistory?.[0]?.toStatus as OrderLifecycleStatus | undefined) ??
+  const fromStatus = ((order.statusHistory?.[0] as any)?.toStatus as OrderLifecycleStatus | undefined) ??
     (order.status as OrderLifecycleStatus)
   if (["cancelled", "returned", "delivered"].includes(fromStatus)) {
     throw new Error("Shipment cannot be created for cancelled/returned/delivered order")
@@ -1048,58 +676,55 @@ export const createOrderShipment = async (input: {
   for (const allocation of input.itemAllocations) {
     const item = itemById.get(allocation.orderItemId)
     if (!item) throw new Error(`Invalid order item: ${allocation.orderItemId}`)
-    if (allocation.quantity > item.quantity) {
+    if (allocation.quantity > Number((item as any).quantity ?? 0)) {
       throw new Error(`Allocated quantity exceeds ordered quantity for ${allocation.orderItemId}`)
     }
   }
 
-  const shipment = await prisma.$transaction(async (tx) => {
-    const created = await tx.shipment.create({
-      data: {
+  const useSupabaseWrites = process.env.SUPABASE_ORDERS_WRITE_ENABLED === "true"
+  let shipment: any = null
+  if (useSupabaseWrites) {
+    try {
+      const now = new Date()
+      const supabaseShipment = await createShipmentSupabase({
         orderId: input.orderId,
         shipmentNo: input.shipmentNo?.trim() || null,
         carrier: input.carrier.trim(),
         trackingNo: input.trackingNo?.trim() || null,
-        shipmentStatus: "shipped",
-        shippedAt: new Date(),
-        items: {
-          create: input.itemAllocations.map((item) => ({
-            orderItemId: item.orderItemId,
-            quantity: item.quantity,
-          })),
-        },
-      },
-      include: { items: true },
-    })
-
-    await tx.order.update({
-      where: { id: input.orderId },
-      data: {
-        status: persistedOrderStatus("shipped"),
-        statusHistory: {
-          create: {
-            fromStatus,
-            toStatus: "shipped",
-            notes: `Shipment created via ${input.carrier.trim()}`,
-            changedById: input.actorId,
-          },
-        },
-      },
-    })
-    await tx.orderFulfillment.upsert({
-      where: { orderId: input.orderId },
-      create: {
+        itemAllocations: input.itemAllocations,
+      })
+      if (!supabaseShipment) throw new Error("supabase_shipment_create_failed")
+      const statusApplied = await appendOrderStatusHistorySupabase({
+        orderId: input.orderId,
+        fromStatus,
+        toStatus: persistedOrderStatus("shipped"),
+        notes: `Shipment created via ${input.carrier.trim()}`,
+        changedById: input.actorId,
+      })
+      if (!statusApplied) throw new Error("supabase_status_history_write_failed")
+      const fulfillmentApplied = await upsertOrderFulfillmentSupabase({
         orderId: input.orderId,
         fulfillmentStatus: "shipped",
-        shippedAt: new Date(),
-      },
-      update: {
-        fulfillmentStatus: "shipped",
-        shippedAt: new Date(),
-      },
-    })
-    return created
-  })
+        shippedAt: now,
+      })
+      if (!fulfillmentApplied) throw new Error("supabase_fulfillment_write_failed")
+      shipment = {
+        id: supabaseShipment.id,
+        carrier: supabaseShipment.carrier,
+        trackingNo: supabaseShipment.trackingNo,
+        items: input.itemAllocations.map((item) => ({
+          orderItemId: item.orderItemId,
+          quantity: item.quantity,
+        })),
+      }
+    } catch (error) {
+      logger.warn("orders.shipment.supabase_fallback_prisma", {
+        orderId: input.orderId,
+        error: error instanceof Error ? error.message : "unknown",
+      })
+    }
+  }
+  if (!shipment) throw new Error("Supabase shipment create failed")
 
   await logActivity({
     actorId: input.actorId,
@@ -1119,9 +744,9 @@ export const createOrderShipment = async (input: {
 }
 
 export const getCodSettlement = async (orderId: string) => {
-  const order = await prisma.order.findUnique({ where: { id: orderId }, select: { id: true } })
+  const order = await getOrderByIdSupabaseBasic(orderId)
   if (!order) throw new Error("Order not found")
-  return prisma.codSettlement.findUnique({ where: { orderId } })
+  return getCodSettlementSupabase(orderId)
 }
 
 export const reconcileCodSettlement = async (input: {
@@ -1132,10 +757,7 @@ export const reconcileCodSettlement = async (input: {
   status?: "pending" | "partial" | "settled" | "failed"
   notes?: string
 }) => {
-  const order = await prisma.order.findUnique({
-    where: { id: input.orderId },
-    select: { id: true, total: true },
-  })
+  const order = await getOrderByIdSupabaseBasic(input.orderId)
   if (!order) throw new Error("Order not found")
 
   const expectedAmount = Number(order.total)
@@ -1145,30 +767,22 @@ export const reconcileCodSettlement = async (input: {
     input.status ??
     (settledAmount >= expectedAmount ? "settled" : settledAmount > 0 ? "partial" : "pending")
 
-  const settlement = await prisma.codSettlement.upsert({
-    where: { orderId: input.orderId },
-    create: {
-      orderId: input.orderId,
-      expectedAmount,
-      collectedAmount: input.collectedAmount,
-      settledAmount,
-      varianceAmount,
-      status,
-      notes: input.notes?.trim() || null,
-      reconciledById: input.actorId,
-      reconciledAt: new Date(),
-    },
-    update: {
-      expectedAmount,
-      collectedAmount: input.collectedAmount,
-      settledAmount,
-      varianceAmount,
-      status,
-      notes: input.notes?.trim() || null,
-      reconciledById: input.actorId,
-      reconciledAt: new Date(),
-    },
+  const reconciledAt = new Date()
+  const normalizedNotes = input.notes?.trim() || null
+  const useSupabaseWrites = process.env.SUPABASE_ORDERS_WRITE_ENABLED === "true"
+  if (!useSupabaseWrites) throw new Error("SUPABASE_ORDERS_WRITE_ENABLED must be true")
+  const settlement = await upsertCodSettlementSupabase({
+    orderId: input.orderId,
+    expectedAmount,
+    collectedAmount: input.collectedAmount,
+    settledAmount,
+    varianceAmount,
+    status,
+    notes: normalizedNotes,
+    reconciledById: input.actorId,
+    reconciledAt,
   })
+  if (!settlement) throw new Error("Supabase COD settlement update failed")
 
   await logActivity({
     actorId: input.actorId,
@@ -1199,10 +813,7 @@ export const confirmOrderDelivery = async (input: {
   shipmentId?: string
   note?: string
 }) => {
-  const order = await prisma.order.findUnique({
-    where: { id: input.orderId },
-    include: { shipments: { orderBy: { createdAt: "desc" } }, statusHistory: { orderBy: { changedAt: "desc" }, take: 1 } },
-  })
+  const order = await getOrderWithOpsRelationsSupabase(input.orderId)
   if (!order) throw new Error("Order not found")
 
   const fromStatus = (order.statusHistory[0]?.toStatus as OrderLifecycleStatus | undefined) ??
@@ -1214,40 +825,39 @@ export const confirmOrderDelivery = async (input: {
   const shipmentToUpdate =
     input.shipmentId ?? order.shipments.find((s) => s.shipmentStatus !== "delivered")?.id ?? order.shipments[0]?.id
 
-  await prisma.$transaction(async (tx) => {
-    if (shipmentToUpdate) {
-      await tx.shipment.update({
-        where: { id: shipmentToUpdate },
-        data: { shipmentStatus: "delivered", deliveredAt: new Date() },
+  const useSupabaseWrites = process.env.SUPABASE_ORDERS_WRITE_ENABLED === "true"
+  let persisted = false
+  if (useSupabaseWrites) {
+    try {
+      const now = new Date()
+      if (shipmentToUpdate) {
+        const delivered = await markShipmentDeliveredSupabase(shipmentToUpdate)
+        if (!delivered) throw new Error("supabase_shipment_delivery_write_failed")
+      }
+      const statusApplied = await appendOrderStatusHistorySupabase({
+        orderId: input.orderId,
+        fromStatus,
+        toStatus: persistedOrderStatus("delivered"),
+        notes: input.note?.trim() || "Delivered confirmation",
+        changedById: input.actorId,
       })
-    }
-    await tx.order.update({
-      where: { id: input.orderId },
-      data: {
-        status: persistedOrderStatus("delivered"),
-        statusHistory: {
-          create: {
-            fromStatus,
-            toStatus: "delivered",
-            notes: input.note?.trim() || "Delivered confirmation",
-            changedById: input.actorId,
-          },
-        },
-      },
-    })
-    await tx.orderFulfillment.upsert({
-      where: { orderId: input.orderId },
-      create: {
+      if (!statusApplied) throw new Error("supabase_status_history_write_failed")
+      const fulfillmentApplied = await upsertOrderFulfillmentSupabase({
         orderId: input.orderId,
         fulfillmentStatus: "delivered",
-        deliveredAt: new Date(),
-      },
-      update: {
-        fulfillmentStatus: "delivered",
-        deliveredAt: new Date(),
-      },
-    })
-  })
+        deliveredAt: now,
+      })
+      if (!fulfillmentApplied) throw new Error("supabase_fulfillment_write_failed")
+      persisted = true
+    } catch (error) {
+      logger.warn("orders.delivery.supabase_fallback_prisma", {
+        orderId: input.orderId,
+        shipmentId: shipmentToUpdate ?? null,
+        error: error instanceof Error ? error.message : "unknown",
+      })
+    }
+  }
+  if (!persisted) throw new Error("Supabase delivery update failed")
 
   await logActivity({
     actorId: input.actorId,

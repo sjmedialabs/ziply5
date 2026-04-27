@@ -55,7 +55,7 @@ export async function POST(request: NextRequest, ctx: { params: Promise<{ id: st
     if (parsed.data.action === "cancel_request") {
       const paymentStatus = normalizePaymentStatus(order.paymentStatus)
       if (paymentStatus !== "SUCCESS") return fail("Only paid orders can be cancelled", 422)
-      if (!["confirmed", "packed"].includes(order.status)) return fail("Cannot cancel after shipment", 422)
+      if (!["confirmed", "packed"].includes(String(order.status))) return fail("Cannot cancel after shipment", 422)
       const updated = await updateOrderStatus(order.id, "cancel_requested", auth.user.sub, {
         reasonCode: "cancel_requested",
         note: parsed.data.reason ?? "Customer requested cancellation",
@@ -74,8 +74,8 @@ export async function POST(request: NextRequest, ctx: { params: Promise<{ id: st
       return ok({ id: order.id }, "Pending order cancelled")
     }
     if (parsed.data.action === "return_request") {
-      if (order.status !== "delivered") return fail("Return is allowed only for delivered orders", 422)
-      const deliveredAt = order.statusHistory.find((entry) => entry.toStatus === "delivered")?.changedAt ?? order.updatedAt
+      if (String(order.status) !== "delivered") return fail("Return is allowed only for delivered orders", 422)
+      const deliveredAt = order.statusHistory.find((entry) => entry.toStatus === "delivered")?.changedAt ?? order.updatedAt ?? new Date()
       const returnWindowDays = Number(env.RETURN_WINDOW_DAYS ?? "7")
       const elapsedDays = (Date.now() - new Date(deliveredAt).getTime()) / (1000 * 60 * 60 * 24)
       if (elapsedDays > returnWindowDays) {
@@ -95,12 +95,13 @@ export async function POST(request: NextRequest, ctx: { params: Promise<{ id: st
 
     if (parsed.data.action === "approve_order") {
       const stockCheck = order.items.every((item) => {
-        if (item.product?.type === "variant") {
-          const variants = item.product?.variants ?? []
-          const variant = variants.find((v) => v.id === (item as { variantId?: string | null }).variantId)
-          return Number(variant?.stock ?? 0) >= Number(item.quantity ?? 0)
+        const row = item as any
+        if (row.product?.type === "variant") {
+          const variants = row.product?.variants ?? []
+          const variant = variants.find((v: any) => v.id === row.variantId)
+          return Number(variant?.stock ?? 0) >= Number(row.quantity ?? 0)
         }
-        return Number(item.product?.totalStock ?? 0) >= Number(item.quantity ?? 0)
+        return Number(row.product?.totalStock ?? 0) >= Number(row.quantity ?? 0)
       })
       const serviceableCheck = Boolean(order.customerAddress?.trim())
       const fraudCheckPassed = true
@@ -174,7 +175,7 @@ export async function POST(request: NextRequest, ctx: { params: Promise<{ id: st
     const paymentStatus = normalizePaymentStatus(order.paymentStatus)
     if (paymentStatus !== "SUCCESS") return fail("Refund allowed only when payment_status = SUCCESS", 422)
     const latestRefund = order.refunds?.[0] ?? null
-    let refund = latestRefund ?? null
+    let refund: any = latestRefund ?? null
 
     if (!refund || ["completed", "initiated"].includes(refund.status)) {
       const amount = parsed.data.amount ?? Number(order.total)

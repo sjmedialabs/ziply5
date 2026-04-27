@@ -118,12 +118,28 @@ export const listUserIdsSupabase = async (input: { page?: number; limit?: number
   const offset = (page - 1) * limit
 
   for (const table of USER_TABLES) {
-    const { data, error, count } = await client
-      .from(table)
-      .select("id", { count: "exact" })
-      .order("createdAt", { ascending: false })
-      .range(offset, offset + limit - 1)
-    if (!error) {
+    const attempts = [
+      () =>
+        client
+          .from(table)
+          .select("id", { count: "exact" })
+          .order("createdAt", { ascending: false })
+          .range(offset, offset + limit - 1),
+      () =>
+        client
+          .from(table)
+          .select("id", { count: "exact" })
+          .order("created_at", { ascending: false })
+          .range(offset, offset + limit - 1),
+      () =>
+        client
+          .from(table)
+          .select("id", { count: "exact" })
+          .range(offset, offset + limit - 1),
+    ]
+    for (const run of attempts) {
+      const { data, error, count } = await run()
+      if (error) continue
       const ids = (data ?? []).map((row) => String((row as any).id ?? "")).filter(Boolean)
       return { ids, total: count ?? 0, page, limit }
     }
@@ -230,5 +246,90 @@ export const getUserByIdSupabase = async (userId: string) => {
     }
   }
   return null
+}
+
+type UserSummary = {
+  id: string
+  email: string | null
+  name: string | null
+  status: "active" | "suspended" | "deleted"
+  createdAt?: string
+  roles: Array<{ role: { key: string; name: string } }>
+}
+
+const listRolesByUserId = async (userId: string): Promise<Array<{ role: { key: string; name: string } }>> => {
+  const client = getSupabaseAdmin()
+  let roleIds: string[] = []
+  for (const table of USER_ROLE_TABLES) {
+    const attempts = [
+      () => client.from(table).select("roleId").eq("userId", userId),
+      () => client.from(table).select("role_id").eq("user_id", userId),
+    ]
+    for (const run of attempts) {
+      const { data, error } = await run()
+      if (error) continue
+      roleIds = (data ?? [])
+        .map((row: any) => String(row.roleId ?? row.role_id ?? "").trim())
+        .filter(Boolean)
+      break
+    }
+    if (roleIds.length) break
+  }
+  if (!roleIds.length) return []
+
+  const roles: Array<{ key: string; name: string }> = []
+  for (const table of ROLE_TABLES) {
+    const attempts = [
+      () => client.from(table).select("id,key,name").in("id", roleIds),
+      () => client.from(table).select("id,key,name").in("id", roleIds),
+    ]
+    for (const run of attempts) {
+      const { data, error } = await run()
+      if (error) continue
+      for (const row of data ?? []) {
+        const key = String((row as any).key ?? "").trim()
+        if (!key) continue
+        roles.push({ key, name: String((row as any).name ?? key).trim() || key })
+      }
+      break
+    }
+    if (roles.length) break
+  }
+  return roles.map((role) => ({ role }))
+}
+
+export const listUsersSupabase = async (input: { page?: number; limit?: number }) => {
+  const idPayload = await listUserIdsSupabase(input)
+  const users: UserSummary[] = []
+  for (const userId of idPayload.ids) {
+    const row = await getUserByIdSupabase(userId)
+    if (!row) continue
+    users.push({
+      id: String((row as any).id),
+      email: ((row as any).email ?? null) as string | null,
+      name: ((row as any).name ?? null) as string | null,
+      status: (((row as any).status ?? "active") as UserSummary["status"]),
+      createdAt: (row as any).createdAt as string | undefined,
+      roles: await listRolesByUserId(userId),
+    })
+  }
+  return {
+    items: users,
+    total: idPayload.total,
+    page: idPayload.page,
+    limit: idPayload.limit,
+  }
+}
+
+export const getUserByIdWithRolesSupabase = async (userId: string) => {
+  const row = await getUserByIdSupabase(userId)
+  if (!row) return null
+  return {
+    id: String((row as any).id),
+    email: ((row as any).email ?? null) as string | null,
+    name: ((row as any).name ?? null) as string | null,
+    status: (((row as any).status ?? "active") as "active" | "suspended" | "deleted"),
+    roles: await listRolesByUserId(userId),
+  }
 }
 
