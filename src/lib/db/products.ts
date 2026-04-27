@@ -1,4 +1,5 @@
 import { getSupabaseAdmin } from "@/src/lib/supabase/admin"
+import { logger } from "@/lib/logger"
 
 type ProductRow = Record<string, unknown>
 
@@ -76,15 +77,21 @@ const insertFirst = async (tables: string[], payloads: Array<Record<string, unkn
   return null
 }
 
-const updateFirst = async (tables: string[], payloads: Array<Record<string, unknown>>, id: string) => {
+const updateFirst = async (
+  tables: string[],
+  payloads: Array<Record<string, unknown>>,
+  id: string,
+): Promise<{ ok: boolean; errors: string[] }> => {
   const client = getSupabaseAdmin()
+  const errors: string[] = []
   for (const table of tables) {
     for (const payload of payloads) {
       const { data, error } = await client.from(table).update(payload).eq("id", id).select("id").maybeSingle()
-      if (!error && data) return true
+      if (!error && data) return { ok: true, errors }
+      if (error) errors.push(`${table}: ${error.message}`)
     }
   }
-  return false
+  return { ok: false, errors }
 }
 
 const deleteByProductId = async (tables: string[], productId: string) => {
@@ -260,7 +267,15 @@ export const updateProductSupabase = async (input: {
     ],
     input.productId,
   )
-  if (!updated) throw new Error("Unable to update base product via Supabase")
+  if (!updated.ok) {
+    logger.error("Supabase product base update failed", {
+      productId: input.productId,
+      errors: updated.errors,
+      fields: Object.keys(input.baseUpdate),
+    })
+    const detail = updated.errors.length ? ` (${updated.errors.slice(0, 3).join(" | ")})` : ""
+    throw new Error(`Unable to update base product via Supabase${detail}`)
+  }
 
   if (input.categoryId !== undefined) {
     await deleteByProductId(PRODUCT_CATEGORY_TABLES, input.productId)
