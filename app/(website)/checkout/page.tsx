@@ -406,11 +406,11 @@ useEffect(() => {
   return (
     <div>
       {/* Banner */}
-      <BannerSection
+   {/*   <BannerSection
         title="Check out"
         subtitle="Some of the queries you want to know about us."
         gradient="linear-gradient(to right, #EFD7EF 0%, #F5F9FC 30%, #F8EAE1 60%, #EAF8F9 100%)"
-      />
+      />*/}
 
       {/* Main Section */}
       <section className="py-16 bg-[#F5F1E6]">

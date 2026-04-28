@@ -294,7 +294,7 @@ export default function PaymentPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-[#F5F1E6] p-4">
+    <div className="py-24 flex items-center justify-center bg-[#F5F1E6] p-4">
       <div className="w-full max-w-xl bg-white rounded-3xl p-6 shadow-sm border">
         <h2 className="font-melon text-lg mb-6">Billing Address</h2>
 
@@ -376,7 +376,7 @@ export default function PaymentPage() {
         <div className="mb-5 rounded-xl border px-4 py-3 text-sm text-[#646464]">
           Payable amount: <span className="font-semibold text-[#7B3010]">Rs. {total.toFixed(2)}</span>
         </div>
-
+        
         {error && <p className="mb-3 text-sm text-red-600">{error}</p>}
         {statusText && !error && <p className="mb-3 text-sm text-[#646464]">{statusText}</p>}
 

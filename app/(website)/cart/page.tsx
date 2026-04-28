@@ -43,11 +43,11 @@ export default function CartPage() {
 
   return (
     <div>
-      <BannerSection
+      {/* <BannerSection
         title="Shopping Cart"
         subtitle="Some of the queries you want to know about us."
         gradient="linear-gradient(to right, #EFD7EF 0%, #F5F9FC 30%, #F8EAE1 60%, #EAF8F9 100%)"
-      />
+      /> */}
 
       <section className="bg-[#F5F1E6] py-16">
         <div className="mx-auto grid max-w-7xl gap-10 px-4 lg:grid-cols-3">
