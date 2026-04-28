@@ -6,6 +6,7 @@ import { isAutoApproveOrdersEnabled, updateOrderStatus } from "@/src/server/modu
 import {
   completePendingRefundRecordsSupabase,
   markOrderPaymentSuccessSupabase,
+  mirrorOrderStatusSupabase,
   setOrderRefundAndPaymentStatusSupabase,
   setTransactionRefundIdSupabase,
   upsertPendingTransactionSupabase,
@@ -296,14 +297,17 @@ export const verifyRazorpayPayment = async (input: {
     reasonCode: "payment_success",
     note: "Razorpay payment signature verified",
   }).catch(() => null)
-  await updateOrderStatus(input.orderId, "admin_approval_pending", undefined, {
+  await updateOrderStatus(input.orderId, "confirmed", undefined, {
     reasonCode: "payment_success",
-    note: "Awaiting admin approval",
+    note: "Order confirmed after successful payment",
   }).catch(() => null)
-  if (await isAutoApproveOrdersEnabled()) {
-    await updateOrderStatus(input.orderId, "confirmed", undefined, {
-      reasonCode: "auto_approve_orders",
-      note: "Order auto-approved by setting",
+  if (supabaseWritesEnabled) {
+    await mirrorOrderStatusSupabase(input.orderId, "confirmed").catch(() => null)
+  }
+  if (!supabaseWritesEnabled || prismaFallbackEnabled) {
+    await prisma.order.update({
+      where: { id: input.orderId },
+      data: { status: "confirmed" },
     }).catch(() => null)
   }
 

@@ -14,12 +14,21 @@ export const getSupabaseAdmin = () => {
   if (client) return client
   const url = getSupabaseUrl()
   const key = getServiceRoleKey()
-  if (!url || !key) {
+  if (!url || url.trim() === "/" || !key) {
     throw new Error(
       "Supabase admin env missing (SUPABASE_URL/NEXT_PUBLIC_SUPABASE_URL + SUPABASE_SECRET_KEY or SUPABASE_SERVICE_ROLE_KEY)",
     )
   }
-  client = createClient(url, key, {
+  let parsed: URL
+  try {
+    parsed = new URL(url)
+  } catch {
+    throw new Error("Invalid Supabase URL in env (SUPABASE_URL/NEXT_PUBLIC_SUPABASE_URL)")
+  }
+  if (!/^https?:$/.test(parsed.protocol)) {
+    throw new Error("Invalid Supabase URL protocol; expected http/https")
+  }
+  client = createClient(parsed.toString(), key, {
     auth: { persistSession: false, autoRefreshToken: false },
   })
   return client

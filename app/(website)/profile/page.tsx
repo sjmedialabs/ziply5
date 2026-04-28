@@ -18,6 +18,9 @@ type ApiOrderRow = {
   id: string
   status: string
   paymentStatus?: string | null
+  customerName?: string | null
+  customerPhone?: string | null
+  customerAddress?: string | null
   refunds?: Array<{ status: string }>
   total: string | number
   createdAt: string
@@ -657,72 +660,85 @@ const cancelPendingOrder = async (orderId: string) => {
                 orders.length === 0 && <p className="text-gray-500">No orders yet.</p>}
               {authSnapshot.token && authSnapshot.role === "customer" && orders.map((order) => {
                 const paymentStatus = order.paymentStatus ?? (order.transactions?.some((tx) => tx.status === "paid") ? "paid" : "pending")
+                const previewItems = order.items.slice(0, 2)
+                const moreItems = Math.max(order.items.length - 2, 0)
                 return (<div
                   key={order.id}
-                  className="rounded-xl border border-gray-200 bg-white/80 p-4 shadow-sm"
+                  className="rounded-2xl border border-[#E8DCC8] bg-white p-4 shadow-sm"
                 >
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <span className="font-semibold text-[#5A272A]">Order {order.id.slice(0, 8)}…</span>
-                    <span className="text-xs uppercase text-gray-500">{order.status}</span>
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="space-y-1">
+                      <p className="text-[11px] uppercase tracking-[0.15em] text-[#8A6A52]">Order {order.id.slice(0, 8)}</p>
+                      <p className="text-xs text-[#646464]">
+                        Order created on {new Date(order.createdAt).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })}
+                      </p>
+                    </div>
+                    <span className="rounded-full bg-[#FDF0E6] px-2.5 py-1 text-[10px] font-semibold uppercase text-[#7B3010]">
+                      {order.status}
+                    </span>
                   </div>
-                  <p className="mt-1 text-xs text-gray-500">
-                    Payment: {order.paymentStatus ?? (order.transactions?.some((tx) => tx.status === "paid") ? "paid" : "pending")}
-                  </p>
-                  <p className="mt-1 text-xs text-gray-500">
-                    {new Date(order.createdAt).toLocaleString()}
-                  </p>
-                  <ul className="mt-2 space-y-1 text-gray-600">
-                    {order.items.map((line, idx) => (
-                      <li key={`${order.id}-${idx}`}>
-                        {line.product.name} × {line.quantity}
-                      </li>
+
+                  <div className="mt-3 space-y-1 text-sm text-[#2A1810]">
+                    {previewItems.map((line, idx) => (
+                      <p key={`${order.id}-${idx}`}>{line.product.name}</p>
                     ))}
-                  </ul>
-                  <p className="mt-2 font-semibold text-[#5A272A]">
-                    Total: Rs.{Number(order.total).toFixed(2)}
-                  </p>
-                  {(<p className="mt-1 text-xs text-[#646464]">
-                    Refund status: {(order.refunds?.[0]?.status ?? "pending").toUpperCase()}
-                  </p>)}
-                  <div className="flex gap-1">
-                  {paymentStatus.toLowerCase() === "pending" && order.status.toLowerCase() === "pending" && (
-                <button className="mt-2 rounded-md border border-[#E8DCC8] bg-white px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-[#4A1D1F]" type="button"  onClick={() => void runOrderAction(order.id, "cancel_pending")}>
-                     Cancel Order
-                    </button>
-                  )}
-                  {paymentStatus.toLowerCase() === "pending" && (
-                    <button   className="mt-2 rounded-md border border-[#E8DCC8] bg-white px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-[#4A1D1F]" type="button" >
-                      Pay Now
-                    </button>
-                  )}
-                  {(order.paymentStatus ?? "").toUpperCase() === "SUCCESS" &&
-                    ["confirmed", "packed"].includes(order.status.toLowerCase()) && (
-                      <button
-                        type="button"
-                        disabled={orderActionBusy === `${order.id}:cancel_request`}
-                        onClick={() => void runOrderAction(order.id, "cancel_request")}
-                        className="mt-2 rounded-md border border-[#E8DCC8] bg-white px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-[#4A1D1F] disabled:opacity-40"
-                      >
-                        Cancel order
+                    {moreItems > 0 && <p className="text-xs text-[#646464]">+{moreItems} more items</p>}
+                  </div>
+
+                  <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+                    <p className="font-semibold text-[#5A272A]">Rs. {Number(order.total).toFixed(2)}</p>
+                    {/* <span className="rounded-full border border-[#E8DCC8] px-2.5 py-1 text-[10px] font-semibold uppercase text-[#4A1D1F]">
+                      {paymentStatus}
+                    </span> */}
+                  </div>
+
+                  <div className="mt-3 flex flex-wrap items-center gap-2">
+                    {paymentStatus.toLowerCase() === "pending" && order.status.toLowerCase() === "pending" && (
+                      <button className="rounded-md border border-[#E8DCC8] bg-white px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-[#4A1D1F]" type="button" onClick={() => void runOrderAction(order.id, "cancel_pending")}>
+                        Cancel Order
                       </button>
                     )}
-                  {order.status.toLowerCase() === "delivered" && (
+                    {paymentStatus.toLowerCase() === "pending" && (
+                      <button
+                        className="rounded-md border border-[#E8DCC8] bg-white px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-[#4A1D1F]"
+                        type="button"
+                        onClick={() =>
+                          router.push(
+                            `/payment?orderId=${encodeURIComponent(order.id)}&amount=${encodeURIComponent(String(order.total ?? ""))}&name=${encodeURIComponent(order.customerName ?? "")}&phone=${encodeURIComponent(order.customerPhone ?? "")}&address=${encodeURIComponent(order.customerAddress ?? "")}`,
+                          )
+                        }
+                      >
+                        Pay Now
+                      </button>
+                    )}
+                    {(order.paymentStatus ?? "").toUpperCase() === "SUCCESS" &&
+                      ["confirmed", "packed"].includes(order.status.toLowerCase()) && (
+                        <button
+                          type="button"
+                          disabled={orderActionBusy === `${order.id}:cancel_request`}
+                          onClick={() => void runOrderAction(order.id, "cancel_request")}
+                          className="rounded-md border border-[#E8DCC8] bg-white px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-[#4A1D1F] disabled:opacity-40"
+                        >
+                          Cancel order
+                        </button>
+                      )}
+                    {order.status.toLowerCase() === "delivered" && (
+                      <button
+                        type="button"
+                        disabled={orderActionBusy === `${order.id}:return_request`}
+                        onClick={() => void runOrderAction(order.id, "return_request")}
+                        className="rounded-md border border-[#E8DCC8] bg-white px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-[#4A1D1F] disabled:opacity-40"
+                      >
+                        Return order
+                      </button>
+                    )}
                     <button
                       type="button"
-                      disabled={orderActionBusy === `${order.id}:return_request`}
-                      onClick={() => void runOrderAction(order.id, "return_request")}
-                      className="mt-2 ml-2 rounded-md border border-[#E8DCC8] bg-white px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-[#4A1D1F] disabled:opacity-40"
+                      onClick={() => router.push(`/orders/${order.id}`)}
+                      className="ml-auto rounded-md bg-[#5A272A] px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-white"
                     >
-                      Return order
+                      View details →
                     </button>
-                  )}
-                  <button
-                    type="button"
-                    onClick={() => router.push(`/orders/${order.id}`)}
-                    className="mt-2 rounded-md border border-[#E8DCC8] bg-white px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-[#4A1D1F]"
-                  >
-                    View details
-                  </button>
                   </div>
                 </div>)
               })}
