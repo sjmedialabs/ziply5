@@ -1,5 +1,15 @@
 import type { SupabaseClient } from "@supabase/supabase-js"
 
+const camelToSnake = (key: string) => key.replace(/[A-Z]/g, (m) => `_${m.toLowerCase()}`)
+
+const shouldRetryWithTimestamps = (message: string) => {
+  const m = message.toLowerCase()
+  return (
+    m.includes("violates not-null constraint") &&
+    (m.includes('"updatedat"') || m.includes('"createdat"') || m.includes('"updated_at"') || m.includes('"created_at"'))
+  )
+}
+
 export const readFromCandidateTables = async <T>(
   client: SupabaseClient,
   tables: string[],
@@ -42,7 +52,24 @@ export const insertIntoCandidateTables = async <T>(
       if (error) throw error
       return data as T
     } catch (error) {
-      lastError = error instanceof Error ? error : new Error(String(error))
+      const err = error instanceof Error ? error : new Error(String(error))
+      // Common in Supabase when schema has NOT NULL timestamps but payload omits them.
+      if (shouldRetryWithTimestamps(err.message)) {
+        const now = new Date().toISOString()
+        const camelPayload = { ...payload, createdAt: (payload as any).createdAt ?? now, updatedAt: (payload as any).updatedAt ?? now }
+        try {
+          const { data, error } = await client.from(table).insert(camelPayload).select(selectClause).single()
+          if (error) throw error
+          return data as T
+        } catch {}
+        const snakePayload = Object.fromEntries(Object.entries({ ...payload, created_at: (payload as any).created_at ?? now, updated_at: (payload as any).updated_at ?? now }).map(([k, v]) => [camelToSnake(k), v]))
+        try {
+          const { data, error } = await client.from(table).insert(snakePayload).select(selectClause).single()
+          if (error) throw error
+          return data as T
+        } catch {}
+      }
+      lastError = err
     }
   }
   throw lastError ?? new Error("No matching table available")

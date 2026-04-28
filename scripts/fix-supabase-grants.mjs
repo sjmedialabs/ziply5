@@ -11,9 +11,20 @@
 // Fix: re-apply the canonical Supabase grants for anon, authenticated and
 // service_role (idempotent - safe to re-run).
 
-import { PrismaClient } from "@prisma/client"
+import { Client } from "pg"
 
-const prisma = new PrismaClient()
+const connectionString = process.env.DIRECT_URL || process.env.DATABASE_URL
+if (!connectionString) {
+  console.error("Missing DIRECT_URL / DATABASE_URL in environment")
+  process.exit(1)
+}
+
+const isLocal = connectionString.includes("localhost") || connectionString.includes("127.0.0.1")
+if (!isLocal) {
+  // Some Supabase pooler URLs present a cert chain Node doesn't trust by default.
+  // This script only runs locally as a one-shot maintenance task.
+  process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0"
+}
 
 const STATEMENTS = [
   // Schema usage
@@ -36,9 +47,15 @@ const STATEMENTS = [
 ]
 
 const run = async () => {
+  const client = new Client({
+    connectionString,
+    ssl: isLocal ? undefined : { rejectUnauthorized: false },
+  })
+  await client.connect()
+
   for (const sql of STATEMENTS) {
     try {
-      await prisma.$executeRawUnsafe(sql)
+      await client.query(sql)
       console.log("OK   ", sql)
     } catch (err) {
       console.error("FAIL ", sql, "->", err.message)
@@ -47,11 +64,13 @@ const run = async () => {
 
   // Force PostgREST to pick up the new grants immediately.
   try {
-    await prisma.$executeRawUnsafe(`NOTIFY pgrst, 'reload schema'`)
+    await client.query(`NOTIFY pgrst, 'reload schema'`)
     console.log("OK    NOTIFY pgrst, 'reload schema'")
   } catch (err) {
     console.error("FAIL  NOTIFY pgrst:", err.message)
   }
+
+  await client.end()
 }
 
 run()
@@ -59,6 +78,4 @@ run()
     console.error(err)
     process.exitCode = 1
   })
-  .finally(async () => {
-    await prisma.$disconnect()
-  })
+  .finally(() => {})
