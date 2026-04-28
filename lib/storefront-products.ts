@@ -15,6 +15,8 @@ export type StorefrontProduct = {
   weight: string
   type: "veg" | "non-veg"
   saleName?: string | null
+  isFeatured?: boolean
+  isBestSeller?: boolean
   category: string
   labels: Array<{ label: string; color: string | null }>
   features: Array<{ title: string; icon: string | null }>
@@ -42,6 +44,8 @@ type ApiProduct = {
   promotion?: { name: string; kind: string } | null
   thumbnail?: string | null
   videoUrl?: string | null
+  isBestSeller?: boolean
+  isFeatured?: boolean
   images?: Array<{ url: string }>
   type?: "simple" | "variant"
   saleName?: string | null
@@ -145,6 +149,8 @@ export const toStorefrontProduct = (p: ApiProduct): StorefrontProduct => {
     type: isVeg ? "veg" : "non-veg",
     category: categorySlug,
     labels: p.labels ?? [],
+    isBestSeller: p.isBestSeller ?? false,
+    isFeatured: p.isFeatured ?? false,
     features: p.features ?? [],
     saleName:p?.saleName ?? null,
     details:

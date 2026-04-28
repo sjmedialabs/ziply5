@@ -22,6 +22,24 @@ export default function LocationDropdown({
   const ref = useRef<HTMLDivElement>(null)
   const { data: locations, loading } = useLocations(type, parentState)
 
+  // Load initial value from local storage on mount
+  useEffect(() => {
+    if (typeof window !== "undefined" && !value) {
+      try {
+        const saved = localStorage.getItem(`ziply5-location-${type}`)
+        if (saved) {
+          const { value: savedVal, label: savedLabel } = JSON.parse(saved)
+          if (savedLabel) {
+            setSelected(savedLabel)
+            if (onChange) onChange(savedVal, savedLabel)
+          }
+        }
+      } catch (e) {
+        console.error("Failed to parse saved location", e)
+      }
+    }
+  }, [type, value, onChange])
+
   // Close on outside click
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
@@ -75,6 +93,10 @@ export default function LocationDropdown({
                   key={loc.value}
                   onClick={() => {
                     setSelected(loc.label)
+                    if (typeof window !== "undefined") {
+                      localStorage.setItem(`ziply5-location-${type}`, JSON.stringify({ value: loc.value, label: loc.label }))
+                      window.dispatchEvent(new CustomEvent("ziply5:location-updated", { detail: { type, location: loc } }))
+                    }
                     if (onChange) onChange(loc.value, loc.label)
                     setOpen(false)
                     setSearch("")
