@@ -54,38 +54,38 @@ export const getCouponAnalyticsV2 = async (couponId: string) => {
 }
 
 export const createCouponV2 = async (input: CouponInput) => {
-  const created = await prisma.$queryRaw<Array<{ id: string }>>(Prisma.sql`
-    INSERT INTO coupons_v2 (
-      code, description, discount_type, discount_value,
-      min_order_value, max_discount, usage_limit, usage_per_user, expiry_date, status
-    )
-    VALUES (
-      ${input.code.trim().toUpperCase()},
-      ${input.description ?? null},
-      ${input.discountType},
-      ${input.discountValue},
-      ${input.minOrderValue ?? 0},
-      ${input.maxDiscount ?? null},
-      ${input.usageLimit ?? null},
-      ${input.usagePerUser ?? null},
-      ${input.expiryDate ? new Date(input.expiryDate) : null},
-      ${input.status ?? true}
-    )
-    RETURNING id
-  `)
-  const couponId = created[0]?.id
-  if (!couponId) throw new Error("Failed to create coupon")
-  if (input.applicability?.length) {
-    for (const row of input.applicability) {
-      if (!row.productId && !row.categoryId) continue
-      await prisma.$executeRaw(Prisma.sql`
-        INSERT INTO coupon_applicability_v2 (coupon_id, product_id, category_id)
-        VALUES (${couponId}::uuid, ${row.productId ?? null}, ${row.categoryId ?? null})
-      `)
+  return prisma.$transaction(async (tx) => {
+    const created = await tx.$queryRaw<Array<{ id: string }>>(Prisma.sql`
+      INSERT INTO coupons_v2 (
+        code, description, discount_type, discount_value,
+        min_order_value, max_discount, usage_limit, usage_per_user, expiry_date, status
+      )
+      VALUES (
+        ${input.code.trim().toUpperCase()},
+        ${input.description ?? null},
+        ${input.discountType},
+        ${input.discountValue},
+        ${input.minOrderValue ?? 0},
+        ${input.maxDiscount ?? null},
+        ${input.usageLimit ?? null},
+        ${input.usagePerUser ?? null},
+        ${input.expiryDate ? new Date(input.expiryDate) : null},
+        ${input.status ?? true}
+      )
+      RETURNING id
+    `)
+    const couponId = created[0]?.id
+    if (!couponId) throw new Error("Failed to create coupon")
+    if (input.applicability?.length) {
+      for (const row of input.applicability) {
+        if (!row.productId && !row.categoryId) continue
+        await tx.$executeRaw(Prisma.sql`
+          INSERT INTO coupon_applicability_v2 (coupon_id, product_id, category_id)
+          VALUES (${couponId}::uuid, ${row.productId ?? null}, ${row.categoryId ?? null})
+        `)
+      }
     }
-  }
-  await prisma.coupon
-    .upsert({
+    await tx.coupon.upsert({
       where: { code: input.code.trim().toUpperCase() },
       create: {
         code: input.code.trim().toUpperCase(),
@@ -109,46 +109,46 @@ export const createCouponV2 = async (input: CouponInput) => {
         endsAt: input.expiryDate ? new Date(input.expiryDate) : null,
       },
     })
-    .catch(() => null)
-  return couponId
+    return couponId
+  })
 }
 
 export const updateCouponV2 = async (id: string, input: Partial<CouponInput>) => {
-  const sets: Prisma.Sql[] = []
-  if (input.code !== undefined) sets.push(Prisma.sql`code = ${input.code.trim().toUpperCase()}`)
-  if (input.description !== undefined) sets.push(Prisma.sql`description = ${input.description ?? null}`)
-  if (input.discountType !== undefined) sets.push(Prisma.sql`discount_type = ${input.discountType}`)
-  if (input.discountValue !== undefined) sets.push(Prisma.sql`discount_value = ${input.discountValue}`)
-  if (input.minOrderValue !== undefined) sets.push(Prisma.sql`min_order_value = ${input.minOrderValue}`)
-  if (input.maxDiscount !== undefined) sets.push(Prisma.sql`max_discount = ${input.maxDiscount ?? null}`)
-  if (input.usageLimit !== undefined) sets.push(Prisma.sql`usage_limit = ${input.usageLimit ?? null}`)
-  if (input.usagePerUser !== undefined) sets.push(Prisma.sql`usage_per_user = ${input.usagePerUser ?? null}`)
-  if (input.expiryDate !== undefined) sets.push(Prisma.sql`expiry_date = ${input.expiryDate ? new Date(input.expiryDate) : null}`)
-  if (input.status !== undefined) sets.push(Prisma.sql`status = ${input.status}`)
-  sets.push(Prisma.sql`updated_at = now()`)
-  await prisma.$executeRaw(Prisma.sql`
-    UPDATE coupons_v2
-    SET ${Prisma.join(sets, Prisma.sql`, `)}
-    WHERE id = ${id}::uuid
-  `)
+  await prisma.$transaction(async (tx) => {
+    const sets: Prisma.Sql[] = []
+    if (input.code !== undefined) sets.push(Prisma.sql`code = ${input.code.trim().toUpperCase()}`)
+    if (input.description !== undefined) sets.push(Prisma.sql`description = ${input.description ?? null}`)
+    if (input.discountType !== undefined) sets.push(Prisma.sql`discount_type = ${input.discountType}`)
+    if (input.discountValue !== undefined) sets.push(Prisma.sql`discount_value = ${input.discountValue}`)
+    if (input.minOrderValue !== undefined) sets.push(Prisma.sql`min_order_value = ${input.minOrderValue}`)
+    if (input.maxDiscount !== undefined) sets.push(Prisma.sql`max_discount = ${input.maxDiscount ?? null}`)
+    if (input.usageLimit !== undefined) sets.push(Prisma.sql`usage_limit = ${input.usageLimit ?? null}`)
+    if (input.usagePerUser !== undefined) sets.push(Prisma.sql`usage_per_user = ${input.usagePerUser ?? null}`)
+    if (input.expiryDate !== undefined) sets.push(Prisma.sql`expiry_date = ${input.expiryDate ? new Date(input.expiryDate) : null}`)
+    if (input.status !== undefined) sets.push(Prisma.sql`status = ${input.status}`)
+    sets.push(Prisma.sql`updated_at = now()`)
+    await tx.$executeRaw(Prisma.sql`
+      UPDATE coupons_v2
+      SET ${Prisma.join(sets, Prisma.sql`, `)}
+      WHERE id = ${id}::uuid
+    `)
 
-  if (input.applicability !== undefined) {
-    await prisma.$executeRaw(Prisma.sql`DELETE FROM coupon_applicability_v2 WHERE coupon_id = ${id}::uuid`)
-    for (const row of input.applicability) {
-      if (!row.productId && !row.categoryId) continue
-      await prisma.$executeRaw(Prisma.sql`
-        INSERT INTO coupon_applicability_v2 (coupon_id, product_id, category_id)
-        VALUES (${id}::uuid, ${row.productId ?? null}, ${row.categoryId ?? null})
-      `)
+    if (input.applicability !== undefined) {
+      await tx.$executeRaw(Prisma.sql`DELETE FROM coupon_applicability_v2 WHERE coupon_id = ${id}::uuid`)
+      for (const row of input.applicability) {
+        if (!row.productId && !row.categoryId) continue
+        await tx.$executeRaw(Prisma.sql`
+          INSERT INTO coupon_applicability_v2 (coupon_id, product_id, category_id)
+          VALUES (${id}::uuid, ${row.productId ?? null}, ${row.categoryId ?? null})
+        `)
+      }
     }
-  }
-  const codeRow = await prisma.$queryRaw<Array<{ code: string }>>(Prisma.sql`
-    SELECT code FROM coupons_v2 WHERE id = ${id}::uuid LIMIT 1
-  `)
-  const code = codeRow[0]?.code
-  if (code) {
-    await prisma.coupon
-      .update({
+    const codeRow = await tx.$queryRaw<Array<{ code: string }>>(Prisma.sql`
+      SELECT code FROM coupons_v2 WHERE id = ${id}::uuid LIMIT 1
+    `)
+    const code = codeRow[0]?.code
+    if (code) {
+      await tx.coupon.update({
         where: { code },
         data: {
           discountType:
@@ -166,8 +166,8 @@ export const updateCouponV2 = async (id: string, input: Partial<CouponInput>) =>
           endsAt: input.expiryDate === undefined ? undefined : input.expiryDate ? new Date(input.expiryDate) : null,
         },
       })
-      .catch(() => null)
-  }
+    }
+  })
 }
 
 export const setCouponStatusV2 = async (id: string, status: boolean) => {

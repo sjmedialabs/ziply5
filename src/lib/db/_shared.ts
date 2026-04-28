@@ -1,14 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js"
-
-const camelToSnake = (key: string) => key.replace(/[A-Z]/g, (m) => `_${m.toLowerCase()}`)
-
-const shouldRetryWithTimestamps = (message: string) => {
-  const m = message.toLowerCase()
-  return (
-    m.includes("violates not-null constraint") &&
-    (m.includes('"updatedat"') || m.includes('"createdat"') || m.includes('"updated_at"') || m.includes('"created_at"'))
-  )
-}
+import { camelToSnake, insertCandidateWithId, shouldRetryWithTimestamps } from "@/src/lib/db/supabaseIntegrity"
 
 export const readFromCandidateTables = async <T>(
   client: SupabaseClient,
@@ -45,33 +36,16 @@ export const insertIntoCandidateTables = async <T>(
   payload: Record<string, unknown>,
   selectClause = "*",
 ): Promise<T> => {
-  let lastError: Error | null = null
-  for (const table of tables) {
-    try {
-      const { data, error } = await client.from(table).insert(payload).select(selectClause).single()
-      if (error) throw error
-      return data as T
-    } catch (error) {
-      const err = error instanceof Error ? error : new Error(String(error))
-      // Common in Supabase when schema has NOT NULL timestamps but payload omits them.
-      if (shouldRetryWithTimestamps(err.message)) {
-        const now = new Date().toISOString()
-        const camelPayload = { ...payload, createdAt: (payload as any).createdAt ?? now, updatedAt: (payload as any).updatedAt ?? now }
-        try {
-          const { data, error } = await client.from(table).insert(camelPayload).select(selectClause).single()
-          if (error) throw error
-          return data as T
-        } catch {}
-        const snakePayload = Object.fromEntries(Object.entries({ ...payload, created_at: (payload as any).created_at ?? now, updated_at: (payload as any).updated_at ?? now }).map(([k, v]) => [camelToSnake(k), v]))
-        try {
-          const { data, error } = await client.from(table).insert(snakePayload).select(selectClause).single()
-          if (error) throw error
-          return data as T
-        } catch {}
-      }
-      lastError = err
-    }
+  // `insertCandidateWithId` handles timestamp retries and id-required retries.
+  // We still need to return the selected shape, so we retry the successful table with `.select(selectClause)`.
+  const inserted = await insertCandidateWithId(client, tables, [payload])
+  if (!inserted.row || !inserted.usedTable) {
+    throw new Error(inserted.errors[inserted.errors.length - 1] ?? "No matching table available")
   }
-  throw lastError ?? new Error("No matching table available")
+
+  // Re-read using the desired select clause.
+  const { data, error } = await client.from(inserted.usedTable).select(selectClause).eq("id", inserted.row.id as any).single()
+  if (error) throw error
+  return data as T
 }
 

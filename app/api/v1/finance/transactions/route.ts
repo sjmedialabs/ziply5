@@ -2,7 +2,7 @@ import { NextRequest } from "next/server"
 import { fail, ok } from "@/src/server/core/http/response"
 import { requireAuth } from "@/src/server/middleware/auth"
 import { requirePermission } from "@/src/server/middleware/rbac"
-import { prisma } from "@/src/server/db/prisma"
+import { getSupabaseAdmin } from "@/src/lib/supabase/admin"
 
 export async function GET(request: NextRequest) {
   const auth = requireAuth(request)
@@ -12,18 +12,32 @@ export async function GET(request: NextRequest) {
   if (denied) return denied
 
   try {
-    const transactions = await prisma.transaction.findMany({
-      orderBy: { createdAt: "desc" },
-      take: 100, // Limiting to the 100 most recent transactions
-    })
+    const client = getSupabaseAdmin()
+    const tables = ["Transaction", "transactions"]
+    let rows: Array<Record<string, unknown>> = []
+    for (const table of tables) {
+      const attempts = [
+        () => client.from(table).select("*").order("createdAt", { ascending: false }).limit(100),
+        () => client.from(table).select("*").order("created_at", { ascending: false }).limit(100),
+        () => client.from(table).select("*").limit(100),
+      ]
+      for (const run of attempts) {
+        const { data, error } = await run()
+        if (!error && Array.isArray(data)) {
+          rows = data as Array<Record<string, unknown>>
+          break
+        }
+      }
+      if (rows.length) break
+    }
 
-    const mappedTransactions = transactions.map((tx) => ({
-      id: tx.id,
-      amount: Number(tx.amount), // Convert Prisma Decimal to number
-      type: tx.gateway,          // Map gateway to the 'type' field expected by the UI
-      status: tx.status,
-      referenceId: tx.externalId, // Map externalId to 'referenceId'
-      createdAt: tx.createdAt.toISOString(),
+    const mappedTransactions = rows.map((tx) => ({
+      id: String(tx.id ?? ""),
+      amount: Number(tx.amount ?? 0),
+      type: String(tx.gateway ?? ""),
+      status: String(tx.status ?? ""),
+      referenceId: String((tx as any).externalId ?? (tx as any).external_id ?? ""),
+      createdAt: String((tx as any).createdAt ?? (tx as any).created_at ?? ""),
     }))
 
     return ok(mappedTransactions, "Transactions fetched successfully")

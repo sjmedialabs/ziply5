@@ -185,32 +185,34 @@ export const createOffer = async (input: {
   createdBy?: string | null
 }) => {
   await ensureOffersTables()
-  const rows = await prisma.$queryRaw<Array<{ id: string }>>(Prisma.sql`
-    INSERT INTO offers_v2 (
-      type, name, code, description, status, priority, stackable, starts_at, ends_at, config_json, created_by
-    ) VALUES (
-      ${input.type},
-      ${input.name},
-      ${input.code ? input.code.trim().toUpperCase() : null},
-      ${input.description ?? null},
-      ${input.status ?? "draft"},
-      ${input.priority ?? 100},
-      ${input.stackable ?? false},
-      ${input.startsAt ? new Date(input.startsAt) : null},
-      ${input.endsAt ? new Date(input.endsAt) : null},
-      ${input.config as Prisma.JsonObject},
-      ${input.createdBy ?? null}
-    ) RETURNING id
-  `)
-  const id = rows[0]?.id
-  if (!id) throw new Error("Failed to create offer")
-  for (const target of input.targets) {
-    await prisma.$executeRaw(Prisma.sql`
-      INSERT INTO offer_targets_v2 (offer_id, target_type, target_id)
-      VALUES (${id}::uuid, ${target.targetType}, ${target.targetId})
+  return prisma.$transaction(async (tx) => {
+    const rows = await tx.$queryRaw<Array<{ id: string }>>(Prisma.sql`
+      INSERT INTO offers_v2 (
+        type, name, code, description, status, priority, stackable, starts_at, ends_at, config_json, created_by
+      ) VALUES (
+        ${input.type},
+        ${input.name},
+        ${input.code ? input.code.trim().toUpperCase() : null},
+        ${input.description ?? null},
+        ${input.status ?? "draft"},
+        ${input.priority ?? 100},
+        ${input.stackable ?? false},
+        ${input.startsAt ? new Date(input.startsAt) : null},
+        ${input.endsAt ? new Date(input.endsAt) : null},
+        ${input.config as Prisma.JsonObject},
+        ${input.createdBy ?? null}
+      ) RETURNING id
     `)
-  }
-  return id
+    const id = rows[0]?.id
+    if (!id) throw new Error("Failed to create offer")
+    for (const target of input.targets) {
+      await tx.$executeRaw(Prisma.sql`
+        INSERT INTO offer_targets_v2 (offer_id, target_type, target_id)
+        VALUES (${id}::uuid, ${target.targetType}, ${target.targetId})
+      `)
+    }
+    return id
+  })
 }
 
 export const updateOffer = async (
@@ -230,32 +232,34 @@ export const updateOffer = async (
   }>,
 ) => {
   await ensureOffersTables()
-  const sets: Prisma.Sql[] = [Prisma.sql`updated_at = now()`]
-  if (input.type !== undefined) sets.push(Prisma.sql`type = ${input.type}`)
-  if (input.name !== undefined) sets.push(Prisma.sql`name = ${input.name}`)
-  if (input.code !== undefined) sets.push(Prisma.sql`code = ${input.code ? input.code.trim().toUpperCase() : null}`)
-  if (input.description !== undefined) sets.push(Prisma.sql`description = ${input.description ?? null}`)
-  if (input.status !== undefined) sets.push(Prisma.sql`status = ${input.status}`)
-  if (input.priority !== undefined) sets.push(Prisma.sql`priority = ${input.priority}`)
-  if (input.stackable !== undefined) sets.push(Prisma.sql`stackable = ${input.stackable}`)
-  if (input.startsAt !== undefined) sets.push(Prisma.sql`starts_at = ${input.startsAt ? new Date(input.startsAt) : null}`)
-  if (input.endsAt !== undefined) sets.push(Prisma.sql`ends_at = ${input.endsAt ? new Date(input.endsAt) : null}`)
-  if (input.config !== undefined) sets.push(Prisma.sql`config_json = ${input.config as Prisma.JsonObject}`)
-  await prisma.$executeRaw(Prisma.sql`
-    UPDATE offers_v2
-    SET ${Prisma.join(sets, Prisma.sql`, `)}
-    WHERE id = ${id}::uuid
-      AND deleted_at IS NULL
-  `)
-  if (input.targets !== undefined) {
-    await prisma.$executeRaw(Prisma.sql`DELETE FROM offer_targets_v2 WHERE offer_id = ${id}::uuid`)
-    for (const target of input.targets) {
-      await prisma.$executeRaw(Prisma.sql`
-        INSERT INTO offer_targets_v2 (offer_id, target_type, target_id)
-        VALUES (${id}::uuid, ${target.targetType}, ${target.targetId})
-      `)
+  await prisma.$transaction(async (tx) => {
+    const sets: Prisma.Sql[] = [Prisma.sql`updated_at = now()`]
+    if (input.type !== undefined) sets.push(Prisma.sql`type = ${input.type}`)
+    if (input.name !== undefined) sets.push(Prisma.sql`name = ${input.name}`)
+    if (input.code !== undefined) sets.push(Prisma.sql`code = ${input.code ? input.code.trim().toUpperCase() : null}`)
+    if (input.description !== undefined) sets.push(Prisma.sql`description = ${input.description ?? null}`)
+    if (input.status !== undefined) sets.push(Prisma.sql`status = ${input.status}`)
+    if (input.priority !== undefined) sets.push(Prisma.sql`priority = ${input.priority}`)
+    if (input.stackable !== undefined) sets.push(Prisma.sql`stackable = ${input.stackable}`)
+    if (input.startsAt !== undefined) sets.push(Prisma.sql`starts_at = ${input.startsAt ? new Date(input.startsAt) : null}`)
+    if (input.endsAt !== undefined) sets.push(Prisma.sql`ends_at = ${input.endsAt ? new Date(input.endsAt) : null}`)
+    if (input.config !== undefined) sets.push(Prisma.sql`config_json = ${input.config as Prisma.JsonObject}`)
+    await tx.$executeRaw(Prisma.sql`
+      UPDATE offers_v2
+      SET ${Prisma.join(sets, Prisma.sql`, `)}
+      WHERE id = ${id}::uuid
+        AND deleted_at IS NULL
+    `)
+    if (input.targets !== undefined) {
+      await tx.$executeRaw(Prisma.sql`DELETE FROM offer_targets_v2 WHERE offer_id = ${id}::uuid`)
+      for (const target of input.targets) {
+        await tx.$executeRaw(Prisma.sql`
+          INSERT INTO offer_targets_v2 (offer_id, target_type, target_id)
+          VALUES (${id}::uuid, ${target.targetType}, ${target.targetId})
+        `)
+      }
     }
-  }
+  })
 }
 
 export const toggleOfferStatus = async (id: string, status: OfferStatus) => {

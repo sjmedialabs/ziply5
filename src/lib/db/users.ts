@@ -1,5 +1,6 @@
 import { getSupabaseAdmin } from "@/src/lib/supabase/admin"
 import { insertIntoCandidateTables, readFromCandidateTables } from "@/src/lib/db/_shared"
+import { insertCandidateNoId, insertCandidateWithId, shouldRetryWithId, withId } from "@/src/lib/db/supabaseIntegrity"
 
 type UserAddressRow = {
   id: string
@@ -174,54 +175,65 @@ export const createUserByAdminSupabase = async (input: {
   const existing = await findBySingleField<{ id: string }>(USER_TABLES, "email", normalizedEmail, "id")
   if (existing) throw new Error("Email already in use")
 
-  let createdUser: { id: string } | null = null
-  for (const table of USER_TABLES) {
-    const { data, error } = await client
-      .from(table)
-      .insert({
-        email: normalizedEmail,
-        name: input.name,
-        passwordHash: input.passwordHash,
-      })
-      .select("id")
-      .single()
-    if (!error && data?.id) {
-      createdUser = { id: String(data.id) }
-      break
+  const createdUser = await insertCandidateWithId(client, USER_TABLES, [
+    { email: normalizedEmail, name: input.name, passwordHash: input.passwordHash },
+    { email: normalizedEmail, name: input.name, password_hash: input.passwordHash },
+  ])
+  const userId = String(createdUser.row?.id ?? "").trim()
+  const rollbackUser = async () => {
+    if (!userId) return
+    for (const table of USER_TABLES) {
+      await client.from(table).delete().eq("id", userId)
     }
   }
-  if (!createdUser) throw new Error("Unable to create user in Supabase")
+  if (!userId) throw new Error("Unable to create user in Supabase")
 
   let roleId: string | null = null
   const existingRole = await findBySingleField<{ id: string }>(ROLE_TABLES, "key", input.roleKey, "id")
   if (existingRole?.id) {
     roleId = existingRole.id
   } else {
-    for (const table of ROLE_TABLES) {
-      const { data, error } = await client
-        .from(table)
-        .insert({ key: input.roleKey, name: roleName })
-        .select("id")
-        .single()
-      if (!error && data?.id) {
-        roleId = String(data.id)
+    const createdRole = await insertCandidateWithId(client, ROLE_TABLES, [
+      { key: input.roleKey, name: roleName },
+      { key: input.roleKey, name: roleName },
+    ])
+    roleId = String(createdRole.row?.id ?? "").trim() || null
+  }
+  if (!roleId) {
+    await rollbackUser()
+    throw new Error("Unable to create/find role")
+  }
+
+  let linked = false
+  for (const table of USER_ROLE_TABLES) {
+    // Join tables vary: some have no id column, some require id. Try without id first.
+    const attempt = await insertCandidateNoId(client, [table], [
+      { userId, roleId },
+      { user_id: userId, role_id: roleId },
+    ])
+    if (attempt.ok) {
+      linked = true
+      break
+    }
+    // If it requires an id, retry with id.
+    const maybeNeedsId = attempt.errors.some((e) => shouldRetryWithId(e))
+    if (maybeNeedsId) {
+      const retry = await insertCandidateNoId(client, [table], [
+        withId({ userId, roleId }),
+        withId({ user_id: userId, role_id: roleId }),
+      ])
+      if (retry.ok) {
+        linked = true
         break
       }
     }
   }
-  if (!roleId) throw new Error("Unable to create/find role")
-
-  let linked = false
-  for (const table of USER_ROLE_TABLES) {
-    const { error } = await client.from(table).insert({ userId: createdUser.id, roleId })
-    if (!error) {
-      linked = true
-      break
-    }
+  if (!linked) {
+    await rollbackUser()
+    throw new Error("Unable to link user role")
   }
-  if (!linked) throw new Error("Unable to link user role")
 
-  return { id: createdUser.id }
+  return { id: userId }
 }
 
 export const updateUserStatusSupabase = async (userId: string, status: "active" | "suspended" | "deleted") => {

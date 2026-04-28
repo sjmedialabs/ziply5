@@ -1,4 +1,5 @@
 import { getSupabaseAdmin } from "@/src/lib/supabase/admin"
+import { camelToSnakeObject, shouldRetryWithId, safeString, withId } from "@/src/lib/db/supabaseIntegrity"
 
 const ORDER_TABLES = ["Order", "orders", "order"]
 const PRODUCT_TABLES = ["Product", "products"]
@@ -54,7 +55,6 @@ export type CheckoutProductRecord = {
   variants: CheckoutProductVariantRecord[]
 }
 
-const safeString = (value: unknown) => String(value ?? "").trim()
 const safeNumber = (value: unknown, fallback = 0) => {
   const n = Number(value)
   return Number.isFinite(n) ? n : fallback
@@ -64,6 +64,8 @@ const normalizeIdRows = (rows: unknown[] | null | undefined) =>
   (rows ?? [])
     .map((row) => safeString((row as Record<string, unknown>)?.id))
     .filter(Boolean)
+
+// Note: we intentionally re-use shared integrity helpers (id generation + snake case).
 
 export const getCheckoutProductsSupabase = async (input: {
   slugs: string[]
@@ -641,37 +643,35 @@ export const createOrderNoteSupabase = async (input: {
 }) => {
   const client = getSupabaseAdmin()
   for (const table of ORDER_NOTE_TABLES) {
-    const attempts = [
-      () =>
-        client
-          .from(table)
-          .insert({
-            orderId: input.orderId,
-            note: input.note,
-            isInternal: input.isInternal,
-            createdById: input.actorId,
-          })
-          .select("id,isInternal")
-          .single(),
-      () =>
-        client
-          .from(table)
-          .insert({
-            order_id: input.orderId,
-            note: input.note,
-            is_internal: input.isInternal,
-            created_by_id: input.actorId,
-          })
-          .select("id,is_internal")
-          .single(),
-    ]
-    for (const run of attempts) {
-      const { data, error } = await run()
-      if (!error && data) {
-        const row = data as Record<string, unknown>
+    const camel = {
+      orderId: input.orderId,
+      note: input.note,
+      isInternal: input.isInternal,
+      createdById: input.actorId,
+    }
+    const snake = {
+      order_id: input.orderId,
+      note: input.note,
+      is_internal: input.isInternal,
+      created_by_id: input.actorId,
+    }
+    for (const payload of [camel, snake]) {
+      const inserted = await client.from(table).insert(payload).select("id,isInternal,is_internal").maybeSingle()
+      if (!inserted.error && inserted.data) {
+        const row = inserted.data as Record<string, unknown>
         return {
           id: safeString(row.id),
           isInternal: Boolean(row.isInternal ?? row.is_internal),
+        }
+      }
+      if (inserted.error && shouldRetryWithId(inserted.error.message)) {
+        const retry = await client.from(table).insert(withId(payload)).select("id,isInternal,is_internal").maybeSingle()
+        if (!retry.error && retry.data) {
+          const row = retry.data as Record<string, unknown>
+          return {
+            id: safeString(row.id),
+            isInternal: Boolean(row.isInternal ?? row.is_internal),
+          }
         }
       }
     }
@@ -795,31 +795,40 @@ export const createShipmentSupabase = async (input: {
       const row = data as Record<string, unknown>
       const shipmentId = safeString(row.id)
       if (!shipmentId) continue
-      // Best-effort insert of shipment items; tolerate missing relation tables during migration.
-      const itemTables = ["ShipmentItem", "shipment_items"]
-      for (const itemTable of itemTables) {
-        const itemAttempts = [
-          () =>
-            client.from(itemTable).insert(
-              input.itemAllocations.map((item) => ({
-                shipmentId,
-                orderItemId: item.orderItemId,
-                quantity: item.quantity,
-              })),
-            ),
-          () =>
-            client.from(itemTable).insert(
-              input.itemAllocations.map((item) => ({
-                shipment_id: shipmentId,
-                order_item_id: item.orderItemId,
-                quantity: item.quantity,
-              })),
-            ),
-        ]
-        for (const itemRun of itemAttempts) {
-          const result = await itemRun()
-          if (!result.error) break
+      // Strict insert of shipment items; no partial saves.
+      let itemsInserted = false
+      for (const itemTable of SHIPMENT_ITEM_TABLES) {
+        const camelRows = input.itemAllocations.map((item) => ({
+          shipmentId,
+          orderItemId: item.orderItemId,
+          quantity: item.quantity,
+        }))
+        const snakeRows = input.itemAllocations.map((item) => ({
+          shipment_id: shipmentId,
+          order_item_id: item.orderItemId,
+          quantity: item.quantity,
+        }))
+        const attemptInsert = async (rows: Array<Record<string, unknown>>) => {
+          const result = await client.from(itemTable).insert(rows)
+          if (!result.error) return true
+          if (shouldRetryWithId(result.error.message)) {
+            const retry = await client.from(itemTable).insert(rows.map(withId))
+            if (!retry.error) return true
+          }
+          return false
         }
+        if (await attemptInsert(camelRows)) {
+          itemsInserted = true
+          break
+        }
+        if (await attemptInsert(snakeRows)) {
+          itemsInserted = true
+          break
+        }
+      }
+      if (!itemsInserted) {
+        await client.from(table).delete().eq("id", shipmentId)
+        throw new Error("Shipment items insert failed; shipment rolled back")
       }
       return {
         id: shipmentId,
@@ -1471,9 +1480,7 @@ export const createOrderWithItemsSupabase = async (input: {
         client
           .from(table)
           .insert(
-            Object.fromEntries(
-              Object.entries(input.orderData).map(([k, v]) => [k.replace(/[A-Z]/g, (m) => `_${m.toLowerCase()}`), v]),
-            ),
+            camelToSnakeObject(input.orderData),
           )
           .select("id")
           .single(),
@@ -1483,28 +1490,43 @@ export const createOrderWithItemsSupabase = async (input: {
       if (error || !data?.id) continue
       const orderId = safeString(data.id)
       for (const itemTable of ORDER_ITEM_TABLES) {
-        const insertItemAttempts = [
-          () =>
-            client.from(itemTable).insert(
-              input.itemRows.map((row) => ({
-                ...row,
-                orderId,
-              })),
-            ),
-          () =>
-            client.from(itemTable).insert(
-              input.itemRows.map((row) => ({
-                ...Object.fromEntries(
-                  Object.entries(row).map(([k, v]) => [k.replace(/[A-Z]/g, (m) => `_${m.toLowerCase()}`), v]),
-                ),
-                order_id: orderId,
-              })),
-            ),
-        ]
-        for (const insertItems of insertItemAttempts) {
-          const result = await insertItems()
-          if (!result.error) break
+        let inserted = false
+        const camelRows = input.itemRows.map((row) => ({ ...row, orderId }))
+        const snakeRows = input.itemRows.map((row) => ({ ...camelToSnakeObject(row), order_id: orderId }))
+
+        const attemptInsert = async (rows: Array<Record<string, unknown>>) => {
+          const result = await client.from(itemTable).insert(rows)
+          if (!result.error) return true
+          if (shouldRetryWithId(result.error.message)) {
+            const retry = await client.from(itemTable).insert(rows.map(withId))
+            if (!retry.error) return true
+          }
+          return false
         }
+
+        if (await attemptInsert(camelRows)) inserted = true
+        else if (await attemptInsert(snakeRows)) inserted = true
+
+        if (inserted) break
+      }
+      // Ensure at least one OrderItem table accepted the rows; otherwise clean up parent.
+      const itemOk = await (async () => {
+        for (const itemTable of ORDER_ITEM_TABLES) {
+          const attempts = [
+            () => client.from(itemTable).select("id", { count: "exact" }).eq("orderId", orderId).limit(1),
+            () => client.from(itemTable).select("id", { count: "exact" }).eq("order_id", orderId).limit(1),
+          ]
+          for (const run of attempts) {
+            const { data, error } = await run()
+            if (!error && Array.isArray(data) && data.length) return true
+          }
+        }
+        return false
+      })()
+      if (!itemOk) {
+        // Compensating cleanup to avoid partial saves.
+        await client.from(table).delete().eq("id", orderId)
+        throw new Error("Order items insert failed; order rolled back")
       }
       return { id: orderId }
     }
@@ -1521,35 +1543,27 @@ export const createTransactionSupabase = async (input: {
 }) => {
   const client = getSupabaseAdmin()
   for (const table of TRANSACTION_TABLES) {
-    const attempts = [
-      () =>
-        client
-          .from(table)
-          .insert({
-            orderId: input.orderId,
-            gateway: input.gateway,
-            amount: input.amount,
-            status: input.status,
-            externalId: input.externalId ?? null,
-          })
-          .select("id")
-          .single(),
-      () =>
-        client
-          .from(table)
-          .insert({
-            order_id: input.orderId,
-            gateway: input.gateway,
-            amount: input.amount,
-            status: input.status,
-            external_id: input.externalId ?? null,
-          })
-          .select("id")
-          .single(),
-    ]
-    for (const run of attempts) {
-      const { data, error } = await run()
-      if (!error && data?.id) return safeString(data.id)
+    const camel = {
+      orderId: input.orderId,
+      gateway: input.gateway,
+      amount: input.amount,
+      status: input.status,
+      externalId: input.externalId ?? null,
+    }
+    const snake = {
+      order_id: input.orderId,
+      gateway: input.gateway,
+      amount: input.amount,
+      status: input.status,
+      external_id: input.externalId ?? null,
+    }
+    for (const payload of [camel, snake]) {
+      const inserted = await client.from(table).insert(payload).select("id").maybeSingle()
+      if (!inserted.error && inserted.data?.id) return safeString((inserted.data as any).id)
+      if (inserted.error && shouldRetryWithId(inserted.error.message)) {
+        const retry = await client.from(table).insert(withId(payload)).select("id").maybeSingle()
+        if (!retry.error && retry.data?.id) return safeString((retry.data as any).id)
+      }
     }
   }
   return null
