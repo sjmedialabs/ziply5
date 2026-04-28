@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { authedFetch, authedPost } from "@/lib/dashboard-fetch";
 import { useRealtimeTables } from "@/hooks/useRealtimeTables";
 import { Download } from "lucide-react";
@@ -23,6 +24,7 @@ type OrderRow = {
 };
 
 export default function AdminOrdersPage() {
+  const router = useRouter();
   const [rows, setRows] = useState<OrderRow[]>([]);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
@@ -294,7 +296,7 @@ export default function AdminOrdersPage() {
                       <details className="relative">
                         <summary className="cursor-pointer rounded-full border border-[#E8DCC8] px-3 py-1.5 text-xs font-semibold text-[#4A1D1F] hover:bg-[#FFFBF3]">Actions</summary>
                         <div className="absolute right-0 z-20 mt-2 min-w-[180px] rounded-lg border border-[#E8DCC8] bg-white p-2 shadow-md">
-                          <button type="button" onClick={() => window.location.assign(`/admin/orders/${o.id}`)} className="block w-full rounded px-2 py-1.5 text-left text-xs hover:bg-[#FFFBF3]">View Details</button>
+                          <button type="button" onClick={() => router.push(`/admin/orders/${o.id}`)} className="block w-full rounded px-2 py-1.5 text-left text-xs hover:bg-[#FFFBF3]">View Details</button>
                           {latestShipmentStatus(o) === "not_shipped" && (
                             <button type="button" onClick={() => void authedPost(`/api/v1/orders/${o.id}/shiprocket`, { action: "sync_order", generatePickup: true }).then(() => load())} className="block w-full rounded px-2 py-1.5 text-left text-xs hover:bg-[#FFFBF3]">
                               Sync to Shiprocket
@@ -305,10 +307,10 @@ export default function AdminOrdersPage() {
                               <button type="button" onClick={() => void authedPost(`/api/v1/orders/${o.id}/shiprocket`, { action: "resync_order", generatePickup: true }).then(() => load())} className="block w-full rounded px-2 py-1.5 text-left text-xs hover:bg-[#FFFBF3]">
                                 Re-sync
                               </button>
-                              <button type="button" onClick={() => window.location.assign(`/admin/orders/${o.id}`)} className="block w-full rounded px-2 py-1.5 text-left text-xs hover:bg-[#FFFBF3]">
+                              <button type="button" onClick={() => router.push(`/admin/orders/${o.id}`)} className="block w-full rounded px-2 py-1.5 text-left text-xs hover:bg-[#FFFBF3]">
                                 View Shipment
                               </button>
-                              <button type="button" onClick={() => window.location.assign(`/admin/orders/${o.id}`)} className="block w-full rounded px-2 py-1.5 text-left text-xs hover:bg-[#FFFBF3]">
+                              <button type="button" onClick={() => router.push(`/admin/orders/${o.id}`)} className="block w-full rounded px-2 py-1.5 text-left text-xs hover:bg-[#FFFBF3]">
                                 Track Order
                               </button>
                             </>

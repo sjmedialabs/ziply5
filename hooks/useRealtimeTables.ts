@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect } from "react"
+import { useEffect, useRef } from "react"
 import { getSupabaseRealtimeClient } from "@/lib/supabase-realtime"
 
 type Props = {
@@ -17,21 +17,26 @@ const tableMap: Record<Props["tables"][number], string> = {
 
 export function useRealtimeTables({ tables, onChange, fallbackPollMs = 20_000 }: Props) {
   const tableKey = tables.join(",")
+  const onChangeRef = useRef(onChange)
+
+  useEffect(() => {
+    onChangeRef.current = onChange
+  }, [onChange])
 
   useEffect(() => {
     const supabase = getSupabaseRealtimeClient()
     if (!supabase) {
-      const id = window.setInterval(onChange, fallbackPollMs)
+      const id = window.setInterval(() => onChangeRef.current(), fallbackPollMs)
       return () => window.clearInterval(id)
     }
 
-    const channel = supabase.channel(`ziply5-realtime-${tableKey.replaceAll(",", "-")}-${Date.now()}`)
+    const channel = supabase.channel(`ziply5-realtime-${tableKey.replaceAll(",", "-")}`)
     for (const table of tables) {
       channel.on(
         "postgres_changes",
         { event: "*", schema: "public", table: tableMap[table] },
         () => {
-          onChange()
+          onChangeRef.current()
         },
       )
     }
@@ -40,5 +45,5 @@ export function useRealtimeTables({ tables, onChange, fallbackPollMs = 20_000 }:
     return () => {
       void supabase.removeChannel(channel)
     }
-  }, [fallbackPollMs, onChange, tableKey])
+  }, [fallbackPollMs, tableKey])
 }
