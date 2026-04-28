@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useMutation } from "@tanstack/react-query";
 import { getCartItems, setCartItems } from "@/lib/cart";
@@ -11,7 +11,7 @@ declare global {
   }
 }
 
-export default function PaymentPage() {
+function PaymentPageInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [scriptReady, setScriptReady] = useState(false);
@@ -469,5 +469,12 @@ export default function PaymentPage() {
         )}
       </div>
     </div>
+  );
+}
+export default function PaymentPage() {
+  return (
+    <Suspense fallback={null}>
+      <PaymentPageInner />
+    </Suspense>
   );
 }
