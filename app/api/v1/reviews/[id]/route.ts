@@ -6,7 +6,7 @@ import { updateReviewStatus } from "@/src/server/modules/extended/extended.servi
 import { z } from "zod"
 
 const patchSchema = z.object({
-  status: z.enum(["pending", "approved", "rejected"]),
+  status: z.enum(["published", "archived"]),
 })
 
 export async function PATCH(request: NextRequest, ctx: { params: Promise<{ id: string }> }) {

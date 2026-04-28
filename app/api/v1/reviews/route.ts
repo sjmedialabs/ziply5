@@ -11,17 +11,25 @@ import { z } from "zod"
 
 const createSchema = z.object({
   productId: z.string().min(1),
+  orderId: z.string().optional(),
+  userId: z.string().optional(),
   rating: z.number().int().min(1).max(5),
   title: z.string().optional(),
+  content: z.string().optional(),
   body: z.string().optional(),
+  sortOrder: z.number().int().optional(),
+  status: z.enum(["published", "archived"]).optional(),
   guestName: z.string().optional(),
   guestEmail: z.string().email().optional(),
 })
 
 export async function GET(request: NextRequest) {
   const pub = request.nextUrl.searchParams.get("public")
+  const productId = request.nextUrl.searchParams.get("productId") ?? undefined
+  const orderId = request.nextUrl.searchParams.get("orderId") ?? undefined
+  const userId = request.nextUrl.searchParams.get("userId") ?? undefined
   if (pub === "1") {
-    const rows = await listReviews("approved")
+    const rows = await listReviews({ status: "published", productId })
     return ok(rows, "Reviews")
   }
 
@@ -30,7 +38,7 @@ export async function GET(request: NextRequest) {
   const status = request.nextUrl.searchParams.get("status") ?? undefined
   const denied = requirePermission(auth.user.role, "reviews.read")
   if (denied) return denied
-  const rows = await listReviews(status)
+  const rows = await listReviews({ status, productId, orderId, userId })
   return ok(rows, "Reviews")
 }
 
@@ -52,14 +60,16 @@ export async function POST(request: NextRequest) {
   try {
     const row = await createReview({
       productId: parsed.data.productId,
-      userId: user?.sub,
+      orderId: parsed.data.orderId,
+      userId: user?.sub ?? parsed.data.userId,
       guestName: parsed.data.guestName,
       guestEmail: parsed.data.guestEmail,
       rating: parsed.data.rating,
       title: parsed.data.title,
-      body: parsed.data.body,
+      body: parsed.data.content ?? parsed.data.body,
+      status: parsed.data.status ?? "published",
     })
-    return ok(row, "Review submitted (pending moderation)", 201)
+    return ok(row, "Review submitted", 201)
   } catch (e) {
     return fail(e instanceof Error ? e.message : "Error", 400)
   }

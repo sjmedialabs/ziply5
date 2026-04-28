@@ -732,6 +732,15 @@ const cancelPendingOrder = async (orderId: string) => {
                         Return order
                       </button>
                     )}
+                    {order.status.toLowerCase() === "delivered" && (
+                      <button
+                        type="button"
+                        onClick={() => router.push(`/orders/${order.id}`)}
+                        className="rounded-md border border-[#E8DCC8] bg-white px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-[#4A1D1F]"
+                      >
+                        Review
+                      </button>
+                    )}
                     <button
                       type="button"
                       onClick={() => router.push(`/orders/${order.id}`)}
