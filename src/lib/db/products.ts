@@ -14,6 +14,7 @@ const PRODUCT_DETAIL_TABLES = ["ProductDetailSection", "product_detail_sections"
 const PRODUCT_SECTION_TABLES = ["ProductSection", "product_sections"]
 const PRODUCT_TAG_TABLES = ["ProductTag", "product_tags"]
 const TAG_TABLES = ["Tag", "tags"]
+const CATEGORY_TABLES = ["Category", "categories"]
 const USER_TABLES = ["User", "users"]
 
 const existsById = async (tables: string[], id: string): Promise<boolean> => {
@@ -295,11 +296,20 @@ const readByIds = async <T extends Record<string, unknown>>(
   return []
 }
 
-const shapeCategories = (rows: Array<Record<string, unknown>>) =>
+const shapeCategories = (
+  rows: Array<Record<string, unknown>>,
+  categorySlugById?: Map<string, string>,
+) =>
   rows
     .map((row) => safeString((row as any).categoryId ?? (row as any).category_id))
     .filter(Boolean)
-    .map((categoryId) => ({ categoryId }))
+    .map((categoryId) => {
+      const slug = categorySlugById?.get(categoryId) ?? null
+      return {
+        categoryId,
+        ...(slug ? { category: { slug }, slug } : {}),
+      }
+    })
 
 const shapeTags = (tagRows: Array<Record<string, unknown>>) =>
   tagRows
@@ -322,6 +332,16 @@ export const getProductByIdSupabaseHydrated = async (id: string) => {
     readByProductId(PRODUCT_TAG_TABLES, id),
   ])
 
+  const categoryIds = (categories ?? [])
+    .map((row) => safeString((row as any).categoryId ?? (row as any).category_id))
+    .filter(Boolean)
+  const categoryRows = categoryIds.length ? await readByIds(CATEGORY_TABLES, [...new Set(categoryIds)]) : []
+  const categorySlugById = new Map(
+    categoryRows
+      .map((c) => [safeString((c as any).id), safeString((c as any).slug)])
+      .filter(([cid, slug]) => cid && slug),
+  )
+
   // Optionally hydrate tags (best-effort; keep empty if table mismatch).
   const tagIds = (productTags ?? [])
     .map((row) => safeString((row as any).tagId ?? (row as any).tag_id))
@@ -340,7 +360,7 @@ export const getProductByIdSupabaseHydrated = async (id: string) => {
     details,
     sections,
     // Match admin UI expected shapes.
-    categories: shapeCategories(categories ?? []),
+    categories: shapeCategories(categories ?? [], categorySlugById),
     tags: shapeTags(tags ?? []),
   } as ProductRow
 }
@@ -354,6 +374,16 @@ export const hydrateProductsForListSupabase = async <T extends Record<string, un
     readByProductIds(PRODUCT_CATEGORY_TABLES, ids),
     readByProductIds(PRODUCT_TAG_TABLES, ids),
   ])
+
+  const categoryIds = categoryRows
+    .map((row) => safeString((row as any).categoryId ?? (row as any).category_id))
+    .filter(Boolean)
+  const categoryRowsFull = categoryIds.length ? await readByIds(CATEGORY_TABLES, [...new Set(categoryIds)]) : []
+  const categorySlugById = new Map(
+    categoryRowsFull
+      .map((c) => [safeString((c as any).id), safeString((c as any).slug)])
+      .filter(([cid, slug]) => cid && slug),
+  )
 
   const tagIds = productTagRows
     .map((row) => safeString((row as any).tagId ?? (row as any).tag_id))
@@ -399,7 +429,7 @@ export const hydrateProductsForListSupabase = async <T extends Record<string, un
     return {
       ...row,
       variants,
-      categories: shapeCategories(cats),
+      categories: shapeCategories(cats, categorySlugById),
       tags: shapeTags(tags),
     }
   })
