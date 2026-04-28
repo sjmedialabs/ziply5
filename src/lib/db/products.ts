@@ -147,6 +147,22 @@ const insertFirst = async (
   return { row: null, errors }
 }
 
+const insertFirstNoId = async (
+  tables: string[],
+  payloads: Array<Record<string, unknown>>,
+): Promise<{ ok: boolean; errors: string[] }> => {
+  const client = getSupabaseAdmin()
+  const errors: string[] = []
+  for (const table of tables) {
+    for (const payload of payloads) {
+      const { error } = await client.from(table).insert(payload)
+      if (!error) return { ok: true, errors }
+      errors.push(`${table}: ${error.message}`)
+    }
+  }
+  return { ok: false, errors }
+}
+
 const updateFirst = async (
   tables: string[],
   payloads: Array<Record<string, unknown>>,
@@ -244,6 +260,53 @@ const readByProductId = async <T extends Record<string, unknown>>(
   return []
 }
 
+const readByProductIds = async <T extends Record<string, unknown>>(
+  tables: string[],
+  productIds: string[],
+): Promise<T[]> => {
+  const client = getSupabaseAdmin()
+  const ids = productIds.map(safeString).filter(Boolean)
+  if (!ids.length) return []
+  for (const table of tables) {
+    const attempts = [
+      () => client.from(table).select("*").in("productId", ids),
+      () => client.from(table).select("*").in("product_id", ids),
+    ]
+    for (const run of attempts) {
+      const { data, error } = await run()
+      if (error) continue
+      if (Array.isArray(data)) return data as T[]
+    }
+  }
+  return []
+}
+
+const readByIds = async <T extends Record<string, unknown>>(
+  tables: string[],
+  ids: string[],
+): Promise<T[]> => {
+  const client = getSupabaseAdmin()
+  const clean = ids.map(safeString).filter(Boolean)
+  if (!clean.length) return []
+  for (const table of tables) {
+    const { data, error } = await client.from(table).select("*").in("id", clean)
+    if (!error && Array.isArray(data)) return data as T[]
+  }
+  return []
+}
+
+const shapeCategories = (rows: Array<Record<string, unknown>>) =>
+  rows
+    .map((row) => safeString((row as any).categoryId ?? (row as any).category_id))
+    .filter(Boolean)
+    .map((categoryId) => ({ categoryId }))
+
+const shapeTags = (tagRows: Array<Record<string, unknown>>) =>
+  tagRows
+    .map((row) => safeString((row as any).name))
+    .filter(Boolean)
+    .map((name) => ({ tag: { name } }))
+
 export const getProductByIdSupabaseHydrated = async (id: string) => {
   const base = await getProductByIdSupabaseBasic(id)
   if (!base) return null
@@ -265,14 +328,7 @@ export const getProductByIdSupabaseHydrated = async (id: string) => {
     .filter(Boolean)
   let tags: ProductRow[] = []
   if (tagIds.length) {
-    const client = getSupabaseAdmin()
-    for (const table of TAG_TABLES) {
-      const { data, error } = await client.from(table).select("*").in("id", tagIds)
-      if (!error && Array.isArray(data)) {
-        tags = data as ProductRow[]
-        break
-      }
-    }
+    tags = await readByIds(TAG_TABLES, tagIds)
   }
 
   return {
@@ -283,9 +339,70 @@ export const getProductByIdSupabaseHydrated = async (id: string) => {
     labels,
     details,
     sections,
-    categories,
-    tags,
+    // Match admin UI expected shapes.
+    categories: shapeCategories(categories ?? []),
+    tags: shapeTags(tags ?? []),
   } as ProductRow
+}
+
+export const hydrateProductsForListSupabase = async <T extends Record<string, unknown>>(items: T[]) => {
+  const ids = items.map((row) => safeString((row as any).id)).filter(Boolean)
+  if (!ids.length) return items
+
+  const [variantRows, categoryRows, productTagRows] = await Promise.all([
+    readByProductIds(PRODUCT_VARIANT_TABLES, ids),
+    readByProductIds(PRODUCT_CATEGORY_TABLES, ids),
+    readByProductIds(PRODUCT_TAG_TABLES, ids),
+  ])
+
+  const tagIds = productTagRows
+    .map((row) => safeString((row as any).tagId ?? (row as any).tag_id))
+    .filter(Boolean)
+  const tagRows = tagIds.length ? await readByIds(TAG_TABLES, tagIds) : []
+  const tagsById = new Map(tagRows.map((t) => [safeString((t as any).id), t]))
+
+  const variantsByProduct = new Map<string, Array<Record<string, unknown>>>()
+  for (const row of variantRows) {
+    const pid = safeString((row as any).productId ?? (row as any).product_id)
+    if (!pid) continue
+    const list = variantsByProduct.get(pid) ?? []
+    list.push(row)
+    variantsByProduct.set(pid, list)
+  }
+
+  const categoriesByProduct = new Map<string, Array<Record<string, unknown>>>()
+  for (const row of categoryRows) {
+    const pid = safeString((row as any).productId ?? (row as any).product_id)
+    if (!pid) continue
+    const list = categoriesByProduct.get(pid) ?? []
+    list.push(row)
+    categoriesByProduct.set(pid, list)
+  }
+
+  const tagsByProduct = new Map<string, Array<Record<string, unknown>>>()
+  for (const row of productTagRows) {
+    const pid = safeString((row as any).productId ?? (row as any).product_id)
+    if (!pid) continue
+    const tagId = safeString((row as any).tagId ?? (row as any).tag_id)
+    const tag = tagId ? tagsById.get(tagId) : null
+    if (!tag) continue
+    const list = tagsByProduct.get(pid) ?? []
+    list.push(tag)
+    tagsByProduct.set(pid, list)
+  }
+
+  return items.map((row) => {
+    const id = safeString((row as any).id)
+    const variants = variantsByProduct.get(id) ?? []
+    const cats = categoriesByProduct.get(id) ?? []
+    const tags = tagsByProduct.get(id) ?? []
+    return {
+      ...row,
+      variants,
+      categories: shapeCategories(cats),
+      tags: shapeTags(tags),
+    }
+  })
 }
 
 export const deleteProductSupabaseBasic = async (id: string) => {
@@ -325,17 +442,28 @@ export const createProductSupabase = async (input: {
   }
 
   if (input.categoryId) {
-    await insertFirst(PRODUCT_CATEGORY_TABLES, [
-      withId({ productId, categoryId: input.categoryId }),
-      withId({ product_id: productId, category_id: input.categoryId }),
-    ])
+    const linked = await insertFirstNoId(PRODUCT_CATEGORY_TABLES, [{ productId, categoryId: input.categoryId }])
+    if (!linked.ok) {
+      logger.error("Supabase insert failed for table 'ProductCategory' with payload", {
+        productId,
+        categoryId: input.categoryId,
+        errors: linked.errors.slice(0, 5),
+      })
+    }
   }
 
   for (const v of input.variants ?? []) {
-    await insertFirst(PRODUCT_VARIANT_TABLES, [
+    const createdVariant = await insertFirst(PRODUCT_VARIANT_TABLES, [
       withId({ ...v, productId }),
       withId({ ...v, product_id: productId }),
     ])
+    if (!createdVariant.row) {
+      logger.error("Supabase insert failed for table 'ProductVariant' with payload", {
+        productId,
+        sku: (v as any)?.sku,
+        errors: createdVariant.errors.slice(0, 5),
+      })
+    }
   }
 
   for (const [i, url] of (input.images ?? []).entries()) {
@@ -378,7 +506,7 @@ export const createProductSupabase = async (input: {
     if (!name) continue
     const slug = name.replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "")
     let tagId = ""
-    const createdTag = await insertFirst(TAG_TABLES, [{ name, slug }])
+    const createdTag = await insertFirst(TAG_TABLES, [withId({ name, slug })])
     tagId = safeString(createdTag.row?.id)
     if (!tagId) {
       const client = getSupabaseAdmin()
@@ -391,10 +519,14 @@ export const createProductSupabase = async (input: {
       }
     }
     if (tagId) {
-      await insertFirst(PRODUCT_TAG_TABLES, [
-        withId({ productId, tagId }),
-        withId({ product_id: productId, tag_id: tagId }),
-      ])
+      const linked = await insertFirstNoId(PRODUCT_TAG_TABLES, [{ productId, tagId }])
+      if (!linked.ok) {
+        logger.error("Supabase insert failed for table 'ProductTag' with payload", {
+          productId,
+          tagId,
+          errors: linked.errors.slice(0, 5),
+        })
+      }
     }
   }
 
@@ -413,7 +545,7 @@ export const updateProductSupabase = async (input: {
   sections?: Array<{ id?: string; title: string; description: string; sortOrder?: number; isActive?: boolean }>
   tags?: string[]
 }) => {
-  const baseUpdate = withTimestampForUpdate(input.baseUpdate)
+  const baseUpdate = await normalizeActorFks(withTimestampForUpdate(input.baseUpdate))
   const updated = await updateFirst(
     PRODUCT_TABLES,
     [
@@ -437,24 +569,28 @@ export const updateProductSupabase = async (input: {
   if (input.categoryId !== undefined) {
     await deleteByProductId(PRODUCT_CATEGORY_TABLES, input.productId)
     if (input.categoryId) {
-      await insertFirst(PRODUCT_CATEGORY_TABLES, [
-        { productId: input.productId, categoryId: input.categoryId },
-        { product_id: input.productId, category_id: input.categoryId },
-      ])
+      const linked = await insertFirstNoId(PRODUCT_CATEGORY_TABLES, [{ productId: input.productId, categoryId: input.categoryId }])
+      if (!linked.ok) {
+        logger.error("Supabase insert failed for table 'ProductCategory' with payload", {
+          productId: input.productId,
+          categoryId: input.categoryId,
+          errors: linked.errors.slice(0, 5),
+        })
+      }
     }
   }
   if (input.variants !== undefined) {
     await deleteByProductId(PRODUCT_VARIANT_TABLES, input.productId)
     for (const v of input.variants ?? []) {
-      await insertFirst(PRODUCT_VARIANT_TABLES, [{ ...v, productId: input.productId }, { ...v, product_id: input.productId }])
+      await insertFirst(PRODUCT_VARIANT_TABLES, [withId({ ...v, productId: input.productId }), withId({ ...v, product_id: input.productId })])
     }
   }
   if (input.images !== undefined) {
     await deleteByProductId(PRODUCT_IMAGE_TABLES, input.productId)
     for (const [i, url] of (input.images ?? []).entries()) {
       await insertFirst(PRODUCT_IMAGE_TABLES, [
-        { productId: input.productId, url, position: i },
-        { product_id: input.productId, url, position: i },
+        withId({ productId: input.productId, url, position: i }),
+        withId({ product_id: input.productId, url, position: i }),
       ])
     }
   }
@@ -462,8 +598,8 @@ export const updateProductSupabase = async (input: {
     await deleteByProductId(PRODUCT_FEATURE_TABLES, input.productId)
     for (const f of input.features ?? []) {
       await insertFirst(PRODUCT_FEATURE_TABLES, [
-        { productId: input.productId, title: f.title, icon: f.icon ?? null },
-        { product_id: input.productId, title: f.title, icon: f.icon ?? null },
+        withId({ productId: input.productId, title: f.title, icon: f.icon ?? null }),
+        withId({ product_id: input.productId, title: f.title, icon: f.icon ?? null }),
       ])
     }
   }
@@ -471,8 +607,8 @@ export const updateProductSupabase = async (input: {
     await deleteByProductId(PRODUCT_LABEL_TABLES, input.productId)
     for (const l of input.labels ?? []) {
       await insertFirst(PRODUCT_LABEL_TABLES, [
-        { productId: input.productId, label: l.label, color: l.color ?? null },
-        { product_id: input.productId, label: l.label, color: l.color ?? null },
+        withId({ productId: input.productId, label: l.label, color: l.color ?? null }),
+        withId({ product_id: input.productId, label: l.label, color: l.color ?? null }),
       ])
     }
   }
@@ -480,8 +616,8 @@ export const updateProductSupabase = async (input: {
     await deleteByProductId(PRODUCT_DETAIL_TABLES, input.productId)
     for (const [i, d] of (input.details ?? []).entries()) {
       await insertFirst(PRODUCT_DETAIL_TABLES, [
-        { productId: input.productId, title: d.title, content: d.content, sortOrder: d.sortOrder ?? i },
-        { product_id: input.productId, title: d.title, content: d.content, sort_order: d.sortOrder ?? i },
+        withId({ productId: input.productId, title: d.title, content: d.content, sortOrder: d.sortOrder ?? i }),
+        withId({ product_id: input.productId, title: d.title, content: d.content, sort_order: d.sortOrder ?? i }),
       ])
     }
   }
@@ -489,20 +625,20 @@ export const updateProductSupabase = async (input: {
     await deleteByProductId(PRODUCT_SECTION_TABLES, input.productId)
     for (const [i, s] of (input.sections ?? []).entries()) {
       await insertFirst(PRODUCT_SECTION_TABLES, [
-        {
+        withId({
           productId: input.productId,
           title: s.title,
           description: s.description,
           sortOrder: s.sortOrder ?? i,
           isActive: s.isActive ?? true,
-        },
-        {
+        }),
+        withId({
           product_id: input.productId,
           title: s.title,
           description: s.description,
           sort_order: s.sortOrder ?? i,
           is_active: s.isActive ?? true,
-        },
+        }),
       ])
     }
   }
@@ -512,7 +648,7 @@ export const updateProductSupabase = async (input: {
       const name = safeString(raw).toLowerCase()
       if (!name) continue
       const slug = name.replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "")
-      let tagId = safeString((await insertFirst(TAG_TABLES, [{ name, slug }]))?.id)
+      let tagId = safeString((await insertFirst(TAG_TABLES, [withId({ name, slug })])).row?.id)
       if (!tagId) {
         const client = getSupabaseAdmin()
         for (const table of TAG_TABLES) {
@@ -524,10 +660,14 @@ export const updateProductSupabase = async (input: {
         }
       }
       if (tagId) {
-        await insertFirst(PRODUCT_TAG_TABLES, [
-          { productId: input.productId, tagId },
-          { product_id: input.productId, tag_id: tagId },
-        ])
+        const linked = await insertFirstNoId(PRODUCT_TAG_TABLES, [{ productId: input.productId, tagId }])
+        if (!linked.ok) {
+          logger.error("Supabase insert failed for table 'ProductTag' with payload", {
+            productId: input.productId,
+            tagId,
+            errors: linked.errors.slice(0, 5),
+          })
+        }
       }
     }
   }

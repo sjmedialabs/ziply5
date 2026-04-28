@@ -9,17 +9,20 @@ export const createSupportTicketV2 = async (input: {
   subject: string
   message: string
 }) => {
-  const rows = await prisma.$queryRaw<Array<{ id: string }>>(Prisma.sql`
-    INSERT INTO support_tickets_v2 (user_id, order_id, category, subject, status)
-    VALUES (${input.userId}, ${input.orderId ?? null}, ${input.category}, ${input.subject}, 'open')
-    RETURNING id
-  `)
-  const ticketId = rows[0]?.id
-  if (!ticketId) throw new Error("Failed to create support ticket")
-  await prisma.$executeRaw(Prisma.sql`
-    INSERT INTO support_messages_v2 (ticket_id, sender_type, message)
-    VALUES (${ticketId}::uuid, 'user', ${input.message})
-  `)
+  const ticketId = await prisma.$transaction(async (tx) => {
+    const rows = await tx.$queryRaw<Array<{ id: string }>>(Prisma.sql`
+      INSERT INTO support_tickets_v2 (user_id, order_id, category, subject, status)
+      VALUES (${input.userId}, ${input.orderId ?? null}, ${input.category}, ${input.subject}, 'open')
+      RETURNING id
+    `)
+    const id = rows[0]?.id
+    if (!id) throw new Error("Failed to create support ticket")
+    await tx.$executeRaw(Prisma.sql`
+      INSERT INTO support_messages_v2 (ticket_id, sender_type, message)
+      VALUES (${id}::uuid, 'user', ${input.message})
+    `)
+    return id
+  })
   await enqueueOutboxEvent({
     eventType: "support.ticket.created.v2",
     aggregateType: "support_ticket_v2",

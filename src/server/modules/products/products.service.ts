@@ -6,6 +6,7 @@ import {
   deleteProductSupabaseBasic,
   getProductByIdSupabaseBasic,
   getProductByIdSupabaseHydrated,
+  hydrateProductsForListSupabase,
   getProductIdBySlugSupabase,
   getProductBySlugSupabaseBasic,
   listProductIdsSupabase,
@@ -486,7 +487,8 @@ export const listProducts = async (
     if (scope === "public" && filters?.inStockOnly) return Number(row.totalStock ?? row.total_stock ?? 0) > 0
     return true
   })
-  return { items, total: payload.total, page: payload.page, limit: payload.limit }
+  const hydrated = await hydrateProductsForListSupabase(items as any[])
+  return { items: hydrated, total: payload.total, page: payload.page, limit: payload.limit }
 }
 
 export const getProductById = async (id: string) => {
