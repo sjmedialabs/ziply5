@@ -92,11 +92,21 @@ const normalizeMediaUrl = (value: string | null | undefined) => {
 
 export const toStorefrontProduct = (p: ApiProduct): StorefrontProduct => {
   const variants = p.variants ?? []
-  console.log("Normalizing product", { id: p.id, name: p.name, variantCount: variants.length })
   const firstVariant = variants[0]
-  const sale = Number(p.price ?? firstVariant?.price ?? p.price ?? 0)
+  const id = String((p as any).id ?? "").trim() || "0"
+  const name = String((p as any).name ?? "").trim() || "Unknown Product"
+  const slug =
+    String((p as any).slug ?? "")
+      .trim()
+      .toLowerCase() || `product-${id}`
+  const rawSku = String((p as any).sku ?? "").trim()
+  const sku = rawSku || slug.replace(/-/g, "").slice(0, 12).toUpperCase() || `SKU${id.slice(0, 6).toUpperCase()}`
+
+  const sale = Number(p.price ?? firstVariant?.price ?? 0)
   const oldPrice = Number(p.basePrice ?? sale * 1.2)
-  const tags = (p.tags ?? []).map((t) => t.tag.name.toLowerCase())
+  const tags = (p.tags ?? [])
+    .map((t: any) => String(t?.tag?.name ?? t?.name ?? "").trim().toLowerCase())
+    .filter(Boolean)
   const isVeg = tags.some((t) => t === "veg" || t === "vegetarian")
   const sections =
     (p.sections ?? [])
@@ -108,11 +118,21 @@ export const toStorefrontProduct = (p: ApiProduct): StorefrontProduct => {
   const normalizedGallery = (p.images ?? [])
     .map((i) => normalizeMediaUrl(i.url))
     .filter((url): url is string => Boolean(url))
+
+  const categorySlug = (() => {
+    const c0: any = (p as any).categories?.[0]
+    if (!c0) return "all"
+    const direct = String(c0.slug ?? "").trim()
+    if (direct) return direct
+    const nested = String(c0.category?.slug ?? "").trim()
+    if (nested) return nested
+    return "all"
+  })()
   return {
-    id: p.id || "0",
-    name: p.name || "Unknown Product",
-    slug: p.slug || `product-${p.id}`,
-    sku: p.sku || p.slug.replace(/-/g, "").slice(0, 6).toUpperCase(),
+    id,
+    name,
+    slug,
+    sku,
     productKind: p.type ?? (variants.length ? "variant" : "simple"),
     price: sale || 0,
     stockStatus: p.stockStatus ?? "out_of_stock",
@@ -127,7 +147,7 @@ export const toStorefrontProduct = (p: ApiProduct): StorefrontProduct => {
     videoUrl: p.videoUrl ?? null,
     weight: firstVariant?.weight ?? firstVariant?.name ?? "250g",
     type: isVeg ? "veg" : "non-veg",
-    category: p.categories?.[0]?.category.slug ?? "all",
+    category: categorySlug,
     labels: p.labels ?? [],
     isBestSeller: p.isBestSeller ?? false,
     isFeatured: p.isFeatured ?? false,
@@ -139,11 +159,11 @@ export const toStorefrontProduct = (p: ApiProduct): StorefrontProduct => {
         : fallbackDetails,
     sections,
     variants: variants.map((v) => ({
-      id: v.id,
-      name: v.name,
+      id: String((v as any).id ?? "").trim() || crypto.randomUUID(),
+      name: String((v as any).name ?? "").trim() || "",
       weight: v.weight ?? v.name ?? "",
       mrp: Number(v.mrp) || 0,
-      sku: v.sku,
+      sku: String((v as any).sku ?? "").trim() || sku,
       stock: v.stock ?? 0,
       isDefault: Boolean(v.isDefault),
       discountPercent: v.discountPercent ? Number(v.discountPercent) : null,
