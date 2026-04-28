@@ -5,6 +5,7 @@ import {
   createProductSupabase,
   deleteProductSupabaseBasic,
   getProductByIdSupabaseBasic,
+  getProductByIdSupabaseHydrated,
   getProductIdBySlugSupabase,
   getProductBySlugSupabaseBasic,
   listProductIdsSupabase,
@@ -492,7 +493,7 @@ export const getProductById = async (id: string) => {
   if (process.env.SUPABASE_PRODUCTS_READ_ENABLED !== "true") {
     throw new Error("SUPABASE_PRODUCTS_READ_ENABLED must be true")
   }
-  return (await getProductByIdSupabaseBasic(id)) as any
+  return (await getProductByIdSupabaseHydrated(id)) as any
 }
 
 export const getProductBySlug = async (slug: string) => {
@@ -500,7 +501,7 @@ export const getProductBySlug = async (slug: string) => {
     throw new Error("SUPABASE_PRODUCTS_READ_ENABLED must be true")
   }
   const id = await getProductIdBySlugSupabase(slug)
-  if (id) return (await getProductByIdSupabaseBasic(id)) as any
+  if (id) return (await getProductByIdSupabaseHydrated(id)) as any
   return (await getProductBySlugSupabaseBasic(slug)) as any
 }
 export const canAccessProduct = (
@@ -590,8 +591,20 @@ export const createProduct = async (input: CreateProductInput) => {
       tags: undefined,
     }
   if (process.env.SUPABASE_PRODUCTS_WRITE_ENABLED === "true") {
+    // Supabase writes expect flat scalar columns only (no nested Prisma-style relation payloads).
+    const {
+      categories: _categories,
+      variants: _variants,
+      images: _images,
+      features: _features,
+      labels: _labels,
+      details: _details,
+      sections: _sections,
+      tags: _tags,
+      ...baseSupabase
+    } = (baseData as unknown) as Record<string, unknown>
     const created = await createProductSupabase({
-      base: baseData,
+      base: baseSupabase,
       categoryId: input.categoryId ?? null,
       variants: input.variants?.map((v) => ({
         name: v.name,
@@ -610,7 +623,7 @@ export const createProduct = async (input: CreateProductInput) => {
       sections,
       tags: uniqueTags,
     })
-    const supabaseHydrated = await getProductByIdSupabaseBasic(created.id)
+    const supabaseHydrated = await getProductByIdSupabaseHydrated(created.id)
     if (supabaseHydrated) return supabaseHydrated as any
     return { id: created.id } as any
   }
