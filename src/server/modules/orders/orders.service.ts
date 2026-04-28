@@ -393,13 +393,26 @@ export const createOrderFromCheckout = async (input: {
   const order = await getOrderByIdSupabaseBasic(created.id)
   if (!order) throw new Error("Unable to hydrate created order via Supabase")
 
+  const transactionStatus = input.paymentStatus === "paid" ? "paid" : input.paymentStatus === "failed" ? "failed" : "pending"
   await createTransactionSupabase({
     orderId: String(order.id),
     gateway: input.gateway,
     amount: total,
-    status: input.paymentStatus === "paid" ? "paid" : input.paymentStatus === "failed" ? "failed" : "pending",
+    status: transactionStatus,
     externalId: input.paymentId ?? null,
   }).catch(() => null)
+
+  const hasSuccessfulTransaction =
+    (order.transactions ?? []).some((tx) => ["paid", "captured", "success"].includes(String(tx?.status ?? "").toLowerCase())) ||
+    ["paid", "captured", "success"].includes(transactionStatus.toLowerCase())
+  const isPaymentSuccessful = String(order.paymentStatus ?? "").toUpperCase() === "SUCCESS" || hasSuccessfulTransaction
+
+  if (isPaymentSuccessful && String(order.status ?? "").toLowerCase() === "pending") {
+    const confirmed = await mirrorOrderStatusSupabase(String(order.id), "confirmed")
+    if (confirmed) {
+      ;(order as Record<string, unknown>).status = "confirmed"
+    }
+  }
 
   await logActivity({
     actorId: input.userId ?? undefined,

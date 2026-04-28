@@ -11,11 +11,25 @@ type OrderDetail = {
   status: string
   paymentStatus?: string | null
   currency: string
+  subtotal?: string | number
+  shipping?: string | number
   total: string | number
   createdAt: string
+  deliveredAt?: string | null
+  customerName?: string | null
+  customerPhone?: string | null
+  customerAddress?: string | null
+  user?: { email?: string | null } | null
+  items: Array<{
+    id: string
+    quantity: number
+    unitPrice?: string | number
+    lineTotal?: string | number
+    product?: { name?: string | null } | null
+  }>
   statusHistory: Array<{ toStatus: string; changedAt: string }>
   transactions: Array<{ id: string; status: string; gateway: string; createdAt: string }>
-  shipments: Array<{ id: string; carrier: string | null; trackingNo: string | null; shipmentStatus: string }>
+  shipments: Array<{ id: string; carrier: string | null; trackingNo: string | null; shipmentStatus: string; eta?: string | null }>
   returnRequests: Array<{ id: string; status: string; reason: string | null }>
   refunds: Array<{ id: string; status: string; amount: string | number; createdAt: string }>
 }
@@ -48,7 +62,7 @@ export default function OrderDetailPage() {
   const statusMasterQuery = useMasterValues("ORDER_STATUS")
   const returnReasonMasterQuery = useMasterValues("RETURN_REASON")
   const timeline = statusMasterQuery.data?.map((item) => item.value) ?? FALLBACK_TIMELINE
-  const returnReasons = returnReasonMasterQuery.data?.map((item) => item.label) ?? FALLBACK_RETURN_REASONS
+  const returnReasons = (returnReasonMasterQuery.data?.map((item) => item.label) ?? [...FALLBACK_RETURN_REASONS]) as string[]
   const [reason, setReason] = useState<string>((returnReasons[0] as string) ?? "Other")
   const [description, setDescription] = useState("")
   const [showReturnForm, setShowReturnForm] = useState(false)
@@ -123,7 +137,7 @@ export default function OrderDetailPage() {
 
   const order = orderQuery.data
   const historySet = useMemo(() => new Set(order?.statusHistory.map((entry) => entry.toStatus.toLowerCase())), [order?.statusHistory])
-  const returnExists = Boolean(order?.returnRequests.length)
+  const returnExists = Boolean(order?.returnRequests?.length)
   const cancelRequested = historySet.has("cancel_requested")
   const returnRequested = historySet.has("return_requested")
   const paymentStatus =
@@ -151,8 +165,45 @@ export default function OrderDetailPage() {
     }
   }, [reason, returnReasons])
 
+  const downloadInvoice = () => {
+    if (!order) return
+    const createdOn = new Date(order.createdAt).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })
+    const invoiceText = [
+      `Invoice - Order ${order.id}`,
+      `Order Date: ${createdOn}`,
+      `Order Status: ${order.status}`,
+      `Payment Status: ${paymentStatus}`,
+      "",
+      "Customer Details",
+      `Name: ${order.customerName ?? "-"}`,
+      `Phone: ${order.customerPhone ?? "-"}`,
+      `Email: ${order.user?.email ?? "-"}`,
+      `Address: ${order.customerAddress ?? "-"}`,
+      "",
+      "Items",
+      ...order.items.map((item) => {
+        const unit = Number(item.unitPrice ?? 0)
+        const line = Number(item.lineTotal ?? unit * Number(item.quantity ?? 0))
+        return `${item.product?.name ?? "Product"} | Qty: ${item.quantity} | Price: ${unit.toFixed(2)} | Subtotal: ${line.toFixed(2)}`
+      }),
+      "",
+      "Billing",
+      `Subtotal: ${Number(order.subtotal ?? 0).toFixed(2)}`,
+      `Shipping: ${Number(order.shipping ?? 0).toFixed(2)}`,
+      `Total: ${Number(order.total).toFixed(2)}`,
+    ].join("\n")
+
+    const blob = new Blob([invoiceText], { type: "text/plain;charset=utf-8" })
+    const url = URL.createObjectURL(blob)
+    const anchor = document.createElement("a")
+    anchor.href = url
+    anchor.download = `invoice-${order.id}.txt`
+    anchor.click()
+    URL.revokeObjectURL(url)
+  }
+
   return (
-    <section className="mx-auto max-w-4xl space-y-4 px-4 py-6">
+    <section className="mx-auto max-w-7xl space-y-4 px-4 py-6">
       <div className="flex items-center justify-between">
         <h1 className="font-melon text-2xl font-bold text-[#4A1D1F]">Order details</h1>
         <button
@@ -169,14 +220,28 @@ export default function OrderDetailPage() {
 
       {order && (
         <>
+        {/* payment details div */}
           <div className="rounded-2xl border border-[#E8DCC8] bg-white p-4 shadow-sm">
-            <p className="text-xs uppercase tracking-[0.15em] text-[#646464]">Order ID</p>
-            <p className="font-mono text-sm text-[#2A1810]">{order.id}</p>
-            <p className="mt-2 text-sm text-[#646464]">Payment status: <span className="font-semibold uppercase">{paymentStatus}</span></p>
-            <p className="text-sm text-[#646464]">Total: {order.currency} {Number(order.total).toFixed(2)}</p>
-            <p className="text-sm text-[#646464]">
-              Refund status: <span className="font-semibold uppercase">{(order.refunds[0]?.status ?? "pending").replace("_", " ")}</span>
-            </p>
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <p className="text-xs uppercase tracking-[0.15em] text-[#646464]">Order ID</p>
+                <p className="font-mono text-sm text-[#2A1810]">{order.id}</p>
+                <p className="mt-1 text-xs text-[#646464]">
+                  Order created on {new Date(order.createdAt).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })}
+                </p>
+              </div>
+              <span className="rounded-full bg-[#FDF0E6] px-3 py-1 text-[11px] font-semibold uppercase text-[#7B3010]">{order.status}</span>
+            </div>
+            <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+              <p className="text-sm text-[#646464]">Payment status: <span className="font-semibold uppercase">{paymentStatus}</span></p>
+              <button
+                type="button"
+                onClick={downloadInvoice}
+                className="rounded-full border border-[#E8DCC8] bg-white px-4 py-2 text-xs font-semibold uppercase text-[#4A1D1F]"
+              >
+                Download Invoice
+              </button>
+            </div>
             {(paymentStatus ?? "").toUpperCase() === "SUCCESS" && ["confirmed", "packed"].includes(order.status.toLowerCase()) && !cancelRequested && (
               <button
                 type="button"
@@ -188,7 +253,7 @@ export default function OrderDetailPage() {
               </button>
             )}
           </div>
-
+            {/* order timelines */}
           <div className="rounded-2xl border border-[#E8DCC8] bg-white p-4 shadow-sm">
             <h2 className="mb-3 text-sm font-semibold uppercase tracking-[0.15em] text-[#4A1D1F]">Order timeline</h2>
             <div className="grid gap-2 md:grid-cols-3">
@@ -202,22 +267,77 @@ export default function OrderDetailPage() {
               })}
             </div>
           </div>
+              {/* order status  */}
+          {order.status.toLowerCase() !== "delivered" ? (
+            <div className="rounded-2xl border border-[#E8DCC8] bg-white p-4 shadow-sm">
+              <h2 className="mb-3 text-sm font-semibold uppercase tracking-[0.15em] text-[#4A1D1F]">Shipment Details</h2>
+              {order?.shipments?.length === 0 ? (
+                <p className="text-sm text-[#646464]">Shipment details will appear once dispatched.</p>
+              ) : (
+                <div className="space-y-2 text-sm">
+                  {order?.shipments?.map((shipment) => (
+                    <div key={shipment.id} className="rounded-lg border border-[#F2E6DD] bg-[#FFFBF7] p-3">
+                      <p><span className="font-semibold">Carrier:</span> {shipment.carrier ?? "Carrier TBD"}</p>
+                      <p><span className="font-semibold">Tracking Number:</span> {shipment.trackingNo ?? "Not assigned"}</p>
+                      <p><span className="font-semibold">Shipment Status:</span> {(shipment.shipmentStatus ?? "pending").toUpperCase()}</p>
+                      <p><span className="font-semibold">ETA:</span> {shipment.eta ? new Date(shipment.eta).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }) : "TBD"}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="rounded-2xl border border-[#E8DCC8] bg-white p-4 shadow-sm">
+              <h2 className="mb-3 text-sm font-semibold uppercase tracking-[0.15em] text-[#4A1D1F]">Delivery Info</h2>
+              <p className="text-sm text-[#646464]">
+                Delivered date: {order.deliveredAt ? new Date(order.deliveredAt).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }) : "Delivered"}
+              </p>
+            </div>
+          )}
+      
+          {(order?.returnRequests?.length > 0 || order?.refunds?.length > 0) && (
+            <div className="rounded-2xl border border-[#E8DCC8] bg-white p-4 shadow-sm">
+              <h2 className="mb-3 text-sm font-semibold uppercase tracking-[0.15em] text-[#4A1D1F]">Return / Refund Status</h2>
+              {order.returnRequests[0] && (
+                <p className="text-sm text-[#646464]">Return: <span className="font-semibold uppercase">{order.returnRequests[0].status}</span></p>
+              )}
+              {order.refunds[0] && (
+                <p className="text-sm text-[#646464]">Refund: <span className="font-semibold uppercase">{order.refunds[0].status}</span></p>
+              )}
+            </div>
+          )}
 
           <div className="rounded-2xl border border-[#E8DCC8] bg-white p-4 shadow-sm">
-            <h2 className="mb-3 text-sm font-semibold uppercase tracking-[0.15em] text-[#4A1D1F]">Shipment tracking</h2>
-            {order.shipments.length === 0 ? (
-              <p className="text-sm text-[#646464]">Shipment details will appear once dispatched.</p>
-            ) : (
-              <div className="space-y-2 text-sm">
-                {order.shipments.map((shipment) => (
-                  <div key={shipment.id} className="rounded-lg border border-[#F2E6DD] bg-[#FFFBF7] p-3">
-                    <p className="font-semibold text-[#2A1810]">{shipment.carrier ?? "Carrier TBD"}</p>
-                    <p className="text-xs text-[#646464]">Tracking: {shipment.trackingNo ?? "Not assigned"}</p>
-                    <p className="text-xs uppercase text-[#646464]">{shipment.shipmentStatus}</p>
-                  </div>
-                ))}
-              </div>
-            )}
+            <h2 className="mb-3 text-sm font-semibold uppercase tracking-[0.15em] text-[#4A1D1F]">Customer Details</h2>
+            <div className="space-y-1 text-sm text-[#646464]">
+              <p><span className="font-semibold text-[#2A1810]">Name:</span> {order.customerName ?? "-"}</p>
+              <p><span className="font-semibold text-[#2A1810]">Phone:</span> {order.customerPhone ?? "-"}</p>
+              <p><span className="font-semibold text-[#2A1810]">Email:</span> {order.user?.email ?? "-"}</p>
+              <p><span className="font-semibold text-[#2A1810]">Delivery Address:</span> {order.customerAddress ?? "-"}</p>
+            </div>
+          </div>
+
+          <div className="rounded-2xl border border-[#E8DCC8] bg-white p-4 shadow-sm">
+            <h2 className="mb-3 text-sm font-semibold uppercase tracking-[0.15em] text-[#4A1D1F]">Items</h2>
+            <div className="space-y-2">
+              {order.items.map((item) => (
+                <div key={item.id} className="rounded-lg border border-[#F2E6DD] bg-[#FFFBF7] p-3 text-sm text-[#646464]">
+                  <p className="font-semibold text-[#2A1810]">{item.product?.name ?? "Product"}</p>
+                  <p>Quantity: {item.quantity}</p>
+                  <p>Price: {order.currency} {Number(item.unitPrice ?? 0).toFixed(2)}</p>
+                  <p>Subtotal: {order.currency} {Number(item.lineTotal ?? Number(item.unitPrice ?? 0) * Number(item.quantity ?? 0)).toFixed(2)}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="rounded-2xl border border-[#E8DCC8] bg-white p-4 shadow-sm">
+            <h2 className="mb-3 text-sm font-semibold uppercase tracking-[0.15em] text-[#4A1D1F]">Billing</h2>
+            <div className="space-y-1 text-sm text-[#646464]">
+              <p>Subtotal: <span className="font-semibold text-[#2A1810]">{order.currency} {Number(order.subtotal ?? 0).toFixed(2)}</span></p>
+              <p>Shipping: <span className="font-semibold text-[#2A1810]">{order.currency} {Number(order.shipping ?? 0).toFixed(2)}</span></p>
+              <p>Total: <span className="font-semibold text-[#2A1810]">{order.currency} {Number(order.total).toFixed(2)}</span></p>
+            </div>
           </div>
 
           {order.status.toLowerCase() === "delivered" && (
