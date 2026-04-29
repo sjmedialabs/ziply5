@@ -8,6 +8,8 @@ import { withCache } from "@/lib/cache/redis"
 import { cacheKeys } from "@/lib/cache/cacheKeys"
 import { logger } from "@/lib/logger"
 
+export const dynamic = "force-dynamic"; // Ensure Next.js never caches this route
+
 export async function GET(request: NextRequest) {
   try {
     const group = request.nextUrl.searchParams.get("group")
@@ -86,6 +88,9 @@ export async function POST(request: NextRequest) {
     return ok(row, "Master value created", 201)
   } catch (error: any) {
     logger.error("api.master.values.post_failed", { error: error?.message ?? "unknown" })
+    if (error?.code === 'P2002' || String(error?.message).includes('23505') || String(error?.message).includes('already exists')) {
+      return fail("This value already exists in the database.", 409)
+    }
     return fail(error.message || "Unexpected error", 500)
   }
 }

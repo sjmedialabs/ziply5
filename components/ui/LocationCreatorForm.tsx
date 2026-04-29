@@ -127,7 +127,7 @@ export default function LocationCreatorForm({
         <input type="text" placeholder="Auto-generated if empty" value={value} onChange={(e) => setValue(e.target.value)} className="w-full px-3 py-2 text-sm border border-[#D9D9D1] rounded-lg outline-none focus:border-[#7B3010]" />
       </div>
 
-      <button type="submit" disabled={loading} className="w-full py-2.5 mt-2 text-[11px] font-semibold text-white uppercase tracking-wide bg-[#7B3010] hover:bg-[#5c2410] rounded-full disabled:opacity-50 transition-colors">
+      <button type="submit" disabled={loading} className="w-full cursor-pointer py-2.5 mt-2 text-[11px] font-semibold text-white uppercase tracking-wide bg-[#7B3010] hover:bg-[#5c2410] rounded-full disabled:opacity-50 transition-colors">
         {loading ? "Saving..." : `Create ${type}`}
       </button>
     </form>
