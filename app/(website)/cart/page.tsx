@@ -2,6 +2,7 @@
 
 import BannerSection from "@/components/BannerSection";
 import { getCartItems, setCartItems, type CartItem } from "@/lib/cart"; // utils to manage cart items in localStorage
+import { getFavoriteSlugs, setFavoriteSlugs } from "@/lib/favorites";
 import { ArrowLeft, Minus, Plus, X } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
@@ -32,6 +33,14 @@ export default function CartPage() {
   const removeItem = (id: string) => {
     const next = cartItems.filter((item) => item.id !== id);
     persistCart(next);
+  };
+
+  const moveToWishlist = (item: CartItem) => {
+    const existing = getFavoriteSlugs();
+    if (!existing.includes(item.slug)) {
+      setFavoriteSlugs([...existing, item.slug]);
+    }
+    removeItem(item.id);
   };
 
   const subTotal = cartItems.reduce(
@@ -140,13 +149,22 @@ export default function CartPage() {
                           <span className="font-melon font-medium tracking-wide text-black">
                             Rs.{formatMoney(item.price * item.quantity)}
                           </span>
-                          <button
-                            className="flex h-8 w-8 items-center justify-center rounded-full border border-red-400 text-red-500"
-                            onClick={() => removeItem(item.id)}
-                            aria-label={`Remove ${item.name} from cart`}
-                          >
-                            <X size={14} />
-                          </button>
+                          <div className="flex items-center gap-2">
+                            <button
+                              className="rounded-full border border-[#D1D5DB] px-3 py-1 text-xs text-[#374151] hover:bg-[#F9FAFB]"
+                              onClick={() => moveToWishlist(item)}
+                              aria-label={`Move ${item.name} to wishlist`}
+                            >
+                              Move to wishlist
+                            </button>
+                            <button
+                              className="flex h-8 w-8 items-center justify-center rounded-full border border-red-400 text-red-500"
+                              onClick={() => removeItem(item.id)}
+                              aria-label={`Remove ${item.name} from cart`}
+                            >
+                              <X size={14} />
+                            </button>
+                          </div>
                         </div>
                       </div>
                     ))}

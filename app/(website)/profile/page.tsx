@@ -177,6 +177,11 @@ function ProfilePageContent() {
     setFavoriteSlugs(getFavoriteSlugs())
   }
 
+  const moveFavoriteToCart = (product: (typeof favoriteProducts)[number]) => {
+    setCartItemQuantity(product, 1)
+    removeFavorite(product.slug)
+  }
+
   const updateCartQty = (product: (typeof favoriteProducts)[number], delta: number) => {
     const currentQty = cartQtyBySlug[product.slug] ?? 0
     const nextQty = Math.max(0, currentQty + delta)
@@ -220,66 +225,75 @@ const cancelPendingOrder = async (orderId: string) => {
     void queryClient.invalidateQueries({ queryKey: ["profile-orders"] })
   }
 }
+  const sectionTitle =
+    activeTab === "about"
+      ? "Personal Information"
+      : activeTab === "favorite"
+        ? "wishlist"
+        : "My orders"
+
   return (
-    <div className="min-h-screen bg-[#f6f0dc] py-10 md:py-16 px-4">
-      <div className="max-w-5xl mx-auto md:flex gap-30">
+    <div className="min-h-screen bg-[#f6f7fb] px-4 py-10 md:py-14">
+      <div className="mx-auto w-full max-w-6xl">
+        <h1 className="mb-6 text-2xl font-semibold text-[#111827]">My Account</h1>
+
+        <div className="grid grid-cols-1 gap-6 md:grid-cols-[280px_1fr]">
 
         {/* LEFT SIDEBAR */}
         <div
-          className="
-            w-full md:w-[260px]
-            bg-white font-melon overflow-hidden border
-            flex md:block
-          "
+          className="w-full rounded-2xl bg-white p-2 shadow-sm ring-1 ring-black/5"
         >
 
           {/* TAB ITEM */}
           <div
             onClick={() => setActiveTab("about")}
-            className={`flex-1 md:flex-none flex items-center justify-center md:justify-start gap-3 px-3 md:px-5 py-4 cursor-pointer border-b md:border-b ${activeTab === "about"
-                ? "bg-white text-orange-500 md:border-r-4 shadow-[inset_-4px_0_6px_rgba(0,0,0,0.1)] border-orange-500"
-                : "text-gray-400"
-              }`}
+            className={`flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-medium transition-colors ${
+              activeTab === "about" ? "bg-[#FDE2E7] text-[#7A1F2A]" : "text-[#374151] hover:bg-[#F3F4F6]"
+            }`}
           >
             <User size={18} />
-            <span className="font-medium">About Me</span>
+            <span className="font-medium">Personal Information</span>
           </div>
 
           <div
             onClick={() => setActiveTab("favorite")}
-            className={`flex-1 md:flex-none flex items-center justify-center md:justify-start gap-3 px-3 md:px-5 py-4 cursor-pointer border-b md:border-b ${activeTab === "favorite"
-                ? "bg-white text-orange-500 md:border-r-4 shadow-[inset_-4px_0_6px_rgba(0,0,0,0.1)] border-orange-500"
-                : "text-gray-400"
-              }`}
+            className={`mt-1 flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-medium transition-colors ${
+              activeTab === "favorite" ? "bg-[#FDE2E7] text-[#7A1F2A]" : "text-[#374151] hover:bg-[#F3F4F6]"
+            }`}
           >
             <Star size={18} />
-            <span className="font-medium">Favorite</span>
+            <span className="font-medium">wishlist</span>
           </div>
 
           <div
             onClick={() => setActiveTab("orders")}
-            className={`flex-1 md:flex-none flex items-center justify-center md:justify-start gap-3 px-3 md:px-5 py-4 cursor-pointer ${activeTab === "orders"
-                ? "bg-white text-orange-500 md:border-r-4 shadow-[inset_-4px_0_6px_rgba(0,0,0,0.1)] border-orange-500"
-                : "text-gray-400"
-              }`}
+            className={`mt-1 flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-medium transition-colors ${
+              activeTab === "orders" ? "bg-[#FDE2E7] text-[#7A1F2A]" : "text-[#374151] hover:bg-[#F3F4F6]"
+            }`}
           >
             <Package size={18} />
-            <span className="font-medium">Order history</span>
+            <span className="font-medium">My orders</span>
           </div>
         </div>
 
         {/* RIGHT CONTENT */}
-        <div className="flex-1 mt-6 md:mt-0">
-          <div className="mb-5 flex justify-end">
+        <div className="w-full">
+          <div className="rounded-2xl bg-white shadow-sm ring-1 ring-black/5">
+            <div className="flex flex-col gap-3 border-b border-black/5 p-5 sm:flex-row sm:items-center sm:justify-between">
+              <div className="min-w-0">
+                <p className="text-base font-semibold text-[#111827]">{sectionTitle}</p>
+                <p className="mt-0.5 text-xs text-[#6B7280]">Manage your account details and preferences.</p>
+              </div>
             <button
               type="button"
               onClick={handleLogout}
-              className="rounded-md bg-[#5A272A] px-4 py-2 text-xs font-semibold uppercase tracking-wide text-white hover:bg-[#451f21]"
+                className="h-10 rounded-xl bg-[#5A272A] px-4 text-xs font-semibold uppercase tracking-wide text-white hover:bg-[#451f21]"
             >
               Logout
             </button>
           </div>
 
+            <div className="p-5">
           {activeTab === "about" && (
             <div className="space-y-6 text-sm gap-2">
 
@@ -370,91 +384,65 @@ const cancelPendingOrder = async (orderId: string) => {
               {favoriteProducts.length === 0 ? (
                 <p className="text-gray-500">No favorites yet.</p>
               ) : (
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                  {favoriteProducts.map((product) => (
-                    <article
-                      key={product.slug}
-                      className="relative rounded-2xl border-2 border-transparent p-4 transition-all duration-300 hover:border-[#F0E4A3]"
-                      style={{ backgroundColor: "#3EA6CF" }}
+                <>
+                  <div className="mb-5 flex items-center justify-between">
+                    <p className="text-base font-semibold text-[#111827]">Wishlist ({favoriteProducts.length})</p>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        favoriteProducts.forEach((p) => {
+                          setCartItemQuantity(p, 1)
+                          removeFavorite(p.slug)
+                        })
+                      }}
+                      className="rounded-md border border-[#D1D5DB] bg-white px-4 py-2 text-xs font-medium text-[#111827] hover:bg-[#F9FAFB]"
                     >
-                      <span className="absolute right-3 top-3 text-lg text-white">♥</span>
-                      <Link href={`/product/${product.slug}`} className="block">
-                        <div className="relative mx-auto h-[200px] w-full max-w-[130px]">
-                          <Image src={product.image} alt={product.name} fill className="object-contain" />
+                      Move all to cart
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                    {favoriteProducts.map((product) => (
+                      <article
+                        key={product.slug}
+                        className="rounded-xl border border-[#E5E7EB] bg-white p-3 shadow-sm transition hover:shadow-md"
+                      >
+                        <div className="relative rounded-md bg-[#F8F9FB] p-3">
+                          <button
+                            type="button"
+                            onClick={() => removeFavorite(product.slug)}
+                            className="absolute right-2 top-2 h-7 w-7 rounded-full border border-[#E5E7EB] bg-white text-sm text-[#6B7280]"
+                            aria-label="Remove from wishlist"
+                          >
+                            ×
+                          </button>
+                          <Link href={`/product/${product.slug}`} className="block">
+                            <div className="relative mx-auto h-[140px] w-full max-w-[130px]">
+                              <Image src={product.image} alt={product.name} fill className="object-contain" />
+                            </div>
+                          </Link>
                         </div>
-                        <h3 className="mt-2 text-center text-[18px] font-black uppercase leading-tight text-white">{product.name}</h3>
-                        <p className="mt-1 text-center text-[10px] font-semibold uppercase text-white/90">Home style meal | Net wt. {product.weight}</p>
-                      </Link>
-                      {/*    */}
-                      {/* <div className="mt-2 grid grid-cols-2 gap-2">
-                        <button
-                          type="button"
-                          onClick={() => addToCart(product, 1)}
-                          className="rounded-md bg-white/85 py-1 text-[10px] font-semibold uppercase text-[#5A272A]"
-                        >
-                          Add 1 more
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            addToCart(product, 1)
-                            router.push("/cart")
-                          }}
-                          className="rounded-md bg-[#5A272A] py-1 text-[10px] font-semibold uppercase text-white"
-                        >
-                          Buy now
-                        </button>
-                      </div> */}
-                      <div className="mt-3 flex items-center justify-between gap-2">
-                        {(cartQtyBySlug[product.slug] ?? 0) > 0 ? (
-                          <div className="flex items-center rounded-md border border-[#d5c4b8] bg-white/95 px-1 py-0.5">
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setCartItemQuantity(product, Math.max(0, (cartQtyBySlug[product.slug] ?? 0) - 1));
-                              }}
-                              className="h-6 w-6 rounded text-sm font-light text-[#5A272A] hover:bg-[#f4efec]"
-                            >
-                              -
-                            </button>
-                            <span className="min-w-5 text-center text-xs font-light text-[#5A272A]">
-                              {cartQtyBySlug[product.slug] ?? 0}
-                            </span>
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setCartItemQuantity(product, (cartQtyBySlug[product.slug] ?? 0) + 1);
-                              }}
-                              className="h-6 w-6 rounded text-sm font-light text-[#5A272A] hover:bg-[#f4efec]"
-                            >
-                              +
-                            </button>
-                          </div>
-                        ) : (
+
+                        <h3 className="mt-3 line-clamp-2 text-sm font-semibold text-[#111827]">{product.name}</h3>
+                        <p className="mt-1 text-xs text-[#6B7280]">Net wt. {product.weight}</p>
+                        <p className="mt-2 text-sm font-semibold text-[#B91C1C]">Rs.{Number(product.price).toFixed(2)}</p>
+
+                        <div className="mt-3 flex items-center justify-end">
                           <button
                             type="button"
                             onClick={(e) => {
-                              e.stopPropagation();
-                              setCartItemQuantity(product, 1);
+                              e.stopPropagation()
+                              moveFavoriteToCart(product)
                             }}
-                            className="rounded-lg border border-white tracking-wide px-4 py-1.5 text-[12px] font-light text-white hover:bg-primary hover:text-white transition-all "
+                            className="rounded-md border border-[#D1D5DB] px-3 py-1.5 text-xs font-medium text-[#111827] hover:bg-[#F9FAFB]"
                           >
-                            Add to Cart
+                            Move to cart
                           </button>
-                        )}
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            router.push("/checkout")
-                          }} className="rounded-lg bg-primary tracking-wide px-3 py-1.5 text-[12px] font-light text-white hover:bg-[#2d1011]">
-                          Buy Now
-                        </button>
-                      </div>
-                    </article>
-                  ))}
-                </div>
+                        </div>
+                      </article>
+                    ))}
+                  </div>
+                </>
               )}
             </>
           )}
@@ -553,8 +541,11 @@ const cancelPendingOrder = async (orderId: string) => {
               })}
             </div>
           )}
+            </div>
+          </div>
         </div>
 
+        </div>
       </div>
     </div>
   )
