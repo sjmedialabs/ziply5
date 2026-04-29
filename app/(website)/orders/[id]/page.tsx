@@ -22,6 +22,7 @@ type OrderDetail = {
   user?: { email?: string | null } | null
   items: Array<{
     id: string
+    productId?: string
     quantity: number
     unitPrice?: string | number
     lineTotal?: string | number
@@ -67,6 +68,9 @@ export default function OrderDetailPage() {
   const [description, setDescription] = useState("")
   const [showReturnForm, setShowReturnForm] = useState(false)
   const [actionBusy, setActionBusy] = useState<string | null>(null)
+  const [reviewDrafts, setReviewDrafts] = useState<Record<string, { rating: number; content: string }>>({})
+  const [existingReviewedProducts, setExistingReviewedProducts] = useState<Set<string>>(new Set())
+  const [reviewBusyByProduct, setReviewBusyByProduct] = useState<Record<string, boolean>>({})
 
   const orderQuery = useQuery({
     queryKey: ["order-detail", params.id],
@@ -164,6 +168,57 @@ export default function OrderDetailPage() {
       setReason(returnReasons[0] as string)
     }
   }, [reason, returnReasons])
+
+  useEffect(() => {
+    if (!order || order.status.toLowerCase() !== "delivered") return
+    const userId = JSON.parse(window.localStorage.getItem("ziply5_user") || "{}")?.id as string | undefined
+    const token = window.localStorage.getItem("ziply5_access_token")
+    if (!token || !userId) return
+    void (async () => {
+      const res = await fetch(`/api/v1/reviews?orderId=${encodeURIComponent(order.id)}&userId=${encodeURIComponent(userId)}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      const payload = (await res.json()) as { success?: boolean; data?: Array<{ productId: string }> }
+      if (!res.ok || !payload.success || !Array.isArray(payload.data)) return
+      setExistingReviewedProducts(new Set(payload.data.map((x) => String(x.productId))))
+    })()
+  }, [order])
+
+  const submitReview = async (productId: string, fallbackTitle: string) => {
+    if (!order) return
+    const userId = JSON.parse(window.localStorage.getItem("ziply5_user") || "{}")?.id as string | undefined
+    const token = window.localStorage.getItem("ziply5_access_token")
+    if (!token || !userId) throw new Error("Please login to submit review.")
+    if (existingReviewedProducts.has(productId)) return
+    const draft = reviewDrafts[productId] ?? { rating: 5, content: "" }
+    if (!draft.rating || draft.rating < 1 || draft.rating > 5) throw new Error("Rating is required.")
+    if (!draft.content.trim()) throw new Error("Review content is required.")
+    setReviewBusyByProduct((prev) => ({ ...prev, [productId]: true }))
+    try {
+      const createRes = await fetch("/api/v1/reviews", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          productId,
+          orderId: order.id,
+          userId,
+          rating: draft.rating,
+          content: draft.content.trim(),
+          title: fallbackTitle,
+          sortOrder: 0,
+          status: "published",
+        }),
+      })
+      const createPayload = (await createRes.json()) as { success?: boolean; message?: string }
+      if (!createRes.ok || createPayload.success === false) throw new Error(createPayload.message ?? "Unable to submit review.")
+      setExistingReviewedProducts((prev) => new Set([...prev, productId]))
+    } finally {
+      setReviewBusyByProduct((prev) => ({ ...prev, [productId]: false }))
+    }
+  }
 
   const downloadInvoice = () => {
     if (!order) return
@@ -326,6 +381,56 @@ export default function OrderDetailPage() {
                   <p>Quantity: {item.quantity}</p>
                   <p>Price: {order.currency} {Number(item.unitPrice ?? 0).toFixed(2)}</p>
                   <p>Subtotal: {order.currency} {Number(item.lineTotal ?? Number(item.unitPrice ?? 0) * Number(item.quantity ?? 0)).toFixed(2)}</p>
+                  {order.status.toLowerCase() === "delivered" && item.productId && (
+                    <div className="mt-3 rounded-lg border border-[#E8DCC8] bg-white p-3">
+                      {existingReviewedProducts.has(item.productId) ? (
+                        <p className="text-xs font-semibold uppercase text-[#5A272A]">Already reviewed</p>
+                      ) : (
+                        <>
+                          <div className="mb-2 flex items-center gap-1">
+                            {[1, 2, 3, 4, 5].map((star) => {
+                              const rating = reviewDrafts[item.productId!]?.rating ?? 5
+                              return (
+                                <button
+                                  key={`${item.id}-star-${star}`}
+                                  type="button"
+                                  onClick={() =>
+                                    setReviewDrafts((prev) => ({
+                                      ...prev,
+                                      [item.productId!]: { rating: star, content: prev[item.productId!]?.content ?? "" },
+                                    }))
+                                  }
+                                  className={`text-lg ${star <= rating ? "text-[#F59E0B]" : "text-[#D1D5DB]"}`}
+                                >
+                                  ★
+                                </button>
+                              )
+                            })}
+                          </div>
+                          <textarea
+                            value={reviewDrafts[item.productId]?.content ?? ""}
+                            onChange={(event) =>
+                              setReviewDrafts((prev) => ({
+                                ...prev,
+                                [item.productId!]: { rating: prev[item.productId!]?.rating ?? 5, content: event.target.value },
+                              }))
+                            }
+                            placeholder="Write your review"
+                            className="w-full rounded-md border border-[#D9D9D1] px-2 py-1.5 text-xs"
+                            rows={3}
+                          />
+                          <button
+                            type="button"
+                            onClick={() => void submitReview(item.productId!, item.product?.name ?? "Product")}
+                            disabled={Boolean(reviewBusyByProduct[item.productId])}
+                            className="mt-2 rounded-md bg-[#7B3010] px-3 py-1.5 text-xs font-semibold uppercase text-white disabled:opacity-50"
+                          >
+                            {reviewBusyByProduct[item.productId] ? "Submitting..." : "Submit Review"}
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  )}
                 </div>
               ))}
             </div>

@@ -123,9 +123,14 @@ export const updateVariantStock = async (id: string, stock: number) => {
   })
 }
 
-export const listReviews = (status?: string) =>
+export const listReviews = (filters?: { status?: string; productId?: string; orderId?: string; userId?: string }) =>
   prisma.productReview.findMany({
-    where: status ? { status } : undefined,
+    where: {
+      ...(filters?.status ? { status: filters.status } : {}),
+      ...(filters?.productId ? { productId: filters.productId } : {}),
+      ...(filters?.orderId ? { orderId: filters.orderId } : {}),
+      ...(filters?.userId ? { userId: filters.userId } : {}),
+    },
     orderBy: { createdAt: "desc" },
     take: 200,
     include: { product: { select: { name: true, slug: true } }, user: { select: { email: true, name: true } } },
@@ -136,23 +141,37 @@ export const updateReviewStatus = (id: string, status: string) =>
 
 export const createReview = async (input: {
   productId: string
+  orderId?: string | null
   userId?: string | null
   guestName?: string | null
   guestEmail?: string | null
   rating: number
   title?: string
   body?: string
+  status?: string
 }) => {
+  if (input.userId && input.orderId) {
+    const existing = await prisma.productReview.findFirst({
+      where: {
+        productId: input.productId,
+        orderId: input.orderId,
+        userId: input.userId,
+      },
+      select: { id: true },
+    })
+    if (existing) throw new Error("Already reviewed")
+  }
   return prisma.productReview.create({
     data: {
       productId: input.productId,
+      orderId: input.orderId ?? undefined,
       userId: input.userId ?? undefined,
       guestName: input.guestName ?? undefined,
       guestEmail: input.guestEmail ?? undefined,
       rating: input.rating,
       title: input.title,
       body: input.body,
-      status: "pending",
+      status: input.status ?? "published",
     },
   })
 }

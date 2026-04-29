@@ -28,6 +28,7 @@ export default function ProductPage() {
   const [relatedStart, setRelatedStart] = useState(0)
   const [selectedImage, setSelectedImage] = useState("")
   const [thumbStart, setThumbStart] = useState(0)
+  const [reviews, setReviews] = useState<Array<{ id: string; rating: number; body?: string | null; user?: { name?: string | null } | null }>>([])
 
   const galleryImages = useMemo(() => {
     if (!product) return []
@@ -82,6 +83,22 @@ export default function ProductPage() {
       cancelled = true
     }
   }, [slug])
+
+  useEffect(() => {
+    if (!product?.id) return
+    let cancelled = false
+    fetch(`/api/v1/reviews?public=1&productId=${encodeURIComponent(String(product.id))}`)
+      .then((r) => r.json())
+      .then((payload: { success?: boolean; data?: Array<{ id: string; rating: number; body?: string | null; user?: { name?: string | null } | null }> }) => {
+        if (!cancelled && payload.success && Array.isArray(payload.data)) {
+          setReviews(payload.data)
+        }
+      })
+      .catch(() => null)
+    return () => {
+      cancelled = true
+    }
+  }, [product?.id])
 
   console.log("Fetched  Product details are::::",product);
 
@@ -541,6 +558,25 @@ export default function ProductPage() {
               </div>
             )
           })}
+        </div>
+
+        <div className="mt-10 rounded-2xl border border-[#E8DCC8] bg-white p-5 sm:p-7">
+          <h2 className="font-heading text-3xl uppercase text-[#4A1E1F]">Customer Reviews</h2>
+          {reviews.length === 0 ? (
+            <p className="mt-3 text-sm text-[#646464]">No reviews yet.</p>
+          ) : (
+            <div className="mt-4 space-y-3">
+              {reviews.map((review) => (
+                <div key={review.id} className="rounded-xl border border-[#F2E6DD] bg-[#FFFBF7] p-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-sm font-semibold text-[#2A1810]">{review.user?.name ?? "Customer"}</p>
+                    <p className="text-sm text-[#F59E0B]">{"★".repeat(Math.max(1, Math.min(5, Number(review.rating || 0))))}</p>
+                  </div>
+                  <p className="mt-1 text-sm text-[#646464]">{review.body ?? ""}</p>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
 
         <div className="mt-10 rounded-2xl bg-[#ECECEC] p-5 sm:p-7 font-melon tracking-wide font-medium">
