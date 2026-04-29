@@ -21,7 +21,7 @@ export async function authedFetch<T>(path: string, init?: RequestInit): Promise<
     const msg = json.message ?? `Request failed (${res.status})`
     const extra =
       json.details != null && typeof json.details === "object"
-        ? ` — ${JSON.stringify(json.details).slice(0, 200)}`
+        ? ` — ${JSON.stringify(json.details).slice(0, 2000)}`
         : ""
     throw new Error(msg + extra)
   }

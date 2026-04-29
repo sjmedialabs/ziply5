@@ -27,6 +27,7 @@ import {
 } from "lucide-react"
 import { DashboardChrome, type DashboardNavItem } from "./DashboardChrome"
 import { useEffect, useMemo, useState } from "react"
+import { PageTransition } from "@/components/ui/PageTransition"
 
 const adminNav: DashboardNavItem[] = [
   { href: "/admin/dashboard", label: "Dashboard", icon: LayoutDashboard },
@@ -84,7 +85,7 @@ export function AdminPanelLayout({ children }: { children: React.ReactNode }) {
       websiteHref="/"
       navItems={navItems}
     >
-      {children}
+      <PageTransition>{children}</PageTransition>
     </DashboardChrome>
   )
 }

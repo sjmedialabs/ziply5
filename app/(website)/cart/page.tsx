@@ -5,15 +5,24 @@ import { getCartItems, setCartItems, type CartItem } from "@/lib/cart"; // utils
 import { getFavoriteSlugs, setFavoriteSlugs } from "@/lib/favorites";
 import { ArrowLeft, Minus, Plus, X } from "lucide-react";
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 const formatMoney = (amount: number) => amount.toFixed(2);
 
 export default function CartPage() {
   const [cartItems, setLocalCartItems] = useState<CartItem[]>([]);
+  const [couponCode, setCouponCode] = useState("");
+  const [offerBreakdown, setOfferBreakdown] = useState<Array<{ label: string; amount: number; type: string }>>([]);
+  const [offerTotalDiscount, setOfferTotalDiscount] = useState(0);
+  const [offerAdjustedShipping, setOfferAdjustedShipping] = useState<number | null>(null);
+  const [offerFinalTotal, setOfferFinalTotal] = useState<number | null>(null);
+  const [couponError, setCouponError] = useState("");
 
   useEffect(() => {
     setLocalCartItems(getCartItems());
+    if (typeof window !== "undefined") {
+      setCouponCode(window.localStorage.getItem("ziply5_coupon_code") ?? "");
+    }
   }, []);
 
   const persistCart = (next: CartItem[]) => {
@@ -48,7 +57,74 @@ export default function CartPage() {
     0
   );
   const shipping = cartItems.length === 0 ? 0 : 20;
-  const total = subTotal + shipping;
+  const total = offerFinalTotal != null ? offerFinalTotal : subTotal + (offerAdjustedShipping ?? shipping);
+
+  const recalculateOffers = useCallback(
+    async (incomingCoupon?: string) => {
+      if (!cartItems.length) {
+        setOfferBreakdown([]);
+        setOfferTotalDiscount(0);
+        setOfferAdjustedShipping(null);
+        setOfferFinalTotal(null);
+        setCouponError("");
+        return;
+      }
+      const response = await fetch("/api/v1/offers/calculate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          couponCode: (incomingCoupon ?? couponCode).trim() || null,
+          cartSubtotal: subTotal,
+          shippingAmount: shipping,
+          items: cartItems.map((item) => ({
+            productId: item.productId ?? item.slug,
+            categoryId: null,
+            quantity: item.quantity,
+            unitPrice: item.price,
+          })),
+        }),
+      });
+      const payload = (await response.json()) as {
+        success?: boolean;
+        message?: string;
+        data?: { breakdown: Array<{ label: string; amount: number; type: string }>; totalDiscount: number; adjustedShipping?: number; finalTotal?: number };
+      };
+      if (!response.ok || !payload.success || !payload.data) {
+        throw new Error(payload.message ?? "Unable to calculate offers.");
+      }
+      setOfferBreakdown(payload.data.breakdown ?? []);
+      setOfferTotalDiscount(Number(payload.data.totalDiscount ?? 0));
+      setOfferAdjustedShipping(payload.data.adjustedShipping == null ? null : Number(payload.data.adjustedShipping));
+      setOfferFinalTotal(payload.data.finalTotal == null ? null : Number(payload.data.finalTotal));
+      setCouponError("");
+    },
+    [cartItems, couponCode, shipping, subTotal],
+  );
+
+  useEffect(() => {
+    void recalculateOffers().catch(() => {
+      setOfferBreakdown([]);
+      setOfferTotalDiscount(0);
+      setOfferAdjustedShipping(null);
+      setOfferFinalTotal(null);
+    });
+  }, [recalculateOffers]);
+
+  const applyCoupon = async () => {
+    const code = couponCode.trim().toUpperCase();
+    setCouponCode(code);
+    if (typeof window !== "undefined") window.localStorage.setItem("ziply5_coupon_code", code);
+    if (!code) {
+      setCouponError("Enter a coupon code.");
+      return;
+    }
+    try {
+      await recalculateOffers(code);
+    } catch (e) {
+      setCouponError(e instanceof Error ? e.message : "Unable to apply coupon.");
+      setOfferFinalTotal(null);
+    }
+  };
 
   return (
     <div>
@@ -189,19 +265,32 @@ export default function CartPage() {
             <div className="my-4 border-t border-white" />
             <div className="mb-6 flex items-center font-melon justify-between">
               <p className="text-sm">Apply Coupons</p>
-              <button className="rounded-full bg-black px-5 py-2 text-xs text-[#FFC222]">
+              <button onClick={applyCoupon} className="rounded-full bg-black px-5 py-2 text-xs text-[#FFC222]">
                 Apply
               </button>
             </div>
+            <input
+              value={couponCode}
+              onChange={(e) => setCouponCode(e.target.value.toUpperCase())}
+              placeholder="Enter coupon code"
+              className="w-full rounded-full border border-black/10 bg-white px-4 py-2 text-sm"
+            />
+            {couponError ? <p className="mt-2 text-xs text-red-700">{couponError}</p> : null}
             <div className="my-4 border-t border-white" />
             <div className="space-y-3 text-sm text-[#C03621] font-melon">
               <div className="flex justify-between">
                 <span>Sub Total</span>
                 <span>INR {formatMoney(subTotal)}</span>
               </div>
+              {offerTotalDiscount > 0 ? (
+                <div className="flex justify-between">
+                  <span>Savings</span>
+                  <span>-INR {formatMoney(offerTotalDiscount)}</span>
+                </div>
+              ) : null}
               <div className="flex justify-between">
                 <span>Shipping</span>
-                <span>INR {formatMoney(shipping)}</span>
+                <span>INR {formatMoney(offerAdjustedShipping ?? shipping)}</span>
               </div>
             </div>
 
@@ -211,6 +300,20 @@ export default function CartPage() {
               <span>Grand Total</span>
               <span>INR {formatMoney(total)}</span>
             </div>
+
+            {offerBreakdown.length ? (
+              <div className="mt-4 rounded-2xl bg-white/60 p-3 text-xs text-[#2A1810]">
+                <p className="mb-2 font-semibold">Applied offers</p>
+                <div className="space-y-1">
+                  {offerBreakdown.map((b, idx) => (
+                    <div key={`${b.type}:${idx}`} className="flex justify-between">
+                      <span className="truncate">{b.label}</span>
+                      <span>-INR {formatMoney(Number(b.amount) || 0)}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : null}
 
             <Link href="/checkout">
               <button

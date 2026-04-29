@@ -11,9 +11,13 @@ export async function GET(request: NextRequest) {
   const denied = requirePermission(auth.user.role, "promotions.read")
   if (denied) return denied
   const { searchParams } = new URL(request.url)
-  const type = searchParams.get("type") ?? undefined
-  const status = searchParams.get("status") ?? undefined
-  const query = searchParams.get("q") ?? undefined
+  const emptyToUndef = (value: string | null) => {
+    const v = value?.trim()
+    return v ? v : undefined
+  }
+  const type = emptyToUndef(searchParams.get("type"))
+  const status = emptyToUndef(searchParams.get("status"))
+  const query = emptyToUndef(searchParams.get("q"))
   const sortBy = (searchParams.get("sortBy") as "priority" | "created_at" | "name" | null) ?? undefined
   const sortDir = (searchParams.get("sortDir") as "asc" | "desc" | null) ?? undefined
   const page = Number(searchParams.get("page") ?? "1")
@@ -32,16 +36,31 @@ export async function POST(request: NextRequest) {
   if ("status" in auth) return auth
   const denied = requirePermission(auth.user.role, "promotions.create")
   if (denied) return denied
-  const body = await request.json()
-  const parsed = createOfferSchema.safeParse(body)
-  if (!parsed.success) return fail("Validation failed", 422, parsed.error.flatten())
-  const id = await createOffer({
-    ...parsed.data,
-    createdBy: auth.user.sub,
-    startsAt: parsed.data.startsAt ?? null,
-    endsAt: parsed.data.endsAt ?? null,
-  })
-  return ok({ id }, "Offer created", 201)
+  try {
+    const body = await request.json()
+    const parsed = createOfferSchema.safeParse(body)
+    if (!parsed.success) return fail("Validation failed", 422, parsed.error.flatten())
+    const id = await createOffer({
+      ...parsed.data,
+      createdBy: auth.user.sub,
+      startsAt: parsed.data.startsAt ?? null,
+      endsAt: parsed.data.endsAt ?? null,
+    })
+    return ok({ id }, "Offer created", 201)
+  } catch (error) {
+    const anyErr = error as any
+    // Prisma raw query unique violation often surfaces as P2010 w/ meta.code=23505
+    if (
+      (anyErr?.meta?.code === "23505" && String(anyErr?.meta?.message ?? "").includes("Key (code)")) ||
+      (String(anyErr?.code ?? "") === "23505" && String(anyErr?.message ?? "").toLowerCase().includes("code"))
+    ) {
+      return fail("Offer code already exists", 409, {
+        fieldErrors: { code: ["Already exists"] },
+      })
+    }
+    const message = error instanceof Error ? error.message : "Unexpected error"
+    return fail(message, 500)
+  }
 }
 
 export async function PUT(request: NextRequest) {

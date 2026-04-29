@@ -27,7 +27,7 @@ export const createUserByAdmin = async (input: {
 }) => {
   const passwordHash = await hashPassword(input.password)
   const created = await createUserByAdminSupabase({
-    email: input.email,
+    email: input.email, 
     name: input.name,
     passwordHash,
     roleKey: input.roleKey,

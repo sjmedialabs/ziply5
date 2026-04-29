@@ -72,6 +72,10 @@ export default function CheckoutPage() {
   const [applyingCoupon, setApplyingCoupon] = useState(false);
   const [offerBreakdown, setOfferBreakdown] = useState<Array<{ label: string; amount: number; type: string }>>([]);
   const [offerTotalDiscount, setOfferTotalDiscount] = useState(0);
+  const [offerAdjustedShipping, setOfferAdjustedShipping] = useState<number | null>(null);
+  const [offerFinalTotal, setOfferFinalTotal] = useState<number | null>(null);
+
+  const couponApplied = !!couponCode.trim() && offerBreakdown.some((entry) => entry.type === "coupon");
   const [savedAddresses, setSavedAddresses] = useState<Addr[]>([]);
   const [selectedAddressId, setSelectedAddressId] = useState<string>("manual");
   const [originalAddress, setOriginalAddress] = useState<Addr | null>(null);
@@ -102,13 +106,16 @@ export default function CheckoutPage() {
     window.addEventListener("ziply5:cart-updated", syncCart);
     window.addEventListener("storage", syncCart);
 
+    const savedCoupon = window.localStorage.getItem("ziply5_coupon_code");
+    if (savedCoupon && !couponCode) setCouponCode(savedCoupon);
+
     void loadAddresses();
 
     return () => {
       window.removeEventListener("ziply5:cart-updated", syncCart);
       window.removeEventListener("storage", syncCart);
     };
-  }, [loadAddresses]);
+  }, [couponCode, loadAddresses]);
 useEffect(() => {
   if (!products.length) return;
 
@@ -168,7 +175,10 @@ useEffect(() => {
   const hasValidationErrors = validatedItems.some(i => i.variantError || i.stock < i.quantity);
 
   const shipping = items.length === 0 ? 0 : 20;
-  const total = Math.max(subTotal - offerTotalDiscount, 0) + shipping;
+  const total =
+    offerFinalTotal != null
+      ? offerFinalTotal
+      : Math.max(subTotal - offerTotalDiscount, 0) + (offerAdjustedShipping ?? shipping);
 
   const recalculateOffers = useCallback(
     async (incomingCoupon?: string) => {
@@ -176,6 +186,8 @@ useEffect(() => {
         setOfferBreakdown([]);
         setOfferTotalDiscount(0);
         setCouponDiscount(0);
+        setOfferAdjustedShipping(null);
+        setOfferFinalTotal(null);
         return;
       }
       const token = window.localStorage.getItem("ziply5_access_token");
@@ -200,13 +212,24 @@ useEffect(() => {
       const payload = (await response.json()) as {
         success?: boolean;
         message?: string;
-        data?: { breakdown: Array<{ label: string; amount: number; type: string }>; totalDiscount: number };
+        data?: {
+          breakdown: Array<{ label: string; amount: number; type: string }>;
+          totalDiscount: number;
+          adjustedShipping?: number;
+          finalTotal?: number;
+        };
       };
       if (!response.ok || !payload.success || !payload.data) {
         throw new Error(payload.message ?? "Unable to calculate offers.");
       }
       setOfferBreakdown(payload.data.breakdown ?? []);
       setOfferTotalDiscount(Number(payload.data.totalDiscount ?? 0));
+      setOfferAdjustedShipping(
+        payload.data.adjustedShipping == null ? null : Number(payload.data.adjustedShipping),
+      );
+      setOfferFinalTotal(
+        payload.data.finalTotal == null ? null : Number(payload.data.finalTotal),
+      );
       const couponSavings = (payload.data.breakdown ?? [])
         .filter((entry) => entry.type === "coupon")
         .reduce((sum, entry) => sum + Number(entry.amount), 0);
@@ -219,6 +242,8 @@ useEffect(() => {
     void recalculateOffers().catch(() => {
       setOfferBreakdown([]);
       setOfferTotalDiscount(couponDiscount);
+      setOfferAdjustedShipping(null);
+      setOfferFinalTotal(null);
     });
   }, [couponCode, recalculateOffers]);
 
@@ -260,6 +285,16 @@ useEffect(() => {
     } finally {
       setApplyingCoupon(false);
     }
+  };
+
+  const removeCoupon = async () => {
+    setCouponError("");
+    setCouponDiscount(0);
+    setCouponCode("");
+    try {
+      window.localStorage.removeItem("ziply5_coupon_code");
+    } catch {}
+    await recalculateOffers("");
   };
 
   const handleAddressSelect = (id: string) => {
@@ -646,7 +681,7 @@ useEffect(() => {
             </div>
             <div className="flex justify-between text-[#C03621] font-medium font-melon tracking-wide mt-2">
               <span>Shipping</span>
-              <span>Rs.{shipping.toFixed(2)}</span>
+              <span>Rs.{(offerAdjustedShipping ?? shipping).toFixed(2)}</span>
             </div>
             <div className="flex justify-between text-[#C03621] font-medium font-melon tracking-wide mt-2">
               <span>Coupon Discount</span>
@@ -673,15 +708,16 @@ useEffect(() => {
                 className="input"
                 placeholder="Coupon code"
                 value={couponCode}
+                disabled={applyingCoupon || couponApplied}
                 onChange={(event) => setCouponCode(event.target.value.toUpperCase())}
               />
               <button
                 type="button"
-                onClick={() => void applyCoupon()}
+                onClick={() => void (couponApplied ? removeCoupon() : applyCoupon())}
                 disabled={applyingCoupon || items.length === 0}
                 className="w-full rounded-full border border-[#7B3010] bg-white py-2 text-xs font-semibold uppercase text-[#7B3010] disabled:opacity-50"
               >
-                {applyingCoupon ? "Applying..." : "Apply coupon"}
+                {applyingCoupon ? "Applying..." : couponApplied ? "Remove coupon" : "Apply coupon"}
               </button>
               {couponError && <p className="text-xs text-red-700">{couponError}</p>}
             </div>
