@@ -313,9 +313,12 @@ const shapeCategories = (
 
 const shapeTags = (tagRows: Array<Record<string, unknown>>) =>
   tagRows
-    .map((row) => safeString((row as any).name))
-    .filter(Boolean)
-    .map((name) => ({ tag: { name } }))
+    .map((row) => ({
+      id: safeString((row as any).id),
+      name: safeString((row as any).name),
+    }))
+    .filter((row) => row.id && row.name)
+    .map((row) => ({ tag: { id: row.id, name: row.name } }))
 
 export const getProductByIdSupabaseHydrated = async (id: string) => {
   const base = await getProductByIdSupabaseBasic(id)
@@ -447,20 +450,16 @@ export const deleteProductSupabaseBasic = async (id: string) => {
 export const createProductSupabase = async (input: {
   base: Record<string, unknown>
   categoryId?: string | null
+  tagIds?: string[]
   variants?: Array<Record<string, unknown>>
   images?: string[]
   features?: Array<{ title: string; icon?: string | null }>
   labels?: Array<{ label: string; color?: string | null }>
   details?: Array<{ title: string; content: string; sortOrder?: number }>
   sections?: Array<{ title: string; description: string; sortOrder?: number; isActive?: boolean }>
-  tags?: string[]
 }) => {
   const base = await normalizeActorFks(withTimestampsForInsert(input.base))
-  const created = await insertFirst(PRODUCT_TABLES, [
-    base,
-    // snake_case fallback
-    Object.fromEntries(Object.entries(base).map(([k, v]) => [camelToSnake(k), v])),
-  ])
+ const created = await insertFirst(PRODUCT_TABLES, [base])
   const productId = safeString(created.row?.id)
   if (!productId) {
     logger.error("Supabase insert failed for table 'Product' with payload", {
@@ -485,7 +484,6 @@ export const createProductSupabase = async (input: {
   for (const v of input.variants ?? []) {
     const createdVariant = await insertFirst(PRODUCT_VARIANT_TABLES, [
       withId({ ...v, productId }),
-      withId({ ...v, product_id: productId }),
     ])
     if (!createdVariant.row) {
       logger.error("Supabase insert failed for table 'ProductVariant' with payload", {
@@ -531,32 +529,15 @@ export const createProductSupabase = async (input: {
     ])
   }
 
-  for (const raw of input.tags ?? []) {
-    const name = safeString(raw).toLowerCase()
-    if (!name) continue
-    const slug = name.replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "")
-    let tagId = ""
-    const createdTag = await insertFirst(TAG_TABLES, [withId({ name, slug })])
-    tagId = safeString(createdTag.row?.id)
-    if (!tagId) {
-      const client = getSupabaseAdmin()
-      for (const table of TAG_TABLES) {
-        const { data, error } = await client.from(table).select("id").eq("slug", slug).maybeSingle()
-        if (!error && data?.id) {
-          tagId = safeString(data.id)
-          break
-        }
-      }
-    }
-    if (tagId) {
-      const linked = await insertFirstNoId(PRODUCT_TAG_TABLES, [{ productId, tagId }])
-      if (!linked.ok) {
-        logger.error("Supabase insert failed for table 'ProductTag' with payload", {
-          productId,
-          tagId,
-          errors: linked.errors.slice(0, 5),
-        })
-      }
+  for (const tagId of input.tagIds ?? []) {
+    if (!safeString(tagId)) continue
+    const linked = await insertFirstNoId(PRODUCT_TAG_TABLES, [{ productId, tagId }])
+    if (!linked.ok) {
+      logger.error("Supabase insert failed for table 'ProductTag' with payload", {
+        productId,
+        tagId,
+        errors: linked.errors.slice(0, 5),
+      })
     }
   }
 
@@ -567,13 +548,13 @@ export const updateProductSupabase = async (input: {
   productId: string
   baseUpdate: Record<string, unknown>
   categoryId?: string | null
+  tagIds?: string[]
   variants?: Array<Record<string, unknown>>
   images?: string[]
   features?: Array<{ title: string; icon?: string | null }>
   labels?: Array<{ label: string; color?: string | null }>
   details?: Array<{ title: string; content: string; sortOrder?: number }>
   sections?: Array<{ id?: string; title: string; description: string; sortOrder?: number; isActive?: boolean }>
-  tags?: string[]
 }) => {
   const baseUpdate = await normalizeActorFks(withTimestampForUpdate(input.baseUpdate))
   const updated = await updateFirst(
@@ -672,32 +653,17 @@ export const updateProductSupabase = async (input: {
       ])
     }
   }
-  if (input.tags !== undefined) {
+  if (input.tagIds !== undefined) {
     await deleteByProductId(PRODUCT_TAG_TABLES, input.productId)
-    for (const raw of input.tags ?? []) {
-      const name = safeString(raw).toLowerCase()
-      if (!name) continue
-      const slug = name.replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "")
-      let tagId = safeString((await insertFirst(TAG_TABLES, [withId({ name, slug })])).row?.id)
-      if (!tagId) {
-        const client = getSupabaseAdmin()
-        for (const table of TAG_TABLES) {
-          const { data, error } = await client.from(table).select("id").eq("slug", slug).maybeSingle()
-          if (!error && data?.id) {
-            tagId = safeString(data.id)
-            break
-          }
-        }
-      }
-      if (tagId) {
-        const linked = await insertFirstNoId(PRODUCT_TAG_TABLES, [{ productId: input.productId, tagId }])
-        if (!linked.ok) {
-          logger.error("Supabase insert failed for table 'ProductTag' with payload", {
-            productId: input.productId,
-            tagId,
-            errors: linked.errors.slice(0, 5),
-          })
-        }
+    for (const tagId of input.tagIds ?? []) {
+      if (!safeString(tagId)) continue
+      const linked = await insertFirstNoId(PRODUCT_TAG_TABLES, [{ productId: input.productId, tagId }])
+      if (!linked.ok) {
+        logger.error("Supabase insert failed for table 'ProductTag' with payload", {
+          productId: input.productId,
+          tagId,
+          errors: linked.errors.slice(0, 5),
+        })
       }
     }
   }

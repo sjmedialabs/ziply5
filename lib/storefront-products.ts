@@ -17,6 +17,7 @@ export type StorefrontProduct = {
   saleName?: string | null
   isFeatured?: boolean
   isBestSeller?: boolean
+  tags?: Array<{ tag: { name: string } }>
   category: string
   labels: Array<{ label: string; color: string | null }>
   features: Array<{ title: string; icon: string | null }>
@@ -150,6 +151,7 @@ export const toStorefrontProduct = (p: ApiProduct): StorefrontProduct => {
     category: categorySlug,
     labels: p.labels ?? [],
     isBestSeller: p.isBestSeller ?? false,
+    tags: p.tags ?? [],
     isFeatured: p.isFeatured ?? false,
     features: p.features ?? [],
     saleName:p?.saleName ?? null,

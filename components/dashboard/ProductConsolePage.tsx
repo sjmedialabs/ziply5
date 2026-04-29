@@ -50,14 +50,16 @@ type ProductDetail = {
   spiceLevel?: "mild" | "medium" | "hot" | "extra_hot" | null
   taxIncluded?: boolean
   isActive?: boolean
+  foodType?: string | null
   isFeatured?: boolean
   isBestSeller?: boolean
+  allowReturn?: boolean
   thumbnail?: string | null
   videoUrl?: string | null
   metaTitle?: string | null
   metaDescription?: string | null
   categories?: Array<{ categoryId: string }>
-  tags?: Array<{ tag: { name: string } }>
+  tags?: Array<{ tag: { name: string; id: string } }>
   variants?: Array<{
     id?: string
     name: string
@@ -86,6 +88,7 @@ const ViewField = ({ label, value, className = "" }: { label: string; value: Rea
 )
 
 type CategoryRow = { id: string; name: string }
+type Tags = { id: string; name: string; isActive?: boolean }
 const statuses = ["draft", "published", "archived"] as const
 const foodTypes = ["veg", "non-veg"] as const
 const preparationTypes = ["ready_to_eat", "ready_to_cook"] as const
@@ -190,13 +193,15 @@ export function ProductConsolePage({
   const [isActive, setIsActive] = useState(true)
   const [isFeatured, setIsFeatured] = useState(false)
   const [isBestSeller, setIsBestSeller] = useState(false)
+  const [allowReturn, setAllowReturn] = useState(true)
   const [thumbnailUrls, setThumbnailUrls] = useState<string[]>([])
   const [metaTitle, setMetaTitle] = useState("")
   const [metaDescription, setMetaDescription] = useState("")
   const [categoryId, setCategoryId] = useState("")
+  const [selectedTagIds, setSelectedTagIds] = useState<string[]>([])
   const [foodType, setFoodType] = useState<"" | "veg" | "non-veg">("")
+  const [tags, setTags] = useState<Array<{ id: string; name: string }>>([])
   const [imageUrls, setImageUrls] = useState<string[]>([])
-  const [tagsCsv, setTagsCsv] = useState("")
   const [createdBy, setCreatedBy] = useState("user_admin_ziply5")
   const [sections, setSections] = useState<Array<{ id?: string; title: string; description: string; sortOrder: number; isActive: boolean }>>([
     { title: "Key Features", description: "<ul><li></li></ul>", sortOrder: 0, isActive: true },
@@ -297,11 +302,13 @@ export function ProductConsolePage({
     Promise.all([
       authedFetch<{ items: ProductDetail[]; total: number }>("/api/v1/products?page=1&limit=100"),
       authedFetch<CategoryRow[]>("/api/v1/categories").catch(() => []),
+      authedFetch<Tags[]>("/api/v1/tags").catch(() => [])
     ])
-      .then(([products, cats]) => {
+      .then(([products, cats, tags]) => {
         setRows(products.items as ProductDetail[])
         setTotal(products.total)
         setCategories(cats.filter((c) => Boolean(c.id)))
+        setTags(tags.filter((t) => t.isActive !== false))
         const map: Record<string, string> = {}
         products.items.forEach((p) => {
           map[p.id] = p.status
@@ -317,7 +324,7 @@ export function ProductConsolePage({
     setLoading(true)
     setError("")
     try {
-      const [p, cats, discountRows] = await Promise.all([
+      const [p, cats, discountRows, tagsRows] = await Promise.all([
         authedFetch<ProductDetail>(`/api/v1/products/${productId}`),
         authedFetch<CategoryRow[]>("/api/v1/categories").catch(() => []),
         authedFetch<Array<{
@@ -328,9 +335,11 @@ export function ProductConsolePage({
           end_date: string | null
           is_stackable: boolean
         }>>(`/api/admin/product-discounts?productId=${productId}`).catch(() => []),
+        authedFetch<Tags[]>("/api/v1/tags").catch(() => []),
       ])
       const v = p.variants?.find((item) => item.isDefault) ?? p.variants?.[0]
       setCategories(cats.filter((c) => Boolean(c.id)))
+      setTags(tagsRows.filter((t) => t.isActive !== false))
       setName(p.name)
       setSlug(p.slug)
       setSku(p.sku)
@@ -352,16 +361,17 @@ export function ProductConsolePage({
       setIsActive(p.isActive ?? true)
       setIsFeatured(p.isFeatured ?? false)
       setIsBestSeller(p.isBestSeller ?? false)
+      setAllowReturn(p.allowReturn ?? true)
       setThumbnailUrls(uniq([p.thumbnail ?? ""]))
       setMetaTitle(p.metaTitle ?? "")
       setMetaDescription(p.metaDescription ?? "")
       setCreatedBy(p.createdById ?? "user_admin_ziply5")
       setFeatures(p.features ?? [])
       setCategoryId(p.categories?.[0]?.categoryId ?? "")
+      setSelectedTagIds((p.tags ?? []).map((x) => x.tag.id).filter(Boolean))
       const tagNames = (p.tags ?? []).map((x) => x.tag.name.toLowerCase())
       setFoodType(tagNames.includes("veg") || tagNames.includes("vegetarian") ? "veg" : tagNames.includes("non-veg") || tagNames.includes("non vegetarian") ? "non-veg" : "")
       setImageUrls(uniq((p.images ?? []).map((img) => img.url)))
-      setTagsCsv(tagNames.filter((x) => x !== "veg" && x !== "vegetarian" && x !== "non-veg" && x !== "non vegetarian").join(", "))
       setVariants(
         p.variants?.length
           ? p.variants.map((item, idx) => ({
@@ -473,20 +483,16 @@ export function ProductConsolePage({
       spiceLevel: spiceLevel || null,
       taxIncluded,
       isActive,
+      foodType,
       isFeatured,
       isBestSeller,
+      allowReturn,
       thumbnail: uniq(thumbnailUrls)[0] ?? null,
       metaTitle: metaTitle.trim() || null,
       metaDescription: metaDescription.trim() || null,
       categoryId: categoryId || undefined,
+      tagIds: selectedTagIds,
       images: uniq([...thumbnailUrls, ...imageUrls]),
-      tags: [
-        foodType,
-        ...tagsCsv
-          .split(",")
-          .map((t) => t.trim().toLowerCase())
-          .filter(Boolean),
-      ].filter(Boolean),
       sections: sections
         .map((s, idx) => ({
           id: s.id,
@@ -505,12 +511,14 @@ export function ProductConsolePage({
   }, [
     basePrice,
     categoryId,
+    selectedTagIds,
     description,
     discountPercent,
     imageUrls,
     isActive,
     isBestSeller,
     isFeatured,
+    allowReturn,
     metaDescription,
     metaTitle,
     simpleProductWeight, // Add to dependencies
@@ -524,7 +532,6 @@ export function ProductConsolePage({
     status,
     stockStatus,
     foodType,
-    tagsCsv,
     taxIncluded,
     thumbnailUrls,
     totalStock,
@@ -600,9 +607,23 @@ export function ProductConsolePage({
           return
         }
       }
-      if (payload.type === "simple" && !payload.salePrice && !payload.basePrice) {
-        setError("Sale Price or Base Price is required")
+      if (payload.type === "simple" && !payload.price && !payload.basePrice) {
+        setError("Price is required")
         return
+      }
+      if (status === "published") {
+        if (!payload.foodType) {
+          setError("Food Type is required to publish")
+          return
+        }
+        if (payload.price <= 0) {
+          setError("Sale Price must be greater than 0 to publish")
+          return
+        }
+        if (!payload.shelfLife) {
+          setError("Shelf Life is required to publish")
+          return
+        }
       }
       if (payload.type === "simple" && payload.discountPercent == null) {
         setError("Discount percentage is required")
@@ -800,7 +821,7 @@ export function ProductConsolePage({
     const hasWeight = product.type === "simple" ? Boolean(product.weight?.trim()) : true; // New validation
     const hasType = Boolean(product.type)
     const tagNames = (product.tags ?? []).map((x) => x.tag.name.toLowerCase())
-    const hasFoodType = tagNames.includes("veg") || tagNames.includes("vegetarian") || tagNames.includes("non-veg") || tagNames.includes("non vegetarian")
+    // const hasFoodType = product.foodType === "veg" || product.foodType === "non-veg"
     const hasStockStatus = Boolean(product.stockStatus)
     const hasShelfLife = Boolean(product.shelfLife?.trim())
     const hasThumbnail = Boolean(product.thumbnail?.trim())
@@ -813,7 +834,7 @@ export function ProductConsolePage({
     if (!hasDiscount) return "Discount percentage is required to publish the product."
     if (!hasWeight) return "Weight is required for simple products to publish." // New error message
     if (!hasType) return "Product type is required to publish the product."
-    if (!hasFoodType) return "Food type (veg/non-veg) is required to publish the product."
+    // if (!hasFoodType) return "Food type (veg/non-veg) is required to publish the product."
     if (!hasStockStatus) return "Stock status is required to publish the product."
     if (!hasShelfLife) return "Shelf life is required to publish the product."
     if (!hasThumbnail) return "Thumbnail image is required to publish the product."
@@ -953,7 +974,7 @@ export function ProductConsolePage({
             </SelectContent>
           </Select>
 
-          <Select value={filterFoodType} onValueChange={(value) => setFilterFoodType(value as "all" | "veg" | "non-veg")}>
+          {/* <Select value={filterFoodType} onValueChange={(value) => setFilterFoodType(value as "all" | "veg" | "non-veg")}>
             <SelectTrigger className="w-40 rounded-lg border border-[#D9D9D1] bg-white px-3 py-2 text-sm">
               <SelectValue placeholder="Filter by Food Type" />
             </SelectTrigger>
@@ -965,7 +986,7 @@ export function ProductConsolePage({
                 </SelectItem>
               ))}
             </SelectContent>
-          </Select>
+          </Select> */}
         </div>
         </div>
         <div className="flex justify-end">
@@ -1238,42 +1259,7 @@ export function ProductConsolePage({
               )}
             </Field>
             {/* prdouct price and weight details for simple type */}
-            {type === "simple" ? (
-              <>
-              {/* sale price for simple product */}
-            <Field label="Sale Price" required={status !== "draft"}>
-              <Input
-                placeholder="Sale Price"
-                type="number"
-                step="0.01"
-                value={price}
-                onChange={(e) => setPrice(e.target.value)}
-                className="rounded-lg border border-[#D9D9D1] px-3 py-2 text-sm"
-              />
-            </Field>
-            {/* mrp/baseprice for simple product  */}
-            <Field label="Base / MRP" required={status !== "draft"}>
-              <Input
-                placeholder="Base/MRP"
-                type="number"
-                step="0.01"
-                value={basePrice}
-                onChange={(e) => setBasePrice(e.target.value)}
-                className="rounded-lg border border-[#D9D9D1] px-3 py-2 text-sm"
-              />
-            </Field>
-            {/* discount percent for simple product */}
-            <Field label="Discount %" required={status !== "draft"}>
-              <Input
-                placeholder="Discount %"
-                type="number"
-                step="0.01"
-                value={discountPercent}
-                onChange={(e) => setDiscountPercent(e.target.value)}
-                className="rounded-lg border border-[#D9D9D1] px-3 py-2 text-sm"
-              />
-            </Field>
-             </>  ) : null}
+        
             {/* Product status published, draft and archived */}
             <Field label="Status" required>
               <Select value={status} onValueChange={(value) => setStatus(value as (typeof statuses)[number])}>
@@ -1312,17 +1298,6 @@ export function ProductConsolePage({
             {/* Food Type */}
             {type === "simple" ? (
               <>
-                {/* sale price for simple product */}
-                <Field label="Sale Price" required={status !== "draft"}>
-                  <Input
-                    placeholder="Sale Price"
-                    type="number"
-                    step="0.01"
-                    value={price}
-                    onChange={(e) => setPrice(e.target.value)}
-                    className="rounded-lg border border-[#D9D9D1] px-3 py-2 text-sm"
-                  />
-                </Field>
                 {/* mrp/baseprice for simple product  */}
                 <Field label="Base / MRP" required={status !== "draft"}>
                   <Input
@@ -1342,6 +1317,17 @@ export function ProductConsolePage({
                     step="0.01"
                     value={discountPercent}
                     onChange={(e) => setDiscountPercent(e.target.value)}
+                    className="rounded-lg border border-[#D9D9D1] px-3 py-2 text-sm"
+                  />
+                </Field>
+                                {/* sale price for simple product */}
+                <Field label="Sale Price" required={status !== "draft"}>
+                  <Input
+                    placeholder="Sale Price"
+                    type="number"
+                    step="0.01"
+                    value={price}
+                    onChange={(e) => setPrice(e.target.value)}
                     className="rounded-lg border border-[#D9D9D1] px-3 py-2 text-sm"
                   />
                 </Field>
@@ -1369,104 +1355,6 @@ export function ProductConsolePage({
                 </Field>
               </>
             ) : null}
-            <Field label="Pricing & Discounts">
-              <div className="space-y-3 rounded-lg border border-[#E8DCC8] bg-[#FFFBF3] p-3">
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-[#646464]">Pricing</p>
-                <div className="grid gap-2 md:grid-cols-4">
-                  <Input
-                    placeholder="Base Price"
-                    type="number"
-                    step="0.01"
-                    value={basePrice}
-                    onChange={(e) => setBasePrice(e.target.value)}
-                    className="rounded-lg border border-[#D9D9D1] bg-white px-3 py-2 text-sm"
-                  />
-                  <Input
-                    placeholder="MRP"
-                    type="number"
-                    step="0.01"
-                    value={basePrice}
-                    onChange={(e) => setBasePrice(e.target.value)}
-                    className="rounded-lg border border-[#D9D9D1] bg-white px-3 py-2 text-sm"
-                  />
-                  <Input
-                    placeholder="Selling Price"
-                    type="number"
-                    step="0.01"
-                    value={price}
-                    onChange={(e) => setPrice(e.target.value)}
-                    className="rounded-lg border border-[#D9D9D1] bg-white px-3 py-2 text-sm"
-                  />
-                  <Input
-                    placeholder="Cost Price"
-                    type="number"
-                    step="0.01"
-                    value={costPrice}
-                    onChange={(e) => setCostPrice(e.target.value)}
-                    className="rounded-lg border border-[#D9D9D1] bg-white px-3 py-2 text-sm"
-                  />
-                </div>
-
-                <div className="grid gap-2 md:grid-cols-2">
-                  <label className="flex items-center gap-2 text-xs font-semibold uppercase text-[#4A1D1F]">
-                    <Checkbox checked={discountEnabled} onCheckedChange={(checked) => setDiscountEnabled(Boolean(checked))} />
-                    Enable discount
-                  </label>
-                  <label className="flex items-center gap-2 text-xs font-semibold uppercase text-[#4A1D1F]">
-                    <Checkbox checked={discountStackable} onCheckedChange={(checked) => setDiscountStackable(Boolean(checked))} />
-                    Stackable with offers
-                  </label>
-                </div>
-
-                {discountEnabled && (
-                  <div className="grid gap-2 md:grid-cols-4">
-                    <Select value={discountType} onValueChange={(value) => setDiscountType(value as "percentage" | "flat")}>
-                      <SelectTrigger className="rounded-lg border border-[#D9D9D1] bg-white px-3 py-2 text-sm">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="percentage">Percentage</SelectItem>
-                        <SelectItem value="flat">Flat Amount</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    <Input
-                      placeholder="Discount Value"
-                      type="number"
-                      step="0.01"
-                      value={discountValue}
-                      onChange={(e) => setDiscountValue(e.target.value)}
-                      className="rounded-lg border border-[#D9D9D1] bg-white px-3 py-2 text-sm"
-                    />
-                    <Input
-                      type="datetime-local"
-                      value={discountStartDate}
-                      onChange={(e) => setDiscountStartDate(e.target.value)}
-                      className="rounded-lg border border-[#D9D9D1] bg-white px-3 py-2 text-sm"
-                    />
-                    <Input
-                      type="datetime-local"
-                      value={discountEndDate}
-                      onChange={(e) => setDiscountEndDate(e.target.value)}
-                      className="rounded-lg border border-[#D9D9D1] bg-white px-3 py-2 text-sm"
-                    />
-                  </div>
-                )}
-
-                <div className="grid gap-2 md:grid-cols-2">
-                  <label className="flex items-center gap-2 text-xs font-semibold uppercase text-[#4A1D1F]">
-                    <Checkbox checked={autoExpireDiscount} onCheckedChange={(checked) => setAutoExpireDiscount(Boolean(checked))} />
-                    Auto-expire after date
-                  </label>
-                  <label className="flex items-center gap-2 text-xs font-semibold uppercase text-[#4A1D1F]">
-                    <Checkbox checked={showStrikeThroughPrice} onCheckedChange={(checked) => setShowStrikeThroughPrice(Boolean(checked))} />
-                    Show strike-through price on storefront
-                  </label>
-                </div>
-                <p className="text-[11px] text-[#646464]">
-                  Variant-level discount is supported via each variant row&apos;s discount %. Product-level discount is used as fallback.
-                </p>
-              </div>
-            </Field>
             {/* No. of stock for simple  */}
             {type === "simple" ? (
               <Field label="Total Stock">
@@ -1479,6 +1367,18 @@ export function ProductConsolePage({
                 </p>
               </Field>
             )}
+                        {/* Stock Status  */}
+            <Field label="Stock Status" required={status !== "draft"}>
+              <Select value={stockStatus} onValueChange={(value) => setStockStatus(value as "in_stock" | "out_of_stock")}>
+                <SelectTrigger className="rounded-lg border border-[#D9D9D1] px-3 py-2 text-sm">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="in_stock">in_stock</SelectItem>
+                  <SelectItem value="out_of_stock">out_of_stock</SelectItem>
+                </SelectContent>
+              </Select>
+            </Field>
             {/* Food Type */}
             <Field label="Food Type" required={status !== "draft"}>
               <Select value={foodType} onValueChange={(value) => setFoodType(value as "" | "veg" | "non-veg")}>
@@ -1513,17 +1413,35 @@ export function ProductConsolePage({
                 </SelectContent>
               </Select>
             </Field>
-            {/* Stock Status  */}
-            <Field label="Stock Status" required={status !== "draft"}>
-              <Select value={stockStatus} onValueChange={(value) => setStockStatus(value as "in_stock" | "out_of_stock")}>
-                <SelectTrigger className="rounded-lg border border-[#D9D9D1] px-3 py-2 text-sm">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="in_stock">in_stock</SelectItem>
-                  <SelectItem value="out_of_stock">out_of_stock</SelectItem>
-                </SelectContent>
-              </Select>
+            <Field label="Tags">
+              <div className="space-y-2">
+                <select
+                  multiple
+                  value={selectedTagIds}
+                  onChange={(e) => {
+                    const values = Array.from(e.target.selectedOptions).map((option) => option.value)
+                    setSelectedTagIds(values)
+                  }}
+                  className="min-h-[112px] w-full rounded-lg border border-[#D9D9D1] px-3 py-2 text-sm"
+                >
+                  {tags.map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.name}
+                    </option>
+                  ))}
+                </select>
+                <div className="flex flex-wrap gap-1">
+                  {selectedTagIds.map((selectedId) => {
+                    const tag = tags.find((t) => t.id === selectedId)
+                    if (!tag) return null
+                    return (
+                      <span key={tag.id} className="rounded-full border border-[#D9D9D1] bg-white px-2 py-1 text-[10px]">
+                        {tag.name}
+                      </span>
+                    )
+                  })}
+                </div>
+              </div>
             </Field>
             {/* shelf life in months */}
             <Field label="Shelf Life" required={status !== "draft"}>
@@ -1568,8 +1486,7 @@ export function ProductConsolePage({
             </Field>
             {/* thumbnail upload */}
             <Field label="Upload thumbnails (multiple)" required={status !== "draft"}>
-              <div className="rounded-lg border border-[#D9D9D1] px-3 py-2 text-sm">
-                <p className="mb-2 text-[11px] font-semibold uppercase text-[#646464]">Upload thumbnails (multiple)</p>
+              <div className="rounded-lg border border-[#D9D9D1] px-3 py-3 text-sm">
               <input type="file" multiple accept="image/*" onChange={(e) => void uploadMany(e.target.files, "thumbnail")} />
               {thumbnailUrls.length > 0 && (
                 <div className="mt-2 flex flex-wrap gap-1">
@@ -1578,7 +1495,7 @@ export function ProductConsolePage({
                       key={`${url}-${idx}`}
                       type="button"
                       onClick={() => setThumbnailUrls((prev) => prev.filter((x) => x !== url))}
-                      className="rounded-full border border-[#D9D9D1] bg-white px-2 py-0.5 text-[10px]"
+                      className="rounded-full border border-[#D9D9D1] bg-white px-2 py-1 text-[10px]"
                     >
                       Thumb {idx + 1} x
                     </button>
@@ -1589,7 +1506,7 @@ export function ProductConsolePage({
             </Field>
             {/* gallery images */}
             <Field label="Upload images (multiple)">
-              <div className="rounded-lg border border-[#D9D9D1] px-3 py-2 text-sm">
+              <div className="rounded-lg border border-[#D9D9D1] px-3 py-3 text-sm">
                 <input type="file" multiple accept="image/*" onChange={(e) => void uploadMany(e.target.files, "image")} />
                 {imageUrls.length > 0 && (
                   <div className="mt-2 flex flex-wrap gap-1">
@@ -1598,7 +1515,7 @@ export function ProductConsolePage({
                         key={`${url}-${idx}`}
                         type="button"
                         onClick={() => setImageUrls((prev) => prev.filter((x) => x !== url))}
-                        className="rounded-full border border-[#D9D9D1] bg-white px-2 py-0.5 text-[10px]"
+                        className="rounded-full border border-[#D9D9D1] bg-white px-2 py-1 text-[10px]"
                       >
                         Image {idx + 1} x
                       </button>
@@ -1613,9 +1530,6 @@ export function ProductConsolePage({
             </Field>
             <Field label="Meta Description">
               <Input placeholder="Meta Description" value={metaDescription} onChange={(e) => setMetaDescription(e.target.value)} className="rounded-lg border border-[#D9D9D1] px-3 py-2 text-sm md:col-span-2" />
-            </Field>
-            <Field label="Tags CSV">
-              <Input placeholder="Tags csv: veg, rice, ready-to-eat" value={tagsCsv} onChange={(e) => setTagsCsv(e.target.value)} className="rounded-lg border border-[#D9D9D1] px-3 py-2 text-sm md:col-span-3" />
             </Field>
 
                 {/* for product type as varient then specify the variant */}
@@ -1735,6 +1649,104 @@ export function ProductConsolePage({
             )}
             <Field label="Description" required={status !== "draft"}>
               <Textarea placeholder="Description" value={description} onChange={(e) => setDescription(e.target.value)} rows={2} className="rounded-lg border border-[#D9D9D1] px-3 py-2 text-sm md:col-span-3" />
+            </Field>
+                        <Field label="Pricing & Discounts">
+              <div className="space-y-3 rounded-lg border border-[#E8DCC8] bg-[#FFFBF3] p-3">
+                {/* <p className="text-[11px] font-semibold uppercase tracking-wide text-[#646464]">Pricing</p> */}
+                {/* <div className="grid gap-2 md:grid-cols-4">
+                  <Input
+                    placeholder="Base Price"
+                    type="number"
+                    step="0.01"
+                    value={basePrice}
+                    onChange={(e) => setBasePrice(e.target.value)}
+                    className="rounded-lg border border-[#D9D9D1] bg-white px-3 py-2 text-sm"
+                  />
+                  <Input
+                    placeholder="MRP"
+                    type="number"
+                    step="0.01"
+                    value={basePrice}
+                    onChange={(e) => setBasePrice(e.target.value)}
+                    className="rounded-lg border border-[#D9D9D1] bg-white px-3 py-2 text-sm"
+                  />
+                  <Input
+                    placeholder="Selling Price"
+                    type="number"
+                    step="0.01"
+                    value={price}
+                    onChange={(e) => setPrice(e.target.value)}
+                    className="rounded-lg border border-[#D9D9D1] bg-white px-3 py-2 text-sm"
+                  />
+                  <Input
+                    placeholder="Cost Price"
+                    type="number"
+                    step="0.01"
+                    value={costPrice}
+                    onChange={(e) => setCostPrice(e.target.value)}
+                    className="rounded-lg border border-[#D9D9D1] bg-white px-3 py-2 text-sm"
+                  />
+                </div> */}
+
+                <div className="grid gap-2 md:grid-cols-2">
+                  <label className="flex items-center gap-2 text-xs font-semibold uppercase text-[#4A1D1F]">
+                    <Checkbox checked={discountEnabled} onCheckedChange={(checked) => setDiscountEnabled(Boolean(checked))} />
+                    Enable discount
+                  </label>
+                  <label className="flex items-center gap-2 text-xs font-semibold uppercase text-[#4A1D1F]">
+                    <Checkbox checked={discountStackable} onCheckedChange={(checked) => setDiscountStackable(Boolean(checked))} />
+                    Stackable with offers
+                  </label>
+                </div>
+
+                {discountEnabled && (
+                  <div className="grid gap-2 md:grid-cols-4">
+                    <Select value={discountType} onValueChange={(value) => setDiscountType(value as "percentage" | "flat")}>
+                      <SelectTrigger className="rounded-lg border border-[#D9D9D1] bg-white px-3 py-2 text-sm">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="percentage">Percentage</SelectItem>
+                        <SelectItem value="flat">Flat Amount</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <Input
+                      placeholder="Discount Value"
+                      type="number"
+                      step="0.01"
+                      value={discountValue}
+                      onChange={(e) => setDiscountValue(e.target.value)}
+                      className="rounded-lg border border-[#D9D9D1] bg-white px-3 py-2 text-sm"
+                    />
+                    <Input
+                      type="datetime-local"
+                      value={discountStartDate}
+                      onChange={(e) => setDiscountStartDate(e.target.value)}
+                      className="rounded-lg border border-[#D9D9D1] bg-white px-3 py-2 text-sm"
+                    />
+                    <Input
+                      type="datetime-local"
+                      value={discountEndDate}
+                      onChange={(e) => setDiscountEndDate(e.target.value)}
+                      className="rounded-lg border border-[#D9D9D1] bg-white px-3 py-2 text-sm"
+                    />
+                  </div>
+                )}
+
+                <div className="grid gap-2 md:grid-cols-2">
+                  <label className="flex items-center gap-2 text-xs font-semibold uppercase text-[#4A1D1F]">
+                    <Checkbox checked={autoExpireDiscount} onCheckedChange={(checked) => setAutoExpireDiscount(Boolean(checked))} />
+                    Auto-expire after date
+                  </label>
+                  <label className="flex items-center gap-2 text-xs font-semibold uppercase text-[#4A1D1F]">
+                    <Checkbox checked={showStrikeThroughPrice} onCheckedChange={(checked) => setShowStrikeThroughPrice(Boolean(checked))} />
+                    Show strike-through price on storefront
+                  </label>
+                </div>
+                <p className="text-[11px] text-[#646464]">
+                  Variant-level discount is supported via each variant row&apos;s discount %. Product-level discount is used as fallback.
+                </p>
+              </div>
             </Field>
           </>
         )}
@@ -1948,6 +1960,9 @@ export function ProductConsolePage({
                 </label>
                 <label className="flex items-center gap-2">
                   <Checkbox checked={isBestSeller} onCheckedChange={(checked) => setIsBestSeller(!!checked)} /> best seller
+                </label>
+                <label className="flex items-center gap-2">
+                  <Checkbox checked={allowReturn} onCheckedChange={(checked) => setAllowReturn(!!checked)} /> allow return
                 </label>
               </>
             ) : (
