@@ -22,7 +22,15 @@ type Offer = {
   totalSavings?: number
 }
 
-const statusCycle: OfferStatus[] = ["draft", "active", "inactive"]
+const getStatusBadge = (row: Offer) => {
+  const now = Date.now()
+  if (row.status !== "active") return { label: "Disabled", tone: "gray" as const }
+  const starts = row.starts_at ? new Date(row.starts_at).getTime() : null
+  const ends = row.ends_at ? new Date(row.ends_at).getTime() : null
+  if (starts != null && starts > now) return { label: "Scheduled", tone: "blue" as const }
+  if (ends != null && ends < now) return { label: "Expired", tone: "amber" as const }
+  return { label: "Active", tone: "green" as const }
+}
 
 export default function OffersModulePage({ type, title, subtitle }: { type: OfferType; title: string; subtitle: string }) {
   const [rows, setRows] = useState<Offer[]>([])
@@ -43,9 +51,9 @@ export default function OffersModulePage({ type, title, subtitle }: { type: Offe
     name: "",
     code: "",
     description: "",
+    enabled: true,
     priority: 100,
     stackable: false,
-    status: "draft" as OfferStatus,
     startsAt: "",
     endsAt: "",
     discountType: "percentage",
@@ -55,23 +63,16 @@ export default function OffersModulePage({ type, title, subtitle }: { type: Offe
     usageLimitTotal: "",
     usageLimitPerUser: "",
     firstOrderOnly: false,
-    applicableProductIds: "",
-    applicableCategoryIds: "",
-    excludedProductIds: "",
-    allowedSegments: "",
-    actionType: "discount",
-    freeShipping: false,
-    freeGiftSku: "",
     buyQty: "2",
     getQty: "1",
+    rewardType: "free",
+    rewardValue: "0",
     repeatable: true,
     maxFreeUnits: "",
     shippingMode: "flat",
     shippingDiscountValue: "0",
-    locationCodes: "",
     targetProductIds: "",
     targetCategoryIds: "",
-    productOverrideMode: "manual_wins",
   })
 
   const load = useCallback(async () => {
@@ -110,9 +111,9 @@ export default function OffersModulePage({ type, title, subtitle }: { type: Offe
       name: "",
       code: "",
       description: "",
+      enabled: true,
       priority: 100,
       stackable: false,
-      status: "draft",
       startsAt: "",
       endsAt: "",
       discountType: "percentage",
@@ -122,23 +123,16 @@ export default function OffersModulePage({ type, title, subtitle }: { type: Offe
       usageLimitTotal: "",
       usageLimitPerUser: "",
       firstOrderOnly: false,
-      applicableProductIds: "",
-      applicableCategoryIds: "",
-      excludedProductIds: "",
-      allowedSegments: "",
-      actionType: "discount",
-      freeShipping: false,
-      freeGiftSku: "",
       buyQty: "2",
       getQty: "1",
+      rewardType: "free",
+      rewardValue: "0",
       repeatable: true,
       maxFreeUnits: "",
       shippingMode: "flat",
       shippingDiscountValue: "0",
-      locationCodes: "",
       targetProductIds: "",
       targetCategoryIds: "",
-      productOverrideMode: "manual_wins",
     })
 
   const buildConfig = () => {
@@ -154,28 +148,16 @@ export default function OffersModulePage({ type, title, subtitle }: { type: Offe
         usageLimitTotal: draft.usageLimitTotal ? Number(draft.usageLimitTotal) : null,
         usageLimitPerUser: draft.usageLimitPerUser ? Number(draft.usageLimitPerUser) : null,
         firstOrderOnly: draft.firstOrderOnly,
-        applicableProductIds: draft.applicableProductIds.split(",").map((v) => v.trim()).filter(Boolean),
-        applicableCategoryIds: draft.applicableCategoryIds.split(",").map((v) => v.trim()).filter(Boolean),
-        excludedProductIds: draft.excludedProductIds.split(",").map((v) => v.trim()).filter(Boolean),
-        allowedSegments: draft.allowedSegments.split(",").map((v) => v.trim()).filter(Boolean),
       }
     }
-    if (type === "automatic") return { ...common, actionType: draft.actionType, freeShipping: draft.freeShipping, freeGiftSku: draft.freeGiftSku || null }
-    if (type === "product_discount") {
-      return {
-        ...common,
-        targetProductIds: draft.targetProductIds.split(",").map((v) => v.trim()).filter(Boolean),
-        targetCategoryIds: draft.targetCategoryIds.split(",").map((v) => v.trim()).filter(Boolean),
-        productOverrideMode: draft.productOverrideMode,
-      }
-    }
+    if (type === "automatic") return common
+    if (type === "product_discount") return common
     if (type === "cart_discount") return common
     if (type === "shipping_discount") {
       return {
         minCartValue: draft.minCartValue ? Number(draft.minCartValue) : 0,
         mode: draft.shippingMode,
         discountValue: Number(draft.shippingDiscountValue || 0),
-        locationCodes: draft.locationCodes.split(",").map((v) => v.trim()).filter(Boolean),
       }
     }
     return {
@@ -183,6 +165,8 @@ export default function OffersModulePage({ type, title, subtitle }: { type: Offe
       getQty: Number(draft.getQty || 1),
       repeatable: draft.repeatable,
       maxFreeUnits: draft.maxFreeUnits ? Number(draft.maxFreeUnits) : null,
+      rewardType: draft.rewardType,
+      rewardValue: Number(draft.rewardValue || 0),
     }
   }
 
@@ -190,6 +174,7 @@ export default function OffersModulePage({ type, title, subtitle }: { type: Offe
     setBusy(true)
     setError("")
     try {
+      const discountValueNum = Number(draft.discountValue || 0)
       const payload = {
         type,
         name: draft.name.trim(),
@@ -197,13 +182,28 @@ export default function OffersModulePage({ type, title, subtitle }: { type: Offe
         description: draft.description.trim() || null,
         priority: Number(draft.priority),
         stackable: draft.stackable,
-        status: draft.status,
+        status: draft.enabled ? ("active" as const) : ("inactive" as const),
         startsAt: draft.startsAt || null,
         endsAt: draft.endsAt || null,
         config: buildConfig(),
+        targets: [
+          ...draft.targetProductIds
+            .split(",")
+            .map((v) => v.trim())
+            .filter(Boolean)
+            .map((id) => ({ targetType: "product" as const, targetId: id })),
+          ...draft.targetCategoryIds
+            .split(",")
+            .map((v) => v.trim())
+            .filter(Boolean)
+            .map((id) => ({ targetType: "category" as const, targetId: id })),
+        ],
       }
       if (!payload.name) throw new Error("Offer name is required")
       if (type === "coupon" && !payload.code) throw new Error("Coupon code is required")
+      if ((type === "coupon" || type === "cart_discount") && discountValueNum <= 0) {
+        throw new Error("Discount value must be greater than 0")
+      }
       if (draft.id) {
         await authedPut<{ id: string }>("/api/v1/offers", { id: draft.id, ...payload })
       } else {
@@ -225,48 +225,19 @@ export default function OffersModulePage({ type, title, subtitle }: { type: Offe
           <input className="rounded-xl border px-3 py-2 text-sm" placeholder="Usage limit total" value={draft.usageLimitTotal} onChange={(e) => setDraft((p) => ({ ...p, usageLimitTotal: e.target.value }))} />
           <input className="rounded-xl border px-3 py-2 text-sm" placeholder="Usage per user" value={draft.usageLimitPerUser} onChange={(e) => setDraft((p) => ({ ...p, usageLimitPerUser: e.target.value }))} />
           <label className="flex items-center gap-2 rounded-xl border px-3 py-2 text-sm"><input type="checkbox" checked={draft.firstOrderOnly} onChange={(e) => setDraft((p) => ({ ...p, firstOrderOnly: e.target.checked }))} />First order only</label>
-          <input className="rounded-xl border px-3 py-2 text-sm md:col-span-2" placeholder="Applicable product IDs (comma)" value={draft.applicableProductIds} onChange={(e) => setDraft((p) => ({ ...p, applicableProductIds: e.target.value }))} />
-          <input className="rounded-xl border px-3 py-2 text-sm md:col-span-2" placeholder="Applicable category IDs (comma)" value={draft.applicableCategoryIds} onChange={(e) => setDraft((p) => ({ ...p, applicableCategoryIds: e.target.value }))} />
-          <input className="rounded-xl border px-3 py-2 text-sm md:col-span-2" placeholder="Excluded product IDs (comma)" value={draft.excludedProductIds} onChange={(e) => setDraft((p) => ({ ...p, excludedProductIds: e.target.value }))} />
-          <input className="rounded-xl border px-3 py-2 text-sm md:col-span-2" placeholder="Allowed user segments (comma)" value={draft.allowedSegments} onChange={(e) => setDraft((p) => ({ ...p, allowedSegments: e.target.value }))} />
         </>
       )
     }
-    if (type === "automatic") {
-      return (
-        <>
-          <select className="rounded-xl border px-3 py-2 text-sm" value={draft.actionType} onChange={(e) => setDraft((p) => ({ ...p, actionType: e.target.value }))}>
-            <option value="discount">% / Flat Discount</option>
-            <option value="free_gift">Free Gift</option>
-            <option value="free_shipping">Free Shipping</option>
-          </select>
-          <label className="flex items-center gap-2 rounded-xl border px-3 py-2 text-sm"><input type="checkbox" checked={draft.freeShipping} onChange={(e) => setDraft((p) => ({ ...p, freeShipping: e.target.checked }))} />Free shipping</label>
-          <input className="rounded-xl border px-3 py-2 text-sm" placeholder="Free gift SKU (optional)" value={draft.freeGiftSku} onChange={(e) => setDraft((p) => ({ ...p, freeGiftSku: e.target.value }))} />
-        </>
-      )
-    }
-    if (type === "product_discount") {
-      return (
-        <>
-          <input className="rounded-xl border px-3 py-2 text-sm md:col-span-2" placeholder="Target product IDs (comma)" value={draft.targetProductIds} onChange={(e) => setDraft((p) => ({ ...p, targetProductIds: e.target.value }))} />
-          <input className="rounded-xl border px-3 py-2 text-sm md:col-span-2" placeholder="Target category IDs (comma)" value={draft.targetCategoryIds} onChange={(e) => setDraft((p) => ({ ...p, targetCategoryIds: e.target.value }))} />
-          <select className="rounded-xl border px-3 py-2 text-sm" value={draft.productOverrideMode} onChange={(e) => setDraft((p) => ({ ...p, productOverrideMode: e.target.value }))}>
-            <option value="manual_wins">Manual Product Discount Wins</option>
-            <option value="offer_wins">Offer Priority Wins</option>
-          </select>
-        </>
-      )
-    }
+    if (type === "automatic" || type === "cart_discount") return null
     if (type === "shipping_discount") {
       return (
         <>
           <select className="rounded-xl border px-3 py-2 text-sm" value={draft.shippingMode} onChange={(e) => setDraft((p) => ({ ...p, shippingMode: e.target.value }))}>
-            <option value="flat">Flat Off</option>
-            <option value="percentage">% Off</option>
             <option value="free">Free Shipping</option>
+            <option value="flat">Reduced Shipping (flat)</option>
+            <option value="percentage">Reduced Shipping (%)</option>
           </select>
           <input className="rounded-xl border px-3 py-2 text-sm" placeholder="Shipping discount value" value={draft.shippingDiscountValue} onChange={(e) => setDraft((p) => ({ ...p, shippingDiscountValue: e.target.value }))} />
-          <input className="rounded-xl border px-3 py-2 text-sm md:col-span-2" placeholder="Location codes (city/state/pincode comma)" value={draft.locationCodes} onChange={(e) => setDraft((p) => ({ ...p, locationCodes: e.target.value }))} />
         </>
       )
     }
@@ -275,8 +246,15 @@ export default function OffersModulePage({ type, title, subtitle }: { type: Offe
         <>
           <input className="rounded-xl border px-3 py-2 text-sm" placeholder="Buy qty" value={draft.buyQty} onChange={(e) => setDraft((p) => ({ ...p, buyQty: e.target.value }))} />
           <input className="rounded-xl border px-3 py-2 text-sm" placeholder="Get qty" value={draft.getQty} onChange={(e) => setDraft((p) => ({ ...p, getQty: e.target.value }))} />
+          <select className="rounded-xl border px-3 py-2 text-sm" value={draft.rewardType} onChange={(e) => setDraft((p) => ({ ...p, rewardType: e.target.value }))}>
+            <option value="free">Free</option>
+            <option value="percentage_off">% Off</option>
+          </select>
+          <input className="rounded-xl border px-3 py-2 text-sm" placeholder="Reward value (for % off)" value={draft.rewardValue} onChange={(e) => setDraft((p) => ({ ...p, rewardValue: e.target.value }))} />
           <label className="flex items-center gap-2 rounded-xl border px-3 py-2 text-sm"><input type="checkbox" checked={draft.repeatable} onChange={(e) => setDraft((p) => ({ ...p, repeatable: e.target.checked }))} />Repeatable</label>
           <input className="rounded-xl border px-3 py-2 text-sm" placeholder="Max free units" value={draft.maxFreeUnits} onChange={(e) => setDraft((p) => ({ ...p, maxFreeUnits: e.target.value }))} />
+          <input className="rounded-xl border px-3 py-2 text-sm md:col-span-2" placeholder="Eligible product IDs (comma, optional)" value={draft.targetProductIds} onChange={(e) => setDraft((p) => ({ ...p, targetProductIds: e.target.value }))} />
+          <input className="rounded-xl border px-3 py-2 text-sm md:col-span-2" placeholder="Eligible category IDs (comma, optional)" value={draft.targetCategoryIds} onChange={(e) => setDraft((p) => ({ ...p, targetCategoryIds: e.target.value }))} />
         </>
       )
     }
@@ -294,6 +272,10 @@ export default function OffersModulePage({ type, title, subtitle }: { type: Offe
         <input className="rounded-xl border px-3 py-2 text-sm" placeholder="Offer name" value={draft.name} onChange={(e) => setDraft((p) => ({ ...p, name: e.target.value }))} />
         <input className="rounded-xl border px-3 py-2 text-sm" placeholder={type === "coupon" ? "Coupon code (required)" : "Coupon code (optional)"} value={draft.code} onChange={(e) => setDraft((p) => ({ ...p, code: e.target.value.toUpperCase() }))} />
         <input className="rounded-xl border px-3 py-2 text-sm" placeholder="Description" value={draft.description} onChange={(e) => setDraft((p) => ({ ...p, description: e.target.value }))} />
+        <label className="flex items-center justify-between gap-3 rounded-xl border px-3 py-2 text-sm">
+          <span>Enabled</span>
+          <input type="checkbox" checked={draft.enabled} onChange={(e) => setDraft((p) => ({ ...p, enabled: e.target.checked }))} />
+        </label>
         <input type="number" className="rounded-xl border px-3 py-2 text-sm" placeholder="Priority" value={draft.priority} onChange={(e) => setDraft((p) => ({ ...p, priority: Number(e.target.value) }))} />
         <select className="rounded-xl border px-3 py-2 text-sm" value={draft.discountType} onChange={(e) => setDraft((p) => ({ ...p, discountType: e.target.value }))}>
           <option value="percentage">Percentage</option>
@@ -304,12 +286,6 @@ export default function OffersModulePage({ type, title, subtitle }: { type: Offe
         <input className="rounded-xl border px-3 py-2 text-sm" placeholder="Min cart value (optional)" value={draft.minCartValue} onChange={(e) => setDraft((p) => ({ ...p, minCartValue: e.target.value }))} />
         <input type="datetime-local" className="rounded-xl border px-3 py-2 text-sm" value={draft.startsAt} onChange={(e) => setDraft((p) => ({ ...p, startsAt: e.target.value }))} />
         <input type="datetime-local" className="rounded-xl border px-3 py-2 text-sm" value={draft.endsAt} onChange={(e) => setDraft((p) => ({ ...p, endsAt: e.target.value }))} />
-        <select className="rounded-xl border px-3 py-2 text-sm" value={draft.status} onChange={(e) => setDraft((p) => ({ ...p, status: e.target.value as OfferStatus }))}>
-          <option value="draft">Draft</option>
-          <option value="active">Active</option>
-          <option value="inactive">Inactive</option>
-          <option value="expired">Expired</option>
-        </select>
         <label className="flex items-center gap-2 rounded-xl border px-3 py-2 text-sm">
           <input type="checkbox" checked={draft.stackable} onChange={(e) => setDraft((p) => ({ ...p, stackable: e.target.checked }))} />
           Stackable
@@ -373,7 +349,20 @@ export default function OffersModulePage({ type, title, subtitle }: { type: Offe
                     <div className="text-xs text-[#7A7A7A]">{row.description || "-"}</div>
                   </td>
                   <td className="px-2 py-2 text-xs">{row.code || "-"}</td>
-                  <td className="px-2 py-2 text-xs uppercase">{row.status}</td>
+                  <td className="px-2 py-2">
+                    {(() => {
+                      const badge = getStatusBadge(row)
+                      const tone =
+                        badge.tone === "green"
+                          ? "bg-green-50 text-green-700 border-green-200"
+                          : badge.tone === "blue"
+                            ? "bg-blue-50 text-blue-700 border-blue-200"
+                            : badge.tone === "amber"
+                              ? "bg-amber-50 text-amber-700 border-amber-200"
+                              : "bg-gray-50 text-gray-700 border-gray-200"
+                      return <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase ${tone}`}>{badge.label}</span>
+                    })()}
+                  </td>
                   <td className="px-2 py-2">{row.priority}</td>
                   <td className="px-2 py-2 text-xs text-[#7A7A7A]">
                     {row.usageCount ?? 0} uses / Rs.{Number(row.totalSavings ?? 0).toFixed(0)}
@@ -391,9 +380,9 @@ export default function OffersModulePage({ type, title, subtitle }: { type: Offe
                             name: row.name,
                             code: row.code ?? "",
                             description: row.description ?? "",
+                            enabled: row.status === "active",
                             priority: row.priority,
                             stackable: row.stackable,
-                            status: row.status,
                             startsAt: row.starts_at ? row.starts_at.slice(0, 16) : "",
                             endsAt: row.ends_at ? row.ends_at.slice(0, 16) : "",
                             discountType: String(cfg.discountType ?? "percentage"),
@@ -403,23 +392,16 @@ export default function OffersModulePage({ type, title, subtitle }: { type: Offe
                             usageLimitTotal: cfg.usageLimitTotal == null ? "" : String(cfg.usageLimitTotal),
                             usageLimitPerUser: cfg.usageLimitPerUser == null ? "" : String(cfg.usageLimitPerUser),
                             firstOrderOnly: Boolean(cfg.firstOrderOnly ?? false),
-                            applicableProductIds: ((cfg.applicableProductIds as string[]) ?? []).join(","),
-                            applicableCategoryIds: ((cfg.applicableCategoryIds as string[]) ?? []).join(","),
-                            excludedProductIds: ((cfg.excludedProductIds as string[]) ?? []).join(","),
-                            allowedSegments: ((cfg.allowedSegments as string[]) ?? []).join(","),
-                            actionType: String(cfg.actionType ?? "discount"),
-                            freeShipping: Boolean(cfg.freeShipping ?? false),
-                            freeGiftSku: String(cfg.freeGiftSku ?? ""),
                             buyQty: String(cfg.buyQty ?? "2"),
                             getQty: String(cfg.getQty ?? "1"),
+                            rewardType: String(cfg.rewardType ?? "free"),
+                            rewardValue: String(cfg.rewardValue ?? "0"),
                             repeatable: Boolean(cfg.repeatable ?? true),
                             maxFreeUnits: cfg.maxFreeUnits == null ? "" : String(cfg.maxFreeUnits),
                             shippingMode: String(cfg.mode ?? "flat"),
                             shippingDiscountValue: String(cfg.discountValue ?? "0"),
-                            locationCodes: ((cfg.locationCodes as string[]) ?? []).join(","),
-                            targetProductIds: ((cfg.targetProductIds as string[]) ?? []).join(","),
-                            targetCategoryIds: ((cfg.targetCategoryIds as string[]) ?? []).join(","),
-                            productOverrideMode: String(cfg.productOverrideMode ?? "manual_wins"),
+                            targetProductIds: "",
+                            targetCategoryIds: "",
                           })
                         }}
                       >
@@ -430,12 +412,11 @@ export default function OffersModulePage({ type, title, subtitle }: { type: Offe
                         type="button"
                         className="rounded-full border px-2 py-1 text-[10px]"
                         onClick={() => {
-                          const idx = statusCycle.indexOf(row.status === "expired" ? "inactive" : row.status)
-                          const next = statusCycle[(idx + 1) % statusCycle.length]
+                          const next = row.status === "active" ? ("inactive" as const) : ("active" as const)
                           void authedPatch("/api/v1/offers", { id: row.id, action: "toggle", status: next }).then(() => load())
                         }}
                       >
-                        Toggle
+                        {row.status === "active" ? "Disable" : "Enable"}
                       </button>
                       <button type="button" className="rounded-full border px-2 py-1 text-[10px]" onClick={() => setSelectedLogOfferId(row.id)}>Logs</button>
                       <button type="button" className="rounded-full border border-red-300 px-2 py-1 text-[10px] text-red-700" onClick={() => void authedDelete(`/api/v1/offers?id=${row.id}`).then(() => load())}>Delete</button>

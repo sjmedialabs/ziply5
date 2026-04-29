@@ -1,5 +1,6 @@
-import { Prisma } from "@prisma/client"
-import { prisma } from "@/src/server/db/prisma"
+import { applySimpleDiscount, calculateBogoSavings, clamp } from "@/src/server/modules/offers/offers.math"
+import { getSupabaseAdmin } from "@/src/lib/supabase/admin"
+import type { PostgrestError } from "@supabase/supabase-js"
 
 type OfferType = "coupon" | "automatic" | "product_discount" | "cart_discount" | "shipping_discount" | "bogo"
 type OfferStatus = "draft" | "active" | "inactive" | "expired"
@@ -9,7 +10,7 @@ type OfferTarget = {
   targetId: string
 }
 
-type OfferRow = {
+type OfferRowDb = {
   id: string
   type: OfferType
   name: string
@@ -18,93 +19,74 @@ type OfferRow = {
   status: OfferStatus
   priority: number
   stackable: boolean
-  starts_at: Date | null
-  ends_at: Date | null
-  config_json: Prisma.JsonValue
+  starts_at: string | null
+  ends_at: string | null
+  config_json: Record<string, unknown> | null
   created_by: string | null
-  created_at: Date
-  updated_at: Date
-  deleted_at: Date | null
+  created_at: string
+  updated_at: string
+  deleted_at: string | null
 }
 
-const ensureOffersTables = async () => {
-  await prisma.$executeRawUnsafe(`
-    CREATE TABLE IF NOT EXISTS offers_v2 (
-      id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-      type text NOT NULL,
-      name text NOT NULL,
-      code text NULL UNIQUE,
-      description text NULL,
-      status text NOT NULL DEFAULT 'draft',
-      priority int NOT NULL DEFAULT 100,
-      stackable boolean NOT NULL DEFAULT false,
-      starts_at timestamptz NULL,
-      ends_at timestamptz NULL,
-      config_json jsonb NOT NULL DEFAULT '{}'::jsonb,
-      created_by text NULL,
-      created_at timestamptz NOT NULL DEFAULT now(),
-      updated_at timestamptz NOT NULL DEFAULT now(),
-      deleted_at timestamptz NULL
-    );
-  `)
-  await prisma.$executeRawUnsafe(`
-    CREATE TABLE IF NOT EXISTS offer_targets_v2 (
-      id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-      offer_id uuid NOT NULL REFERENCES offers_v2(id) ON DELETE CASCADE,
-      target_type text NOT NULL,
-      target_id text NOT NULL,
-      created_at timestamptz NOT NULL DEFAULT now()
-    );
-  `)
-  await prisma.$executeRawUnsafe(`
-    CREATE TABLE IF NOT EXISTS offer_usage_logs_v2 (
-      id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-      offer_id uuid NOT NULL REFERENCES offers_v2(id) ON DELETE CASCADE,
-      user_id text NULL,
-      order_id text NULL,
-      savings numeric(12,2) NOT NULL DEFAULT 0,
-      status text NOT NULL DEFAULT 'applied',
-      used_at timestamptz NOT NULL DEFAULT now(),
-      metadata jsonb NOT NULL DEFAULT '{}'::jsonb
-    );
-  `)
-  await prisma.$executeRawUnsafe(`
-    CREATE TABLE IF NOT EXISTS order_offer_breakdown_v2 (
-      id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-      order_id text NOT NULL,
-      offer_id uuid NULL REFERENCES offers_v2(id) ON DELETE SET NULL,
-      offer_type text NOT NULL,
-      label text NOT NULL,
-      amount numeric(12,2) NOT NULL,
-      metadata jsonb NOT NULL DEFAULT '{}'::jsonb,
-      created_at timestamptz NOT NULL DEFAULT now()
-    );
-  `)
+type OfferHydrated = OfferRowDb & {
+  config: Record<string, unknown>
+  targets: OfferTarget[]
+  usageCount?: number
+  totalSavings?: number
 }
 
-const mapOfferWithTargets = async (rows: OfferRow[]) => {
-  if (rows.length === 0) return []
+const toOfferHydrated = (row: OfferRowDb): OfferHydrated => ({
+  ...row,
+  config: (row.config_json ?? {}) as Record<string, unknown>,
+  targets: [],
+})
+
+const enrichWithTargetsAndUsage = async (rows: OfferRowDb[], opts?: { includeUsage?: boolean }) => {
+  if (!rows.length) return [] as OfferHydrated[]
+  const client = getSupabaseAdmin()
   const ids = rows.map((r) => r.id)
-  const targets = await prisma.$queryRaw<Array<{ offer_id: string; target_type: OfferTarget["targetType"]; target_id: string }>>(
-    Prisma.sql`SELECT offer_id, target_type, target_id FROM offer_targets_v2 WHERE offer_id IN (${Prisma.join(ids.map((id) => Prisma.sql`${id}::uuid`), Prisma.sql`,`)})`,
-  )
-  const usageRows = await prisma.$queryRaw<Array<{ offer_id: string; usage_count: bigint; total_savings: number }>>(
-    Prisma.sql`
-      SELECT offer_id, COUNT(*)::bigint as usage_count, COALESCE(SUM(savings), 0)::numeric as total_savings
-      FROM offer_usage_logs_v2
-      WHERE offer_id IN (${Prisma.join(ids.map((id) => Prisma.sql`${id}::uuid`), Prisma.sql`,`)})
-      GROUP BY offer_id
-    `,
-  )
-  return rows.map((row) => ({
-    ...row,
-    config: row.config_json ?? {},
-    usageCount: Number(usageRows.find((usage) => usage.offer_id === row.id)?.usage_count ?? 0),
-    totalSavings: Number(usageRows.find((usage) => usage.offer_id === row.id)?.total_savings ?? 0),
-    targets: targets
-      .filter((target) => target.offer_id === row.id)
-      .map((target) => ({ targetType: target.target_type, targetId: target.target_id })),
-  }))
+
+  const hydrated = rows.map(toOfferHydrated)
+
+  const { data: targets, error: targetsError } = await client
+    .from("offer_targets_v2")
+    .select("offer_id,target_type,target_id")
+    .in("offer_id", ids)
+  if (targetsError) throw targetsError
+
+  const targetsByOffer = new Map<string, OfferTarget[]>()
+  for (const t of targets ?? []) {
+    const arr = targetsByOffer.get(String((t as any).offer_id)) ?? []
+    arr.push({ targetType: String((t as any).target_type) as any, targetId: String((t as any).target_id) })
+    targetsByOffer.set(String((t as any).offer_id), arr)
+  }
+
+  for (const h of hydrated) {
+    h.targets = targetsByOffer.get(h.id) ?? []
+  }
+
+  if (opts?.includeUsage) {
+    const { data: usageRows, error: usageError } = await client
+      .from("offer_usage_logs_v2")
+      .select("offer_id,savings,status")
+      .in("offer_id", ids)
+    if (usageError) throw usageError
+
+    const countByOffer = new Map<string, number>()
+    const savingsByOffer = new Map<string, number>()
+    for (const u of usageRows ?? []) {
+      if (String((u as any).status ?? "") !== "applied") continue
+      const offerId = String((u as any).offer_id)
+      countByOffer.set(offerId, (countByOffer.get(offerId) ?? 0) + 1)
+      savingsByOffer.set(offerId, (savingsByOffer.get(offerId) ?? 0) + Number((u as any).savings ?? 0))
+    }
+    for (const h of hydrated) {
+      h.usageCount = countByOffer.get(h.id) ?? 0
+      h.totalSavings = savingsByOffer.get(h.id) ?? 0
+    }
+  }
+
+  return hydrated
 }
 
 export const listOffers = async (input?: {
@@ -117,57 +99,56 @@ export const listOffers = async (input?: {
   page?: number
   pageSize?: number
 }) => {
-  await ensureOffersTables()
+  const client = getSupabaseAdmin()
   const sortBy = input?.sortBy ?? "priority"
-  const sortDir = input?.sortDir === "desc" ? Prisma.sql`DESC` : Prisma.sql`ASC`
+  const ascending = input?.sortDir !== "desc"
   const page = Math.max(1, input?.page ?? 1)
   const pageSize = Math.min(100, Math.max(1, input?.pageSize ?? 20))
   const offset = (page - 1) * pageSize
   const query = input?.query?.trim()
-  const orderBy =
-    sortBy === "created_at" ? Prisma.sql`created_at` : sortBy === "name" ? Prisma.sql`name` : Prisma.sql`priority`
-  const rows = await prisma.$queryRaw<OfferRow[]>(Prisma.sql`
-    SELECT *
-    FROM offers_v2
-    WHERE (${input?.type ?? null}::text IS NULL OR type = ${input?.type ?? null})
-      AND (${input?.status ?? null}::text IS NULL OR status = ${input?.status ?? null})
-      AND (${query ?? null}::text IS NULL OR name ILIKE ${`%${query}%`} OR COALESCE(code,'') ILIKE ${`%${query}%`})
-      AND (${input?.includeDeleted === true} OR deleted_at IS NULL)
-    ORDER BY ${orderBy} ${sortDir}, created_at DESC
-    LIMIT ${pageSize}
-    OFFSET ${offset}
-  `)
-  const totalRows = await prisma.$queryRaw<Array<{ count: bigint }>>(Prisma.sql`
-    SELECT COUNT(*)::bigint as count
-    FROM offers_v2
-    WHERE (${input?.type ?? null}::text IS NULL OR type = ${input?.type ?? null})
-      AND (${input?.status ?? null}::text IS NULL OR status = ${input?.status ?? null})
-      AND (${query ?? null}::text IS NULL OR name ILIKE ${`%${query}%`} OR COALESCE(code,'') ILIKE ${`%${query}%`})
-      AND (${input?.includeDeleted === true} OR deleted_at IS NULL)
-  `)
+
+  let qb = client
+    .from("offers_v2")
+    .select("*", { count: "exact" })
+    .range(offset, offset + pageSize - 1)
+
+  if (input?.type) qb = qb.eq("type", input.type)
+  if (input?.status) qb = qb.eq("status", input.status)
+  if (query) {
+    const escaped = query.replace(/,/g, "\\,")
+    qb = qb.or(`name.ilike.%${escaped}%,code.ilike.%${escaped}%`)
+  }
+  if (input?.includeDeleted !== true) qb = qb.is("deleted_at", null)
+
+  if (sortBy === "created_at") qb = qb.order("created_at", { ascending }).order("created_at", { ascending: false })
+  else if (sortBy === "name") qb = qb.order("name", { ascending }).order("created_at", { ascending: false })
+  else qb = qb.order("priority", { ascending }).order("created_at", { ascending: false })
+
+  const { data: rows, error, count } = await qb
+  if (error) throw error
+
   return {
-    items: await mapOfferWithTargets(rows),
-    total: Number(totalRows[0]?.count ?? 0),
+    items: await enrichWithTargetsAndUsage((rows ?? []) as OfferRowDb[], { includeUsage: true }),
+    total: Number(count ?? 0),
     page,
     pageSize,
   }
 }
 
 export const listOfferUsageLogs = async (input: { offerId?: string; page?: number; pageSize?: number }) => {
-  await ensureOffersTables()
+  const client = getSupabaseAdmin()
   const page = Math.max(1, input.page ?? 1)
   const pageSize = Math.min(100, Math.max(1, input.pageSize ?? 20))
   const offset = (page - 1) * pageSize
-  return prisma.$queryRaw<
-    Array<{ id: string; offer_id: string; user_id: string | null; order_id: string | null; savings: number; status: string; used_at: Date }>
-  >(Prisma.sql`
-    SELECT id, offer_id, user_id, order_id, savings, status, used_at
-    FROM offer_usage_logs_v2
-    WHERE (${input.offerId ?? null}::text IS NULL OR offer_id = ${input.offerId ?? null}::uuid)
-    ORDER BY used_at DESC
-    LIMIT ${pageSize}
-    OFFSET ${offset}
-  `)
+  let qb = client
+    .from("offer_usage_logs_v2")
+    .select("id,offer_id,user_id,order_id,savings,status,used_at")
+    .order("used_at", { ascending: false })
+    .range(offset, offset + pageSize - 1)
+  if (input.offerId) qb = qb.eq("offer_id", input.offerId)
+  const { data, error } = await qb
+  if (error) throw error
+  return (data ?? []) as Array<{ id: string; offer_id: string; user_id: string | null; order_id: string | null; savings: number; status: string; used_at: string }>
 }
 
 export const createOffer = async (input: {
@@ -184,35 +165,35 @@ export const createOffer = async (input: {
   targets: OfferTarget[]
   createdBy?: string | null
 }) => {
-  await ensureOffersTables()
-  return prisma.$transaction(async (tx) => {
-    const rows = await tx.$queryRaw<Array<{ id: string }>>(Prisma.sql`
-      INSERT INTO offers_v2 (
-        type, name, code, description, status, priority, stackable, starts_at, ends_at, config_json, created_by
-      ) VALUES (
-        ${input.type},
-        ${input.name},
-        ${input.code ? input.code.trim().toUpperCase() : null},
-        ${input.description ?? null},
-        ${input.status ?? "draft"},
-        ${input.priority ?? 100},
-        ${input.stackable ?? false},
-        ${input.startsAt ? new Date(input.startsAt) : null},
-        ${input.endsAt ? new Date(input.endsAt) : null},
-        ${input.config as Prisma.JsonObject},
-        ${input.createdBy ?? null}
-      ) RETURNING id
-    `)
-    const id = rows[0]?.id
-    if (!id) throw new Error("Failed to create offer")
-    for (const target of input.targets) {
-      await tx.$executeRaw(Prisma.sql`
-        INSERT INTO offer_targets_v2 (offer_id, target_type, target_id)
-        VALUES (${id}::uuid, ${target.targetType}, ${target.targetId})
-      `)
-    }
-    return id
-  })
+  const client = getSupabaseAdmin()
+  const payload = {
+    type: input.type,
+    name: input.name,
+    code: input.code ? input.code.trim().toUpperCase() : null,
+    description: input.description ?? null,
+    status: input.status ?? "draft",
+    priority: input.priority ?? 100,
+    stackable: input.stackable ?? false,
+    starts_at: input.startsAt ? new Date(input.startsAt).toISOString() : null,
+    ends_at: input.endsAt ? new Date(input.endsAt).toISOString() : null,
+    config_json: input.config ?? {},
+    created_by: input.createdBy ?? null,
+  }
+  const { data, error } = await client.from("offers_v2").insert(payload).select("id").single()
+  if (error) throw error
+  const id = String((data as any)?.id ?? "")
+  if (!id) throw new Error("Failed to create offer")
+  if (input.targets?.length) {
+    const { error: targetsError } = await client.from("offer_targets_v2").insert(
+      input.targets.map((t) => ({
+        offer_id: id,
+        target_type: t.targetType,
+        target_id: t.targetId,
+      })),
+    )
+    if (targetsError) throw targetsError
+  }
+  return id
 }
 
 export const updateOffer = async (
@@ -231,79 +212,76 @@ export const updateOffer = async (
     targets: OfferTarget[]
   }>,
 ) => {
-  await ensureOffersTables()
-  await prisma.$transaction(async (tx) => {
-    const sets: Prisma.Sql[] = [Prisma.sql`updated_at = now()`]
-    if (input.type !== undefined) sets.push(Prisma.sql`type = ${input.type}`)
-    if (input.name !== undefined) sets.push(Prisma.sql`name = ${input.name}`)
-    if (input.code !== undefined) sets.push(Prisma.sql`code = ${input.code ? input.code.trim().toUpperCase() : null}`)
-    if (input.description !== undefined) sets.push(Prisma.sql`description = ${input.description ?? null}`)
-    if (input.status !== undefined) sets.push(Prisma.sql`status = ${input.status}`)
-    if (input.priority !== undefined) sets.push(Prisma.sql`priority = ${input.priority}`)
-    if (input.stackable !== undefined) sets.push(Prisma.sql`stackable = ${input.stackable}`)
-    if (input.startsAt !== undefined) sets.push(Prisma.sql`starts_at = ${input.startsAt ? new Date(input.startsAt) : null}`)
-    if (input.endsAt !== undefined) sets.push(Prisma.sql`ends_at = ${input.endsAt ? new Date(input.endsAt) : null}`)
-    if (input.config !== undefined) sets.push(Prisma.sql`config_json = ${input.config as Prisma.JsonObject}`)
-    await tx.$executeRaw(Prisma.sql`
-      UPDATE offers_v2
-      SET ${Prisma.join(sets, Prisma.sql`, `)}
-      WHERE id = ${id}::uuid
-        AND deleted_at IS NULL
-    `)
-    if (input.targets !== undefined) {
-      await tx.$executeRaw(Prisma.sql`DELETE FROM offer_targets_v2 WHERE offer_id = ${id}::uuid`)
-      for (const target of input.targets) {
-        await tx.$executeRaw(Prisma.sql`
-          INSERT INTO offer_targets_v2 (offer_id, target_type, target_id)
-          VALUES (${id}::uuid, ${target.targetType}, ${target.targetId})
-        `)
-      }
+  const client = getSupabaseAdmin()
+  const patch: Record<string, unknown> = { updated_at: new Date().toISOString() }
+  if (input.type !== undefined) patch.type = input.type
+  if (input.name !== undefined) patch.name = input.name
+  if (input.code !== undefined) patch.code = input.code ? input.code.trim().toUpperCase() : null
+  if (input.description !== undefined) patch.description = input.description ?? null
+  if (input.status !== undefined) patch.status = input.status
+  if (input.priority !== undefined) patch.priority = input.priority
+  if (input.stackable !== undefined) patch.stackable = input.stackable
+  if (input.startsAt !== undefined) patch.starts_at = input.startsAt ? new Date(input.startsAt).toISOString() : null
+  if (input.endsAt !== undefined) patch.ends_at = input.endsAt ? new Date(input.endsAt).toISOString() : null
+  if (input.config !== undefined) patch.config_json = input.config ?? {}
+
+  const { error } = await client.from("offers_v2").update(patch).eq("id", id).is("deleted_at", null)
+  if (error) throw error
+
+  if (input.targets !== undefined) {
+    const { error: delErr } = await client.from("offer_targets_v2").delete().eq("offer_id", id)
+    if (delErr) throw delErr
+    if (input.targets.length) {
+      const { error: insErr } = await client.from("offer_targets_v2").insert(
+        input.targets.map((t) => ({ offer_id: id, target_type: t.targetType, target_id: t.targetId })),
+      )
+      if (insErr) throw insErr
     }
-  })
+  }
 }
 
 export const toggleOfferStatus = async (id: string, status: OfferStatus) => {
-  await ensureOffersTables()
-  await prisma.$executeRaw(Prisma.sql`
-    UPDATE offers_v2
-    SET status = ${status}, updated_at = now()
-    WHERE id = ${id}::uuid AND deleted_at IS NULL
-  `)
+  const client = getSupabaseAdmin()
+  const { error } = await client
+    .from("offers_v2")
+    .update({ status, updated_at: new Date().toISOString() })
+    .eq("id", id)
+    .is("deleted_at", null)
+  if (error) throw error
 }
 
 export const duplicateOffer = async (id: string, actorId?: string | null) => {
-  await ensureOffersTables()
-  const rows = await prisma.$queryRaw<OfferRow[]>(Prisma.sql`
-    SELECT * FROM offers_v2 WHERE id = ${id}::uuid AND deleted_at IS NULL LIMIT 1
-  `)
-  const source = rows[0]
+  const client = getSupabaseAdmin()
+  const { data: source, error } = await client.from("offers_v2").select("*").eq("id", id).is("deleted_at", null).single()
+  if (error) throw error
   if (!source) throw new Error("Offer not found")
-  const targetRows = await prisma.$queryRaw<Array<{ target_type: OfferTarget["targetType"]; target_id: string }>>(Prisma.sql`
-    SELECT target_type, target_id FROM offer_targets_v2 WHERE offer_id = ${id}::uuid
-  `)
+  const { data: targetRows, error: targetsError } = await client.from("offer_targets_v2").select("target_type,target_id").eq("offer_id", id)
+  if (targetsError) throw targetsError
   return createOffer({
-    type: source.type,
-    name: `${source.name} (Copy)`,
-    code: source.code ? `${source.code}-COPY` : null,
-    description: source.description,
+    type: (source as any).type,
+    name: `${String((source as any).name)} (Copy)`,
+    code: (source as any).code ? `${String((source as any).code)}-COPY` : null,
+    description: (source as any).description ?? null,
     status: "draft",
-    priority: source.priority,
-    stackable: source.stackable,
-    startsAt: source.starts_at?.toISOString() ?? null,
-    endsAt: source.ends_at?.toISOString() ?? null,
-    config: (source.config_json ?? {}) as Record<string, unknown>,
-    targets: targetRows.map((target) => ({ targetType: target.target_type, targetId: target.target_id })),
+    priority: Number((source as any).priority ?? 100),
+    stackable: Boolean((source as any).stackable ?? false),
+    startsAt: (source as any).starts_at ?? null,
+    endsAt: (source as any).ends_at ?? null,
+    config: ((source as any).config_json ?? {}) as Record<string, unknown>,
+    targets: (targetRows ?? []).map((target: any) => ({ targetType: String(target.target_type) as any, targetId: String(target.target_id) })),
     createdBy: actorId ?? null,
   })
 }
 
 export const softDeleteOffer = async (id: string) => {
-  await ensureOffersTables()
-  await prisma.$executeRaw(Prisma.sql`
-    UPDATE offers_v2
-    SET deleted_at = now(), updated_at = now(), status = 'inactive'
-    WHERE id = ${id}::uuid AND deleted_at IS NULL
-  `)
+  const client = getSupabaseAdmin()
+  const now = new Date().toISOString()
+  const { error } = await client
+    .from("offers_v2")
+    .update({ deleted_at: now, updated_at: now, status: "inactive" })
+    .eq("id", id)
+    .is("deleted_at", null)
+  if (error) throw error
 }
 
 type CalcItem = {
@@ -313,17 +291,6 @@ type CalcItem = {
   unitPrice: number
 }
 
-const clamp = (n: number, min: number, max: number) => Math.max(min, Math.min(max, n))
-
-const applySimpleDiscount = (subtotal: number, cfg: Record<string, unknown>) => {
-  const discountType = String(cfg.discountType ?? "percentage")
-  const value = Number(cfg.discountValue ?? 0)
-  const maxCap = cfg.maxDiscountCap == null ? null : Number(cfg.maxDiscountCap)
-  let amount = discountType === "flat" ? value : (subtotal * value) / 100
-  if (maxCap != null && Number.isFinite(maxCap)) amount = Math.min(amount, maxCap)
-  return clamp(amount, 0, subtotal)
-}
-
 const filterByTargets = (items: CalcItem[], targets: OfferTarget[]) => {
   if (!targets.length) return items
   const productTargets = new Set(targets.filter((target) => target.targetType === "product").map((target) => target.targetId))
@@ -331,25 +298,6 @@ const filterByTargets = (items: CalcItem[], targets: OfferTarget[]) => {
   return items.filter((item) => productTargets.has(item.productId) || (item.categoryId && categoryTargets.has(item.categoryId)))
 }
 
-const calculateBogoSavings = (items: CalcItem[], cfg: Record<string, unknown>) => {
-  const buyQty = Math.max(1, Number(cfg.buyQty ?? 2))
-  const getQty = Math.max(1, Number(cfg.getQty ?? 1))
-  const repeatable = Boolean(cfg.repeatable ?? true)
-  const maxFreeUnits = cfg.maxFreeUnits == null ? Infinity : Math.max(0, Number(cfg.maxFreeUnits))
-  const sorted = [...items].sort((a, b) => a.unitPrice - b.unitPrice)
-  let remainingCap = maxFreeUnits
-  let savings = 0
-  for (const item of sorted) {
-    if (remainingCap <= 0) break
-    const group = buyQty + getQty
-    const cycles = repeatable ? Math.floor(item.quantity / group) : item.quantity >= group ? 1 : 0
-    const freeUnits = Math.min(cycles * getQty, remainingCap)
-    if (freeUnits <= 0) continue
-    savings += freeUnits * item.unitPrice
-    remainingCap -= freeUnits
-  }
-  return savings
-}
 
 export const calculateOffers = async (input: {
   userId?: string | null
@@ -363,10 +311,21 @@ export const calculateOffers = async (input: {
     firstOrder?: boolean
   }
 }) => {
-  await ensureOffersTables()
   const now = new Date()
-  const rows = await listOffers()
-  const active = rows.filter((row) => row.status === "active" && (!row.starts_at || row.starts_at <= now) && (!row.ends_at || row.ends_at >= now))
+  // Fetch active offers (Supabase) and filter date windows in-process (safe + consistent).
+  const client = getSupabaseAdmin()
+  const { data: offerRows, error } = await client
+    .from("offers_v2")
+    .select("*")
+    .eq("status", "active")
+    .is("deleted_at", null)
+  if (error) throw error
+  const hydrated = await enrichWithTargetsAndUsage((offerRows ?? []) as OfferRowDb[])
+  const active = hydrated.filter((row) => {
+    const starts = row.starts_at ? new Date(row.starts_at) : null
+    const ends = row.ends_at ? new Date(row.ends_at) : null
+    return (!starts || starts <= now) && (!ends || ends >= now)
+  })
   const byType = (type: OfferType) => active.filter((offer) => offer.type === type).sort((a, b) => a.priority - b.priority)
 
   const breakdown: Array<{ offerId: string; type: OfferType; label: string; amount: number; stackable: boolean }> = []
@@ -377,6 +336,46 @@ export const calculateOffers = async (input: {
     if (amount <= 0) return false
     const clamped = clamp(amount, 0, runningSubtotal + runningShipping)
     breakdown.push({ offerId: offer.id, type: offer.type, label, amount: clamped, stackable: Boolean(offer.stackable) })
+    return true
+  }
+
+  const usageCache = new Map<string, { usedTotal: number; usedByUser?: number }>()
+  const getUsage = async (offerId: string) => {
+    const cached = usageCache.get(offerId)
+    if (cached) return cached
+    const client = getSupabaseAdmin()
+    const { count: usedTotal, error: totalErr } = await client
+      .from("offer_usage_logs_v2")
+      .select("id", { count: "exact", head: true })
+      .eq("offer_id", offerId)
+      .eq("status", "applied")
+    if (totalErr) throw totalErr
+    let usedByUser: number | undefined = undefined
+    if (input.userId) {
+      const { count: byUser, error: userErr } = await client
+        .from("offer_usage_logs_v2")
+        .select("id", { count: "exact", head: true })
+        .eq("offer_id", offerId)
+        .eq("status", "applied")
+        .eq("user_id", input.userId)
+      if (userErr) throw userErr
+      usedByUser = Number(byUser ?? 0)
+    }
+    const value = { usedTotal: Number(usedTotal ?? 0), usedByUser }
+    usageCache.set(offerId, value)
+    return value
+  }
+
+  const isEligibleByLimits = async (offer: any) => {
+    const cfg = (offer.config ?? {}) as Record<string, unknown>
+    const firstOrderOnly = Boolean(cfg.firstOrderOnly ?? false)
+    if (firstOrderOnly && !input.context?.firstOrder) return false
+    const usageLimitTotal = cfg.usageLimitTotal == null ? null : Number(cfg.usageLimitTotal)
+    const usageLimitPerUser = cfg.usageLimitPerUser == null ? null : Number(cfg.usageLimitPerUser)
+    if (usageLimitTotal == null && usageLimitPerUser == null) return true
+    const usage = await getUsage(offer.id)
+    if (usageLimitTotal != null && Number.isFinite(usageLimitTotal) && usage.usedTotal >= usageLimitTotal) return false
+    if (input.userId && usageLimitPerUser != null && Number.isFinite(usageLimitPerUser) && (usage.usedByUser ?? 0) >= usageLimitPerUser) return false
     return true
   }
 
@@ -391,6 +390,7 @@ export const calculateOffers = async (input: {
   }
 
   for (const offer of byType("bogo")) {
+    if (!(await isEligibleByLimits(offer))) continue
     const eligibleItems = filterByTargets(input.items, offer.targets)
     const amount = clamp(calculateBogoSavings(eligibleItems, offer.config), 0, runningSubtotal)
     if (applyOne(offer, amount, offer.name)) {
@@ -399,7 +399,8 @@ export const calculateOffers = async (input: {
     }
   }
 
-  for (const offer of byType("automatic")) {
+  for (const offer of byType("cart_discount")) {
+    if (!(await isEligibleByLimits(offer))) continue
     const minCart = Number((offer.config as Record<string, unknown>).minCartValue ?? 0)
     if (runningSubtotal < minCart) continue
     const amount = applySimpleDiscount(runningSubtotal, offer.config)
@@ -409,13 +410,36 @@ export const calculateOffers = async (input: {
     }
   }
 
-  for (const offer of byType("cart_discount")) {
-    const minCart = Number((offer.config as Record<string, unknown>).minCartValue ?? 0)
-    if (runningSubtotal < minCart) continue
-    const amount = applySimpleDiscount(runningSubtotal, offer.config)
-    if (applyOne(offer, amount, offer.name)) {
-      runningSubtotal = clamp(runningSubtotal - amount, 0, Number.MAX_SAFE_INTEGER)
-      if (!offer.stackable) break
+  // Automatic offers: apply only the best one unless stacking is explicitly enabled.
+  {
+    const autos = byType("automatic")
+    const stackableAutos = autos.filter((o) => Boolean(o.stackable))
+    const nonStackableAutos = autos.filter((o) => !Boolean(o.stackable))
+    for (const offer of stackableAutos) {
+      if (!(await isEligibleByLimits(offer))) continue
+      const minCart = Number((offer.config as Record<string, unknown>).minCartValue ?? 0)
+      if (runningSubtotal < minCart) continue
+      const amount = applySimpleDiscount(runningSubtotal, offer.config)
+      if (applyOne(offer, amount, offer.name)) {
+        runningSubtotal = clamp(runningSubtotal - amount, 0, Number.MAX_SAFE_INTEGER)
+      }
+    }
+    if (nonStackableAutos.length) {
+      let best: { offer: any; amount: number } | null = null
+      for (const offer of nonStackableAutos) {
+        if (!(await isEligibleByLimits(offer))) continue
+        const minCart = Number((offer.config as Record<string, unknown>).minCartValue ?? 0)
+        if (runningSubtotal < minCart) continue
+        const amount = applySimpleDiscount(runningSubtotal, offer.config)
+        if (!best || amount > best.amount || (amount === best.amount && offer.priority < best.offer.priority)) {
+          best = { offer, amount }
+        }
+      }
+      if (best && best.amount > 0) {
+        if (applyOne(best.offer, best.amount, best.offer.name)) {
+          runningSubtotal = clamp(runningSubtotal - best.amount, 0, Number.MAX_SAFE_INTEGER)
+        }
+      }
     }
   }
 
@@ -423,6 +447,7 @@ export const calculateOffers = async (input: {
     const code = input.couponCode.trim().toUpperCase()
     const offer = byType("coupon").find((row) => row.code === code)
     if (!offer) throw new Error("Invalid code")
+    if (!(await isEligibleByLimits(offer))) throw new Error("Coupon not eligible")
     const minCart = Number((offer.config as Record<string, unknown>).minCartValue ?? 0)
     if (runningSubtotal < minCart) throw new Error(`Min ₹${minCart} required`)
     const amount = applySimpleDiscount(runningSubtotal, offer.config)
@@ -432,6 +457,7 @@ export const calculateOffers = async (input: {
   }
 
   for (const offer of byType("shipping_discount")) {
+    if (!(await isEligibleByLimits(offer))) continue
     const minCart = Number((offer.config as Record<string, unknown>).minCartValue ?? 0)
     if (runningSubtotal < minCart) continue
     const cfg = offer.config as Record<string, unknown>
@@ -463,34 +489,31 @@ export const calculateOffers = async (input: {
 }
 
 export const logOfferUsage = async (input: { offerId: string; userId?: string | null; orderId?: string | null; savings: number; status?: string; metadata?: Record<string, unknown> }) => {
-  await ensureOffersTables()
-  await prisma.$executeRaw(Prisma.sql`
-    INSERT INTO offer_usage_logs_v2 (offer_id, user_id, order_id, savings, status, metadata)
-    VALUES (
-      ${input.offerId}::uuid,
-      ${input.userId ?? null},
-      ${input.orderId ?? null},
-      ${input.savings},
-      ${input.status ?? "applied"},
-      ${((input.metadata ?? {}) as unknown) as Prisma.JsonObject}
-    )
-  `)
+  const client = getSupabaseAdmin()
+  const { error } = await client.from("offer_usage_logs_v2").insert({
+    offer_id: input.offerId,
+    user_id: input.userId ?? null,
+    order_id: input.orderId ?? null,
+    savings: input.savings,
+    status: input.status ?? "applied",
+    metadata: input.metadata ?? {},
+  })
+  if (error) throw error
 }
 
 export const saveOrderOfferBreakdown = async (input: { orderId: string; rows: Array<{ offerId?: string; type: string; label: string; amount: number; metadata?: Record<string, unknown> }> }) => {
-  await ensureOffersTables()
-  for (const row of input.rows) {
-    await prisma.$executeRaw(Prisma.sql`
-      INSERT INTO order_offer_breakdown_v2 (order_id, offer_id, offer_type, label, amount, metadata)
-      VALUES (
-        ${input.orderId},
-        ${row.offerId ?? null}::uuid,
-        ${row.type},
-        ${row.label},
-        ${row.amount},
-        ${((row.metadata ?? {}) as unknown) as Prisma.JsonObject}
-      )
-    `)
-  }
+  const client = getSupabaseAdmin()
+  if (!input.rows.length) return
+  const { error } = await client.from("order_offer_breakdown_v2").insert(
+    input.rows.map((row) => ({
+      order_id: input.orderId,
+      offer_id: row.offerId ?? null,
+      offer_type: row.type,
+      label: row.label,
+      amount: row.amount,
+      metadata: row.metadata ?? {},
+    })),
+  )
+  if (error) throw error
 }
 

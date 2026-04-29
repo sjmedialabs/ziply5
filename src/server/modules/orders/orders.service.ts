@@ -34,6 +34,7 @@ import { logger } from "@/lib/logger"
 import { enqueueOutboxEvent } from "@/src/server/modules/integrations/outbox.service"
 import { assertMasterValueExists } from "@/src/server/modules/master/master.service"
 import { syncOrderStatusFromShiprocket } from "@/src/server/modules/integrations/shiprocket.service"
+import { calculateOffers, logOfferUsage, saveOrderOfferBreakdown } from "@/src/server/modules/offers/offers.service"
 
 export type OrderLifecycleStatus =
   | "pending"
@@ -392,6 +393,57 @@ export const createOrderFromCheckout = async (input: {
   }).catch(() => null)
   const order = await getOrderByIdSupabaseBasic(created.id)
   if (!order) throw new Error("Unable to hydrate created order via Supabase")
+
+  // Record offer usage + order-level breakdown (non-blocking).
+  // This makes usage limits enforceable on subsequent checkouts, and provides admin/support analytics.
+  try {
+    const offers = await calculateOffers({
+      userId: input.userId ?? null,
+      couponCode: input.couponCode?.trim() ? input.couponCode.trim() : null,
+      items: lines.map((l) => ({
+        productId: l.productId,
+        categoryId: null,
+        quantity: l.quantity,
+        unitPrice: l.unitPrice,
+      })),
+      shippingAmount: shipping,
+      cartSubtotal: subtotal,
+      context: { firstOrder: input.userId ? (await countNonCancelledOrdersByUserSupabase(input.userId)) === 0 : undefined },
+    })
+
+    if (offers.breakdown?.length) {
+      await Promise.allSettled(
+        offers.breakdown.map((b) =>
+          logOfferUsage({
+            offerId: b.offerId,
+            userId: input.userId ?? null,
+            orderId: String(order.id),
+            savings: Number(b.amount) || 0,
+            status: "applied",
+            metadata: {
+              offerType: b.type,
+              label: b.label,
+              subtotal,
+              shipping,
+              finalTotal: offers.finalTotal,
+            },
+          }),
+        ),
+      )
+      await saveOrderOfferBreakdown({
+        orderId: String(order.id),
+        rows: offers.breakdown.map((b) => ({
+          offerId: b.offerId,
+          type: b.type,
+          label: b.label,
+          amount: Number(b.amount) || 0,
+          metadata: { stackable: b.stackable },
+        })),
+      })
+    }
+  } catch {
+    // Non-blocking: never prevent order creation.
+  }
 
   const transactionStatus = input.paymentStatus === "paid" ? "paid" : input.paymentStatus === "failed" ? "failed" : "pending"
   await createTransactionSupabase({
