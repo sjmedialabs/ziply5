@@ -71,7 +71,7 @@ export default function AdminSettingsPage() {
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="font-melon text-2xl font-bold text-[#4A1D1F]">Settings</h1>
-          <p className="text-sm text-[#646464]">Key–value store for shop config and location masters.</p>
+          {/* <p className="text-sm text-[#646464]">Key–value store for shop config and location masters.</p> */}
         </div>
         <button
           type="button"
@@ -84,19 +84,19 @@ export default function AdminSettingsPage() {
 
       <div className="flex gap-4 border-b border-[#E8DCC8]">
         <button
-          className={`pb-2 text-sm font-semibold transition-colors ${activeTab === 'generic' ? 'border-b-2 border-[#7B3010] text-[#7B3010]' : 'text-[#646464] hover:text-[#2A1810]'}`}
+          className={`pb-2 text-sm font-semibold cursor-pointer transition-colors ${activeTab === 'generic' ? 'border-b-2 border-[#7B3010] text-[#7B3010]' : 'text-[#646464] hover:text-[#2A1810]'}`}
           onClick={() => setActiveTab('generic')}
         >
           Generic Settings
         </button>
         <button
-          className={`pb-2 text-sm font-semibold transition-colors ${activeTab === 'locations' ? 'border-b-2 border-[#7B3010] text-[#7B3010]' : 'text-[#646464] hover:text-[#2A1810]'}`}
+          className={`pb-2 text-sm font-semibold cursor-pointer transition-colors ${activeTab === 'locations' ? 'border-b-2 border-[#7B3010] text-[#7B3010]' : 'text-[#646464] hover:text-[#2A1810]'}`}
           onClick={() => setActiveTab('locations')}
         >
           Location Management
         </button>
         <button
-          className={`pb-2 text-sm font-semibold transition-colors ${activeTab === 'master_data' ? 'border-b-2 border-[#7B3010] text-[#7B3010]' : 'text-[#646464] hover:text-[#2A1810]'}`}
+          className={`pb-2 text-sm font-semibold cursor-pointer transition-colors ${activeTab === 'master_data' ? 'border-b-2 border-[#7B3010] text-[#7B3010]' : 'text-[#646464] hover:text-[#2A1810]'}`}
           onClick={() => setActiveTab('master_data')}
         >
           Dropdowns 
@@ -190,7 +190,7 @@ export default function AdminSettingsPage() {
       {!loading && activeTab === 'master_data' && (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <MasterDataCreatorForm groupKey="ORDER_STATUSES" groupName="Order Statuses" />
-          <MasterDataCreatorForm groupKey="RETURN_REASONS" groupName="Return Reasons" />
+          {/* <MasterDataCreatorForm groupKey="RETURN_REASONS" groupName="Return Reasons" /> */}
         </div>
       )}
     </section>

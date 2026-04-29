@@ -25,10 +25,12 @@ type CreateProductInput = {
   description?: string
   type?: "simple" | "variant"
   basePrice?: number | null
-  salePrice?: number | null
   discountPercent?: number | null
+  foodType?: string | null
+  allowReturn?: boolean
   weight?: string | null
   taxIncluded?: boolean
+  amazonLink?: string | null
   stockStatus?: "in_stock" | "out_of_stock"
   totalStock?: number
   shelfLife?: string | null
@@ -44,6 +46,7 @@ type CreateProductInput = {
   createdById?: string | null
   managedById?: string | null
   categoryId?: string | null
+  tagIds?: string[]
   brandId?: string | null
   variants?: Array<{
     id?: string
@@ -58,7 +61,6 @@ type CreateProductInput = {
   }>
   images?: string[]
   features?: Array<{ title: string; icon?: string | null }>
-  tags?: string[]
   labels?: Array<{ label: string; color?: string | null }>
   details?: Array<{ title: string; content: string; sortOrder?: number }>
   sections?: Array<{ title: string; description: string; sortOrder?: number; isActive?: boolean }>
@@ -84,11 +86,14 @@ type UpdateProductInput = Partial<{
   isActive: boolean
   isFeatured: boolean
   isBestSeller: boolean
+  allowReturn?: boolean
   thumbnail: string | null
   metaTitle: string | null
   metaDescription: string | null
   status: "draft" | "published" | "archived"
   categoryId: string | null
+  amazonLink: string | null
+  tagIds: string[]
   brandId: string | null
   variants: Array<{
     id?: string
@@ -103,7 +108,6 @@ type UpdateProductInput = Partial<{
   }>
   images: string[]
   features: Array<{ title: string; icon?: string | null }>
-  tags: string[]
   labels: Array<{ label: string; color?: string | null }>
   details: Array<{ title: string; content: string; sortOrder?: number }>
   sections: Array<{ id?: string; title: string; description: string; sortOrder?: number; isActive?: boolean }>
@@ -517,11 +521,11 @@ export const canAccessProduct = (
 
 export const createProduct = async (input: CreateProductInput) => {
   const defaultVariant = input.variants?.find((v) => v.isDefault) ?? input.variants?.[0]
-  const effectivePrice = input.salePrice ?? defaultVariant?.price ?? input.price
+  const effectivePrice = defaultVariant?.price ?? input.price
   const variantStockTotal = (input.variants ?? []).reduce((sum, v) => sum + (v.stock ?? 0), 0)
   const effectiveTotalStock = input.totalStock ?? variantStockTotal
   const effectiveStockStatus = input.stockStatus ?? (effectiveTotalStock > 0 ? "in_stock" : "out_of_stock")
-  const uniqueTags = [...new Set((input.tags ?? []).map((t) => t.trim()).filter(Boolean))]
+  const uniqueTagIds = [...new Set((input.tagIds ?? []).map((tagId) => tagId.trim()).filter(Boolean))]
   const sections = normalizeSections(input)
   const baseData = {
       sellerId: null,
@@ -534,7 +538,6 @@ export const createProduct = async (input: CreateProductInput) => {
       description: input.description,
       type: input.type ?? "variant",
       basePrice: input.basePrice ?? defaultVariant?.mrp ?? null,
-      salePrice: input.salePrice ?? effectivePrice,
       discountPercent: input.discountPercent ?? defaultVariant?.discountPercent ?? null,
       weight: input.weight ?? null,
       taxIncluded: input.taxIncluded ?? true,
@@ -546,6 +549,8 @@ export const createProduct = async (input: CreateProductInput) => {
       isActive: input.isActive ?? true,
       isFeatured: input.isFeatured ?? false,
       isBestSeller: input.isBestSeller ?? false,
+      amazonLink: input.amazonLink ?? null,
+      allowReturn: input.allowReturn ?? true,
       thumbnail: input.thumbnail ?? input.images?.[0] ?? null,
       metaTitle: input.metaTitle ?? null,
       metaDescription: input.metaDescription ?? null,
@@ -590,7 +595,7 @@ export const createProduct = async (input: CreateProductInput) => {
             })),
           }
         : undefined,
-      tags: undefined,
+      tags: input.tagIds?.length ? { create: input.tagIds.map((tagId) => ({ tagId })) } : undefined,
     }
   if (process.env.SUPABASE_PRODUCTS_WRITE_ENABLED === "true") {
     // Supabase writes expect flat scalar columns only (no nested Prisma-style relation payloads).
@@ -608,6 +613,7 @@ export const createProduct = async (input: CreateProductInput) => {
     const created = await createProductSupabase({
       base: baseSupabase,
       categoryId: input.categoryId ?? null,
+      tagIds: uniqueTagIds,
       variants: input.variants?.map((v) => ({
         name: v.name,
         weight: v.weight ?? null,
@@ -623,7 +629,6 @@ export const createProduct = async (input: CreateProductInput) => {
       labels: input.labels,
       details: input.details,
       sections,
-      tags: uniqueTags,
     })
     const supabaseHydrated = await getProductByIdSupabaseHydrated(created.id)
     if (supabaseHydrated) return supabaseHydrated as any
@@ -688,9 +693,11 @@ export const updateProduct = async (
       ...("isActive" in input && input.isActive !== undefined ? { isActive: input.isActive } : {}),
       ...("isFeatured" in input && input.isFeatured !== undefined ? { isFeatured: input.isFeatured } : {}),
       ...("isBestSeller" in input && input.isBestSeller !== undefined ? { isBestSeller: input.isBestSeller } : {}),
+      ...("allowReturn" in input && input.allowReturn !== undefined ? { allowReturn: input.allowReturn } : {}),
       ...("thumbnail" in input ? { thumbnail: input.thumbnail } : {}),
       ...("metaTitle" in input ? { metaTitle: input.metaTitle } : {}),
       ...("metaDescription" in input ? { metaDescription: input.metaDescription } : {}),
+      ...("amazonLink" in input ? { amazonLink: input.amazonLink } : {}),
       ...("status" in input && input.status !== undefined ? { status: input.status } : {}),
       ...("brandId" in input ? { brandId: input.brandId ?? null } : {}),
       managedById: opts.userId,
@@ -714,7 +721,7 @@ export const updateProduct = async (
     labels: "labels" in input ? (input.labels ?? []) : undefined,
     details: "details" in input ? (input.details ?? []) : undefined,
     sections: "sections" in input || "details" in input ? incomingSections : undefined,
-    tags: "tags" in input ? [...new Set((input.tags ?? []).map((t) => t.trim()).filter(Boolean))] : undefined,
+    tagIds: "tagIds" in input ? [...new Set((input.tagIds ?? []).map((tagId) => tagId.trim()).filter(Boolean))] : undefined,
   })
   const hydrated = await getProductByIdSupabaseBasic(id)
   if (!hydrated) throw new Error("Product not found")
