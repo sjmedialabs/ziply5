@@ -125,6 +125,9 @@ export const login = async (email: string, password: string) => {
 
   const valid = await verifyPassword(password, user.passwordHash)
   if (!valid) throw new Error("Invalid credentials")
+  
+  const status=user.status
+  if(status==="suspended") throw new Error("Account is suspended. Please contact support.")
 
   const role = user.roles[0]?.role.key ?? ROLE_KEYS.CUSTOMER
   return issueAuthTokens({
