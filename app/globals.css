@@ -127,6 +127,74 @@
   }
 }
 
+/* ============================================================
+   Premium navigation transitions (website + admin)
+   - Uses View Transitions where supported (enter + exit)
+   - Falls back to light mount animation for route segments
+   ============================================================ */
+
+@media (prefers-reduced-motion: no-preference) {
+  @view-transition {
+    navigation: auto;
+  }
+
+  ::view-transition-old(root) {
+    animation: premium-fade-out 180ms ease-in both;
+  }
+  ::view-transition-new(root) {
+    animation: premium-fade-in 240ms ease-out both;
+  }
+}
+
+@keyframes premium-fade-in {
+  from {
+    opacity: 0.01;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes premium-fade-out {
+  from {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  to {
+    opacity: 0.01;
+    transform: translateY(-4px);
+  }
+}
+
+.premium-page-enter {
+  animation: premium-fade-in 260ms ease-out both;
+}
+.premium-page-entered {
+  animation: none;
+}
+
+/* Subtle premium micro-transitions */
+@media (prefers-reduced-motion: no-preference) {
+  :where(a, button, input, select, textarea) {
+    transition:
+      color 160ms ease,
+      background-color 160ms ease,
+      border-color 160ms ease,
+      box-shadow 160ms ease,
+      transform 160ms ease,
+      opacity 160ms ease;
+  }
+  :where(button, a)[aria-disabled="true"],
+  :where(button, a):disabled {
+    transform: none;
+  }
+  :where(button, a):active {
+    transform: translateY(1px);
+  }
+}
+
 /* * {
   box-sizing: border-box;
   margin: 0;

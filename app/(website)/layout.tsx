@@ -1,6 +1,7 @@
 import type React from "react"
 import Header from "@/components/Header"
 import Footer from "@/components/Footer"
+import { PageTransition } from "@/components/ui/PageTransition"
 
 export default function WebsiteLayout({
   children,
@@ -10,7 +11,9 @@ export default function WebsiteLayout({
   return (
     <>
       <Header />
-      <main className="flex flex-1 flex-col">{children}</main>
+      <main className="flex flex-1 flex-col">
+        <PageTransition>{children}</PageTransition>
+      </main>
       <Footer />
     </>
   )

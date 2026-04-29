@@ -1,116 +1,258 @@
-"use client";
+"use client"
 
-import { useEffect, useState } from "react";
-import { authedFetch } from "@/lib/dashboard-fetch";
+import type React from "react"
+import { useEffect, useMemo, useState } from "react"
+import { authedFetch } from "@/lib/dashboard-fetch"
+import { Package, ShoppingCart, Users, IndianRupee } from "lucide-react"
+import {
+  Bar,
+  BarChart,
+  CartesianGrid,
+  Line,
+  LineChart,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from "recharts"
 
 type AdminSummary = {
-  scope: string;
-  totalOrders: number;
-  totalUsers: number;
-  totalSellers: number;
-  totalRevenue: string | number;
-  pendingOrders: number;
-  recentOrders: Array<{ id: string; status: string; total: string | number; createdAt: string }>;
-  lowStockVariants: Array<{
-    id: string;
-    stock: number;
-    name: string;
-    product: { name: string; slug: string };
-  }>;
-};
+  scope: string
+  totalCustomers: number
+  totalProducts: number
+  totalOrders: number
+  totalSales: number
+  pendingOrders: number
+  salesTrend: Array<{ month: string; currentYear: number; lastYear: number }>
+  productViews: Array<{ day: string; thisWeek: number; lastWeek: number }>
+  topSoldItems: Array<{ productId: string; name: string; percent: number; units: number }>
+  recentOrders: Array<{ id: string; status: string; total: number; createdAt: string; customerName?: string }>
+}
+
+const money = (n: number) => `Rs.${Number(n || 0).toFixed(2)}`
+
+const StatCard = ({
+  label,
+  value,
+  icon: Icon,
+  iconTone,
+}: {
+  label: string
+  value: string
+  icon: React.ComponentType<{ className?: string }>
+  iconTone: "primary" | "accent" | "neutral"
+}) => {
+  const tone =
+    iconTone === "accent"
+      ? { icon: "bg-[#FDECEC] text-[#C03621]" }
+      : iconTone === "neutral"
+        ? { icon: "bg-[#FFFBF3] text-[#4A1D1F]" }
+        : { icon: "bg-[#FFF3EA] text-[#7B3010]" }
+  return (
+    <div className="flex items-center gap-3 rounded-2xl border border-[#E8DCC8] bg-white p-4 shadow-sm">
+      <div className={`flex h-10 w-10 items-center justify-center rounded-xl ${tone.icon}`}>
+        <Icon className="h-5 w-5" />
+      </div>
+      <div>
+        <p className="text-xs font-semibold text-[#7A7A7A]">{label}</p>
+        <p className="mt-0.5 font-melon text-xl font-bold text-[#4A1D1F]">{value}</p>
+      </div>
+    </div>
+  )
+}
 
 export default function AdminDashboardPage() {
-  const [summary, setSummary] = useState<AdminSummary | null>(null);
-  const [error, setError] = useState("");
+  const [summary, setSummary] = useState<AdminSummary | null>(null)
+  const [error, setError] = useState("")
+  const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    let cancelled = false;
+    let cancelled = false
+    setLoading(true)
     authedFetch<AdminSummary>("/api/v1/dashboard/summary")
       .then((data) => {
-        if (cancelled) return;
+        if (cancelled) return
         if (data.scope !== "admin") {
-          setError("This dashboard is for admin or super-admin accounts.");
-          return;
+          setError("This dashboard is for admin or super-admin accounts.")
+          return
         }
-        setSummary(data);
-        setError("");
+        setSummary(data)
+        setError("")
       })
       .catch((e: Error) => {
-        if (!cancelled) setError(e.message);
-      });
+        if (!cancelled) setError(e.message)
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false)
+      })
     return () => {
-      cancelled = true;
-    };
-  }, []);
+      cancelled = true
+    }
+  }, [])
+
+  const recentRows = useMemo(() => summary?.recentOrders ?? [], [summary])
 
   return (
-    <section className="mx-auto max-w-7xl">
-      <h1 className="font-melon text-2xl font-bold tracking-wide text-[#4A1D1F] md:text-3xl">Admin Dashboard</h1>
-      <p className="mt-2 text-sm text-[#646464]">Overview of orders, users, and all-time revenue.</p>
-
-      {error && (
-        <div className="mt-6 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
-          <p className="font-semibold">Could not load dashboard</p>
-          <p className="mt-1 font-mono text-xs opacity-90">{error}</p>
+    <section className="mx-auto max-w-7xl px-4">
+      <div className="rounded-3xl bg-transparent p-0 md:p-0">
+        <div className="mb-2 pt-[34px] pb-[34px]">
+          <h1 className="font-melon text-2xl font-bold tracking-wide text-[#4A1D1F] md:text-3xl">Dashboard</h1>
+          <p className="mt-1 text-sm text-[#6B6B6B]">Store overview with trends and recent activity.</p>
         </div>
-      )}
 
-      {summary && (
-        <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <div className="rounded-2xl border border-[#E8DCC8] bg-white p-5 shadow-sm">
-            <p className="text-xs font-semibold uppercase tracking-wide text-[#646464]">Total orders</p>
-            <p className="mt-2 text-2xl font-bold text-[#4A1D1F]">{summary.totalOrders}</p>
+        {error ? (
+          <div className="mb-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+            <p className="font-semibold">Could not load dashboard</p>
+            <p className="mt-1 font-mono text-xs opacity-90">{error}</p>
           </div>
-          <div className="rounded-2xl border border-[#E8DCC8] bg-white p-5 shadow-sm">
-            <p className="text-xs font-semibold uppercase tracking-wide text-[#646464]">Pending</p>
-            <p className="mt-2 text-2xl font-bold text-[#C03621]">{summary.pendingOrders}</p>
-          </div>
-          <div className="rounded-2xl border border-[#E8DCC8] bg-white p-5 shadow-sm">
-            <p className="text-xs font-semibold uppercase tracking-wide text-[#646464]">Users</p>
-            <p className="mt-2 text-2xl font-bold text-[#4A1D1F]">{summary.totalUsers}</p>
-          </div>
-          <div className="rounded-2xl border border-[#E8DCC8] bg-white p-5 shadow-sm">
-            <p className="text-xs font-semibold uppercase tracking-wide text-[#646464]">Revenue (all time)</p>
-            <p className="mt-2 text-2xl font-bold text-[#4A1D1F]">Rs.{Number(summary.totalRevenue).toFixed(2)}</p>
-          </div>
-        </div>
-      )}
+        ) : null}
 
-      {summary && (
-        <div className="mt-10 grid gap-8 lg:grid-cols-2">
-          <div>
-            <h2 className="font-melon text-lg font-semibold text-[#4A1D1F]">Recent orders</h2>
-            <ul className="mt-3 space-y-2 text-sm text-[#646464]">
-              {summary.recentOrders.length === 0 && <li className="rounded-lg bg-[#FFFBF3] px-3 py-2">No orders yet.</li>}
-              {summary.recentOrders.map((o) => (
-                <li key={o.id} className="flex flex-wrap justify-between gap-2 rounded-lg bg-[#FFFBF3] px-3 py-2">
-                  <span className="font-mono text-xs">{o.id.slice(0, 10)}…</span>
-                  <span className="font-medium capitalize text-[#4A1D1F]">{o.status}</span>
-                  <span>Rs.{Number(o.total).toFixed(2)}</span>
-                </li>
-              ))}
-            </ul>
+        {summary ? (
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+            <StatCard iconTone="neutral" icon={Users} label="Total Customers" value={`${summary.totalCustomers}+`} />
+            <StatCard iconTone="primary" icon={Package} label="Total Products" value={`${summary.totalProducts}+`} />
+            <StatCard iconTone="accent" icon={ShoppingCart} label="Total Orders" value={`${summary.totalOrders}+`} />
+            <StatCard iconTone="primary" icon={IndianRupee} label="Total Sales" value={`${money(summary.totalSales)}+`} />
           </div>
-          <div>
-            <h2 className="font-melon text-lg font-semibold text-[#4A1D1F]">Low stock variants</h2>
-            <ul className="mt-3 space-y-2 text-sm text-[#646464]">
-              {summary.lowStockVariants.length === 0 && (
-                <li className="rounded-lg bg-[#FFFBF3] px-3 py-2">No variants or none low on stock.</li>
-              )}
-              {summary.lowStockVariants.map((v) => (
-                <li key={v.id} className="rounded-lg bg-[#FFFBF3] px-3 py-2">
-                  {v.product.name} — {v.name}: <span className="font-semibold text-[#C03621]">{v.stock}</span> left
-                </li>
-              ))}
-            </ul>
+        ) : loading ? (
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+            {Array.from({ length: 4 }).map((_, idx) => (
+              <div key={idx} className="h-[74px] animate-pulse rounded-2xl border border-[#E8DCC8] bg-white p-4 shadow-sm" />
+            ))}
           </div>
-        </div>
-      )}
+        ) : null}
 
-      <p className="mt-10 text-xs text-[#646464]">
-        Tip: Use the sidebar to manage orders, products, CMS pages, and store settings — each screen loads the same APIs your
-        production admin UI will bind to.
-      </p>
+        {summary ? (
+          <div className="mt-3 grid gap-4 lg:grid-cols-3">
+            <div className="rounded-2xl border border-[#E8DCC8] bg-white p-4 shadow-sm lg:col-span-2">
+              <div className="mb-3 flex items-center justify-between">
+                <p className="font-melon text-sm font-semibold text-[#4A1D1F]">Sales Trend</p>
+                <div className="flex items-center gap-3 text-xs text-[#6B6B6B]">
+                  <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-[#7B3010]" />Current year</span>
+                  <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-[#C03621]" />Last year</span>
+                </div>
+              </div>
+              <div className="h-56 w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart data={summary.salesTrend}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#EEE" />
+                    <XAxis dataKey="month" tick={{ fontSize: 11 }} />
+                    <YAxis tick={{ fontSize: 11 }} />
+                    <Tooltip formatter={(v: any) => money(Number(v))} />
+                    <Line type="monotone" dataKey="currentYear" stroke="#7B3010" strokeWidth={2} dot={false} />
+                    <Line type="monotone" dataKey="lastYear" stroke="#C03621" strokeWidth={2} dot={false} />
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-[#E8DCC8] bg-white p-4 shadow-sm">
+              <div className="mb-3 flex items-center justify-between">
+                <p className="font-melon text-sm font-semibold text-[#4A1D1F]">Product Views</p>
+                <div className="flex items-center gap-3 text-xs text-[#6B6B6B]">
+                  <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-[#7B3010]" />This Week</span>
+                  <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-[#C03621]" />Last Week</span>
+                </div>
+              </div>
+              <div className="h-56 w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={summary.productViews}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#EEE" />
+                    <XAxis dataKey="day" tick={{ fontSize: 11 }} />
+                    <YAxis tick={{ fontSize: 11 }} />
+                    <Tooltip />
+                    <Bar dataKey="thisWeek" fill="#7B3010" radius={[6, 6, 0, 0]} />
+                    <Bar dataKey="lastWeek" fill="#C03621" radius={[6, 6, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+          </div>
+        ) : loading ? (
+          <div className="mt-3 grid gap-4 lg:grid-cols-3">
+            <div className="h-[280px] animate-pulse rounded-2xl border border-[#E8DCC8] bg-white shadow-sm lg:col-span-2" />
+            <div className="h-[280px] animate-pulse rounded-2xl border border-[#E8DCC8] bg-white shadow-sm" />
+          </div>
+        ) : null}
+
+        {summary ? (
+          <div className="mt-3 grid gap-4 lg:grid-cols-3">
+            <div className="rounded-2xl border border-[#E8DCC8] bg-white p-4 shadow-sm lg:col-span-2">
+              <div className="mb-3 flex items-center justify-between">
+                <p className="font-melon text-sm font-semibold text-[#4A1D1F]">All Orders</p>
+                <p className="text-xs text-[#6B6B6B]">Latest {recentRows.length}</p>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="min-w-full text-sm">
+                  <thead>
+                    <tr className="border-b text-left text-xs uppercase text-[#8A8A8A]">
+                      <th className="px-2 py-2">Orders ID</th>
+                      <th className="px-2 py-2">Customer Name</th>
+                      <th className="px-2 py-2">Date</th>
+                      <th className="px-2 py-2">Price</th>
+                      <th className="px-2 py-2">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {recentRows.map((o) => {
+                      const status = String(o.status ?? "").toLowerCase()
+                      const badge =
+                        status === "completed" || status === "delivered"
+                          ? "bg-emerald-50 text-emerald-700"
+                          : status === "pending"
+                            ? "bg-amber-50 text-amber-700"
+                            : "bg-slate-50 text-slate-700"
+                      return (
+                        <tr key={o.id} className="border-b">
+                          <td className="px-2 py-2 font-mono text-xs">{String(o.id).slice(0, 8)}</td>
+                          <td className="px-2 py-2">{o.customerName || "-"}</td>
+                          <td className="px-2 py-2 text-xs text-[#6B6B6B]">
+                            {o.createdAt ? new Date(o.createdAt).toLocaleDateString("en-GB") : "-"}
+                          </td>
+                          <td className="px-2 py-2">{money(Number(o.total ?? 0))}</td>
+                          <td className="px-2 py-2">
+                            <span className={`inline-flex rounded-full px-2 py-1 text-[10px] font-semibold ${badge}`}>
+                              {o.status}
+                            </span>
+                          </td>
+                        </tr>
+                      )
+                    })}
+                    {!recentRows.length ? (
+                      <tr>
+                        <td colSpan={5} className="px-3 py-6 text-center text-sm text-[#7A7A7A]">No orders yet.</td>
+                      </tr>
+                    ) : null}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-[#E8DCC8] bg-white p-4 shadow-sm">
+              <p className="font-melon text-sm font-semibold text-[#4A1D1F]">Top Sold Items</p>
+              <div className="mt-4 space-y-3">
+                {summary.topSoldItems.map((row) => (
+                  <div key={row.productId}>
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="font-semibold text-[#4A1D1F]">{row.name}</span>
+                      <span className="text-[#6B6B6B]">{row.percent}%</span>
+                    </div>
+                    <div className="mt-2 h-2 w-full rounded-full bg-[#FFFBF3]">
+                      <div className="h-2 rounded-full bg-[#7B3010]" style={{ width: `${Math.min(100, Math.max(0, row.percent))}%` }} />
+                    </div>
+                  </div>
+                ))}
+                {!summary.topSoldItems.length ? <p className="text-xs text-[#6B6B6B]">No sales data yet.</p> : null}
+              </div>
+            </div>
+          </div>
+        ) : loading ? (
+          <div className="mt-3 grid gap-4 lg:grid-cols-3">
+            <div className="h-[320px] animate-pulse rounded-2xl border border-[#E8DCC8] bg-white shadow-sm lg:col-span-2" />
+            <div className="h-[320px] animate-pulse rounded-2xl border border-[#E8DCC8] bg-white shadow-sm" />
+          </div>
+        ) : null}
+      </div>
     </section>
-  );
+  )
 }
