@@ -8,6 +8,8 @@ import { getFavoriteSlugs, toggleFavoriteSlug } from "@/lib/favorites"
 import { addToCart, getCartItems, getCartQuantity, setCartItemQuantity } from "@/lib/cart"
 import { toStorefrontProduct, type StorefrontProduct } from "@/lib/storefront-products"
 import Link from "next/link"
+import { toast } from "@/lib/toast"
+import { Skeleton } from "@/components/ui/skeleton"
 
 export default function ProductPage() {
   const params = useParams()
@@ -26,6 +28,7 @@ export default function ProductPage() {
   const [relatedStart, setRelatedStart] = useState(0)
   const [selectedImage, setSelectedImage] = useState("")
   const [thumbStart, setThumbStart] = useState(0)
+  const [reviews, setReviews] = useState<Array<{ id: string; rating: number; body?: string | null; user?: { name?: string | null } | null }>>([])
 
   const galleryImages = useMemo(() => {
     if (!product) return []
@@ -80,6 +83,22 @@ export default function ProductPage() {
       cancelled = true
     }
   }, [slug])
+
+  useEffect(() => {
+    if (!product?.id) return
+    let cancelled = false
+    fetch(`/api/v1/reviews?public=1&productId=${encodeURIComponent(String(product.id))}`)
+      .then((r) => r.json())
+      .then((payload: { success?: boolean; data?: Array<{ id: string; rating: number; body?: string | null; user?: { name?: string | null } | null }> }) => {
+        if (!cancelled && payload.success && Array.isArray(payload.data)) {
+          setReviews(payload.data)
+        }
+      })
+      .catch(() => null)
+    return () => {
+      cancelled = true
+    }
+  }, [product?.id])
 
   console.log("Fetched  Product details are::::",product);
 
@@ -140,8 +159,123 @@ export default function ProductPage() {
     }
   }, [activeVariant?.id, product])
 
+  // Fetch DB Favorites on mount if logged in
+  useEffect(() => {
+    const fetchDbFavorites = async () => {
+      const token = window.localStorage.getItem("ziply5_access_token");
+      const userStr = window.localStorage.getItem("ziply5_user");
+      const userId = userStr ? JSON.parse(userStr).id : null;
+      
+      if (token && userId) {
+        try {
+          const res = await fetch("/api/v1/favorites", {
+            headers: { 
+              Authorization: `Bearer ${token}`,
+              "x-user-id": userId 
+            },
+          });
+          const payload = await res.json();
+          if (payload.success && Array.isArray(payload.data)) {
+            window.localStorage.setItem("ziply5-favorites", JSON.stringify(payload.data));
+            if (product && payload.data.includes(product.slug)) setFavorite(true);
+          }
+        } catch (e) { /* silent fail */ }
+      }
+    };
+    fetchDbFavorites();
+  }, [product]);
+
+  const handleToggleFavorite = async (e: React.MouseEvent, slug: string) => {
+    e.stopPropagation();
+    const token = window.localStorage.getItem("ziply5_access_token");
+    if (!token) {
+      if (confirm("Log in to sync favorites across devices? Cancel to save locally.")) {
+        router.push("/login");
+        return;
+      }
+    }
+    const isNowFav = await toggleFavoriteSlug(slug);
+    if (isNowFav) {
+      toast.success("Added to favorites", "The product is now in your favorites.");
+    } else {
+      toast.info("Removed from favorites", "The product has been removed from your favorites.");
+    }
+    setFavorite(isNowFav);
+  }
+
   if (loading) {
-    return <section className="flex min-h-[60vh] items-center justify-center bg-[#F3F3F3]">Loading...</section>
+    return (
+      <section className="w-full bg-[#F3F3F3] py-8 md:py-10">
+        <div className="mx-auto w-full max-w-7xl px-4 sm:px-6 lg:px-8">
+          <div className="grid grid-cols-1 gap-10 lg:grid-cols-[420px_1fr]">
+            {/* Image skeleton */}
+            <div className="space-y-4">
+              <Skeleton className="h-[400px] w-full rounded-xl" />
+              <div className="flex items-center justify-center gap-2">
+                <Skeleton className="h-16 w-16 rounded-md" />
+                <Skeleton className="h-16 w-16 rounded-md" />
+                <Skeleton className="h-16 w-16 rounded-md" />
+                <Skeleton className="h-16 w-16 rounded-md" />
+              </div>
+            </div>
+            {/* Details skeleton */}
+            <div className="space-y-4">
+              <Skeleton className="h-8 w-32 rounded-full" />
+              <Skeleton className="h-10 w-3/4" />
+              <div className="flex items-center gap-2">
+                <Skeleton className="h-6 w-24 rounded-full" />
+                <Skeleton className="h-6 w-32 rounded-full" />
+                <Skeleton className="h-6 w-16 rounded-md" />
+              </div>
+              <div className="flex items-end gap-2">
+                <Skeleton className="h-8 w-28" />
+                <Skeleton className="h-5 w-20" />
+              </div>
+              <Skeleton className="h-4 w-full" />
+              <Skeleton className="h-4 w-5/6" />
+              <Skeleton className="h-4 w-4/6" />
+              <div className="flex items-center gap-2 pt-2">
+                <Skeleton className="h-8 w-16 rounded-md" />
+                <Skeleton className="h-8 w-16 rounded-md" />
+                <Skeleton className="h-8 w-16 rounded-md" />
+              </div>
+              <div className="flex items-center gap-4 pt-2">
+                <Skeleton className="h-10 w-24 rounded-2xl" />
+                <Skeleton className="h-10 w-10 rounded-md" />
+              </div>
+              <div className="mt-4 grid grid-cols-3 gap-4 border-t border-[#DEDEDE] pt-5">
+                <div className="flex flex-col items-center gap-2">
+                  <Skeleton className="h-10 w-10 rounded-full" />
+                  <Skeleton className="h-3 w-20" />
+                </div>
+                <div className="flex flex-col items-center gap-2">
+                  <Skeleton className="h-10 w-10 rounded-full" />
+                  <Skeleton className="h-3 w-20" />
+                </div>
+                <div className="flex flex-col items-center gap-2">
+                  <Skeleton className="h-10 w-10 rounded-full" />
+                  <Skeleton className="h-3 w-20" />
+                </div>
+              </div>
+            </div>
+          </div>
+          <div className="mt-10 space-y-4 border-t border-[#DFDFDF]">
+            <Skeleton className="h-12 w-full" />
+            <Skeleton className="h-12 w-full" />
+            <Skeleton className="h-12 w-full" />
+          </div>
+          <div className="mt-10 rounded-2xl bg-[#ECECEC] p-5 sm:p-7">
+            <Skeleton className="h-10 w-64" />
+            <div className="mt-5 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              <Skeleton className="h-[280px] rounded-2xl" />
+              <Skeleton className="h-[280px] rounded-2xl" />
+              <Skeleton className="h-[280px] rounded-2xl" />
+              <Skeleton className="h-[280px] rounded-2xl" />
+            </div>
+          </div>
+        </div>
+      </section>
+    )
   }
   if (error || !product) {
     return (
@@ -348,13 +482,21 @@ export default function ProductPage() {
                 Buy now
                 <img src="/assets/Productdetails/rightArrow.png" alt="Buy Now" className="inline-block h-4 w-4 ml-2 object-contain" />
               </button>
+
+              {(product as any).amazonLink && (
+                <a
+                  href={(product as any).amazonLink}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="font-medium font-melon tracking-wide rounded-2xl border border-[#FF9900] bg-[#FF9900] flex items-center px-6 py-2.5 text-xl leading-none text-white transition hover:bg-[#e68a00]"
+                >
+                  Buy @Amazon
+                </a>
+              )}
+
               <button
                 type="button"
-                onClick={() => {
-                  const isNowFav = toggleFavoriteSlug(product.slug)
-                  setFavorite(isNowFav)
-                  router.push("/profile?tab=favorite")
-                }}
+                onClick={(e) => handleToggleFavorite(e, product.slug)}
                 className="flex h-10 w-10 items-center justify-center rounded-md border border-[#E5E5E5] text-xl text-[#4C4C4C] hover:text-[#5A272A]"
               >
                 {favorite ? "♥" : "♡"}
@@ -416,6 +558,25 @@ export default function ProductPage() {
               </div>
             )
           })}
+        </div>
+
+        <div className="mt-10 rounded-2xl border border-[#E8DCC8] bg-white p-5 sm:p-7">
+          <h2 className="font-heading text-3xl uppercase text-[#4A1E1F]">Customer Reviews</h2>
+          {reviews.length === 0 ? (
+            <p className="mt-3 text-sm text-[#646464]">No reviews yet.</p>
+          ) : (
+            <div className="mt-4 space-y-3">
+              {reviews.map((review) => (
+                <div key={review.id} className="rounded-xl border border-[#F2E6DD] bg-[#FFFBF7] p-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-sm font-semibold text-[#2A1810]">{review.user?.name ?? "Customer"}</p>
+                    <p className="text-sm text-[#F59E0B]">{"★".repeat(Math.max(1, Math.min(5, Number(review.rating || 0))))}</p>
+                  </div>
+                  <p className="mt-1 text-sm text-[#646464]">{review.body ?? ""}</p>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
 
         <div className="mt-10 rounded-2xl bg-[#ECECEC] p-5 sm:p-7 font-melon tracking-wide font-medium">

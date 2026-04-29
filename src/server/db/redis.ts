@@ -7,7 +7,19 @@ const globalForRedis = globalThis as unknown as {
 
 export const redis =
   globalForRedis.redis ??
-  new Redis(env.REDIS_URL ?? "redis://127.0.0.1:6379", {
+  new Redis(
+    (() => {
+      const raw = env.REDIS_URL?.trim()
+      if (!raw || raw === "/") return "redis://127.0.0.1:6379"
+      try {
+        const parsed = new URL(raw)
+        if (parsed.protocol === "redis:" || parsed.protocol === "rediss:") return raw
+      } catch {
+        // fall back to local redis URL
+      }
+      return "redis://127.0.0.1:6379"
+    })(),
+    {
     lazyConnect: true,
     password: env.REDIS_PASSWORD,
 

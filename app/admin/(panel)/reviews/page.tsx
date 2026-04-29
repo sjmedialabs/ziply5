@@ -6,6 +6,8 @@ import { ConsoleTable, ConsoleTd } from "@/components/dashboard/ConsoleTable";
 
 type ReviewRow = {
   id: string;
+  productId: string;
+  orderId?: string | null;
   rating: number;
   status: string;
   title: string | null;
@@ -15,7 +17,7 @@ type ReviewRow = {
   user: { email: string | null; name: string | null } | null;
 };
 
-const STATUSES = ["pending", "approved", "rejected"] as const;
+const STATUSES = ["published", "archived"] as const;
 
 export default function AdminReviewsPage() {
   const [rows, setRows] = useState<ReviewRow[]>([]);
@@ -63,17 +65,17 @@ export default function AdminReviewsPage() {
     <section className="mx-auto max-w-7xl space-y-4">
       <div>
         <h1 className="font-melon text-2xl font-bold text-[#4A1D1F]">Reviews</h1>
-        <p className="text-sm text-[#646464]">Moderate product reviews before they appear on the storefront.</p>
+        <p className="text-sm text-[#646464]">Manage published and archived product reviews.</p>
       </div>
 
       {error && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-800">{error}</p>}
       {loading && <p className="text-sm text-[#646464]">Loading…</p>}
 
       {!loading && (
-        <ConsoleTable headers={["Product", "Rating", "Author", "Status", ""]}>
+        <ConsoleTable headers={["Product", "User", "Rating", "Content", "Status", ""]}>
           {rows.length === 0 ? (
             <tr>
-              <ConsoleTd className="py-8 text-center text-[#646464]" colSpan={5}>
+              <ConsoleTd className="py-8 text-center text-[#646464]" colSpan={6}>
                 No reviews yet.
               </ConsoleTd>
             </tr>
@@ -82,12 +84,16 @@ export default function AdminReviewsPage() {
               <tr key={r.id} className="hover:bg-[#FFFBF3]/80">
                 <ConsoleTd>
                   <div className="font-medium">{r.product.name}</div>
-                  <div className="text-[11px] text-[#646464]">{r.title ?? "—"}</div>
+                  <div className="text-[11px] text-[#646464]">{r.productId}</div>
+                </ConsoleTd>
+                <ConsoleTd className="text-xs">
+                  <div>{r.user?.name ?? "Guest"}</div>
+                  <div className="text-[11px] text-[#646464]">{r.user?.email ?? "—"}</div>
                 </ConsoleTd>
                 <ConsoleTd>{r.rating}★</ConsoleTd>
                 <ConsoleTd className="text-xs">
-                  {r.user?.email ?? "Guest"}
-                  <div className="text-[11px] text-[#646464]">{r.body?.slice(0, 80)}</div>
+                  <div className="font-medium">{r.title ?? "—"}</div>
+                  <div className="text-[11px] text-[#646464]">{r.body?.slice(0, 140) ?? "—"}</div>
                 </ConsoleTd>
                 <ConsoleTd>
                   <select

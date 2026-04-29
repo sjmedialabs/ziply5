@@ -1,37 +1,20 @@
 "use client"
 
 import Image from "next/image"
+import Link from "next/link"
+import { useMemo } from "react"
 import { Swiper, SwiperSlide } from "swiper/react"
 import { Navigation } from "swiper/modules"
+import { useStorefrontProducts } from "@/hooks/useStorefrontProducts"
 import "swiper/css"
 import "swiper/css/navigation"
 
-const products = [
-  {
-    id: 1,
-    name: "CHICKPEA PUFFS",
-    subtitle: "Jalapeño Cheddar Blaze",
-    image: "/assets/Homepage/chickenBiryani.png",
-  },
-  {
-    id: 2,
-    name: "SPICY RICE",
-    subtitle: "Masala Blast",
-    image: "/assets/Homepage/chickenBiryani.png",
-  },
-  {
-    id: 3,
-    name: "VEG DELIGHT",
-    subtitle: "Healthy Mix",
-    image: "/assets/Homepage/chickenBiryani.png",
-  },
-]
-
 export default function CollectionBanner({ cmsData }: { cmsData?: any }) {
+  const { products: fetchedProducts, loading } = useStorefrontProducts(20)
 
   const slides = cmsData?.slides || []
+  const displayProducts = useMemo(() => fetchedProducts.slice(0, 6), [fetchedProducts]);
 
-  const displayProducts = cmsData?.items?.length > 0 ? cmsData.items : products;
   const bigImage = slides[0]?.mainImage || "/assets/Homepage/CollectionBigImg.png";
   const sectionTitle = cmsData?.title;
   const titleWords = sectionTitle ? sectionTitle.split(" ").filter(Boolean) : [];
@@ -49,15 +32,19 @@ export default function CollectionBanner({ cmsData }: { cmsData?: any }) {
         <div className="grid grid-cols-12 md:gap-10 items-stretch ">
 
           {/* LEFT BIG IMAGE */}
-          <div className="relative lg:col-span-7 col-span-12 h-[300px] md:h-[700px] lg:h-full">
+          <div className="relative lg:col-span-7 col-span-12 h-[300px] md:h-[700px] lg:h-[630px]">
             <div className="relative rounded-3xl h-full flex items-end justify-center">
 
-              <Image
-                src={bigImage}
-                alt="Collection"
-                fill
-                className="object-contain lg:scale-y-125 xl:scale-y-100 xl:scale-x-105"
-              />
+              {loading ? (
+                <div className="w-full h-full bg-gray-100 animate-pulse rounded-3xl" />
+              ) : (
+                <Image
+                  src={bigImage}
+                  alt="Collection"
+                  fill
+                  className="object-contain lg:scale-y-125 xl:scale-y-100 xl:scale-x-105"
+                />
+              )}
 
               {/* NEW ICON */}
               <div className="absolute -top-4 lg:-top-10 -right-4 lg:-right-10 md:-top-8 md:-right-4">
@@ -118,32 +105,48 @@ export default function CollectionBanner({ cmsData }: { cmsData?: any }) {
                 }}
                 className=""
               >
-                {displayProducts.map((item: any, i: number) => (
-                  <SwiperSlide key={item.id || i}>
-                    <div className="bg-[#F9FAFB] border-2 border-[#51282B] rounded-2xl shadow-md mx-10 md:mx-40 lg:mx-0 lg:mr-12">
+                {loading
+                  ? Array.from({ length: 1 }).map((_, i) => (
+                      <SwiperSlide key={`banner-skeleton-${i}`}>
+                        <div className="bg-[#F9FAFB] border-2 border-gray-100 rounded-2xl shadow-md mx-10 md:mx-40 lg:mx-0 lg:mr-12 animate-pulse overflow-hidden">
+                          <div className="bg-gray-100 h-48 flex justify-center items-center">
+                             <div className="w-32 h-32 bg-gray-200 rounded-full" />
+                          </div>
+                          <div className="py-4 px-6 space-y-2">
+                            <div className="h-4 w-3/4 bg-gray-200 rounded" />
+                            <div className="h-3 w-1/2 bg-gray-200 rounded" />
+                          </div>
+                        </div>
+                      </SwiperSlide>
+                    ))
+                  : displayProducts.map((item: any, i: number) => (
+                      <SwiperSlide key={item.id || i}>
+                        <Link href={`/product/${item.slug}`}>
+                          <div className="bg-[#F9FAFB] border-2 border-[#51282B] rounded-2xl shadow-md mx-10 md:mx-40 lg:mx-0 lg:mr-12 cursor-pointer hover:shadow-lg transition-all">
 
-                      <div className="bg-green-200 rounded-t-2xl py-8 flex justify-center">
-                        <Image
-                          src={item.image || '/assets/Homepage/chickenBiryani.png'}
-                          alt={item.name}
-                          width={200}
-                          height={240}
-                          className=""
-                        />
-                      </div>
+                            <div className="bg-green-200 rounded-t-2xl py-8 flex justify-center">
+                              <Image
+                                src={item.image || '/assets/Homepage/chickenBiryani.png'}
+                                alt={item.name}
+                                width={200}
+                                height={240}
+                                className="object-contain"
+                              />
+                            </div>
 
-                      <div className="py-4 px-6">
-                        <h3 className="text-sm uppercase tracking-wide font-bold text-primary">
-                          {item.name}
-                        </h3>
-                        <p className="text-xs capitalize text-green-600">
-                          {item.subtitle}
-                        </p>
-                      </div>
+                            <div className="py-4 px-6">
+                              <h3 className="text-sm uppercase tracking-wide font-bold text-primary truncate">
+                                {item.name}
+                              </h3>
+                              <p className="text-xs capitalize text-green-600 truncate">
+                                {item.description || item.subtitle}
+                              </p>
+                            </div>
 
-                    </div>
-                  </SwiperSlide>
-                ))}
+                          </div>
+                        </Link>
+                      </SwiperSlide>
+                    ))}
               </Swiper>
 
               {/* CUSTOM ARROWS */}

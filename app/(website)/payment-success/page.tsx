@@ -12,12 +12,15 @@ function PaymentSuccessContent() {
   const [countdown, setCountdown] = useState(5)
 
   useEffect(() => {
+    if (countdown !== 0) return
+    router.push("/profile?tab=orders")
+  }, [countdown, router])
+
+  useEffect(() => {
     const timer = setInterval(() => {
       setCountdown((prev) => {
         if (prev <= 1) {
           clearInterval(timer)
-          // Redirect to the profile page with the orders tab active
-          router.push("/profile?tab=orders")
           return 0
         }
         return prev - 1

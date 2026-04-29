@@ -48,7 +48,7 @@ export default function AdminOrdersPage() {
     if ((o.paymentStatus ?? "").toUpperCase() === "INITIATED") return "initiated";
     return "pending";
   }, []);
-  const lifecycleStatus = useCallback((o: OrderRow) => (o.statusHistory?.[0]?.toStatus ?? o.status ?? "pending").toLowerCase(), []);
+  const lifecycleStatus = useCallback((o: OrderRow) => ( o.status ?? "pending").toLowerCase(), []);
   const latestShipmentStatus = useCallback((o: OrderRow) => (o.shipments?.[0]?.shipmentStatus ?? "not_shipped").toLowerCase(), []);
   const itemsCount = useCallback((o: OrderRow) => o.items.reduce((sum, item) => sum + Number(item.quantity ?? 0), 0), []);
   const deliveryEta = useCallback((o: OrderRow) => {
@@ -109,7 +109,7 @@ export default function AdminOrdersPage() {
     }
     setLoading(true);
     setError("");
-    authedFetch<{ items: OrderRow[] }>("/api/v1/orders?page=1&limit=100")
+    authedFetch<{ items: OrderRow[] }>("/api/v1/orders?page=1&limit=20")
       .then((d) => setRows(d.items))
       .catch((e: Error) => setError(e.message))
       .finally(() => setLoading(false));
@@ -135,12 +135,18 @@ export default function AdminOrdersPage() {
     setPage(1);
   }, [searchTerm, paymentFilter, orderFilter, shipmentFilter, dateFrom, dateTo, sortBy, pageSize]);
 
-  useRealtimeTables({
-    tables: ["orders", "returns", "refunds", "shipments", "transactions"],
-    onChange: () => {
-      if (canFetch) void load();
-    },
-  });
+  // useRealtimeTables({
+  //   tables: ["orders", "returns", "refunds", "shipments", "transactions"],
+  //   onChange: () => {
+  //     if (canFetch) void load();
+  //   },
+  // });
+  // useRealtimeTables({
+  //   tables: ["orders"], // ✅ ONLY this
+  //   onChange: () => {
+  //     if (canFetch) void load();
+  //   },
+  // });
 
   const toggleSelect = (id: string) => {
     setSelectedIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));

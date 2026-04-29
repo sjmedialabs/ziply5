@@ -9,6 +9,7 @@ import { getFavoriteSlugs, toggleFavoriteSlug } from "@/lib/favorites" // utilit
 import { useStorefrontProducts } from "@/hooks/useStorefrontProducts" // hook for getting api data for products
 import { useRouter } from "next/navigation"
 import { X } from "lucide-react"
+import { toast } from "@/lib/toast"
 
 function useIsLg() {
   const [isLg, setIsLg] = useState(false)
@@ -39,7 +40,8 @@ export default function TrendingFood({ cmsData }: { cmsData?: any }) {
   const { products } = useStorefrontProducts(20)
   const [favoriteSlugs, setFavoriteSlugs] = useState<string[]>([])
   const [cartQtyBySlug, setCartQtyBySlug] = useState<Record<string, number>>({})
-  const trendingProducts = useMemo(() => products.slice(0, 4), [products])
+  const trending = products.filter((p) => p.isFeatured === true)
+  const trendingProducts = useMemo(() => trending.slice(0, 4), [trending])
   const sectionTitle = cmsData?.title || "FOOD THAT'S TRENDING"
   const buttonText = cmsData?.buttonText || "view all"
   const buttonUrl = cmsData?.url || "/#trending"
@@ -73,6 +75,50 @@ export default function TrendingFood({ cmsData }: { cmsData?: any }) {
     }
   }, [])
 
+  // Fetch DB Favorites on mount if logged in
+  useEffect(() => {
+    const fetchDbFavorites = async () => {
+      const token = window.localStorage.getItem("ziply5_access_token");
+      const userStr = window.localStorage.getItem("ziply5_user");
+      const userId = userStr ? JSON.parse(userStr).id : null;
+      
+      if (token && userId) {
+        try {
+          const res = await fetch("/api/v1/favorites", {
+            headers: { 
+              Authorization: `Bearer ${token}`,
+              "x-user-id": userId 
+            },
+          });
+          const payload = await res.json();
+          if (payload.success && Array.isArray(payload.data)) {
+            window.localStorage.setItem("ziply5-favorites", JSON.stringify(payload.data));
+            setFavoriteSlugs(payload.data);
+          }
+        } catch (e) { /* silent fail */ }
+      }
+    };
+    fetchDbFavorites();
+  }, []);
+
+  const handleToggleFavorite = async (e: React.MouseEvent, slug: string) => {
+    e.stopPropagation();
+    const token = window.localStorage.getItem("ziply5_access_token");
+    if (!token) {
+      if (confirm("Log in to sync favorites across devices? Cancel to save locally.")) {
+        router.push("/login");
+        return;
+      }
+    }
+    const isAdded = await toggleFavoriteSlug(slug);
+    if (isAdded) {
+      toast.success("Added to favorites", "This product has been saved to your list.");
+    } else {
+      toast.info("Removed from favorites", "This product has been removed from your list.");
+    }
+    setFavoriteSlugs(getFavoriteSlugs());
+  }
+
   const [selectedProduct, setSelectedProduct] = useState<any | null>(null)
 
   const updateVariantQty = (product: any, variant: any, nextQty: number) => {
@@ -90,7 +136,7 @@ export default function TrendingFood({ cmsData }: { cmsData?: any }) {
   }
 
   const visibleProducts = isLg ? trendingProducts.slice(0, 3) : trendingProducts
-
+if (trendingProducts.length === 0) return null;
   return (
     <section id="trending" className="py-12 md:py-16 lg:py-20">
       <div className="max-w-7xl mx-auto px-4">
@@ -161,10 +207,7 @@ export default function TrendingFood({ cmsData }: { cmsData?: any }) {
                     </div>
                     <button
                       type="button"
-                      onClick={() => {
-                        toggleFavoriteSlug(product.slug)
-                        setFavoriteSlugs(getFavoriteSlugs())
-                      }}
+                      onClick={(e) => handleToggleFavorite(e, product.slug)}
                       className="border-2 border-[#EF4444] px-2.5 py-1 rounded-lg text-[12px] font-medium hover:bg-[#EF4444] hover:text-white transition-colors"
                     >
                       {favoriteSlugs.includes(product.slug) ? "♥" : "♡"}

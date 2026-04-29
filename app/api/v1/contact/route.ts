@@ -16,6 +16,7 @@ export async function POST(request: NextRequest) {
         email,
         phone: phone || null,
         message,
+        status: "open",
       },
     });
 

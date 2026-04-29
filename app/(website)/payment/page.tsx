@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import { Suspense, useEffect, useMemo, useRef, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useMutation } from "@tanstack/react-query";
 import { getCartItems, setCartItems } from "@/lib/cart";
 
@@ -11,14 +11,18 @@ declare global {
   }
 }
 
-export default function PaymentPage() {
+function PaymentPageInner() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [scriptReady, setScriptReady] = useState(false);
   const [paying, setPaying] = useState(false);
   const [error, setError] = useState("");
   const [statusText, setStatusText] = useState("");
   const [loggedIn, setLoggedIn] = useState(false);
   const [createdOrderId, setCreatedOrderId] = useState<string | null>(null);
+  const [retryAmount, setRetryAmount] = useState<number | null>(null);
+  const [retryMode, setRetryMode] = useState(false);
+  const autoRetryTriggeredRef = useRef(false);
   const [billingAddress, setBillingAddress] = useState({
     fullName: "",
     line1: "",
@@ -34,6 +38,7 @@ export default function PaymentPage() {
   const subTotal = items.reduce((sum, item) => sum + item.price * item.quantity, 0);
   const shipping = items.length > 0 ? 20 : 0;
   const total = subTotal + shipping;
+  const payableAmount = retryMode ? retryAmount ?? total : total;
 
   const createOrderMutation = useMutation({
     mutationFn: async (token: string) => {
@@ -88,13 +93,23 @@ export default function PaymentPage() {
           amount: number;
           currency: string;
           publicKey?: string;
+          key?: string;
+          keyId?: string;
           orderId: string;
         };
       };
-      if (!intentRes.ok || intentJson.success === false || !intentJson.data?.externalId || !intentJson.data.publicKey) {
+      const publicKey =
+        intentJson.data?.publicKey ??
+        intentJson.data?.key ??
+        intentJson.data?.keyId ??
+        process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID;
+      if (!intentRes.ok || intentJson.success === false || !intentJson.data?.externalId || !publicKey) {
         throw new Error(intentJson.message ?? "Unable to initialize payment.");
       }
-      return intentJson.data;
+      return {
+        ...intentJson.data,
+        publicKey,
+      };
     },
   });
   useEffect(() => {
@@ -134,6 +149,63 @@ export default function PaymentPage() {
       }
     }
   }, []);
+
+  useEffect(() => {
+    const retryOrderId = searchParams.get("orderId");
+    if (!retryOrderId) return;
+    setRetryMode(true);
+    setCreatedOrderId(retryOrderId);
+    window.localStorage.setItem("ziply5_pending_order_id", retryOrderId);
+    const queryAmount = Number(searchParams.get("amount") ?? "");
+    if (Number.isFinite(queryAmount) && queryAmount > 0) setRetryAmount(queryAmount);
+
+    const queryName = searchParams.get("name") ?? "";
+    const queryPhone = searchParams.get("phone") ?? "";
+    const queryAddress = searchParams.get("address") ?? "";
+    if (queryName || queryPhone || queryAddress) {
+      setBillingAddress((prev) => ({
+        ...prev,
+        fullName: queryName || prev.fullName,
+        phone: queryPhone || prev.phone,
+        line1: queryAddress || prev.line1,
+      }));
+    }
+
+    const token = window.localStorage.getItem("ziply5_access_token");
+    if (!token) return;
+    void (async () => {
+      try {
+        const res = await fetch(`/api/v1/orders/${encodeURIComponent(retryOrderId)}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const json = (await res.json()) as {
+          success?: boolean;
+          data?: {
+            id?: string;
+            total?: number | string;
+            customerName?: string | null;
+            customerPhone?: string | null;
+            customerAddress?: string | null;
+          };
+        };
+        if (!res.ok || !json.success || !json.data) return;
+        if (json.data.id) {
+          setCreatedOrderId(String(json.data.id));
+          window.localStorage.setItem("ziply5_pending_order_id", String(json.data.id));
+        }
+        const fetchedAmount = Number(json.data.total ?? "");
+        if (Number.isFinite(fetchedAmount) && fetchedAmount > 0) setRetryAmount(fetchedAmount);
+        setBillingAddress((prev) => ({
+          ...prev,
+          fullName: (json.data?.customerName ?? prev.fullName ?? "").toString(),
+          phone: (json.data?.customerPhone ?? prev.phone ?? "").toString(),
+          line1: (json.data?.customerAddress ?? prev.line1 ?? "").toString(),
+        }));
+      } catch {
+        // keep retry flow functional using query params/local state fallback
+      }
+    })();
+  }, [searchParams]);
 
   useEffect(() => {
     const existing = document.querySelector<HTMLScriptElement>("script[data-razorpay='true']");
@@ -206,16 +278,6 @@ export default function PaymentPage() {
             throw new Error(verifyJson.message ?? "Payment verification failed")
           }
 
-          // Automatically transition the order status to 'confirmed' upon successful verification
-          await fetch(`/api/v1/orders/${orderId}`, {
-            method: "PATCH",
-            headers: {
-              "Content-Type": "application/json",
-              Authorization: `Bearer ${token}`,
-            },
-            body: JSON.stringify({ status: "confirmed" }),
-          })
-
           setStatusText("Payment successful.");
           window.localStorage.removeItem("ziply5_pending_order_id");
           window.localStorage.removeItem("ziply5_checkout_ref");
@@ -243,7 +305,7 @@ export default function PaymentPage() {
       askLogin();
       return;
     }
-    if (items.length === 0) {
+    if (!retryMode && items.length === 0) {
       setError("Your cart is empty.");
       return;
     }
@@ -258,11 +320,12 @@ export default function PaymentPage() {
 
     setPaying(true);
     setError("");
-    setStatusText("Creating order...");
+    setStatusText(retryMode ? "Retrying payment..." : "Creating order...");
     try {
       const token = window.localStorage.getItem("ziply5_access_token");
       if (!token) throw new Error("Please login to continue.");
-      const orderId = createdOrderId ?? (await createOrderMutation.mutateAsync(token));
+      const orderId = retryMode ? createdOrderId : createdOrderId ?? (await createOrderMutation.mutateAsync(token));
+      if (!orderId) throw new Error("Order not found for retry.");
       if (!createdOrderId) {
         setCreatedOrderId(orderId);
         window.localStorage.setItem("ziply5_pending_order_id", orderId);
@@ -274,6 +337,12 @@ export default function PaymentPage() {
       setPaying(false);
     }
   };
+
+  useEffect(() => {
+    if (!retryMode || !createdOrderId || !loggedIn || !scriptReady || autoRetryTriggeredRef.current) return;
+    autoRetryTriggeredRef.current = true;
+    void payNow();
+  }, [retryMode, createdOrderId, loggedIn, scriptReady]);
 
   const retryPayment = async () => {
     if (!createdOrderId) return;
@@ -294,7 +363,7 @@ export default function PaymentPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-[#F5F1E6] p-4">
+    <div className="py-24 flex items-center justify-center bg-[#F5F1E6] p-4">
       <div className="w-full max-w-xl bg-white rounded-3xl p-6 shadow-sm border">
         <h2 className="font-melon text-lg mb-6">Billing Address</h2>
 
@@ -374,9 +443,9 @@ export default function PaymentPage() {
         )}
 
         <div className="mb-5 rounded-xl border px-4 py-3 text-sm text-[#646464]">
-          Payable amount: <span className="font-semibold text-[#7B3010]">Rs. {total.toFixed(2)}</span>
+          Payable amount: <span className="font-semibold text-[#7B3010]">Rs. {payableAmount.toFixed(2)}</span>
         </div>
-
+        
         {error && <p className="mb-3 text-sm text-red-600">{error}</p>}
         {statusText && !error && <p className="mb-3 text-sm text-[#646464]">{statusText}</p>}
 
@@ -400,5 +469,12 @@ export default function PaymentPage() {
         )}
       </div>
     </div>
+  );
+}
+export default function PaymentPage() {
+  return (
+    <Suspense fallback={null}>
+      <PaymentPageInner />
+    </Suspense>
   );
 }
