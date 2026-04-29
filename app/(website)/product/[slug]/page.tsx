@@ -488,7 +488,7 @@ export default function ProductPage() {
                   href={(product as any).amazonLink}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="font-medium font-melon tracking-wide rounded-2xl border border-[#FF9900] bg-[#FF9900] flex items-center px-6 py-2.5 text-xl leading-none text-white transition hover:bg-[#e68a00]"
+                  className="font-sm font-melon tracking-wide rounded-2xl border border-primary flex items-center px-6 py-2.5 text-xl leading-none text-primary transition hover:bg-[#e68a00]"
                 >
                   Buy @Amazon
                 </a>
@@ -560,7 +560,7 @@ export default function ProductPage() {
           })}
         </div>
 
-        <div className="mt-10 rounded-2xl border border-[#E8DCC8] bg-white p-5 sm:p-7">
+       {reviews.length > 0 && ( <div className="mt-10 rounded-2xl border border-[#E8DCC8] bg-white p-5 sm:p-7">
           <h2 className="font-heading text-3xl uppercase text-[#4A1E1F]">Customer Reviews</h2>
           {reviews.length === 0 ? (
             <p className="mt-3 text-sm text-[#646464]">No reviews yet.</p>
@@ -577,7 +577,7 @@ export default function ProductPage() {
               ))}
             </div>
           )}
-        </div>
+        </div>)}
 
         <div className="mt-10 rounded-2xl bg-[#ECECEC] p-5 sm:p-7 font-melon tracking-wide font-medium">
           <h2 className="font-heading text-6xl uppercase text-[#4A1E1F]">Related Products</h2>

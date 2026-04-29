@@ -27,20 +27,19 @@ function ProductsPageContent() {
   const searchParams = useSearchParams()
   const { products, loading, error } = useStorefrontProducts(60)
   const [categoryOptions, setCategoryOptions] = useState<Array<{ slug: string; name: string }>>([])
-  const [tagOptions, setTagOptions] = useState<Array<{ slug: string; name: string }>>([])
+  const [tagOptions, setTagOptions] = useState<Array<{ slug: string; name: string, id: string }>>([])
   const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>("all")
+  const [selectedTagIds, setSelectedTagIds] = useState<string[]>([])
   const [packFilter, setPackFilter] = useState<any>("all")
   const [mealTimeFilter, setMealTimeFilter] = useState<any>("all")
   const [availabilityFilter, setAvailabilityFilter] = useState<any>("all")
   const [bestSellerFilter, setBestSellerFilter] = useState<string>("all")
   const [featuredFilter, setFeaturedFilter] = useState<string>("all")
-  const [selectedTags, setSelectedTags] = useState<string[]>([])
   const [sortBy, setSortBy] = useState<SortType>("popular")
   const [favoriteSlugs, setFavoriteSlugs] = useState<string[]>([])
   const [cartQtyBySlug, setCartQtyBySlug] = useState<Record<string, number>>({})
   const searchTerm = (searchParams.get("search") || "").trim().toLowerCase()
   const router = useRouter()
-
   useEffect(() => {
     let cancelled = false
     fetch("/api/v1/categories")
@@ -59,7 +58,7 @@ function ProductsPageContent() {
       .then((tagRes: { success?: boolean; data?: any }) => {
         if (cancelled) return
         const tags = ((tagRes.data as any[] | undefined) ?? [])
-          .map((t) => ({ slug: t.slug, name: t.name }))
+          .map((t) => ({ slug: t.slug, name: t.name, id: t.id,   }))
         setTagOptions(tags)
       })
       .catch(() => null)
@@ -68,7 +67,7 @@ function ProductsPageContent() {
       cancelled = true
     }
   }, [])
-
+  console.log("ProductsPageContent", { products, selectedTagIds})
   useEffect(() => {
     const syncFavorites = () => setFavoriteSlugs(getFavoriteSlugs())
     syncFavorites()
@@ -98,7 +97,7 @@ function ProductsPageContent() {
       window.removeEventListener("storage", syncCartQty)
     }
   }, [])
-
+  console.log("ProductsPageContent render", { categoryFilter, packFilter, mealTimeFilter, availabilityFilter, bestSellerFilter, featuredFilter, selectedTagIds, sortBy, searchTerm })
   // Fetch DB Favorites on mount if logged in
   useEffect(() => {
     const fetchDbFavorites = async () => {
@@ -175,9 +174,11 @@ function ProductsPageContent() {
       const featuredMatch =
         featuredFilter === "all" || (item as any).isFeatured === true
 
-      const tagMatch = selectedTags.length === 0 || 
-        selectedTags.some(tag => (item as any).tags?.some((t: any) => (t.tag?.slug || t.slug || t) === tag))
-
+const tagMatch =
+  selectedTagIds.length === 0 ||
+  selectedTagIds.some((selectedId) =>
+    (item as any).tags?.some((t: any) => t.tag.id === selectedId)
+  );
       return categoryMatch && packMatch && mealTimeMatch && availabilityMatch && 
              bestSellerMatch && featuredMatch && tagMatch
     })
@@ -202,11 +203,15 @@ function ProductsPageContent() {
     }
 
     return items
-  }, [products, categoryFilter, packFilter, mealTimeFilter, availabilityFilter, bestSellerFilter, featuredFilter, selectedTags, sortBy, searchTerm])
+  }, [products, categoryFilter, packFilter, mealTimeFilter, availabilityFilter, bestSellerFilter, featuredFilter, selectedTagIds, sortBy, searchTerm])
 
-  const toggleTag = (slug: string) => {
-    setSelectedTags(prev => prev.includes(slug) ? prev.filter(s => s !== slug) : [...prev, slug])
-  }
+const toggleTag = (tagId: string) => {
+  setSelectedTagIds(prev =>
+    prev.includes(tagId)
+      ? prev.filter(id => id !== tagId)
+      : [...prev, tagId]
+  )
+}
 
   const [selectedProduct, setSelectedProduct] = useState<any | null>(null)
 
@@ -247,7 +252,7 @@ function ProductsPageContent() {
                     setAvailabilityFilter("all")
                     setBestSellerFilter("all")
                     setFeaturedFilter("all")
-                    setSelectedTags([])
+                    setSelectedTagIds([])
                     setSortBy("popular")
                   }}
                   className="text-[10px] font-bold uppercase tracking-widest text-[#7A2B19] hover:underline"
@@ -325,10 +330,10 @@ function ProductsPageContent() {
                 <div className="flex flex-wrap gap-2">
                   {tagOptions.map((tag) => (
                     <button
-                      key={tag.slug}
-                      onClick={() => toggleTag(tag.slug)}
+                      key={tag.id}
+                      onClick={() => toggleTag(tag.id)}
                       className={`px-3 py-1 rounded-full text-[10px] font-bold uppercase transition-all border ${
-                        selectedTags.includes(tag.slug) 
+                        selectedTagIds.includes(tag.id) 
                           ? "bg-primary text-white border-primary shadow-sm" 
                           : "bg-white text-gray-500 border-gray-200 hover:border-primary"
                       }`}
@@ -381,7 +386,7 @@ function ProductsPageContent() {
             <h3 className="font-melon text-xl text-[#5A272A] font-bold uppercase">No Products Found</h3>
             <p className="text-sm text-gray-500 mt-2">Try adjusting your filters or search term to find what you're looking for.</p>
             <button 
-              onClick={() => { setCategoryFilter("all"); setPackFilter("all"); setMealTimeFilter("all"); setSelectedTags([]); }}
+              onClick={() => { setCategoryFilter("all"); setPackFilter("all"); setMealTimeFilter("all"); setSelectedTagIds([]); }}
               className="mt-6 rounded-full bg-primary px-6 py-2 text-xs font-bold text-white uppercase tracking-widest"
             >
               Clear All Filters

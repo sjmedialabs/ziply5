@@ -387,6 +387,7 @@ model Product {
   isActive             Boolean                         @default(true)
   isBestSeller         Boolean                         @default(false)
   isFeatured           Boolean                         @default(false)
+  allowReturn          Boolean                         @default(true)
   metaDescription      String?
   metaTitle            String?
   salePrice            Decimal?                        @db.Decimal(10, 2)
@@ -397,9 +398,11 @@ model Product {
   totalStock           Int                             @default(0)
   type                 ProductType                     @default(variant)
   createdById          String?
+  tagId                String?
   managedById          String?
   temperatureSensitive Boolean                         @default(false)
   preparationType      String?
+  foodType             String?
   spiceLevel           SpiceLevel?
   weight               String?
   analyticsSnapshots   AnalyticsDailyProductSnapshot[]

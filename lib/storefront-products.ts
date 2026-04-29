@@ -11,12 +11,14 @@ export type StorefrontProduct = {
   description: string
   image: string
   gallery: string[]
+  amazonLink: string | null
   videoUrl: string | null
   weight: string
   type: "veg" | "non-veg"
   saleName?: string | null
   isFeatured?: boolean
   isBestSeller?: boolean
+  tags?: Array<{ tag: { name: string } }>
   category: string
   labels: Array<{ label: string; color: string | null }>
   features: Array<{ title: string; icon: string | null }>
@@ -45,6 +47,7 @@ type ApiProduct = {
   thumbnail?: string | null
   videoUrl?: string | null
   isBestSeller?: boolean
+  amazonLink?: string | null
   isFeatured?: boolean
   images?: Array<{ url: string }>
   type?: "simple" | "variant"
@@ -150,6 +153,8 @@ export const toStorefrontProduct = (p: ApiProduct): StorefrontProduct => {
     category: categorySlug,
     labels: p.labels ?? [],
     isBestSeller: p.isBestSeller ?? false,
+    tags: p.tags ?? [],
+    amazonLink: p.amazonLink ?? null,
     isFeatured: p.isFeatured ?? false,
     features: p.features ?? [],
     saleName:p?.saleName ?? null,
