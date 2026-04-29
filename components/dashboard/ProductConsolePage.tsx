@@ -53,6 +53,7 @@ type ProductDetail = {
   foodType?: string | null
   isFeatured?: boolean
   isBestSeller?: boolean
+  amazonLink?: string | null
   allowReturn?: boolean
   thumbnail?: string | null
   videoUrl?: string | null
@@ -170,6 +171,7 @@ export function ProductConsolePage({
   const [basePrice, setBasePrice] = useState("")
   const [salePrice, setSalePrice] = useState("")
   const [costPrice, setCostPrice] = useState("")
+  const [amazonLink, setAmazonLink] = useState("")
   const [discountPercent, setDiscountPercent] = useState("")
   const [discountRecordId, setDiscountRecordId] = useState<string | null>(null)
   const [discountEnabled, setDiscountEnabled] = useState(false)
@@ -350,6 +352,7 @@ export function ProductConsolePage({
       setBasePrice(p.basePrice != null ? String(Number(p.basePrice)) : "")
       setSalePrice(p.salePrice != null ? String(Number(p.salePrice)) : "")
       setCostPrice("")
+      setAmazonLink(p.amazonLink ?? "")
       setDiscountPercent(p.discountPercent != null ? String(Number(p.discountPercent)) : "")
       setSimpleProductWeight(p.weight ?? ""); // Populate new weight field
       setStockStatus(p.stockStatus ?? "in_stock")
@@ -487,6 +490,7 @@ export function ProductConsolePage({
       isFeatured,
       isBestSeller,
       allowReturn,
+      amazonLink: amazonLink.trim() || null,
       thumbnail: uniq(thumbnailUrls)[0] ?? null,
       metaTitle: metaTitle.trim() || null,
       metaDescription: metaDescription.trim() || null,
@@ -529,6 +533,7 @@ export function ProductConsolePage({
     shelfLife,
     sku,
     slug,
+    amazonLink,
     status,
     stockStatus,
     foodType,
@@ -1530,6 +1535,9 @@ export function ProductConsolePage({
             </Field>
             <Field label="Meta Description">
               <Input placeholder="Meta Description" value={metaDescription} onChange={(e) => setMetaDescription(e.target.value)} className="rounded-lg border border-[#D9D9D1] px-3 py-2 text-sm md:col-span-2" />
+            </Field>
+             <Field label="Amazon Link">
+              <Input placeholder="Amazon Link" value={amazonLink} onChange={(e) => setAmazonLink(e.target.value)} className="rounded-lg border border-[#D9D9D1] px-3 py-2 text-sm md:col-span-2" />
             </Field>
 
                 {/* for product type as varient then specify the variant */}

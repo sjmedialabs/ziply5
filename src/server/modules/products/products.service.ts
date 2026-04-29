@@ -30,6 +30,7 @@ type CreateProductInput = {
   allowReturn?: boolean
   weight?: string | null
   taxIncluded?: boolean
+  amazonLink?: string | null
   stockStatus?: "in_stock" | "out_of_stock"
   totalStock?: number
   shelfLife?: string | null
@@ -91,6 +92,7 @@ type UpdateProductInput = Partial<{
   metaDescription: string | null
   status: "draft" | "published" | "archived"
   categoryId: string | null
+  amazonLink: string | null
   tagIds: string[]
   brandId: string | null
   variants: Array<{
@@ -547,6 +549,7 @@ export const createProduct = async (input: CreateProductInput) => {
       isActive: input.isActive ?? true,
       isFeatured: input.isFeatured ?? false,
       isBestSeller: input.isBestSeller ?? false,
+      amazonLink: input.amazonLink ?? null,
       allowReturn: input.allowReturn ?? true,
       thumbnail: input.thumbnail ?? input.images?.[0] ?? null,
       metaTitle: input.metaTitle ?? null,
@@ -694,6 +697,7 @@ export const updateProduct = async (
       ...("thumbnail" in input ? { thumbnail: input.thumbnail } : {}),
       ...("metaTitle" in input ? { metaTitle: input.metaTitle } : {}),
       ...("metaDescription" in input ? { metaDescription: input.metaDescription } : {}),
+      ...("amazonLink" in input ? { amazonLink: input.amazonLink } : {}),
       ...("status" in input && input.status !== undefined ? { status: input.status } : {}),
       ...("brandId" in input ? { brandId: input.brandId ?? null } : {}),
       managedById: opts.userId,

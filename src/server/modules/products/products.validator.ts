@@ -70,6 +70,7 @@ export const createProductSchema = z.object({
   labels: z.array(labelSchema).optional(),
   details: z.array(detailsSchema).optional(),
   sections: z.array(sectionSchema).max(10).optional(),
+  amazonLink: z.string().optional().nullable(),
 }).superRefine((data, ctx) => {
   if (data.type === "variant") {
     if (!data.variants?.length) {
@@ -125,4 +126,5 @@ export const updateProductSchema = z.object({
   labels: z.array(labelSchema).optional(),
   details: z.array(detailsSchema).optional(),
   sections: z.array(sectionSchema).max(10).optional(),
+  amazonLink: z.string().nullable().optional(),
 })
