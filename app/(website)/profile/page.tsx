@@ -280,15 +280,21 @@ function ProfilePageContent() {
     setFavoriteSlugs(getFavoriteSlugs())
   }
 
+  const toCartProduct = (product: (typeof favoriteProducts)[number]) => ({
+    ...product,
+    id: String((product as any).id ?? product.slug),
+    discountPercent: (product as any).discountPercent ?? undefined,
+  })
+
   const moveFavoriteToCart = (product: (typeof favoriteProducts)[number]) => {
-    setCartItemQuantity(product, 1)
+    setCartItemQuantity(toCartProduct(product), 1)
     removeFavorite(product.slug)
   }
 
   const updateCartQty = (product: (typeof favoriteProducts)[number], delta: number) => {
     const currentQty = cartQtyBySlug[product.slug] ?? 0
     const nextQty = Math.max(0, currentQty + delta)
-    setCartItemQuantity(product, nextQty)
+    setCartItemQuantity(toCartProduct(product), nextQty)
   }
 
   const handleLogout = async () => {
@@ -576,7 +582,7 @@ const cancelPendingOrder = async (orderId: string) => {
                       type="button"
                       onClick={() => {
                         favoriteProducts.forEach((p) => {
-                          setCartItemQuantity(p, 1)
+                          setCartItemQuantity(toCartProduct(p), 1)
                           removeFavorite(p.slug)
                         })
                       }}
@@ -736,6 +742,13 @@ const cancelPendingOrder = async (orderId: string) => {
                         Review
                       </button>
                     )}
+                    <button
+                      type="button"
+                      onClick={() => router.push(`/orders/${order.id}/track`)}
+                      className="rounded-md border border-[#E8DCC8] bg-white px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-[#4A1D1F]"
+                    >
+                      Track my order
+                    </button>
                     <button
                       type="button"
                       onClick={() => router.push(`/orders/${order.id}`)}

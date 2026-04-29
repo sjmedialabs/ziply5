@@ -18,7 +18,8 @@ export const safeString = (value: unknown) => String(value ?? "").trim()
 
 export const withId = (payload: Record<string, unknown>) => {
   if (payload.id != null && safeString(payload.id)) return payload
-  return { id: crypto.randomUUID(), ...payload }
+  // Spread first so an existing null/empty `id` cannot overwrite generated UUID.
+  return { ...payload, id: crypto.randomUUID() }
 }
 
 export const shouldRetryWithTimestamps = (message: string) => {

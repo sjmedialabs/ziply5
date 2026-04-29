@@ -261,13 +261,24 @@ export default function OrderDetailPage() {
     <section className="mx-auto max-w-7xl space-y-4 px-4 py-6">
       <div className="flex items-center justify-between">
         <h1 className="font-melon text-2xl font-bold text-[#4A1D1F]">Order details</h1>
-        <button
-          type="button"
-          onClick={() => router.back()}
-          className="rounded-full border border-[#E8DCC8] bg-white px-4 py-2 text-xs font-semibold uppercase text-[#4A1D1F]"
-        >
-          Back
-        </button>
+        <div className="flex items-center gap-2">
+          {params.id ? (
+            <button
+              type="button"
+              onClick={() => router.push(`/orders/${params.id}/track`)}
+              className="rounded-full border border-[#E8DCC8] bg-white px-4 py-2 text-xs font-semibold uppercase text-[#4A1D1F]"
+            >
+              Track my order
+            </button>
+          ) : null}
+          <button
+            type="button"
+            onClick={() => router.back()}
+            className="rounded-full border border-[#E8DCC8] bg-white px-4 py-2 text-xs font-semibold uppercase text-[#4A1D1F]"
+          >
+            Back
+          </button>
+        </div>
       </div>
 
       {orderQuery.isLoading && <p className="text-sm text-[#646464]">Loading order details…</p>}
