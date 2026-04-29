@@ -16,6 +16,7 @@ function PaymentPageInner() {
   const searchParams = useSearchParams();
   const [scriptReady, setScriptReady] = useState(false);
   const [paying, setPaying] = useState(false);
+  const [paymentMethod, setPaymentMethod] = useState<"COD" | "ONLINE">("ONLINE");
   const [error, setError] = useState("");
   const [statusText, setStatusText] = useState("");
   const [loggedIn, setLoggedIn] = useState(false);
@@ -55,17 +56,30 @@ function PaymentPageInner() {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({
-          items: items.map((i) => ({
-            slug: i.slug,
-            quantity: i.quantity ?? 1,
-          })),
-          shipping,
-          gateway: "razorpay",
-          billingAddress,
-          paymentStatus: "pending",
-          paymentId: `checkout_ref:${checkoutRef}`,
-        }),
+body: JSON.stringify({
+  items: items.map((i) => ({
+    slug: i.slug, // REQUIRED
+    quantity: Number(i.quantity ?? 1),
+  })),
+  shipping,
+  gateway: paymentMethod === "COD" ? "cod" : "razorpay",
+
+  billingAddress: {
+    fullName: billingAddress.fullName,
+    line1: billingAddress.line1,
+    city: billingAddress.city,
+    state: billingAddress.state,
+    postalCode: billingAddress.postalCode,
+    country: billingAddress.country,
+    phone: billingAddress.phone || "",
+  },
+
+  paymentStatus: "pending",
+  paymentId:
+    paymentMethod === "COD"
+      ? undefined
+      : `checkout_ref:${checkoutRef}`,
+})
       });
       const json = (await res.json()) as { success?: boolean; message?: string; data?: { id: string } };
       if (!res.ok || json.success === false || !json.data?.id) {
@@ -299,49 +313,63 @@ function PaymentPageInner() {
     razorpay.open();
   };
 
-  const payNow = async () => {
-    if (!loggedIn) {
-      setError("Please login to complete purchase.");
-      askLogin();
-      return;
-    }
-    if (!retryMode && items.length === 0) {
-      setError("Your cart is empty.");
-      return;
-    }
-    if (!billingAddress.fullName.trim() || !billingAddress.city.trim() || !billingAddress.state.trim() || !billingAddress.postalCode.trim()) {
-      setError("Please fill required billing address fields.");
-      return;
-    }
-    if (!scriptReady || !window.Razorpay) {
-      setError("Razorpay checkout is not ready yet.");
+const handlePlaceOrder = async () => {
+  if (!loggedIn) {
+    setError("Please login to complete purchase.");
+    askLogin();
+    return;
+  }
+
+  if (!billingAddress.fullName.trim()) {
+    setError("Fill billing details.");
+    return;
+  }
+
+  try {
+    setPaying(true);
+    setError("");
+
+    const token = window.localStorage.getItem("ziply5_access_token");
+    if (!token) throw new Error("Login required");
+
+    // ✅ COD FLOW
+    if (paymentMethod === "COD") {
+      setStatusText("Placing order...");
+
+      const orderId = await createOrderMutation.mutateAsync(token);
+setPaying(false);
+      setCartItems([]);
+      window.localStorage.removeItem("ziply5_checkout_ref");
+      
+      router.push(`/payment-success?orderId=${orderId}`);
       return;
     }
 
-    setPaying(true);
-    setError("");
-    setStatusText(retryMode ? "Retrying payment..." : "Creating order...");
-    try {
-      const token = window.localStorage.getItem("ziply5_access_token");
-      if (!token) throw new Error("Please login to continue.");
-      const orderId = retryMode ? createdOrderId : createdOrderId ?? (await createOrderMutation.mutateAsync(token));
-      if (!orderId) throw new Error("Order not found for retry.");
-      if (!createdOrderId) {
-        setCreatedOrderId(orderId);
-        window.localStorage.setItem("ziply5_pending_order_id", orderId);
-      }
-      setStatusText("Redirecting to payment...");
-      await openRazorpay(token, orderId);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Payment failed.");
-      setPaying(false);
+    // ✅ ONLINE PAYMENT FLOW
+    if (!scriptReady || !window.Razorpay) {
+      throw new Error("Payment gateway not ready");
     }
-  };
+
+    setStatusText("Creating order...");
+    const orderId =
+      createdOrderId ??
+      (await createOrderMutation.mutateAsync(token));
+
+    setCreatedOrderId(orderId);
+    window.localStorage.setItem("ziply5_pending_order_id", orderId);
+
+    setStatusText("Redirecting to payment...");
+    await openRazorpay(token, orderId);
+  } catch (e) {
+    setError(e instanceof Error ? e.message : "Something failed");
+    setPaying(false);
+  }
+};
 
   useEffect(() => {
     if (!retryMode || !createdOrderId || !loggedIn || !scriptReady || autoRetryTriggeredRef.current) return;
     autoRetryTriggeredRef.current = true;
-    void payNow();
+    void handlePlaceOrder();
   }, [retryMode, createdOrderId, loggedIn, scriptReady]);
 
   const retryPayment = async () => {
@@ -445,13 +473,37 @@ function PaymentPageInner() {
         <div className="mb-5 rounded-xl border px-4 py-3 text-sm text-[#646464]">
           Payable amount: <span className="font-semibold text-[#7B3010]">Rs. {payableAmount.toFixed(2)}</span>
         </div>
-        
+        <div className="mb-5">
+  <p className="font-medium mb-2">Select Payment Method</p>
+
+  <div className="flex gap-4">
+    <button
+      type="button"
+      onClick={() => setPaymentMethod("COD")}
+      className={`px-4 py-2 rounded-full border ${
+        paymentMethod === "COD" ? "bg-[#7B3010] text-white" : ""
+      }`}
+    >
+      Cash on Delivery
+    </button>
+
+    <button
+      type="button"
+      onClick={() => setPaymentMethod("ONLINE")}
+      className={`px-4 py-2 rounded-full border ${
+        paymentMethod === "ONLINE" ? "bg-[#7B3010] text-white" : ""
+      }`}
+    >
+      Pay Now
+    </button>
+  </div>
+</div>
         {error && <p className="mb-3 text-sm text-red-600">{error}</p>}
         {statusText && !error && <p className="mb-3 text-sm text-[#646464]">{statusText}</p>}
 
         <button
           type="button"
-          onClick={() => void payNow()}
+          onClick={() => void handlePlaceOrder()}
           disabled={paying || !scriptReady || createOrderMutation.isPending || initiatePaymentMutation.isPending}
           className="w-full bg-primary text-white py-4 rounded-full font-medium shadow-md font-melon tracking-wide disabled:opacity-60"
         >
