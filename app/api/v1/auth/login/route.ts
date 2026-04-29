@@ -8,7 +8,7 @@ export async function POST(request: Request) {
   if (blocked) return blocked
   try {
     const body = await request.json()
-    const parsed = loginSchema.safeParse(body)
+    const parsed = loginSchema.safeParse(body) 
     if (!parsed.success) {
       return fail("Validation failed", 422, parsed.error.flatten())
     }
