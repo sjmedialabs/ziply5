@@ -217,7 +217,7 @@ export default function ProductPage() {
                 <Skeleton className="h-16 w-16 rounded-md" />
                 <Skeleton className="h-16 w-16 rounded-md" />
               </div>
-            </div>
+            </div> 
             {/* Details skeleton */}
             <div className="space-y-4">
               <Skeleton className="h-8 w-32 rounded-full" />
