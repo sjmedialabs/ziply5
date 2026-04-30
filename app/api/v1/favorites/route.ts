@@ -27,20 +27,26 @@ export async function GET(request: NextRequest) {
   try {
     const client = getSupabaseAdmin()
     for (const table of FAVORITE_TABLES) {
-      // Try both camelCase and snake_case.
+      // Fetch product ids, then resolve to slugs from Product table(s).
       const attempts = [
-        () => client.from(table).select("productId,product:Product(slug)").eq("userId", userId),
-        () => client.from(table).select("product_id,product:Product(slug)").eq("user_id", userId),
-        () => client.from(table).select("productId,product:products(slug)").eq("userId", userId),
-        () => client.from(table).select("product_id,product:products(slug)").eq("user_id", userId),
+        () => client.from(table).select("productId").eq("userId", userId),
+        () => client.from(table).select("product_id").eq("user_id", userId),
       ]
       for (const run of attempts) {
         const { data, error } = await run()
         if (error || !Array.isArray(data)) continue
-        const slugs = (data as any[])
-          .map((row) => safeString(row?.product?.slug))
+        const productIds = (data as any[])
+          .map((row) => safeString(row?.productId ?? row?.product_id))
           .filter(Boolean)
-        return NextResponse.json({ success: true, data: slugs })
+        if (!productIds.length) return NextResponse.json({ success: true, data: [] })
+        for (const pt of PRODUCT_TABLES) {
+          const { data: products, error: pErr } = await client.from(pt).select("id,slug").in("id", productIds)
+          if (pErr || !Array.isArray(products)) continue
+          const slugById = new Map((products as any[]).map((p) => [safeString(p.id), safeString(p.slug)]))
+          const slugs = productIds.map((id) => slugById.get(id)).filter(Boolean)
+          return NextResponse.json({ success: true, data: slugs })
+        }
+        return NextResponse.json({ success: true, data: [] })
       }
     }
     return NextResponse.json({ success: true, data: [] })

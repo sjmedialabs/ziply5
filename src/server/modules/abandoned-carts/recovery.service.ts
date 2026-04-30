@@ -2,6 +2,9 @@ import { Prisma } from "@prisma/client"
 import { prisma } from "@/src/server/db/prisma"
 import { enqueueEmail } from "@/src/server/modules/notifications/email.service"
 import { smsService } from "@/src/server/integrations/sms/sms.service"
+import crypto from "crypto"
+import { safeString } from "@/src/lib/db/supabaseIntegrity"
+import { renderPlaceholders } from "@/src/server/modules/abandoned-carts/templateRender"
 
 type CartEventType =
   | "add_to_cart"
@@ -14,9 +17,20 @@ type CartEventType =
   | "payment_success"
   | "order_placed"
   | "manual_clear"
+  | "page_view"
 
 type RecoveryChannel = "email" | "sms" | "whatsapp"
 type RecoveryStatus = "pending" | "sent" | "failed" | "cancelled" | "skipped"
+
+type LifecycleState =
+  | "ACTIVE_CART"
+  | "CHECKOUT_STARTED"
+  | "PAYMENT_PENDING"
+  | "PAYMENT_FAILED"
+  | "PAYMENT_CANCELLED"
+  | "PAYMENT_TIMEOUT"
+  | "ORDER_COMPLETED"
+  | "ABANDONED"
 
 const DEFAULT_SETTINGS = {
   enabled: true,
@@ -37,6 +51,21 @@ const DEFAULT_SETTINGS = {
   ],
 } as const
 
+const sha256 = (value: string) => crypto.createHash("sha256").update(value).digest("hex")
+
+const mergeMeta = (existing: unknown, patch: Record<string, unknown>) => {
+  const base = existing && typeof existing === "object" && !Array.isArray(existing) ? (existing as Record<string, unknown>) : {}
+  return { ...base, ...patch }
+}
+
+const eventToLifecycleState = (eventType: CartEventType): LifecycleState => {
+  if (eventType === "checkout_started") return "CHECKOUT_STARTED"
+  if (eventType === "payment_initiated") return "PAYMENT_PENDING"
+  if (eventType === "payment_failed") return "PAYMENT_FAILED"
+  if (eventType === "payment_success" || eventType === "order_placed") return "ORDER_COMPLETED"
+  return "ACTIVE_CART"
+}
+
 const ensureRecoveryTables = async () => {
   await prisma.$executeRawUnsafe(`
     ALTER TABLE "AbandonedCart"
@@ -44,6 +73,13 @@ const ensureRecoveryTables = async () => {
       ADD COLUMN IF NOT EXISTS guest_id text NULL,
       ADD COLUMN IF NOT EXISTS mobile text NULL,
       ADD COLUMN IF NOT EXISTS status text NOT NULL DEFAULT 'active',
+      ADD COLUMN IF NOT EXISTS lifecycle_state text NOT NULL DEFAULT 'ACTIVE_CART',
+      ADD COLUMN IF NOT EXISTS checkout_stage text NULL,
+      ADD COLUMN IF NOT EXISTS payment_status text NULL,
+      ADD COLUMN IF NOT EXISTS coupon_code text NULL,
+      ADD COLUMN IF NOT EXISTS last_visited_page text NULL,
+      ADD COLUMN IF NOT EXISTS customer_name text NULL,
+      ADD COLUMN IF NOT EXISTS address_json jsonb NOT NULL DEFAULT '{}'::jsonb,
       ADD COLUMN IF NOT EXISTS last_active_at timestamptz NULL,
       ADD COLUMN IF NOT EXISTS abandoned_at timestamptz NULL,
       ADD COLUMN IF NOT EXISTS converted_at timestamptz NULL,
@@ -99,6 +135,29 @@ const ensureRecoveryTables = async () => {
     )
   `)
   await prisma.$executeRawUnsafe(`
+    CREATE TABLE IF NOT EXISTS abandoned_cart_templates_v2 (
+      id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      template_key text NOT NULL,
+      channel text NOT NULL,
+      subject text NULL,
+      body text NOT NULL,
+      active boolean NOT NULL DEFAULT true,
+      updated_at timestamptz NOT NULL DEFAULT now(),
+      UNIQUE(template_key, channel)
+    )
+  `)
+  await prisma.$executeRawUnsafe(`
+    CREATE TABLE IF NOT EXISTS abandoned_cart_resume_tokens_v2 (
+      id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      cart_id text NOT NULL,
+      token_hash text NOT NULL UNIQUE,
+      expires_at timestamptz NOT NULL,
+      created_at timestamptz NOT NULL DEFAULT now(),
+      last_used_at timestamptz NULL,
+      meta jsonb NOT NULL DEFAULT '{}'::jsonb
+    )
+  `)
+  await prisma.$executeRawUnsafe(`
     CREATE TABLE IF NOT EXISTS abandoned_cart_analytics_daily_v2 (
       date_key date PRIMARY KEY,
       total_abandoned int NOT NULL DEFAULT 0,
@@ -137,6 +196,57 @@ export const saveRecoverySettings = async (input: Record<string, unknown>) => {
 
 export const getRecoverySettings = getSettings
 
+const getTemplate = async (templateKey: string, channel: RecoveryChannel) => {
+  await ensureRecoveryTables()
+  const rows = await prisma.$queryRaw<Array<{ subject: string | null; body: string }>>(Prisma.sql`
+    SELECT subject, body
+    FROM abandoned_cart_templates_v2
+    WHERE template_key = ${templateKey} AND channel = ${channel} AND active = true
+    LIMIT 1
+  `)
+  return rows[0] ?? null
+}
+
+export const listRecoveryTemplates = async () => {
+  await ensureRecoveryTables()
+  const rows = await prisma.$queryRaw<Array<{ template_key: string; channel: string; subject: string | null; body: string; active: boolean; updated_at: Date }>>(
+    Prisma.sql`
+      SELECT template_key, channel, subject, body, active, updated_at
+      FROM abandoned_cart_templates_v2
+      ORDER BY template_key ASC, channel ASC
+    `,
+  )
+  return rows
+}
+
+export const saveRecoveryTemplate = async (input: {
+  templateKey: string
+  channel: RecoveryChannel
+  subject?: string | null
+  body: string
+  active?: boolean
+}) => {
+  await ensureRecoveryTables()
+  await prisma.$executeRaw(Prisma.sql`
+    INSERT INTO abandoned_cart_templates_v2 (template_key, channel, subject, body, active, updated_at)
+    VALUES (${input.templateKey}, ${input.channel}, ${input.subject ?? null}, ${input.body}, ${input.active ?? true}, now())
+    ON CONFLICT (template_key, channel)
+    DO UPDATE SET subject = EXCLUDED.subject, body = EXCLUDED.body, active = EXCLUDED.active, updated_at = now()
+  `)
+  return { saved: true }
+}
+
+const buildResumeToken = async (cartId: string, ttlMinutes: number, meta: Record<string, unknown>) => {
+  await ensureRecoveryTables()
+  const token = crypto.randomBytes(24).toString("base64url")
+  const tokenHash = sha256(token)
+  await prisma.$executeRaw(Prisma.sql`
+    INSERT INTO abandoned_cart_resume_tokens_v2 (cart_id, token_hash, expires_at, meta)
+    VALUES (${cartId}, ${tokenHash}, now() + (${Math.max(1, ttlMinutes)} * interval '1 minute'), ${(meta as unknown) as Prisma.JsonObject})
+  `)
+  return token
+}
+
 export const trackCartEvent = async (input: {
   sessionKey: string
   userId?: string | null
@@ -149,6 +259,7 @@ export const trackCartEvent = async (input: {
   meta?: Record<string, unknown>
 }) => {
   await ensureRecoveryTables()
+  const lifecycleState = eventToLifecycleState(input.eventType)
   const row = await prisma.abandonedCart.upsert({
     where: { sessionKey: input.sessionKey },
     create: {
@@ -165,6 +276,14 @@ export const trackCartEvent = async (input: {
       updatedAt: new Date(),
     },
   })
+  const meta = input.meta ?? {}
+  const checkoutStage = typeof meta.checkoutStage === "string" ? meta.checkoutStage : undefined
+  const paymentStatus = typeof meta.paymentStatus === "string" ? meta.paymentStatus : undefined
+  const lastVisitedPage = typeof meta.lastVisitedPage === "string" ? meta.lastVisitedPage : undefined
+  const couponCode = typeof meta.couponCode === "string" ? meta.couponCode : undefined
+  const customerName = typeof meta.name === "string" ? meta.name : undefined
+  const addressJson = meta.address && typeof meta.address === "object" && !Array.isArray(meta.address) ? meta.address : undefined
+
   await prisma.$executeRaw(Prisma.sql`
     UPDATE "AbandonedCart"
     SET
@@ -172,14 +291,64 @@ export const trackCartEvent = async (input: {
       guest_id = COALESCE(${input.guestId ?? null}, guest_id),
       mobile = COALESCE(${input.mobile ?? null}, mobile),
       last_active_at = now(),
-      status = CASE WHEN ${input.eventType} IN ('payment_success', 'order_placed', 'manual_clear') THEN 'converted' ELSE 'active' END,
-      abandoned_at = CASE WHEN ${input.eventType} IN ('payment_success', 'order_placed', 'manual_clear') THEN NULL ELSE abandoned_at END
+      lifecycle_state = ${lifecycleState},
+      checkout_stage = COALESCE(${checkoutStage ?? null}, checkout_stage),
+      payment_status = COALESCE(${paymentStatus ?? null}, payment_status),
+      coupon_code = COALESCE(${couponCode ?? null}, coupon_code),
+      last_visited_page = COALESCE(${lastVisitedPage ?? null}, last_visited_page),
+      customer_name = COALESCE(${customerName ?? null}, customer_name),
+      address_json = CASE WHEN ${addressJson ? 1 : 0} = 1 THEN (${(addressJson as unknown) as Prisma.JsonObject})::jsonb ELSE address_json END,
+      metadata = metadata || ${((meta as unknown) as Prisma.JsonObject)}::jsonb,
+      status = CASE
+        WHEN ${input.eventType} IN ('payment_success', 'order_placed', 'manual_clear') THEN 'converted'
+        WHEN ${input.eventType} IN ('payment_failed') THEN 'abandoned'
+        ELSE status
+      END,
+      abandoned_at = CASE
+        WHEN ${input.eventType} IN ('payment_success', 'order_placed', 'manual_clear') THEN NULL
+        WHEN ${input.eventType} IN ('payment_failed') THEN COALESCE(abandoned_at, now())
+        ELSE abandoned_at
+      END
     WHERE id = ${row.id}
   `)
   await prisma.$executeRaw(Prisma.sql`
     INSERT INTO abandoned_cart_events_v2 (cart_id, event_type, meta)
     VALUES (${row.id}, ${input.eventType}, ${((input.meta ?? {}) as unknown) as Prisma.JsonObject})
   `)
+
+  // Payment failure should be immediately eligible for follow-up: enqueue schedule now (idempotent via unique constraint).
+  if (input.eventType === "payment_failed") {
+    const settings = await getSettings()
+    const schedule = (Array.isArray((settings as any).schedule) ? (settings as any).schedule : DEFAULT_SETTINGS.schedule) as Array<{
+      stepNo: number
+      delayMinutes: number
+      channels: RecoveryChannel[]
+      template?: string
+      includeCoupon?: boolean
+      active?: boolean
+    }>
+    for (const step of schedule.filter((entry) => entry.active !== false)) {
+      for (const channel of step.channels) {
+        await prisma.$executeRaw(Prisma.sql`
+          INSERT INTO abandoned_cart_recovery_queue_v2 (cart_id, step_no, channel, scheduled_at, payload, status)
+          VALUES (
+            ${row.id},
+            ${step.stepNo},
+            ${channel},
+            now() + (${Math.max(0, Number(step.delayMinutes ?? 0))} * interval '1 minute'),
+            ${({
+              template: step.template ?? `abandoned_step_${step.stepNo}`,
+              includeCoupon: Boolean(step.includeCoupon),
+            } as unknown) as Prisma.JsonObject},
+            'pending'
+          )
+          ON CONFLICT (cart_id, step_no, channel)
+          DO NOTHING
+        `)
+      }
+    }
+  }
+
   return row
 }
 
@@ -240,22 +409,32 @@ export const detectAbandonedCarts = async () => {
   return { scanned: candidates.length, marked, queued }
 }
 
-const renderMessage = (input: {
+const renderMessage = async (input: {
   name: string
   cartValue: number
+  itemsCount: number
   checkoutLink: string
-  template: string
+  coupon?: string
+  templateKey: string
   channel: RecoveryChannel
 }) => {
-  const subject = "You left something in your cart"
-  const line = `Hi ${input.name}, your cart worth Rs.${input.cartValue.toFixed(2)} is waiting. Complete checkout: ${input.checkoutLink}`
-  if (input.channel === "email") {
-    return {
-      subject,
-      body: `<p>${line}</p>`,
-    }
+  const vars = {
+    name: input.name || "there",
+    amount: input.cartValue.toFixed(2),
+    items: String(input.itemsCount),
+    resume_link: input.checkoutLink,
+    coupon: input.coupon ?? "",
   }
-  return { subject, body: line }
+  const stored = await getTemplate(input.templateKey, input.channel)
+  const defaultSubject = "You left something in your cart"
+  const defaultBody =
+    input.channel === "email"
+      ? `<p>Hi {{name}}, you left items worth Rs.{{amount}} in your cart. <a href="{{resume_link}}">Resume checkout</a>.</p>`
+      : "Hi {{name}}, you left items worth Rs.{{amount}} in your cart. Complete order: {{resume_link}}"
+
+  const subject = renderPlaceholders(stored?.subject ?? defaultSubject, vars)
+  const body = renderPlaceholders(stored?.body ?? defaultBody, vars)
+  return { subject, body }
 }
 
 const sendWhatsapp = async (to: string, body: string) => {
@@ -276,6 +455,8 @@ export const processRecoveryQueue = async () => {
       email: string | null
       mobile: string | null
       total: number | null
+      items_json: Prisma.JsonValue
+      coupon_code: string | null
       messages_sent: number
       converted_at: Date | null
       recovery_disabled: boolean
@@ -293,6 +474,8 @@ export const processRecoveryQueue = async () => {
       c.email,
       c.mobile,
       c.total,
+      c."itemsJson" as items_json,
+      c.coupon_code,
       c.messages_sent,
       c.converted_at,
       c.recovery_disabled,
@@ -324,12 +507,17 @@ export const processRecoveryQueue = async () => {
         failed += 1
         continue
       }
-      const checkoutLink = `${checkoutBase}/cart/recover/${encodeURIComponent(row.session_key)}`
-      const msg = renderMessage({
+      const tokenTtl = Math.max(5, Number((settings as any).tokenExpiryMinutes ?? DEFAULT_SETTINGS.tokenExpiryMinutes))
+      const resumeToken = await buildResumeToken(row.cart_id, tokenTtl, { source: "followup", channel: row.channel, stepNo: row.step_no })
+      const checkoutLink = `${checkoutBase}/cart/recover/${encodeURIComponent(resumeToken)}`
+      const templateKey = String((row.payload as any)?.template ?? `abandoned_step_${row.step_no}`)
+      const msg = await renderMessage({
         name: "there",
         cartValue: Number(row.total ?? 0),
+        itemsCount: Array.isArray(row.items_json) ? row.items_json.length : 0,
         checkoutLink,
-        template: String((row.payload as any)?.template ?? `abandoned_step_${row.step_no}`),
+        coupon: typeof row.coupon_code === "string" ? row.coupon_code : undefined,
+        templateKey,
         channel: row.channel,
       })
       if (row.channel === "email") {
@@ -347,7 +535,7 @@ export const processRecoveryQueue = async () => {
         `),
         prisma.$executeRaw(Prisma.sql`
           INSERT INTO abandoned_cart_messages_v2 (cart_id, queue_id, channel, template_used, sent_to, status)
-          VALUES (${row.cart_id}, ${row.id}::uuid, ${row.channel}, ${String((row.payload as any)?.template ?? "")}, ${to}, 'sent')
+          VALUES (${row.cart_id}, ${row.id}::uuid, ${row.channel}, ${templateKey}, ${to}, 'sent')
         `),
         prisma.$executeRaw(Prisma.sql`
           UPDATE "AbandonedCart"
@@ -370,6 +558,7 @@ export const processRecoveryQueue = async () => {
 
 export const markCartConverted = async (input: { sessionKey?: string | null; email?: string | null; mobile?: string | null; orderId?: string | null; revenue?: number | null; channel?: string | null }) => {
   await ensureRecoveryTables()
+  const settings = await getSettings()
   const rows = await prisma.$queryRaw<Array<{ id: string }>>(Prisma.sql`
     SELECT id
     FROM "AbandonedCart"
@@ -381,10 +570,28 @@ export const markCartConverted = async (input: { sessionKey?: string | null; ema
   `)
   const cart = rows[0]
   if (!cart) return { updated: false }
+
+  // Best-effort attribution: if no explicit channel provided, infer from last used resume token.
+  let channel = input.channel ?? null
+  if (!channel) {
+    const tokenRows = await prisma.$queryRaw<Array<{ meta: Prisma.JsonValue }>>(Prisma.sql`
+      SELECT meta
+      FROM abandoned_cart_resume_tokens_v2
+      WHERE cart_id = ${cart.id}
+        AND last_used_at IS NOT NULL
+      ORDER BY last_used_at DESC
+      LIMIT 1
+    `)
+    const meta = tokenRows[0]?.meta
+    const inferred =
+      meta && typeof meta === "object" && !Array.isArray(meta) ? safeString((meta as any).channel) || safeString((meta as any).source) : ""
+    if (inferred) channel = inferred
+  }
+
   await prisma.$transaction([
     prisma.$executeRaw(Prisma.sql`
       UPDATE "AbandonedCart"
-      SET status='converted', converted_at=now(), converted_order_id=${input.orderId ?? null}, recovered_channel = ${input.channel ?? null}
+      SET status='converted', converted_at=now(), converted_order_id=${input.orderId ?? null}, recovered_channel = ${channel}
       WHERE id = ${cart.id}
     `),
     prisma.$executeRaw(Prisma.sql`
@@ -530,6 +737,73 @@ export const getRecoverableCartBySession = async (sessionKey: string) => {
     convertedAt: row.converted_at,
     updatedAt: row.updated_at,
   }
+}
+
+export const getRecoverableCartByTokenOrSession = async (tokenOrSessionKey: string) => {
+  await ensureRecoveryTables()
+  const tokenHash = sha256(tokenOrSessionKey)
+  const tokenRows = await prisma.$queryRaw<Array<{ cart_id: string }>>(Prisma.sql`
+    SELECT cart_id
+    FROM abandoned_cart_resume_tokens_v2
+    WHERE token_hash = ${tokenHash}
+      AND expires_at > now()
+    LIMIT 1
+  `)
+  const cartId = tokenRows[0]?.cart_id
+  if (cartId) {
+    await prisma.$executeRaw(Prisma.sql`
+      UPDATE abandoned_cart_resume_tokens_v2
+      SET last_used_at = now()
+      WHERE token_hash = ${tokenHash}
+    `)
+    const rows = await prisma.$queryRaw<
+      Array<{
+        id: string
+        session_key: string
+        email: string | null
+        items_json: Prisma.JsonValue
+        total: number | null
+        status: string
+        converted_at: Date | null
+        updated_at: Date
+      }>
+    >(Prisma.sql`
+      SELECT
+        id,
+        "sessionKey" as session_key,
+        email,
+        "itemsJson" as items_json,
+        total,
+        status,
+        converted_at,
+        "updatedAt" as updated_at
+      FROM "AbandonedCart"
+      WHERE id = ${cartId}
+      LIMIT 1
+    `)
+    const row = rows[0]
+    if (!row) return null
+    return {
+      id: row.id,
+      sessionKey: row.session_key,
+      email: row.email,
+      itemsJson: row.items_json,
+      total: row.total,
+      status: row.status,
+      convertedAt: row.converted_at,
+      updatedAt: row.updated_at,
+    }
+  }
+
+  // Backwards compatible: treat the token as the sessionKey.
+  return getRecoverableCartBySession(tokenOrSessionKey)
+}
+
+export const createResumeLinkTokenForCart = async (cartId: string, meta: Record<string, unknown> = {}) => {
+  const settings = await getSettings()
+  const ttl = Math.max(5, Number((settings as any).tokenExpiryMinutes ?? DEFAULT_SETTINGS.tokenExpiryMinutes))
+  const token = await buildResumeToken(cartId, ttl, { source: "admin", ...meta })
+  return { token, ttlMinutes: ttl }
 }
 
 export const sendRecoveryNow = async (cartId: string, channels: RecoveryChannel[] = ["email"]) => {

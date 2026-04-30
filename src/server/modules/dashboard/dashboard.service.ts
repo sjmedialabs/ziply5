@@ -21,22 +21,25 @@ const countFromTables = async (tables: string[], where?: { column: string; value
   return 0
 }
 
-const sumColumnFromTables = async (tables: string[], column: string) => {
+const sumColumnFromTables = async (tables: string[], columns: string[]) => {
   const client = getSupabaseAdmin()
   for (const table of tables) {
-    // PostgREST aggregate syntax: `alias:column.sum()`
-    const { data, error } = await client.from(table).select(`total_sum:${column}.sum()`)
-    if (error) continue
-    const row = Array.isArray(data) ? (data[0] as any) : null
-    const sum = row?.total_sum ?? row?.sum ?? row?.[column]?.sum ?? row?.[`${column}`]?.sum
-    if (sum != null) return Number(sum ?? 0)
+    for (const column of columns) {
+      // PostgREST aggregate syntax: `alias:column.sum()`
+      const { data, error } = await client.from(table).select(`total_sum:${column}.sum()`)
+      if (error) continue
+      const row = Array.isArray(data) ? (data[0] as any) : null
+      const sum = row?.total_sum ?? row?.sum ?? row?.[column]?.sum ?? row?.[`${column}`]?.sum
+      if (sum != null) return Number(sum ?? 0)
+    }
   }
   return 0
 }
 
 const fetchAllInRange = async <T extends Record<string, unknown>>(input: {
   table: string
-  select: string
+  selectCamel: string
+  selectSnake: string
   rangeSize?: number
   maxRows?: number
   fromIso?: string
@@ -49,7 +52,7 @@ const fetchAllInRange = async <T extends Record<string, unknown>>(input: {
   const out: T[] = []
   let offset = 0
   while (offset < maxRows) {
-    let qb = client.from(input.table).select(input.select).range(offset, offset + rangeSize - 1)
+    let qb = client.from(input.table).select(input.selectCamel).range(offset, offset + rangeSize - 1)
     if (input.fromIso && input.toIso && input.dateColumns) {
       // Prefer camelCase column; fallback to snake_case if needed.
       qb = qb.gte(input.dateColumns.camel, input.fromIso).lt(input.dateColumns.camel, input.toIso)
@@ -59,7 +62,7 @@ const fetchAllInRange = async <T extends Record<string, unknown>>(input: {
       if (input.fromIso && input.toIso && input.dateColumns) {
         const qb2 = client
           .from(input.table)
-          .select(input.select)
+          .select(input.selectSnake)
           .gte(input.dateColumns.snake, input.fromIso)
           .lt(input.dateColumns.snake, input.toIso)
           .range(offset, offset + rangeSize - 1)
@@ -87,7 +90,7 @@ const monthLabel = (monthIdx: number) =>
 
 export const getDashboardSummary = async () => {
   const ORDER_TABLES = ["Order", "orders"]
-  const ORDER_ITEM_TABLES = ["OrderItem", "order_items"]
+  const ORDER_ITEM_TABLES = ["OrderItem", "order_items", "order_items_v2", "OrderItems", "order_item", "orderItems"]
   const USER_TABLES = ["User", "users"]
   const PRODUCT_TABLES = ["Product", "products"]
   const PRODUCT_VARIANT_TABLES = ["ProductVariant", "product_variants"]
@@ -104,7 +107,23 @@ export const getDashboardSummary = async () => {
     safe(() => countFromTables(PRODUCT_TABLES), 0),
   ])
 
-  const totalSales = await safe(() => sumColumnFromTables(ORDER_TABLES, "total"), 0)
+  const totalSales = await safe(async () => {
+    const sum = await sumColumnFromTables(ORDER_TABLES, ["total", "grandTotal", "grand_total", "totalAmount", "total_amount"])
+    if (Number.isFinite(sum) && sum > 0) return sum
+
+    // Fallback if aggregates are blocked: sum latest N rows (best-effort).
+    const client = getSupabaseAdmin()
+    for (const table of ORDER_TABLES) {
+      for (const col of ["total", "grandTotal", "grand_total", "totalAmount", "total_amount"]) {
+        const { data, error } = await client.from(table).select(col).limit(20_000)
+        if (error || !Array.isArray(data) || data.length === 0) continue
+        const s = (data as Array<Record<string, unknown>>).reduce((acc, r) => acc + Number(r[col] ?? 0), 0)
+        if (s > 0) return s
+      }
+    }
+
+    return 0
+  }, 0)
 
   const recentOrders = await safe(async () => {
     const client = getSupabaseAdmin()
@@ -169,7 +188,8 @@ export const getDashboardSummary = async () => {
     for (const table of ORDER_TABLES) {
       const rows = await fetchAllInRange<{ total?: number | string | null; createdAt?: string | null; created_at?: string | null }>({
         table,
-        select: "total,createdAt,created_at",
+        selectCamel: "total,createdAt",
+        selectSnake: "total,created_at",
         rangeSize: 750,
         maxRows: 50_000,
         fromIso: lastYearStart.toISOString(),
@@ -219,7 +239,8 @@ export const getDashboardSummary = async () => {
     for (const table of ORDER_TABLES) {
       const rows = await fetchAllInRange<{ createdAt?: string | null; created_at?: string | null }>({
         table,
-        select: "createdAt,created_at",
+        selectCamel: "createdAt",
+        selectSnake: "created_at",
         rangeSize: 1000,
         maxRows: 10_000,
         fromIso: lastWeekStart.toISOString(),
@@ -254,6 +275,10 @@ export const getDashboardSummary = async () => {
       const attempts = [
         () => client.from(table).select("productId,quantity").limit(2000),
         () => client.from(table).select("product_id,quantity").limit(2000),
+        () => client.from(table).select("productId,qty").limit(2000),
+        () => client.from(table).select("product_id,qty").limit(2000),
+        () => client.from(table).select("productId,units").limit(2000),
+        () => client.from(table).select("product_id,units").limit(2000),
       ]
       for (const run of attempts) {
         const { data, error } = await run()
@@ -267,7 +292,7 @@ export const getDashboardSummary = async () => {
     const counts = new Map<string, number>()
     for (const r of itemRows) {
       const pid = safeString(r.productId ?? r.product_id)
-      const qty = Number(r.quantity ?? 0)
+      const qty = Number(r.quantity ?? r.qty ?? r.units ?? 0)
       if (!pid || !Number.isFinite(qty) || qty <= 0) continue
       counts.set(pid, (counts.get(pid) ?? 0) + qty)
     }
@@ -276,11 +301,11 @@ export const getDashboardSummary = async () => {
     const names = new Map<string, string>()
     if (ids.length) {
       for (const pt of PRODUCT_TABLES) {
-        const { data, error } = await client.from(pt).select("id,name").in("id", ids)
+        const { data, error } = await client.from(pt).select("id,name,title").in("id", ids)
         if (!error && Array.isArray(data)) {
           for (const p of data as Array<Record<string, unknown>>) {
             const id = safeString(p.id)
-            const name = safeString(p.name)
+            const name = safeString(p.name ?? p.title)
             if (id) names.set(id, name)
           }
           break
