@@ -93,7 +93,7 @@ export default function AdminDashboardPage() {
   const recentRows = useMemo(() => summary?.recentOrders ?? [], [summary])
 
   return (
-    <section className="mx-auto max-w-7xl px-4">
+    <section className="mx-auto max-w-7xl">
       <div className="rounded-3xl bg-transparent p-0 md:p-0">
         <div className="mb-2 pt-[34px] pb-[34px]">
           <h1 className="font-melon text-2xl font-bold tracking-wide text-[#4A1D1F] md:text-3xl">Dashboard</h1>
