@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { persistSession } from "@/lib/auth-session";
+import { Eye, EyeOff, Lock, Mail, Phone, Shield, User } from "lucide-react";
 
 type SignupResponse = {
   success: boolean;
@@ -31,6 +32,7 @@ export default function SignupPage() {
   const [loading, setLoading] = useState(false);
   const [otpLoading, setOtpLoading] = useState(false);
   const [verifyLoading, setVerifyLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
 
   const persistAuth = (payload: SignupResponse) => {
     if (!payload.data?.accessToken || !payload.data?.refreshToken || !payload.data?.user?.role) return false;
@@ -131,18 +133,20 @@ export default function SignupPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-black/40 relative px-4">
-      
-      {/* Overlay */}
-      <div className="absolute inset-0 bg-black/40 z-0" />
+    <div className="relative min-h-screen overflow-hidden bg-[#F7F8FB] px-4 py-10">
+      {/* Background accents */}
+      <div className="pointer-events-none absolute -left-24 -top-24 h-72 w-72 rounded-full bg-[#FFC222]/25 blur-2xl" />
+      <div className="pointer-events-none absolute -right-28 -bottom-28 h-80 w-80 rounded-full bg-[#FFC222]/20 blur-2xl" />
+      <div className="pointer-events-none absolute left-10 top-1/2 hidden h-28 w-28 -translate-y-1/2 rounded-full bg-[#7B3010]/10 blur-xl md:block" />
+      <div className="pointer-events-none absolute right-12 top-24 hidden h-24 w-24 rounded-full bg-[#7B3010]/10 blur-xl md:block" />
 
-      {/* Card */}
-      <div className="relative z-10 w-full max-w-xl bg-[#FFC222] rounded-[40px] p-4 md:p-10 shadow-xl text-center">
-        
-        {/* Heading */}
-        <h1 className="text-3xl font-melon font-bold mb-8">
-          Sign up
-        </h1>
+      <div className="mx-auto flex w-full max-w-[560px] items-center justify-center">
+        <div className="w-full rounded-3xl bg-white p-6 shadow-[0_18px_60px_rgba(15,23,42,0.10)] ring-1 ring-black/5 md:p-10">
+          <div className="mx-auto mb-5 flex h-14 w-14 items-center justify-center rounded-2xl bg-[#FFC222]/20 text-[#7B3010]">
+            <Shield className="h-7 w-7" />
+          </div>
+          <h1 className="text-center font-melon text-3xl font-bold text-[#111827]">Create account</h1>
+          <p className="mt-1 text-center text-sm text-[#6B7280]">Sign up to continue</p>
 
         <div className="mb-5 grid grid-cols-2 gap-2 rounded-full border-2 border-[#7B3010] p-1">
           <button
@@ -152,7 +156,7 @@ export default function SignupPage() {
               setError("");
               setSuccess("");
             }}
-            className={`rounded-full px-4 py-2 text-sm font-semibold ${mode === "email" ? "bg-[#7B3010] text-white" : "text-[#7B3010]"}`}
+            className={`rounded-full px-4 py-2 text-sm font-semibold transition ${mode === "email" ? "bg-[#7B3010] text-white" : "text-[#7B3010] hover:bg-[#7B3010]/5"}`}
           >
             Email signup
           </button>
@@ -163,7 +167,7 @@ export default function SignupPage() {
               setError("");
               setSuccess("");
             }}
-            className={`rounded-full px-4 py-2 text-sm font-semibold ${mode === "mobile" ? "bg-[#7B3010] text-white" : "text-[#7B3010]"}`}
+            className={`rounded-full px-4 py-2 text-sm font-semibold transition ${mode === "mobile" ? "bg-[#7B3010] text-white" : "text-[#7B3010] hover:bg-[#7B3010]/5"}`}
           >
             Mobile OTP
           </button>
@@ -171,96 +175,153 @@ export default function SignupPage() {
 
         {/* Form */}
         {mode === "email" ? (
-          <form onSubmit={handleEmailSignup} className="flex flex-col gap-5">
-            <input
-              type="text"
-              placeholder="First Name"
-              value={firstName}
-              onChange={(e) => setFirstName(e.target.value)}
-              className="w-full px-6 py-4 rounded-full border-2 border-[#7B3010] bg-transparent outline-none"
-            />
-            <input
-              type="text"
-              placeholder="Last Name"
-              value={lastName}
-              onChange={(e) => setLastName(e.target.value)}
-              className="w-full px-6 py-4 rounded-full border-2 border-[#7B3010] bg-transparent outline-none"
-            />
-            <input
-              type="email"
-              placeholder="Email address"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              className="w-full px-6 py-4 rounded-full border-2 border-[#7B3010] bg-transparent outline-none"
-            />
-            <input
-              type="password"
-              placeholder="Password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="w-full px-6 py-4 rounded-full border-2 border-[#7B3010] bg-transparent outline-none"
-            />
-            {error && <p className="text-left text-sm text-red-600">{error}</p>}
-            {success && <p className="text-left text-sm text-green-700">{success}</p>}
+          <form onSubmit={handleEmailSignup} className="mt-8 flex flex-col gap-4">
+            <div className="grid gap-3 md:grid-cols-2">
+              <label className="block">
+                <div className="relative">
+                  <User className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-[#9CA3AF]" />
+                  <input
+                    type="text"
+                    autoComplete="given-name"
+                    placeholder="First name"
+                    value={firstName}
+                    onChange={(e) => setFirstName(e.target.value)}
+                    className="h-12 w-full rounded-2xl border border-[#E5E7EB] bg-white pl-12 pr-4 text-sm text-[#111827] outline-none transition focus:border-[#FFC222] focus:ring-4 focus:ring-[#FFC222]/20"
+                  />
+                </div>
+              </label>
+              <label className="block">
+                <div className="relative">
+                  <User className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-[#9CA3AF]" />
+                  <input
+                    type="text"
+                    autoComplete="family-name"
+                    placeholder="Last name"
+                    value={lastName}
+                    onChange={(e) => setLastName(e.target.value)}
+                    className="h-12 w-full rounded-2xl border border-[#E5E7EB] bg-white pl-12 pr-4 text-sm text-[#111827] outline-none transition focus:border-[#FFC222] focus:ring-4 focus:ring-[#FFC222]/20"
+                  />
+                </div>
+              </label>
+            </div>
+
+            <label className="block">
+              <div className="relative">
+                <Mail className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-[#9CA3AF]" />
+                <input
+                  type="email"
+                  inputMode="email"
+                  autoComplete="email"
+                  placeholder="Email address"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  className="h-12 w-full rounded-2xl border border-[#E5E7EB] bg-white pl-12 pr-4 text-sm text-[#111827] outline-none transition focus:border-[#FFC222] focus:ring-4 focus:ring-[#FFC222]/20"
+                />
+              </div>
+            </label>
+
+            <label className="block">
+              <div className="relative">
+                <Lock className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-[#9CA3AF]" />
+                <input
+                  type={showPassword ? "text" : "password"}
+                  autoComplete="new-password"
+                  placeholder="Password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className="h-12 w-full rounded-2xl border border-[#E5E7EB] bg-white pl-12 pr-12 text-sm text-[#111827] outline-none transition focus:border-[#FFC222] focus:ring-4 focus:ring-[#FFC222]/20"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword((v) => !v)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 rounded-lg p-2 text-[#6B7280] hover:bg-[#F3F4F6]"
+                  aria-label={showPassword ? "Hide password" : "Show password"}
+                >
+                  {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+                </button>
+              </div>
+            </label>
+
+            {error && <p className="rounded-xl bg-red-50 px-3 py-2 text-left text-sm text-red-700">{error}</p>}
+            {success && <p className="rounded-xl bg-green-50 px-3 py-2 text-left text-sm text-green-800">{success}</p>}
             <button
               type="submit"
               disabled={loading}
-              className="mt-2 bg-primary text-white py-4 rounded-xl font-semibold tracking-wide shadow-md hover:scale-[1.02] transition"
+              className="mt-2 h-12 w-full rounded-2xl bg-gradient-to-r from-[#F59E0B] to-[#FBBF24] text-sm font-semibold uppercase tracking-wide text-white shadow-sm transition hover:brightness-95 disabled:opacity-60"
             >
               {loading ? "CREATING..." : "Create Account"}
             </button>
-            <p className="text-sm mt-2">
-              <Link
-                href="/login"
-                className="text-red-500 hover:underline"
-              >
+
+            <div className="mt-4 text-center text-sm text-[#6B7280]">
+              Already have an account?{" "}
+              <Link href="/login" className="font-semibold text-[#111827] hover:underline">
                 Login
               </Link>
-            </p>
+            </div>
           </form>
         ) : (
-          <form onSubmit={verifyOtp} className="flex flex-col gap-5">
-            <input
-              type="tel"
-              placeholder="Mobile number (+91...)"
-              value={phone}
-              onChange={(e) => setPhone(e.target.value)}
-              className="w-full px-6 py-4 rounded-full border-2 border-[#7B3010] bg-transparent outline-none"
-            />
+          <form onSubmit={verifyOtp} className="mt-8 flex flex-col gap-4">
+            <label className="block">
+              <div className="relative">
+                <Phone className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-[#9CA3AF]" />
+                <input
+                  type="tel"
+                  inputMode="tel"
+                  autoComplete="tel"
+                  placeholder="Mobile number (+91...)"
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
+                  className="h-12 w-full rounded-2xl border border-[#E5E7EB] bg-white pl-12 pr-4 text-sm text-[#111827] outline-none transition focus:border-[#FFC222] focus:ring-4 focus:ring-[#FFC222]/20"
+                />
+              </div>
+            </label>
             <button
               type="button"
               onClick={() => void requestOtp()}
               disabled={otpLoading || !phone.trim()}
-              className="bg-white text-[#7B3010] py-3 rounded-xl font-semibold tracking-wide shadow-sm border-2 border-[#7B3010] disabled:opacity-60"
+              className="h-12 w-full rounded-2xl border border-[#E5E7EB] bg-white text-sm font-semibold uppercase tracking-wide text-[#111827] transition hover:bg-[#F9FAFB] disabled:opacity-60"
             >
               {otpLoading ? "SENDING OTP..." : otpSent ? "Resend OTP" : "Send OTP"}
             </button>
             <input
               type="text"
+              inputMode="numeric"
               placeholder="Enter 6-digit OTP"
               value={otp}
               onChange={(e) => setOtp(e.target.value)}
-              className="w-full px-6 py-4 rounded-full border-2 border-[#7B3010] bg-transparent outline-none"
+              className="h-12 w-full rounded-2xl border border-[#E5E7EB] bg-white px-4 text-sm text-[#111827] outline-none transition focus:border-[#FFC222] focus:ring-4 focus:ring-[#FFC222]/20"
             />
-            {error && <p className="text-left text-sm text-red-600">{error}</p>}
-            {success && <p className="text-left text-sm text-green-700">{success}</p>}
+            {error && <p className="rounded-xl bg-red-50 px-3 py-2 text-left text-sm text-red-700">{error}</p>}
+            {success && <p className="rounded-xl bg-green-50 px-3 py-2 text-left text-sm text-green-800">{success}</p>}
             <button
               type="submit"
               disabled={verifyLoading || otp.trim().length !== 6}
-              className="mt-2 bg-primary text-white py-4 rounded-xl font-semibold tracking-wide shadow-md hover:scale-[1.02] transition disabled:opacity-60"
+              className="mt-2 h-12 w-full rounded-2xl bg-gradient-to-r from-[#F59E0B] to-[#FBBF24] text-sm font-semibold uppercase tracking-wide text-white shadow-sm transition hover:brightness-95 disabled:opacity-60"
             >
               {verifyLoading ? "VERIFYING..." : "Verify OTP & Continue"}
             </button>
-            <p className="text-sm mt-2">
-              <Link
-                href="/login"
-                className="text-red-500 hover:underline"
-              >
+
+            <div className="mt-4 text-center text-sm text-[#6B7280]">
+              Already have an account?{" "}
+              <Link href="/login" className="font-semibold text-[#111827] hover:underline">
                 Login
               </Link>
-            </p>
+            </div>
           </form>
         )}
+          <div className="mt-6">
+            <div className="flex items-center gap-3">
+              <div className="h-px flex-1 bg-[#E5E7EB]" />
+              <span className="text-xs font-semibold uppercase tracking-widest text-[#9CA3AF]">or</span>
+              <div className="h-px flex-1 bg-[#E5E7EB]" />
+            </div>
+            <div className="mt-4 text-center">
+              <Link href="/" className="inline-flex items-center gap-2 text-sm font-medium text-[#111827] hover:underline">
+                ← Back to website
+              </Link>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   );

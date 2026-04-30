@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
+import Link from "next/link"
 import { authedFetch, authedPost } from "@/lib/dashboard-fetch"
 
 type RecoverySettings = {
@@ -55,9 +56,17 @@ export default function AbandonedCartSettingsPage() {
 
   return (
     <section className="mx-auto max-w-4xl space-y-4">
-      <div>
-        <h1 className="font-melon text-2xl font-bold text-[#4A1D1F]">Abandoned Cart Settings</h1>
-        <p className="text-sm text-[#646464]">Configure detection threshold, channels, and reminder sequence.</p>
+      <div className="flex items-end justify-between gap-3">
+        <div>
+          <h1 className="font-melon text-2xl font-bold text-[#4A1D1F]">Abandoned Cart Settings</h1>
+          <p className="text-sm text-[#646464]">Configure detection threshold, channels, and reminder sequence.</p>
+        </div>
+        <Link
+          href="/admin/abandoned-carts"
+          className="rounded-full border border-[#E8DCC8] bg-white px-4 py-2 text-xs font-semibold uppercase tracking-wide text-[#4A1D1F] hover:bg-[#FFFBF3]"
+        >
+          Back
+        </Link>
       </div>
       {error ? <p className="rounded bg-red-50 px-3 py-2 text-sm text-red-800">{error}</p> : null}
       <div className="grid gap-3 rounded-xl border border-[#E8DCC8] bg-white p-4 md:grid-cols-2">
