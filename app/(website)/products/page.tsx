@@ -405,7 +405,7 @@ const toggleTag = (tagId: string) => {
             return (
               <article
                 key={`${product.id || product.slug || "product"}-${idx}`}
-                className="group relative rounded-2xl border-2 border-transparent p-4 transition-all duration-300 hover:ring-4 hover:ring-[#F36E21] hover:shadow-xl]"
+                className="group relative flex h-full flex-col rounded-2xl border-2 border-transparent p-4 transition-all duration-300 hover:ring-4 hover:ring-[#F36E21] hover:shadow-xl"
                 style={{ backgroundColor: "#3EA6CF" }}
               >
               <button
@@ -449,7 +449,7 @@ const toggleTag = (tagId: string) => {
                 </div>
               </Link>
 
-                <div className="mt-3 flex items-center justify-between gap-2 font-melon tracking-wide font-light">
+                <div className="mt-auto flex items-end justify-between gap-2 pt-2 font-melon tracking-wide font-light">
                   {(cartQtyBySlug[product.slug] ?? 0) > 0 && product.productKind === "simple" ? (
                     <div className="flex items-center rounded-md border border-[#d5c4b8] bg-white/95 px-1 py-0.5">
                       <button

@@ -3,7 +3,7 @@
 import { Suspense, useEffect, useMemo, useState } from "react"
 import Link from "next/link"
 import Image from "next/image"
-import { Facebook, Twitter, Linkedin, X } from "lucide-react"
+import { Facebook, Twitter, Linkedin, X, Heart } from "lucide-react"
 import { User, Star, Package } from "lucide-react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query"
@@ -371,8 +371,8 @@ const cancelPendingOrder = async (orderId: string) => {
               activeTab === "favorite" ? "bg-[#FDE2E7] text-[#7A1F2A]" : "text-[#374151] hover:bg-[#F3F4F6]"
             }`}
           >
-            <Star size={18} />
-            <span className="font-medium">wishlist</span>
+            <Heart size={18} />
+            <span className="font-medium">Wishlist</span>
           </div>
 
           <div
@@ -457,13 +457,13 @@ const cancelPendingOrder = async (orderId: string) => {
                 Manage Profile
               </button>
                         <div className="">
-            <button
+            {/* <button
               type="button"
               onClick={handleLogout}
               className="rounded-md bg-[#5A272A] px-4 py-2 text-xs font-semibold uppercase tracking-wide text-white hover:bg-[#451f21]"
             >
               Logout
-            </button>
+            </button> */}
           </div>
           </div>
 
