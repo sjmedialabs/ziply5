@@ -22,9 +22,7 @@ const createSchema = z.object({
       notes: z.string().optional(),
       imageUrl: z.string().optional()
     })
-  ).optional(),
-  productId: z.string().min(1),
-  userId: z.string().min(1),
+  ).min(1).optional(),
   status: z.string().optional()
 })
 

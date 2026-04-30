@@ -15,6 +15,8 @@ const FULFILLMENT_TABLES = ["OrderFulfillment", "order_fulfillments"]
 const ORDER_STATUS_HISTORY_TABLES = ["OrderStatusHistory", "order_status_history"]
 const COD_SETTLEMENT_TABLES = ["CodSettlement", "cod_settlements"]
 const REFUND_RECORD_TABLES = ["RefundRecord", "refund_records"]
+const RETURN_REQUEST_TABLES = ["ReturnRequest", "return_requests"]
+const RETURN_REQUEST_ITEM_TABLES = ["ReturnRequestItem", "return_request_items"]
 const ORDER_ITEM_TABLES = ["OrderItem", "order_items"]
 const SHIPMENT_ITEM_TABLES = ["ShipmentItem", "shipment_items"]
 
@@ -1279,7 +1281,7 @@ export const getOrderByIdSupabaseBasic = async (orderId: string) => {
         }
       })
 
-      const [transactionRows, noteRows, statusHistoryRows, refundRows] = await Promise.all([
+      const [transactionRows, noteRows, statusHistoryRows, refundRows, returnRequestRows] = await Promise.all([
         fetchRowsByForeignKey(TRANSACTION_TABLES, { camel: "orderId", snake: "order_id" }, orderId, {
           orderBy: { camel: "createdAt", snake: "created_at", ascending: false },
         }),
@@ -1295,7 +1297,21 @@ export const getOrderByIdSupabaseBasic = async (orderId: string) => {
         fetchRowsByForeignKey(REFUND_RECORD_TABLES, { camel: "orderId", snake: "order_id" }, orderId, {
           orderBy: { camel: "createdAt", snake: "created_at", ascending: false },
         }),
+        fetchRowsByForeignKey(RETURN_REQUEST_TABLES, { camel: "orderId", snake: "order_id" }, orderId, {
+          orderBy: { camel: "createdAt", snake: "created_at", ascending: false },
+        }),
       ])
+      const returnRequestItemRows: Array<Record<string, unknown>> = []
+      for (const req of returnRequestRows) {
+        const reqId = safeString((req as any).id)
+        if (!reqId) continue
+        const rows = await fetchRowsByForeignKey(
+          RETURN_REQUEST_ITEM_TABLES,
+          { camel: "returnRequestId", snake: "return_request_id" },
+          reqId,
+        )
+        returnRequestItemRows.push(...rows)
+      }
 
       const row = data as Record<string, unknown>
       const userId = safeString(row.userId ?? row.user_id) || null
@@ -1344,6 +1360,32 @@ export const getOrderByIdSupabaseBasic = async (orderId: string) => {
         amount: safeNumber(refund.amount, 0),
       }))
 
+      const returnItemsByRequestId = new Map<string, Array<Record<string, unknown>>>()
+      for (const item of returnRequestItemRows) {
+        const requestId = safeString((item as any).returnRequestId ?? (item as any).return_request_id)
+        if (!requestId) continue
+        const list = returnItemsByRequestId.get(requestId) ?? []
+        list.push(item)
+        returnItemsByRequestId.set(requestId, list)
+      }
+      const returnRequests = returnRequestRows.map((req) => {
+        const reqId = safeString((req as any).id)
+        const items = (returnItemsByRequestId.get(reqId) ?? []).map((item) => ({
+          id: safeString((item as any).id),
+          orderItemId: safeString((item as any).orderItemId ?? (item as any).order_item_id),
+          requestedQty: safeNumber((item as any).requestedQty ?? (item as any).requested_qty, 0),
+        }))
+        return {
+          id: reqId,
+          status: safeString((req as any).status),
+          reason: safeString((req as any).reason) || null,
+          productId: safeString((req as any).productId ?? (req as any).product_id) || null,
+          imageUrl: safeString((req as any).imageUrl ?? (req as any).image_url) || null,
+          createdAt: (req as any).createdAt ?? (req as any).created_at ?? null,
+          items,
+        }
+      })
+
       return {
         ...row,
         id: safeString(row.id),
@@ -1365,6 +1407,7 @@ export const getOrderByIdSupabaseBasic = async (orderId: string) => {
         transactions,
         statusHistory,
         refunds,
+        returnRequests,
         notes,
         user,
       } satisfies SupabaseOrderRecord

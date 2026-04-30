@@ -3,7 +3,7 @@
 import { Suspense, useEffect, useMemo, useState } from "react"
 import Link from "next/link"
 import Image from "next/image"
-import { Facebook, Twitter, Linkedin, X, Heart } from "lucide-react"
+import { Facebook, Twitter, Linkedin, X, Heart, Camera } from "lucide-react"
 import { User, Star, Package } from "lucide-react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query"
@@ -26,6 +26,7 @@ type ApiOrderRow = {
   createdAt: string
   items: Array<{ id: string; productId: string; quantity: number; product: { name: string } }>
   transactions?: Array<{ status: string }>
+  returnRequests?: Array<{ id: string; status: string; productId?: string | null }>
 }
 
 function ProfilePageContent() {
@@ -59,6 +60,13 @@ function ProfilePageContent() {
     quantity: number;
     uploading: boolean;
   }>>({})
+  const getReturnedProductIds = (order: ApiOrderRow) =>
+    new Set(
+      (order.returnRequests ?? [])
+        .filter((req) => String(req.status ?? "").toLowerCase() !== "rejected")
+        .map((req) => String(req.productId ?? "").trim())
+        .filter(Boolean),
+    )
 
   useEffect(() => {
     const fetchReasons = async () => {
@@ -85,10 +93,13 @@ function ProfilePageContent() {
   const openReturnModal = (order: ApiOrderRow) => {
     setSelectedOrderForReturn(order)
     const initialItems: typeof selectedItemsForReturn = {}
-    const autoSelect = order.items.length === 1
+    const returnedProductIds = getReturnedProductIds(order)
+    const selectableItems = order.items.filter((item) => !returnedProductIds.has(String(item.productId ?? "").trim()))
+    const autoSelect = selectableItems.length === 1
     order.items.forEach(item => {
+      const blocked = returnedProductIds.has(String(item.productId ?? "").trim())
       initialItems[item.id] = {
-        selected: autoSelect,
+        selected: !blocked && autoSelect,
         productId: item.productId,
         reasonCode: "",
         notes: "",
@@ -133,8 +144,9 @@ function ProfilePageContent() {
 
   const submitReturnRequest = async () => {
     if (!selectedOrderForReturn) return
+    const returnedProductIds = getReturnedProductIds(selectedOrderForReturn)
     const itemsToReturn = Object.entries(selectedItemsForReturn)
-      .filter(([_, data]) => data.selected)
+      .filter(([_, data]) => data.selected && !returnedProductIds.has(String(data.productId ?? "").trim()))
       .map(([id, data]) => ({
         orderItemId: id,
         productId: data.productId,
@@ -145,7 +157,7 @@ function ProfilePageContent() {
       }))
 
     if (itemsToReturn.length === 0) {
-      toast.error("Validation Error", "Please select at least one item to return.")
+      toast.error("Validation Error", "Please select at least one return-eligible item.")
       return
     }
 
@@ -197,7 +209,7 @@ function ProfilePageContent() {
     queryFn: async () => {
       const token = window.localStorage.getItem("ziply5_access_token");
       const userId = JSON.parse(window.localStorage.getItem("ziply5_user") || "{}").id;
-      const res = await fetch("/api/v1/profile", {
+      const res = await fetch(`/api/v1/profile?userId=${encodeURIComponent(userId)}`, {
         headers: {
           Authorization: `Bearer ${token}`,
           "x-user-id": userId
@@ -223,7 +235,7 @@ function ProfilePageContent() {
     mutationFn: async (payload: typeof editForm) => {
       const token = window.localStorage.getItem("ziply5_access_token")
       const userId = JSON.parse(window.localStorage.getItem("ziply5_user") || "{}").id
-      const res = await fetch("/api/v1/profile", {
+      const res = await fetch(`/api/v1/profile?userId=${encodeURIComponent(userId)}`, {
         method: "PATCH",
         headers: {
           "Content-Type": "application/json",
@@ -246,7 +258,7 @@ function ProfilePageContent() {
     mutationFn: async () => {
       const token = window.localStorage.getItem("ziply5_access_token")
       const userId = JSON.parse(window.localStorage.getItem("ziply5_user") || "{}").id
-      const res = await fetch("/api/v1/profile", {
+      const res = await fetch(`/api/v1/profile?userId=${encodeURIComponent(userId)}`, {
         method: "DELETE",
         headers: {
           Authorization: `Bearer ${token}`,
@@ -862,7 +874,10 @@ function ProfilePageContent() {
                           {order.status.toLowerCase() === "delivered" && (
                             <button
                               type="button"
-                              disabled={orderActionBusy === `${order.id}:return_request`}
+                              disabled={
+                                orderActionBusy === `${order.id}:return_request` ||
+                                !order.items.some((item) => !getReturnedProductIds(order).has(String(item.productId ?? "").trim()))
+                              }
                               onClick={() => openReturnModal(order)}
                               className="rounded-md border border-[#E8DCC8] bg-white px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-[#4A1D1F] disabled:opacity-40"
                             >
@@ -918,6 +933,8 @@ function ProfilePageContent() {
                         {selectedOrderForReturn.items.map((item) => {
                           const itemState = selectedItemsForReturn[item.id]
                           if (!itemState) return null
+                          const returnedProductIds = getReturnedProductIds(selectedOrderForReturn)
+                          const blocked = returnedProductIds.has(String(item.productId ?? "").trim())
 
                           return (
                             <div key={item.id} className="border border-gray-200 rounded-xl p-4 space-y-4">
@@ -934,10 +951,11 @@ function ProfilePageContent() {
                                 <div>
                                   <p className="text-sm font-semibold text-gray-900">{item.product.name}</p>
                                   <p className="text-xs text-gray-500">Qty: {item.quantity}</p>
+                                  {blocked ? <p className="text-[11px] font-semibold text-amber-700">Return already requested for this product.</p> : null}
                                 </div>
                               </div>
 
-                              {itemState.selected && (
+                              {itemState.selected && !blocked && (
                                 <div className="pl-7 space-y-3">
                                   <div>
                                     <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Reason</label>

@@ -298,27 +298,70 @@ export const listReturnRequests = () =>
 export const updateReturnStatus = (id: string, status: string) =>
   pgQuery(`UPDATE "ReturnRequest" SET status=$2, "updatedAt"=now() WHERE id=$1 RETURNING *`, [id, status]).then((r) => r[0])
 
-export const createReturnRequest = async (orderId: string, userId: string | null, reason?: string) => {
+export const createReturnRequest = async (
+  orderId: string,
+  userId: string | null,
+  reason?: string,
+  items?: Array<{ orderItemId: string; productId: string; requestedQty: number; reasonCode?: string; notes?: string; imageUrl?: string }>,
+) => {
   const orderRows = await pgQuery<Array<{ id: string; status: string }>>(`SELECT id, status FROM "Order" WHERE id=$1 LIMIT 1`, [orderId])
   const order = orderRows[0]
   if (!order) throw new Error("Order not found")
   if (String(order.status) !== "delivered") throw new Error("Returns are allowed only for delivered orders")
+  const cleanItems = (items ?? []).filter((item) => item.productId && item.orderItemId)
+  if (cleanItems.length === 0) throw new Error("At least one return item is required")
 
-  const dup = await pgQuery<Array<{ id: string }>>(
-    `SELECT id FROM "ReturnRequest" WHERE "orderId"=$1 AND status <> 'rejected' LIMIT 1`,
-    [orderId],
-  )
-  if (dup[0]) throw new Error("Return request already exists for this order")
-
-  const created = await pgQuery<Array<Record<string, unknown>>>(
+  const productIds = [...new Set(cleanItems.map((item) => item.productId))]
+  const existingRows = await pgQuery<Array<{ productId: string | null; status: string }>>(
     `
-      INSERT INTO "ReturnRequest" (id, "orderId", "userId", reason, status, "createdAt", "updatedAt")
-      VALUES ($1, $2, $3, $4, 'requested', now(), now())
-      RETURNING *
+      SELECT rr."productId" as "productId", rr.status
+      FROM "ReturnRequest" rr
+      WHERE rr."orderId" = $1
+        AND rr.status <> 'rejected'
+        AND rr."productId" = ANY($2::text[])
     `,
-    [randomUUID(), orderId, userId ?? null, reason?.trim() || null],
+    [orderId, productIds],
   )
-  return created[0]
+  const existingProductIds = new Set(
+    existingRows
+      .map((row) => row.productId)
+      .filter((value): value is string => Boolean(value)),
+  )
+  const creatableItems = cleanItems.filter((item) => !existingProductIds.has(item.productId))
+  if (creatableItems.length === 0) {
+    throw new Error("Return request already exists for selected order item(s)")
+  }
+
+  const createdRows: Array<Record<string, unknown>> = []
+  for (const item of creatableItems) {
+    const rowId = randomUUID()
+    const itemReason = [item.reasonCode?.trim(), item.notes?.trim(), item.imageUrl ? `Image: ${item.imageUrl}` : null]
+      .filter(Boolean)
+      .join(" | ")
+    const combinedReason = [reason?.trim(), itemReason].filter(Boolean).join(" - ")
+
+    const created = await pgQuery<Array<Record<string, unknown>>>(
+      `
+        INSERT INTO "ReturnRequest" (id, "orderId", "userId", "productId", reason, "imageUrl", status, "createdAt", "updatedAt")
+        VALUES ($1, $2, $3, $4, $5, $6, 'requested', now(), now())
+        RETURNING *
+      `,
+      [rowId, orderId, userId ?? null, item.productId, combinedReason || null, item.imageUrl ?? null],
+    )
+    createdRows.push(created[0])
+
+    await pgQuery(
+      `
+        INSERT INTO "ReturnRequestItem" (
+          id, "returnRequestId", "orderItemId", "requestedQty", "receivedQty", "reasonCode", notes, "createdAt", "updatedAt"
+        )
+        VALUES ($1, $2, $3, $4, 0, $5, $6, now(), now())
+      `,
+      [randomUUID(), rowId, item.orderItemId, item.requestedQty, item.reasonCode ?? null, item.notes?.trim() || null],
+    )
+  }
+
+  return createdRows[0]
 }
 
 export const listAbandonedCarts = () =>
