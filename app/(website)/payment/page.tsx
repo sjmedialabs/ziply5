@@ -425,12 +425,8 @@ const handleOnlinePayment = async () => {
         ondismiss: () => {
           setStatusText("Payment interrupted. You can retry.");
           setError("Payment was not completed. Please retry.");
-<<<<<<< HEAD
-          setPaying(false);
-          void postCartEvent("payment_cancelled", { source: "razorpay_modal_dismiss" })
-=======
           setProcessingGateway(null);
->>>>>>> 301e5d9ede7460db01cea88884103f98e5416622
+          void postCartEvent("payment_cancelled", { source: "razorpay_modal_dismiss" });
         },
       },
     });
@@ -452,39 +448,27 @@ const handlePlaceOrder = async () => {
   try {
     setProcessingGateway("ONLINE");
     setError("");
-<<<<<<< HEAD
     setStatusText(retryMode ? "Retrying payment..." : "Creating order...");
-    try {
-      void postCartEvent("payment_attempted", { retryMode })
-      const token = window.localStorage.getItem("ziply5_access_token");
-      if (!token) throw new Error("Please login to continue.");
-      const orderId = retryMode ? createdOrderId : createdOrderId ?? (await createOrderMutation.mutateAsync(token));
-      if (!orderId) throw new Error("Order not found for retry.");
-      if (!createdOrderId) {
-        setCreatedOrderId(orderId);
-        window.localStorage.setItem("ziply5_pending_order_id", orderId);
-      }
-=======
+    void postCartEvent("payment_attempted", { retryMode });
 
-    const token = window.localStorage.getItem("ziply5_access_token"); // Ensure token is available
-    if (!token) throw new Error("Login required");
+    const token = window.localStorage.getItem("ziply5_access_token");
+    if (!token) throw new Error("Please login to continue.");
 
-    // ✅ ONLINE PAYMENT FLOW (Retry mode only triggers this)
     if (!scriptReady || !window.Razorpay) {
       throw new Error("Payment gateway not ready");
-    } else {
-      setStatusText("Creating order...");
-      const orderId =
-        createdOrderId ??
-        (await createOrderMutation.mutateAsync({ token, gateway: "razorpay" }));
+    }
 
+    const orderId = retryMode
+      ? createdOrderId
+      : createdOrderId ?? (await createOrderMutation.mutateAsync({ token, gateway: "razorpay" }));
+    if (!orderId) throw new Error("Order not found for retry.");
+    if (!createdOrderId) {
       setCreatedOrderId(orderId);
       window.localStorage.setItem("ziply5_pending_order_id", orderId);
-
->>>>>>> 301e5d9ede7460db01cea88884103f98e5416622
-      setStatusText("Redirecting to payment...");
-      await openRazorpay(token, orderId);
     }
+
+    setStatusText("Redirecting to payment...");
+    await openRazorpay(token, orderId);
   } catch (e) {
     setError(e instanceof Error ? e.message : "Something failed");
     setProcessingGateway(null);
