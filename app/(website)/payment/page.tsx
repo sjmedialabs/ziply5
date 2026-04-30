@@ -15,13 +15,14 @@ function PaymentPageInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [scriptReady, setScriptReady] = useState(false);
-  const [paying, setPaying] = useState(false);
+  const [processingGateway, setProcessingGateway] = useState<"COD" | "ONLINE" | null>(null);
   const [error, setError] = useState("");
   const [statusText, setStatusText] = useState("");
   const [loggedIn, setLoggedIn] = useState(false);
   const [createdOrderId, setCreatedOrderId] = useState<string | null>(null);
   const [retryAmount, setRetryAmount] = useState<number | null>(null);
   const [retryMode, setRetryMode] = useState(false);
+  const [couponAdjustedTotal, setCouponAdjustedTotal] = useState<number | null>(null);
   const autoRetryTriggeredRef = useRef(false);
   const [billingAddress, setBillingAddress] = useState({
     fullName: "",
@@ -37,11 +38,17 @@ function PaymentPageInner() {
   const items = useMemo(() => getCartItems(), []);
   const subTotal = items.reduce((sum, item) => sum + item.price * item.quantity, 0);
   const shipping = items.length > 0 ? 20 : 0;
-  const total = subTotal + shipping;
-  const payableAmount = retryMode ? retryAmount ?? total : total;
+  const calculatedTotal = subTotal + shipping; // Renamed to avoid confusion with couponAdjustedTotal
+  const payableAmount = useMemo(() => {
+    if (retryMode) {
+      return retryAmount ?? calculatedTotal;
+    }
+    // If not in retry mode, use the coupon-adjusted total from localStorage if available, otherwise use the calculated total.
+    return couponAdjustedTotal ?? calculatedTotal;
+  }, [retryMode, retryAmount, couponAdjustedTotal, calculatedTotal]);
 
   const createOrderMutation = useMutation({
-    mutationFn: async (token: string) => {
+    mutationFn: async ({ token, gateway }: { token: string; gateway: "cod" | "razorpay" }) => {
       const checkoutRef =
         window.localStorage.getItem("ziply5_checkout_ref") ??
         (typeof crypto !== "undefined" && "randomUUID" in crypto
@@ -57,15 +64,28 @@ function PaymentPageInner() {
         },
         body: JSON.stringify({
           items: items.map((i) => ({
-            slug: i.slug,
-            quantity: i.quantity ?? 1,
+            slug: i.slug, // REQUIRED
+            quantity: Number(i.quantity ?? 1),
           })),
           shipping,
-          gateway: "razorpay",
-          billingAddress,
-          paymentStatus: "pending",
-          paymentId: `checkout_ref:${checkoutRef}`,
-        }),
+          gateway,
+
+          billingAddress: {
+            fullName: billingAddress.fullName,
+            line1: billingAddress.line1,
+            city: billingAddress.city,
+            state: billingAddress.state,
+            postalCode: billingAddress.postalCode,
+            country: billingAddress.country,
+            phone: billingAddress.phone || "",
+          },
+
+          paymentStatus: gateway === "cod" ? "pending" : "pending",
+          paymentId:
+            gateway === "cod"
+              ? undefined
+              : `checkout_ref:${checkoutRef}`,
+        })
       });
       const json = (await res.json()) as { success?: boolean; message?: string; data?: { id: string } };
       if (!res.ok || json.success === false || !json.data?.id) {
@@ -148,8 +168,87 @@ function PaymentPageInner() {
         setHasCheckoutBilling(false);
       }
     }
-  }, []);
 
+    const savedFinalTotal = window.localStorage.getItem("ziply5_final_total");
+    if (savedFinalTotal) {
+      const parsedTotal = Number(savedFinalTotal);
+      if (Number.isFinite(parsedTotal)) {
+        setCouponAdjustedTotal(parsedTotal);
+      }
+    }
+  }, []);
+const handleCOD = async () => {
+  try {
+    if (!loggedIn) {
+      askLogin();
+      return;
+    }
+
+    if (!billingAddress.fullName.trim()) {
+      setError("Fill billing details.");
+      return;
+    }
+
+    setProcessingGateway("COD");
+    setError("");
+    setStatusText("Placing order...");
+
+    const token = window.localStorage.getItem("ziply5_access_token");
+    if (!token) throw new Error("Login required");
+
+    const orderId = await createOrderMutation.mutateAsync({ token, gateway: "cod" });
+
+    // ✅ cleanup
+    setCartItems([]);
+    window.localStorage.removeItem("ziply5_checkout_ref");
+    window.localStorage.removeItem("ziply5_final_total");
+
+    setProcessingGateway(null);
+
+    router.push(`/order-success?orderId=${orderId}`);
+  } catch (e) {
+    setError(e instanceof Error ? e.message : "COD failed");
+    setProcessingGateway(null);
+  }
+};
+const handleOnlinePayment = async () => {
+  try {
+    if (!loggedIn) {
+      askLogin();
+      return;
+    }
+
+    if (!billingAddress.fullName.trim()) {
+      setError("Fill billing details.");
+      return;
+    }
+
+    if (!scriptReady || !window.Razorpay) {
+      throw new Error("Payment gateway not ready");
+    }
+
+    setProcessingGateway("ONLINE");
+    setError("");
+    setStatusText("Creating order...");
+
+    const token = window.localStorage.getItem("ziply5_access_token");
+    if (!token) throw new Error("Login required");
+
+    const orderId =
+      createdOrderId ??
+      (await createOrderMutation.mutateAsync({ token, gateway: "razorpay" }));
+
+    setCreatedOrderId(orderId);
+    window.localStorage.setItem("ziply5_pending_order_id", orderId);
+
+    setStatusText("Redirecting to payment...");
+
+    await openRazorpay(token, orderId);
+  } catch (e) {
+    setError(e instanceof Error ? e.message : "Payment failed");
+    setProcessingGateway(null);
+  }
+};
   useEffect(() => {
     const retryOrderId = searchParams.get("orderId");
     if (!retryOrderId) return;
@@ -275,6 +374,7 @@ function PaymentPageInner() {
           })
           const verifyJson = (await verifyRes.json()) as { success?: boolean; message?: string }
           if (!verifyRes.ok || verifyJson.success === false) {
+            window.localStorage.removeItem("ziply5_final_total"); // Clear coupon-adjusted total on verification failure
             throw new Error(verifyJson.message ?? "Payment verification failed")
           }
 
@@ -283,8 +383,9 @@ function PaymentPageInner() {
           window.localStorage.removeItem("ziply5_checkout_ref");
           setCartItems([]);
           router.push(`/payment-success?orderId=${orderId}`);
+          window.localStorage.removeItem("ziply5_final_total"); // Clear coupon-adjusted total on successful online payment
         } catch (error) {
-          setPaying(false)
+          setProcessingGateway(null)
           setError(error instanceof Error ? error.message : "Payment verification failed")
         }
       },
@@ -292,56 +393,57 @@ function PaymentPageInner() {
         ondismiss: () => {
           setStatusText("Payment interrupted. You can retry.");
           setError("Payment was not completed. Please retry.");
-          setPaying(false);
+          setProcessingGateway(null);
         },
       },
     });
     razorpay.open();
   };
 
-  const payNow = async () => {
-    if (!loggedIn) {
-      setError("Please login to complete purchase.");
-      askLogin();
-      return;
-    }
-    if (!retryMode && items.length === 0) {
-      setError("Your cart is empty.");
-      return;
-    }
-    if (!billingAddress.fullName.trim() || !billingAddress.city.trim() || !billingAddress.state.trim() || !billingAddress.postalCode.trim()) {
-      setError("Please fill required billing address fields.");
-      return;
-    }
-    if (!scriptReady || !window.Razorpay) {
-      setError("Razorpay checkout is not ready yet.");
-      return;
-    }
+const handlePlaceOrder = async () => {
+  if (!loggedIn) {
+    setError("Please login to complete purchase.");
+    askLogin();
+    return;
+  }
 
-    setPaying(true);
+  if (!billingAddress.fullName.trim()) {
+    setError("Fill billing details.");
+    return;
+  }
+
+  try {
+    setProcessingGateway("ONLINE");
     setError("");
-    setStatusText(retryMode ? "Retrying payment..." : "Creating order...");
-    try {
-      const token = window.localStorage.getItem("ziply5_access_token");
-      if (!token) throw new Error("Please login to continue.");
-      const orderId = retryMode ? createdOrderId : createdOrderId ?? (await createOrderMutation.mutateAsync(token));
-      if (!orderId) throw new Error("Order not found for retry.");
-      if (!createdOrderId) {
-        setCreatedOrderId(orderId);
-        window.localStorage.setItem("ziply5_pending_order_id", orderId);
-      }
+
+    const token = window.localStorage.getItem("ziply5_access_token"); // Ensure token is available
+    if (!token) throw new Error("Login required");
+
+    // ✅ ONLINE PAYMENT FLOW (Retry mode only triggers this)
+    if (!scriptReady || !window.Razorpay) {
+      throw new Error("Payment gateway not ready");
+    } else {
+      setStatusText("Creating order...");
+      const orderId =
+        createdOrderId ??
+        (await createOrderMutation.mutateAsync({ token, gateway: "razorpay" }));
+
+      setCreatedOrderId(orderId);
+      window.localStorage.setItem("ziply5_pending_order_id", orderId);
+
       setStatusText("Redirecting to payment...");
       await openRazorpay(token, orderId);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Payment failed.");
-      setPaying(false);
     }
-  };
+  } catch (e) {
+    setError(e instanceof Error ? e.message : "Something failed");
+    setProcessingGateway(null);
+  }
+};
 
   useEffect(() => {
     if (!retryMode || !createdOrderId || !loggedIn || !scriptReady || autoRetryTriggeredRef.current) return;
     autoRetryTriggeredRef.current = true;
-    void payNow();
+    void handlePlaceOrder();
   }, [retryMode, createdOrderId, loggedIn, scriptReady]);
 
   const retryPayment = async () => {
@@ -351,14 +453,14 @@ function PaymentPageInner() {
       setError("Please login to retry payment.");
       return;
     }
-    setPaying(true);
+    setProcessingGateway("ONLINE");
     setError("");
     setStatusText("Retrying payment...");
     try {
       await openRazorpay(token, createdOrderId);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Retry failed.");
-      setPaying(false);
+      setProcessingGateway(null);
     }
   };
 
@@ -445,28 +547,44 @@ function PaymentPageInner() {
         <div className="mb-5 rounded-xl border px-4 py-3 text-sm text-[#646464]">
           Payable amount: <span className="font-semibold text-[#7B3010]">Rs. {payableAmount.toFixed(2)}</span>
         </div>
-        
-        {error && <p className="mb-3 text-sm text-red-600">{error}</p>}
-        {statusText && !error && <p className="mb-3 text-sm text-[#646464]">{statusText}</p>}
+      <div className="flex flex-row gap-3">
 
-        <button
-          type="button"
-          onClick={() => void payNow()}
-          disabled={paying || !scriptReady || createOrderMutation.isPending || initiatePaymentMutation.isPending}
-          className="w-full bg-primary text-white py-4 rounded-full font-medium shadow-md font-melon tracking-wide disabled:opacity-60"
-        >
-          {paying ? "Processing..." : "Pay Now"}
-        </button>
-        {createdOrderId && (
+  {/* ✅ COD BUTTON */}
+  <button
+    type="button"
+    onClick={() => handleCOD()}
+    disabled={processingGateway !== null || createOrderMutation.isPending}
+    className="w-full hover:bg-primary hover:text-white text-primary border-primary border py-4 rounded-full font-medium"
+  >
+    {processingGateway === "COD" ? "Processing..." : "Cash on Delivery"}
+  </button>
+
+  {/* ✅ PAY NOW BUTTON */}
+  <button
+    type="button"
+    onClick={() => handleOnlinePayment()}
+    disabled={
+      processingGateway !== null ||
+      !scriptReady ||
+      createOrderMutation.isPending ||
+      initiatePaymentMutation.isPending
+    }
+    className="w-full border hover:border-[#7B3010] hover:bg-white hover:text-[#7B3010] bg-primary text-white py-4 rounded-full font-medium"
+  >
+    {processingGateway === "ONLINE" ? "Processing..." : "Pay Now"}
+  </button>
+
+</div>
+        {/* {createdOrderId && (
           <button
             type="button"
             onClick={() => void retryPayment()}
-            disabled={paying || initiatePaymentMutation.isPending}
+            disabled={processingOrder || initiatePaymentMutation.isPending}
             className="mt-3 w-full rounded-full border border-[#E8DCC8] bg-white py-3 text-xs font-semibold uppercase tracking-wide text-[#4A1D1F] disabled:opacity-40"
           >
             Retry Payment
           </button>
-        )}
+        )} */}
       </div>
     </div>
   );

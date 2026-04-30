@@ -8,14 +8,16 @@ import { createOrderFromCheckout } from "@/src/server/modules/orders/orders.serv
 export async function POST(request: NextRequest) {
   const blocked = checkRateLimit(request, "orders:create", { limit: 15, windowMs: 60_000 })
   if (blocked) return blocked
-
+  console.log("Processing order creation request...")
   try {
     const user = optionalAuth(request)
     const body = await request.json()
+    console.log("Request body:", body)
     const parsed = createOrderSchema.safeParse(body)
     if (!parsed.success) return fail("Validation failed", 422, parsed.error.flatten())
-
     const userId = user?.role === "customer" ? user.sub : null
+  console.log("Parsed data:", parsed.data)
+  console.log("Before createOrderFromCheckout")
     const order = await createOrderFromCheckout({
       items: parsed.data.items,
       userId,
@@ -27,9 +29,15 @@ export async function POST(request: NextRequest) {
       paymentStatus: parsed.data.paymentStatus,
       paymentId: parsed.data.paymentId,
     })
-    return ok(order, "Order created", 201)
+    console.log("After createOrderFromCheckout")
+    console.log("Order created successfully:", order)
+    return ok(order, "Order created", 201)  
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unexpected error"
+    console.error("Error creating order:", {
+      message,
+      stack: error instanceof Error ? error.stack : undefined,
+    })
     return fail(message, 400)
   }
 }

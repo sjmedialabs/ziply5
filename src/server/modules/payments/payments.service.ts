@@ -1,10 +1,8 @@
-import crypto from "node:crypto"
+import crypto, { randomUUID } from "node:crypto"
 import Stripe from "stripe"
-import { prisma } from "@/src/server/db/prisma"
 import { env } from "@/src/server/core/config/env"
 import { isAutoApproveOrdersEnabled, updateOrderStatus } from "@/src/server/modules/orders/orders.service"
 import {
-  completePendingRefundRecordsSupabase,
   markOrderPaymentSuccessSupabase,
   mirrorOrderStatusSupabase,
   setOrderRefundAndPaymentStatusSupabase,
@@ -14,7 +12,23 @@ import {
   updateRefundRecordStatusSupabase,
   upsertPaidTransactionSupabase,
 } from "@/src/lib/db/orders"
-import { logger } from "@/lib/logger"
+import { getSupabaseAdmin } from "@/src/lib/supabase/admin"
+
+const getOrderById = async (orderId: string) => {
+  const client = getSupabaseAdmin()
+
+  const { data, error } = await client
+    .from("Order")
+    .select("*")
+    .eq("id", orderId)
+    .single()
+
+  if (error || !data) {
+    throw new Error("Order not found")
+  }
+
+  return data
+}
 
 export type PaymentProvider = "razorpay" | "stripe" | "mock"
 
@@ -31,60 +45,68 @@ const amountToMinor = (amount: number) => Math.max(0, Math.round(amount * 100))
 const stripeClient = env.STRIPE_SECRET_KEY
   ? new Stripe(env.STRIPE_SECRET_KEY, { apiVersion: "2025-08-27.basil" })
   : null
-const prismaFallbackEnabled = process.env.PRISMA_FALLBACK_ENABLED === "true"
 
 const upsertTransaction = async (
   orderId: string,
-  provider: PaymentProvider,
+  provider: string,
   externalId: string,
   amount: number,
 ) => {
-  const useSupabaseWrites = process.env.SUPABASE_ORDERS_WRITE_ENABLED === "true"
-  if (useSupabaseWrites) {
-    try {
-      const txId = await upsertPendingTransactionSupabase({
-        orderId,
-        gateway: provider,
-        externalId,
-        amount,
-      })
-      if (txId) return txId
-    } catch (error) {
-      logger.warn("payments.intent_transaction.supabase_fallback_prisma", {
-        orderId,
-        provider,
-        error: error instanceof Error ? error.message : "unknown",
-      })
-    }
-  }
-  if (!prismaFallbackEnabled) {
-    throw new Error("Supabase transaction upsert failed and Prisma fallback is disabled")
+  const client = getSupabaseAdmin()
+
+  // 1. Find existing transaction
+  const { data: existing, error: findError } = await client
+    .from("Transaction")
+    .select("id")
+    .eq("orderId", orderId)
+    .eq("gateway", provider)
+    .order("createdAt", { ascending: false })
+    .limit(1)
+    .maybeSingle()
+
+  if (findError) {
+    throw new Error(`Failed to find transaction: ${findError.message}`)
   }
 
-  const existing = await prisma.transaction.findFirst({
-    where: { orderId, gateway: provider },
-    orderBy: { createdAt: "desc" },
-  })
-  if (existing) {
-    await prisma.$executeRawUnsafe(
-      'UPDATE "Transaction" SET "externalId" = $1, status = $2, amount = $3, gateway = $4 WHERE id = $5',
-      externalId,
-      "pending",
-      amount,
-      provider,
-      existing.id,
-    )
+  // 2. If exists → update
+  if (existing?.id) {
+    const { error: updateError } = await client
+      .from("Transaction")
+      .update({
+        externalId,
+        status: "pending",
+        amount,
+        gateway: provider,
+      })
+      .eq("id", existing.id)
+
+    if (updateError) {
+      throw new Error(`Failed to update transaction: ${updateError.message}`)
+    }
+
     return existing.id
   }
-  const created = await prisma.transaction.create({
-    data: {
-      orderId,
-      gateway: provider,
-      amount,
-      status: "pending",
-      externalId,
-    },
-  })
+
+  // 3. Else → create new
+  const { data: created, error: insertError } = await client
+    .from("Transaction")
+    .insert([
+      {
+        id: randomUUID(),
+        orderId,
+        gateway: provider,
+        amount,
+        status: "pending",
+        externalId,
+      },
+    ])
+    .select("id")
+    .single()
+
+  if (insertError || !created?.id) {
+    throw new Error(`Failed to create transaction: ${insertError?.message}`)
+  }
+
   return created.id
 }
 
@@ -127,49 +149,33 @@ const createStripeIntent = async (input: { orderId: string; amount: number; curr
   }
 }
 
-export const createPaymentIntent = async (input: {
-  orderId: string
-  provider?: string
-  actorRole: string
-  actorUserId: string
-}) => {
+export const createPaymentIntent = async (input) => {
   const provider = normalizeProvider(input.provider)
-  const order = await prisma.order.findUnique({ where: { id: input.orderId } })
-  if (!order) throw new Error("Order not found")
+
+  const order = await getOrderById(input.orderId)
+
   if (input.actorRole === "customer" && order.userId && order.userId !== input.actorUserId) {
     throw new Error("Forbidden")
   }
 
   const amount = Number(order.total)
+
   let externalId = randomId(provider)
-  let clientSecret: string | undefined
 
   if (provider === "razorpay") {
-    externalId = await createRazorpayOrder({ orderId: input.orderId, amount, currency: order.currency })
-  } else if (provider === "stripe") {
-    const stripe = await createStripeIntent({ orderId: input.orderId, amount, currency: order.currency })
-    externalId = stripe.id
-    clientSecret = stripe.clientSecret
+    externalId = await createRazorpayOrder({
+      orderId: input.orderId,
+      amount,
+      currency: order.currency,
+    })
   }
 
   await upsertTransaction(input.orderId, provider, externalId, amount)
-  const useSupabaseWrites = process.env.SUPABASE_ORDERS_WRITE_ENABLED === "true"
-  if (useSupabaseWrites) {
-    setOrderRefundAndPaymentStatusSupabase({
-      orderId: input.orderId,
-      paymentStatus: "PENDING",
-    }).catch(() => null)
-  } else {
-    if (!prismaFallbackEnabled) {
-      throw new Error("SUPABASE_ORDERS_WRITE_ENABLED must be true when Prisma fallback is disabled")
-    }
-    await prisma.order.update({
-      where: { id: input.orderId },
-      data: {
-        paymentStatus: toPaymentStatus("PENDING"),
-      },
-    }).catch(() => null)
-  }
+
+  await setOrderRefundAndPaymentStatusSupabase({
+    orderId: input.orderId,
+    paymentStatus: "PENDING",
+  })
 
   return {
     provider,
@@ -177,8 +183,7 @@ export const createPaymentIntent = async (input: {
     amount,
     currency: order.currency,
     externalId,
-    clientSecret,
-    publicKey: provider === "razorpay" ? env.RAZORPAY_KEY_ID : undefined,
+    publicKey: process.env.RAZORPAY_KEY_ID,
     status: "pending",
   }
 }
@@ -188,13 +193,6 @@ const constantTimeEqual = (a: string, b: string) => {
   const bb = Buffer.from(b)
   if (ab.length !== bb.length) return false
   return crypto.timingSafeEqual(ab, bb)
-}
-
-const toPaymentStatus = (status: "PENDING" | "SUCCESS" | "FAILED" | "REFUNDED") => status
-
-const isMissingTransactionInfraError = (error: unknown) => {
-  const message = error instanceof Error ? error.message : String(error)
-  return /Transaction|transactions?|does not exist|P2021|P2022/i.test(message)
 }
 
 export const verifyRazorpayCheckoutSignature = (input: {
@@ -217,81 +215,15 @@ export const verifyRazorpayPayment = async (input: {
   const valid = verifyRazorpayCheckoutSignature(input)
   if (!valid) throw new Error("Invalid Razorpay signature")
 
-  let txId: string | null = null
-  const supabaseWritesEnabled = process.env.SUPABASE_ORDERS_WRITE_ENABLED === "true"
-  let supabasePersisted = false
-  if (supabaseWritesEnabled) {
-    try {
-      txId = await upsertPaidTransactionSupabase({
-        orderId: input.orderId,
-        razorpayOrderId: input.razorpayOrderId,
-        razorpayPaymentId: input.razorpayPaymentId,
-      })
-      const mirrored = await markOrderPaymentSuccessSupabase(input.orderId, input.razorpayPaymentId)
-      if (!mirrored) {
-        logger.warn("payments.verify.supabase_order_update_noop", { orderId: input.orderId })
-      } else {
-        supabasePersisted = true
-      }
-    } catch (error) {
-      logger.warn("payments.verify.supabase_fallback_prisma", {
-        orderId: input.orderId,
-        error: error instanceof Error ? error.message : "unknown",
-      })
-    }
-  }
+  const txId = await upsertPaidTransactionSupabase({
+    orderId: input.orderId,
+    razorpayOrderId: input.razorpayOrderId,
+    razorpayPaymentId: input.razorpayPaymentId,
+  })
+  if (!txId) throw new Error("Supabase verify payment transaction upsert failed")
 
-  if (!supabasePersisted) {
-    if (!prismaFallbackEnabled) {
-      throw new Error("Supabase verify payment persistence failed and Prisma fallback is disabled")
-    }
-    try {
-      const tx = await prisma.transaction.findFirst({
-        where: {
-          orderId: input.orderId,
-          OR: [
-            { externalId: input.razorpayOrderId },
-            { externalId: input.razorpayPaymentId },
-          ],
-        },
-        orderBy: { createdAt: "desc" },
-      })
-
-      if (tx?.status === "paid") {
-        txId = tx.id
-      } else if (tx) {
-        await prisma.$executeRawUnsafe(
-          'UPDATE "Transaction" SET status = $1, "externalId" = $2 WHERE id = $3',
-          "paid",
-          input.razorpayPaymentId,
-          tx.id,
-        )
-        txId = tx.id
-      } else {
-        const created = await prisma.transaction.create({
-          data: {
-            orderId: input.orderId,
-            gateway: "razorpay",
-            amount: 0,
-            status: "paid",
-            externalId: input.razorpayPaymentId,
-          },
-        })
-        txId = created.id
-      }
-    } catch (error) {
-      if (!isMissingTransactionInfraError(error)) throw error
-      // Schema drift: transaction table may be unavailable; continue with order payment update.
-    }
-
-    await prisma.order.update({
-      where: { id: input.orderId },
-      data: {
-        paymentStatus: toPaymentStatus("SUCCESS"),
-        paymentId: input.razorpayPaymentId,
-      },
-    })
-  }
+  const paymentUpdated = await markOrderPaymentSuccessSupabase(input.orderId, input.razorpayPaymentId)
+  if (!paymentUpdated) throw new Error("Supabase verify payment order update failed")
 
   await updateOrderStatus(input.orderId, "payment_success", undefined, {
     reasonCode: "payment_success",
@@ -301,15 +233,9 @@ export const verifyRazorpayPayment = async (input: {
     reasonCode: "payment_success",
     note: "Order confirmed after successful payment",
   }).catch(() => null)
-  if (supabaseWritesEnabled) {
-    await mirrorOrderStatusSupabase(input.orderId, "confirmed").catch(() => null)
-  }
-  if (!supabaseWritesEnabled || prismaFallbackEnabled) {
-    await prisma.order.update({
-      where: { id: input.orderId },
-      data: { status: "confirmed" },
-    }).catch(() => null)
-  }
+
+  const mirrored = await mirrorOrderStatusSupabase(input.orderId, "confirmed")
+  if (!mirrored) throw new Error("Supabase verify payment order status mirror failed")
 
   return { verified: true, orderId: input.orderId, transactionId: txId }
 }
@@ -320,17 +246,26 @@ export const triggerRazorpayRefund = async (input: {
   if (!env.RAZORPAY_KEY_ID || !env.RAZORPAY_KEY_SECRET) {
     throw new Error("Razorpay keys are not configured")
   }
-  const refund = await prisma.refundRecord.findUnique({
-    where: { id: input.refundRecordId },
-    include: { order: true },
-  })
+  const client = getSupabaseAdmin()
+  const { data: refund, error: refundError } = await client
+    .from("RefundRecord")
+    .select("*")
+    .eq("id", input.refundRecordId)
+    .maybeSingle()
+  if (refundError || !refund) throw new Error("Refund record not found")
+  const { data: order, error: orderError } = await client
+    .from("Order")
+    .select("id,paymentId")
+    .eq("id", String(refund.orderId ?? ""))
+    .maybeSingle()
+  if (orderError || !order) throw new Error("Order not found")
   if (!refund) throw new Error("Refund record not found")
-  if (!refund.order.paymentId) throw new Error("Order has no Razorpay payment_id")
-  if (["initiated", "completed"].includes(refund.status)) throw new Error("Refund already initiated")
+  if (!order.paymentId) throw new Error("Order has no Razorpay payment_id")
+  if (["initiated", "completed"].includes(String(refund.status ?? ""))) throw new Error("Refund already initiated")
 
-  const amount = Math.max(1, Math.round(Number(refund.amount) * 100))
+  const amount = Math.max(1, Math.round(Number(refund.amount ?? 0) * 100))
   const auth = Buffer.from(`${env.RAZORPAY_KEY_ID}:${env.RAZORPAY_KEY_SECRET}`).toString("base64")
-  const res = await fetch(`https://api.razorpay.com/v1/payments/${refund.order.paymentId}/refund`, {
+  const res = await fetch(`https://api.razorpay.com/v1/payments/${order.paymentId}/refund`, {
     method: "POST",
     headers: {
       Authorization: `Basic ${auth}`,
@@ -349,55 +284,20 @@ export const triggerRazorpayRefund = async (input: {
   const payload = (await res.json()) as { id?: string }
   const refundId = payload.id ?? null
 
-  const useSupabaseWrites = process.env.SUPABASE_ORDERS_WRITE_ENABLED === "true"
-  let persisted = false
-  if (useSupabaseWrites) {
-    try {
-      const refundUpdated = await updateRefundRecordStatusSupabase(refund.id, "initiated")
-      if (!refundUpdated) throw new Error("supabase_refund_record_write_failed")
-      const orderUpdated = await setOrderRefundAndPaymentStatusSupabase({
-        orderId: refund.orderId,
-        refundStatus: "INITIATED",
-        paymentStatus: "REFUNDED",
-      })
-      if (!orderUpdated) throw new Error("supabase_order_refund_status_write_failed")
-      if (refundId) {
-        await setTransactionRefundIdSupabase(refund.orderId, refundId).catch(() => null)
-      }
-      persisted = true
-    } catch (error) {
-      logger.warn("payments.refund.supabase_fallback_prisma", {
-        orderId: refund.orderId,
-        refundRecordId: refund.id,
-        error: error instanceof Error ? error.message : "unknown",
-      })
-    }
-  }
-  if (!persisted) {
-    if (!prismaFallbackEnabled) {
-      throw new Error("Supabase refund persistence failed and Prisma fallback is disabled")
-    }
-    await prisma.$transaction(async (db) => {
-      await db.refundRecord.update({
-        where: { id: refund.id },
-        data: { status: "initiated" },
-      })
-      await db.$executeRawUnsafe('UPDATE "Order" SET "refundStatus" = $1 WHERE id = $2', "INITIATED", refund.orderId)
-      if (refundId) {
-        await db.$executeRawUnsafe(
-          'UPDATE "Transaction" SET "refundId" = $1 WHERE "orderId" = $2',
-          refundId,
-          refund.orderId,
-        )
-      }
-      await db.order.update({
-        where: { id: refund.orderId },
-        data: { paymentStatus: toPaymentStatus("REFUNDED") },
-      })
-    })
+  const refundUpdated = await updateRefundRecordStatusSupabase(String(refund.id), "initiated")
+  if (!refundUpdated) throw new Error("supabase_refund_record_write_failed")
+  const orderUpdated = await setOrderRefundAndPaymentStatusSupabase({
+    orderId: String(refund.orderId),
+    refundStatus: "INITIATED",
+    paymentStatus: "REFUNDED",
+  })
+  if (!orderUpdated) throw new Error("supabase_order_refund_status_write_failed")
+  if (refundId) {
+    const txUpdated = await setTransactionRefundIdSupabase(String(refund.orderId), refundId)
+    if (!txUpdated) throw new Error("supabase_transaction_refund_id_write_failed")
   }
 
-  return { refundId, refundRecordId: refund.id, status: "initiated" as const }
+  return { refundId, refundRecordId: String(refund.id), status: "initiated" as const }
 }
 
 export const parseAndVerifyWebhook = (input: {
@@ -445,11 +345,13 @@ export const processWebhookEvent = async (
     orderId = typeof notes.orderId === "string" ? notes.orderId : null
     externalId = externalId ?? (typeof entity.order_id === "string" ? entity.order_id : null)
     if (!orderId && typeof refundEntity.payment_id === "string") {
-      const orderByPayment = await prisma.order.findFirst({
-        where: { paymentId: refundEntity.payment_id },
-        select: { id: true },
-      })
-      orderId = orderByPayment?.id ?? null
+      const client = getSupabaseAdmin()
+      const { data: orderByPayment } = await client
+        .from("Order")
+        .select("id")
+        .eq("paymentId", refundEntity.payment_id)
+        .maybeSingle()
+      orderId = typeof orderByPayment?.id === "string" ? orderByPayment.id : null
     }
     paid = type.includes("captured") || type.includes("paid")
   } else if (provider === "stripe") {
@@ -467,13 +369,27 @@ export const processWebhookEvent = async (
   }
 
   if (!orderId) return { applied: false, reason: "orderId_missing" }
-  const tx = await prisma.transaction.findFirst({
-    where: {
-      orderId,
-      ...(externalId ? { externalId } : {}),
-    },
-    orderBy: { createdAt: "desc" },
-  })
+  const client = getSupabaseAdmin()
+  let tx: { id: string; status: string; externalId?: string | null } | null = null
+  {
+    let query = client
+      .from("Transaction")
+      .select("id,status,externalId")
+      .eq("orderId", orderId)
+      .order("createdAt", { ascending: false })
+      .limit(1)
+    if (externalId) {
+      query = query.eq("externalId", externalId)
+    }
+    const { data, error } = await query.maybeSingle()
+    if (!error && data?.id) {
+      tx = {
+        id: String(data.id),
+        status: String(data.status ?? ""),
+        externalId: data.externalId ? String(data.externalId) : null,
+      }
+    }
+  }
   if (!tx) return { applied: false, reason: "transaction_not_found" }
 
   const nextTxStatus =
@@ -482,70 +398,32 @@ export const processWebhookEvent = async (
     return { applied: true, duplicate: true, paid, orderId, transactionId: tx.id }
   }
 
-  const useSupabaseWrites = process.env.SUPABASE_ORDERS_WRITE_ENABLED === "true"
-  let persisted = false
-  if (useSupabaseWrites) {
-    try {
-      const txUpdated = await updateTransactionStatusSupabase({
-        transactionId: tx.id,
-        status: nextTxStatus,
-        gateway: provider,
-        externalId: externalId ?? tx.externalId ?? undefined,
-      })
-      if (!txUpdated) throw new Error("supabase_transaction_status_write_failed")
-      const orderUpdated = await setOrderRefundAndPaymentStatusSupabase({
-        orderId,
-        paymentStatus: type === "refund.processed" ? "REFUNDED" : paid ? "SUCCESS" : "FAILED",
-        refundStatus: type === "refund.processed" ? "COMPLETED" : undefined,
-      })
-      if (!orderUpdated) throw new Error("supabase_order_payment_status_write_failed")
-      if (type === "refund.processed") {
-        await completePendingRefundRecordsSupabase(orderId).catch(() => null)
-      }
-      persisted = true
-    } catch (error) {
-      logger.warn("payments.webhook.supabase_fallback_prisma", {
-        orderId,
-        transactionId: tx.id,
-        error: error instanceof Error ? error.message : "unknown",
-      })
+  const txUpdated = await updateTransactionStatusSupabase({
+    transactionId: tx.id,
+    status: nextTxStatus,
+    gateway: provider,
+    externalId: externalId ?? tx.externalId ?? undefined,
+  })
+  if (!txUpdated) throw new Error("supabase_transaction_status_write_failed")
+
+  const orderUpdated = await setOrderRefundAndPaymentStatusSupabase({
+    orderId,
+    paymentStatus: type === "refund.processed" ? "REFUNDED" : paid ? "SUCCESS" : "FAILED",
+    refundStatus: type === "refund.processed" ? "COMPLETED" : undefined,
+  })
+  if (!orderUpdated) throw new Error("supabase_order_payment_status_write_failed")
+
+  if (type === "refund.processed") {
+    const { data: refundRows, error: refundFetchError } = await client
+      .from("RefundRecord")
+      .select("id,status")
+      .eq("orderId", orderId)
+      .in("status", ["pending", "initiated", "processing"])
+    if (refundFetchError) throw new Error("supabase_refund_record_fetch_failed")
+    for (const row of refundRows ?? []) {
+      const updated = await updateRefundRecordStatusSupabase(String((row as Record<string, unknown>).id), "completed")
+      if (!updated) throw new Error("supabase_refund_record_status_write_failed")
     }
-  }
-  if (!persisted) {
-    if (!prismaFallbackEnabled) {
-      throw new Error("Supabase webhook persistence failed and Prisma fallback is disabled")
-    }
-    await prisma.$transaction(async (db) => {
-      await db.transaction.update({
-        where: { id: tx.id },
-        data: {
-          status: nextTxStatus,
-          gateway: provider,
-          externalId: externalId ?? tx.externalId ?? undefined,
-        },
-      })
-      await db.order.update({
-        where: { id: orderId },
-        data: {
-          paymentStatus:
-            type === "refund.processed"
-              ? toPaymentStatus("REFUNDED")
-              : paid
-                ? toPaymentStatus("SUCCESS")
-                : toPaymentStatus("FAILED"),
-        },
-      })
-      if (type === "refund.processed") {
-        await db.refundRecord.updateMany({
-          where: {
-            orderId,
-            status: { in: ["pending", "initiated", "processing"] },
-          },
-          data: { status: "completed" },
-        })
-        await db.$executeRawUnsafe('UPDATE "Order" SET "refundStatus" = $1 WHERE id = $2', "COMPLETED", orderId)
-      }
-    })
   }
   if (paid) {
     await updateOrderStatus(orderId, "payment_success", undefined, {
