@@ -98,10 +98,7 @@ export default function AdminDashboardPage() {
   return (
     <section className="mx-auto max-w-7xl">
       <div className="rounded-3xl bg-transparent p-0 md:p-0">
-        <div className="mb-2 pt-[34px] pb-[34px]">
-          <h1 className="font-melon text-2xl font-bold tracking-wide text-[#4A1D1F] md:text-3xl">Dashboard</h1>
-          <p className="mt-1 text-sm text-[#6B6B6B]">Store overview with trends and recent activity.</p>
-        </div>
+        <div className="mb-2 pt-[34px] pb-[34px]" />
 
         {error ? (
           <div className="mb-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">

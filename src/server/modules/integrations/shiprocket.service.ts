@@ -1,5 +1,5 @@
 import crypto from "node:crypto"
-import { prisma } from "@/src/server/db/prisma"
+import { pgQuery, pgTx } from "@/src/server/db/pg"
 import { env } from "@/src/server/core/config/env"
 
 type ShiprocketAuthResponse = {
@@ -110,53 +110,68 @@ const trackAwb = async (trackingNo: string) => {
 
 export const syncOrderStatusFromShiprocket = async (orderId: string) => {
   if (!hasShiprocketConfig()) return
-  const order = await prisma.order.findUnique({
-    where: { id: orderId },
-    select: {
-      id: true,
-      status: true,
-      shipments: {
-        where: {
-          trackingNo: { not: null },
-        },
-        orderBy: { createdAt: "desc" },
-        take: 3,
-        select: { id: true, trackingNo: true, shipmentStatus: true },
-      },
-      statusHistory: {
-        orderBy: { changedAt: "desc" },
-        take: 1,
-        select: { toStatus: true },
-      },
-    },
-  })
-  if (!order || order.shipments.length === 0) return
+  const orderRows = await pgQuery<
+    Array<{
+      id: string
+      status: string
+      paymentMethod: string | null
+      shipments: unknown
+      statusHistory: unknown
+    }>
+  >(
+    `
+      SELECT
+        o.id,
+        o.status,
+        o."paymentMethod",
+        COALESCE((
+          SELECT jsonb_agg(jsonb_build_object('id', s.id, 'trackingNo', s."trackingNo", 'shipmentStatus', s."shipmentStatus", 'createdAt', s."createdAt") ORDER BY s."createdAt" DESC)
+          FROM "Shipment" s
+          WHERE s."orderId" = o.id AND s."trackingNo" IS NOT NULL
+          LIMIT 3
+        ), '[]'::jsonb) as shipments,
+        COALESCE((
+          SELECT jsonb_agg(jsonb_build_object('toStatus', h."toStatus", 'notes', h.notes, 'changedAt', h."changedAt") ORDER BY h."changedAt" DESC)
+          FROM "OrderStatusHistory" h
+          WHERE h."orderId" = o.id
+          LIMIT 1
+        ), '[]'::jsonb) as "statusHistory"
+      FROM "Order" o
+      WHERE o.id = $1
+      LIMIT 1
+    `,
+    [orderId],
+  )
+  const order = orderRows[0] as any
+  const shipments = Array.isArray(order?.shipments) ? (order.shipments as any[]) : []
+  const statusHistory = Array.isArray(order?.statusHistory) ? (order.statusHistory as any[]) : []
+  if (!order || shipments.length === 0) return
 
-  const latestLifecycle = order.statusHistory[0]?.toStatus ?? order.status
+  const latestLifecycle = statusHistory[0]?.toStatus ?? order.status
   if (["delivered", "cancelled", "returned"].includes(latestLifecycle)) return
 
-  for (const shipment of order.shipments) {
+  for (const shipment of shipments) {
     if (!shipment.trackingNo) continue
     const tracked = await trackAwb(shipment.trackingNo)
     if (!tracked) continue
-    await prisma.shipment.update({
-      where: { id: shipment.id },
-      data: { shipmentStatus: tracked.shipmentStatus.toLowerCase() },
-    })
+    await pgQuery(`UPDATE "Shipment" SET "shipmentStatus" = $2, "updatedAt" = now() WHERE id = $1`, [
+      shipment.id,
+      tracked.shipmentStatus.toLowerCase(),
+    ])
     if (tracked.mappedOrderStatus && tracked.mappedOrderStatus !== latestLifecycle) {
-      await prisma.order.update({
-        where: { id: order.id },
-        data: {
-          status: tracked.mappedOrderStatus === "shipped" ? "shipped" : tracked.mappedOrderStatus,
-          statusHistory: {
-            create: {
-              fromStatus: latestLifecycle,
-              toStatus: tracked.mappedOrderStatus,
-              reasonCode: "shiprocket_sync",
-              notes: `Auto-updated from Shiprocket (${tracked.shipmentStatus})`,
-            },
-          },
-        },
+      const toStatus = tracked.mappedOrderStatus
+      await pgTx(async (client) => {
+        await client.query(`UPDATE "Order" SET status=$2, "updatedAt"=now() WHERE id=$1`, [
+          order.id,
+          toStatus === "shipped" ? "shipped" : toStatus,
+        ])
+        await client.query(
+          `
+            INSERT INTO "OrderStatusHistory" (id, "orderId", "fromStatus", "toStatus", "reasonCode", notes, "changedAt")
+            VALUES (gen_random_uuid()::text, $1, $2, $3, 'shiprocket_sync', $4, now())
+          `,
+          [order.id, latestLifecycle, toStatus, `Auto-updated from Shiprocket (${tracked.shipmentStatus})`],
+        )
       })
     }
     break
@@ -177,69 +192,82 @@ export const processShiprocketWebhook = async (payloadRaw: string, signature: st
 
   let orderId = explicitOrderId
   if (!orderId && trackingNo) {
-    const shipment = await prisma.shipment.findFirst({
-      where: { trackingNo },
-      orderBy: { createdAt: "desc" },
-      select: { id: true, orderId: true, shipmentStatus: true },
-    })
-    orderId = shipment?.orderId ?? ""
+    const rows = await pgQuery<Array<{ orderId: string }>>(
+      `SELECT "orderId" FROM "Shipment" WHERE "trackingNo" = $1 ORDER BY "createdAt" DESC LIMIT 1`,
+      [trackingNo],
+    )
+    orderId = rows[0]?.orderId ?? ""
   }
   if (!orderId) return { applied: false, reason: "order_not_resolved" }
 
-  const order = await prisma.order.findUnique({
-    where: { id: orderId },
-    select: {
-      id: true,
-      status: true,
-      paymentMethod: true,
-      shipments: { orderBy: { createdAt: "desc" }, take: 5, select: { id: true, trackingNo: true, shipmentStatus: true } },
-      statusHistory: { orderBy: { changedAt: "desc" }, take: 1, select: { toStatus: true, notes: true } },
-    },
-  })
+  const orderRows = await pgQuery<
+    Array<{
+      id: string
+      status: string
+      paymentMethod: string | null
+      shipments: unknown
+      statusHistory: unknown
+    }>
+  >(
+    `
+      SELECT
+        o.id,
+        o.status,
+        o."paymentMethod",
+        COALESCE((
+          SELECT jsonb_agg(jsonb_build_object('id', s.id, 'trackingNo', s."trackingNo", 'shipmentStatus', s."shipmentStatus", 'createdAt', s."createdAt") ORDER BY s."createdAt" DESC)
+          FROM "Shipment" s
+          WHERE s."orderId" = o.id
+          LIMIT 5
+        ), '[]'::jsonb) as shipments,
+        COALESCE((
+          SELECT jsonb_agg(jsonb_build_object('toStatus', h."toStatus", 'notes', h.notes, 'changedAt', h."changedAt") ORDER BY h."changedAt" DESC)
+          FROM "OrderStatusHistory" h
+          WHERE h."orderId" = o.id
+          LIMIT 1
+        ), '[]'::jsonb) as "statusHistory"
+      FROM "Order" o
+      WHERE o.id = $1
+      LIMIT 1
+    `,
+    [orderId],
+  )
+  const order = orderRows[0] as any
   if (!order) return { applied: false, reason: "order_not_found" }
 
-  const latestLifecycle = order.statusHistory[0]?.toStatus ?? order.status
+  const shipments = Array.isArray(order.shipments) ? (order.shipments as any[]) : []
+  const statusHistory = Array.isArray(order.statusHistory) ? (order.statusHistory as any[]) : []
+  const latestLifecycle = statusHistory[0]?.toStatus ?? order.status
   const targetShipmentStatus = mapShiprocketEventToShipmentStatus(event) ?? normalizeShiprocketState(event)
   const targetOrderStatus = mapShiprocketToOrderStatus(event)
   const isDuplicate =
-    order.statusHistory[0]?.notes?.includes(externalEventId) ||
-    order.shipments.some((shipment) => shipment.shipmentStatus === targetShipmentStatus)
+    statusHistory[0]?.notes?.includes(externalEventId) || shipments.some((shipment: any) => shipment.shipmentStatus === targetShipmentStatus)
   if (isDuplicate) return { applied: true, duplicate: true, orderId }
 
   const shipmentToUpdate = trackingNo
-    ? order.shipments.find((shipment) => shipment.trackingNo === trackingNo) ?? order.shipments[0]
-    : order.shipments[0]
+    ? shipments.find((shipment: any) => shipment.trackingNo === trackingNo) ?? shipments[0]
+    : shipments[0]
 
-  await prisma.$transaction(async (tx) => {
+  await pgTx(async (tx) => {
     if (shipmentToUpdate) {
-      await tx.shipment.update({
-        where: { id: shipmentToUpdate.id },
-        data: {
-          shipmentStatus: targetShipmentStatus,
-          deliveredAt: targetOrderStatus === "delivered" ? new Date() : undefined,
-        },
-      })
+      await tx.query(
+        `UPDATE "Shipment" SET "shipmentStatus"=$2, "deliveredAt"=CASE WHEN $3='delivered' THEN now() ELSE "deliveredAt" END, "updatedAt"=now() WHERE id=$1`,
+        [shipmentToUpdate.id, targetShipmentStatus, targetOrderStatus ?? ""],
+      )
     }
 
     if (targetOrderStatus && targetOrderStatus !== latestLifecycle) {
-      await tx.order.update({
-        where: { id: order.id },
-        data: {
-          status: targetOrderStatus,
-          paymentStatus:
-            targetOrderStatus === "delivered" && (order.paymentMethod ?? "").toLowerCase() === "cod"
-              ? "SUCCESS"
-              : undefined,
-          statusHistory: {
-            create: {
-              fromStatus: latestLifecycle,
-              toStatus: targetOrderStatus,
-              reasonCode: "shiprocket_webhook",
-              notes: `Webhook ${event}${externalEventId ? ` (${externalEventId})` : ""}`,
-            },
-          },
-        },
-      })
+      await tx.query(
+        `UPDATE "Order" SET status=$2, "paymentStatus"=CASE WHEN $2='delivered' AND lower(COALESCE($3,''))='cod' THEN 'SUCCESS' ELSE "paymentStatus" END, "updatedAt"=now() WHERE id=$1`,
+        [order.id, targetOrderStatus, order.paymentMethod ?? ""],
+      )
+      await tx.query(
+        `
+          INSERT INTO "OrderStatusHistory" (id, "orderId", "fromStatus", "toStatus", "reasonCode", notes, "changedAt")
+          VALUES (gen_random_uuid()::text, $1, $2, $3, 'shiprocket_webhook', $4, now())
+        `,
+        [order.id, latestLifecycle, targetOrderStatus, `Webhook ${event}${externalEventId ? ` (${externalEventId})` : ""}`],
+      )
     }
   })
 

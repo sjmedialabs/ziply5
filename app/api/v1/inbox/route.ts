@@ -1,6 +1,6 @@
-import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/src/server/db/prisma";
-import { requireAuth } from "@/src/server/middleware/auth";
+import { NextRequest, NextResponse } from "next/server"
+import { pgQuery } from "@/src/server/db/pg"
+import { requireAuth } from "@/src/server/middleware/auth"
 
 export async function GET(request: NextRequest) {
   try {
@@ -9,11 +9,9 @@ export async function GET(request: NextRequest) {
     // If the auth middleware returned a response (like 401 Unauthorized), return it to stop execution
     if (auth instanceof Response) return auth;
 
-    const messages = await prisma.contactMessage.findMany({
-      orderBy: {
-        createdAt: "desc",
-      },
-    });
+    const messages = await pgQuery<Array<Record<string, unknown>>>(
+      `SELECT * FROM contact_messages ORDER BY created_at DESC`,
+    ).catch(() => [])
 
     return NextResponse.json({ success: true, data: messages });
   } catch (error: any) {

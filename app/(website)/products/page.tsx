@@ -41,6 +41,10 @@ function ProductsPageContent() {
   const [cartQtyBySlug, setCartQtyBySlug] = useState<Record<string, number>>({})
   const searchTerm = (searchParams.get("search") || "").trim().toLowerCase()
   const router = useRouter()
+  const packParam = (searchParams.get("pack") || "").trim().toLowerCase()
+  const typeParam = (searchParams.get("type") || "").trim().toLowerCase()
+  const comboParam = (searchParams.get("combo") || "").trim().toLowerCase()
+  const productTypeParam = (searchParams.get("productType") || "").trim().toLowerCase()
   useEffect(() => {
     let cancelled = false
     fetch("/api/v1/categories")
@@ -68,6 +72,18 @@ function ProductsPageContent() {
       cancelled = true
     }
   }, [])
+
+  useEffect(() => {
+    const wantsCombo =
+      packParam === "combo-pack" ||
+      typeParam === "combo" ||
+      comboParam === "true" ||
+      productTypeParam === "combo"
+    if (wantsCombo) setPackFilter("combo-pack")
+    else if (packParam === "limited-offers") setPackFilter("limited-offers")
+    // else do not override user selection
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [packParam, typeParam, comboParam, productTypeParam])
   console.log("ProductsPageContent", { products, selectedTagIds})
   useEffect(() => {
     const syncFavorites = () => setFavoriteSlugs(getFavoriteSlugs())

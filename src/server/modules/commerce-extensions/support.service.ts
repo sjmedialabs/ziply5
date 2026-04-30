@@ -1,5 +1,4 @@
-import { Prisma } from "@prisma/client"
-import { prisma } from "@/src/server/db/prisma"
+import { pgQuery, pgTx } from "@/src/server/db/pg"
 import { enqueueOutboxEvent } from "@/src/server/modules/integrations/outbox.service"
 
 export const createSupportTicketV2 = async (input: {
@@ -9,18 +8,20 @@ export const createSupportTicketV2 = async (input: {
   subject: string
   message: string
 }) => {
-  const ticketId = await prisma.$transaction(async (tx) => {
-    const rows = await tx.$queryRaw<Array<{ id: string }>>(Prisma.sql`
-      INSERT INTO support_tickets_v2 (user_id, order_id, category, subject, status)
-      VALUES (${input.userId}, ${input.orderId ?? null}, ${input.category}, ${input.subject}, 'open')
-      RETURNING id
-    `)
-    const id = rows[0]?.id
+  const ticketId = await pgTx(async (client) => {
+    const created = await client.query<{ id: string }>(
+      `INSERT INTO support_tickets_v2 (user_id, order_id, category, subject, status)
+       VALUES ($1, $2, $3, $4, 'open')
+       RETURNING id`,
+      [input.userId, input.orderId ?? null, input.category, input.subject],
+    )
+    const id = created.rows[0]?.id
     if (!id) throw new Error("Failed to create support ticket")
-    await tx.$executeRaw(Prisma.sql`
-      INSERT INTO support_messages_v2 (ticket_id, sender_type, message)
-      VALUES (${id}::uuid, 'user', ${input.message})
-    `)
+    await client.query(
+      `INSERT INTO support_messages_v2 (ticket_id, sender_type, message)
+       VALUES ($1::uuid, 'user', $2)`,
+      [id, input.message],
+    )
     return id
   })
   await enqueueOutboxEvent({
@@ -33,26 +34,31 @@ export const createSupportTicketV2 = async (input: {
 }
 
 export const listUserTicketsV2 = async (userId: string) => {
-  return prisma.$queryRaw<Array<Record<string, unknown>>>(Prisma.sql`
-    SELECT st.*, (
-      SELECT sm.message FROM support_messages_v2 sm
-      WHERE sm.ticket_id = st.id
-      ORDER BY sm.created_at DESC
-      LIMIT 1
-    ) AS last_message
-    FROM support_tickets_v2 st
-    WHERE st.user_id = ${userId}
-    ORDER BY st.updated_at DESC
-  `)
+  return pgQuery<Array<Record<string, unknown>>>(
+    `
+      SELECT st.*, (
+        SELECT sm.message FROM support_messages_v2 sm
+        WHERE sm.ticket_id = st.id
+        ORDER BY sm.created_at DESC
+        LIMIT 1
+      ) AS last_message
+      FROM support_tickets_v2 st
+      WHERE st.user_id = $1
+      ORDER BY st.updated_at DESC
+    `,
+    [userId],
+  )
 }
 
 export const listAdminTicketsV2 = async () => {
-  return prisma.$queryRaw<Array<Record<string, unknown>>>(Prisma.sql`
-    SELECT st.*, u.email as user_email, u.name as user_name
-    FROM support_tickets_v2 st
-    INNER JOIN "User" u ON u.id = st.user_id
-    ORDER BY st.updated_at DESC
-  `)
+  return pgQuery<Array<Record<string, unknown>>>(
+    `
+      SELECT st.*, u.email as user_email, u.name as user_name
+      FROM support_tickets_v2 st
+      INNER JOIN "User" u ON u.id = st.user_id
+      ORDER BY st.updated_at DESC
+    `,
+  )
 }
 
 export const adminReplyTicketV2 = async (input: {
@@ -60,24 +66,29 @@ export const adminReplyTicketV2 = async (input: {
   message: string
   status?: "open" | "in_progress" | "resolved" | "closed"
 }) => {
-  await prisma.$transaction(async (tx) => {
-    await tx.$executeRaw(Prisma.sql`
-      INSERT INTO support_messages_v2 (ticket_id, sender_type, message)
-      VALUES (${input.ticketId}::uuid, 'admin', ${input.message})
-    `)
-    await tx.$executeRaw(Prisma.sql`
-      UPDATE support_tickets_v2
-      SET status = COALESCE(${input.status ?? null}, status), updated_at = now()
-      WHERE id = ${input.ticketId}::uuid
-    `)
+  await pgTx(async (client) => {
+    await client.query(
+      `INSERT INTO support_messages_v2 (ticket_id, sender_type, message)
+       VALUES ($1::uuid, 'admin', $2)`,
+      [input.ticketId, input.message],
+    )
+    await client.query(
+      `UPDATE support_tickets_v2
+       SET status = COALESCE($1, status), updated_at = now()
+       WHERE id = $2::uuid`,
+      [input.status ?? null, input.ticketId],
+    )
   })
 }
 
 export const getTicketMessagesV2 = async (ticketId: string) => {
-  return prisma.$queryRaw<Array<Record<string, unknown>>>(Prisma.sql`
-    SELECT *
-    FROM support_messages_v2
-    WHERE ticket_id = ${ticketId}::uuid
-    ORDER BY created_at ASC
-  `)
+  return pgQuery<Array<Record<string, unknown>>>(
+    `
+      SELECT *
+      FROM support_messages_v2
+      WHERE ticket_id = $1::uuid
+      ORDER BY created_at ASC
+    `,
+    [ticketId],
+  )
 }

@@ -1,6 +1,5 @@
-import { Prisma } from "@prisma/client"
-import { prisma } from "@/src/server/db/prisma"
 import { randomUUID } from "crypto"
+import { pgQuery } from "@/src/server/db/pg"
 
 export type MasterGroupRow = {
   id: string
@@ -30,25 +29,20 @@ const mapJson = (value: unknown) => {
 
 const isMissingMasterTablesError = (error: unknown) => {
   if (!error || typeof error !== "object") return false
-  const prismaCode = (error as { code?: string }).code
-  if (prismaCode !== "P2010") return false
-  const meta = (error as { meta?: { code?: string; message?: string } }).meta
-  if (meta?.code !== "42P01") return false
-  const message = (meta.message ?? "").toLowerCase()
+  const code = (error as { code?: string }).code
+  if (code !== "42P01") return false
+  const message = ((error as { message?: string }).message ?? "").toLowerCase()
   return message.includes("master_groups") || message.includes("master_values")
 }
 
 export const listMasterGroups = async (opts?: { activeOnly?: boolean }) => {
   let rows: Array<{ id: string; key: string; name: string; description: string | null; is_active: boolean }> = []
   try {
-    rows = await prisma.$queryRaw<
-      Array<{ id: string; key: string; name: string; description: string | null; is_active: boolean }>
-    >(
-      Prisma.sql`
+    rows = await pgQuery<Array<{ id: string; key: string; name: string; description: string | null; is_active: boolean }>>(
+      `
         SELECT id, key, name, description, is_active
         FROM master_groups
-        WHERE 1=1
-        ${opts?.activeOnly ? Prisma.sql`AND is_active = true` : Prisma.empty}
+        ${opts?.activeOnly ? `WHERE is_active = true` : ``}
         ORDER BY name ASC
       `,
     )
@@ -77,7 +71,7 @@ export const listMasterValues = async (groupKey: string, opts?: { activeOnly?: b
     is_active: boolean
   }> = []
   try {
-    rows = await prisma.$queryRaw<
+    rows = await pgQuery<
       Array<{
         id: string
         group_id: string
@@ -89,14 +83,15 @@ export const listMasterValues = async (groupKey: string, opts?: { activeOnly?: b
         is_active: boolean
       }>
     >(
-      Prisma.sql`
+      `
         SELECT mv.id, mv.group_id, mg.key as group_key, mv.label, mv.value, mv.sort_order, mv.metadata, mv.is_active
         FROM master_values mv
         INNER JOIN master_groups mg ON mg.id = mv.group_id
-        WHERE mg.key = ${groupKey}
-        ${opts?.activeOnly ? Prisma.sql`AND mg.is_active = true AND mv.is_active = true` : Prisma.empty}
+        WHERE mg.key = $1
+        ${opts?.activeOnly ? `AND mg.is_active = true AND mv.is_active = true` : ``}
         ORDER BY mv.sort_order ASC, mv.label ASC
       `,
+      [groupKey],
     )
   } catch (error) {
     if (!isMissingMasterTablesError(error)) throw error
@@ -128,7 +123,7 @@ export const getAllMasterData = async (activeOnly = true) => {
     group_active: boolean
   }> = []
   try {
-    valuesRows = await prisma.$queryRaw<
+    valuesRows = await pgQuery<
       Array<{
         id: string
         group_id: string
@@ -141,7 +136,7 @@ export const getAllMasterData = async (activeOnly = true) => {
         group_active: boolean
       }>
     >(
-      Prisma.sql`
+      `
         SELECT mv.id, mv.group_id, mg.key as group_key, mv.label, mv.value, mv.sort_order, mv.metadata, mv.is_active, mg.is_active as group_active
         FROM master_values mv
         INNER JOIN master_groups mg ON mg.id = mv.group_id
@@ -185,14 +180,13 @@ export const createMasterGroup = async (input: {
   isActive?: boolean
 }) => {
   const id = randomUUID()
-  const rows = await prisma.$queryRaw<
-    Array<{ id: string; key: string; name: string; description: string | null; is_active: boolean }>
-  >(
-    Prisma.sql`
+  const rows = await pgQuery<Array<{ id: string; key: string; name: string; description: string | null; is_active: boolean }>>(
+    `
       INSERT INTO master_groups (id, key, name, description, is_active, updated_at)
-      VALUES (${id}, ${input.key.trim().toUpperCase()}, ${input.name.trim()}, ${input.description ?? null}, ${input.isActive ?? true}, now())
+      VALUES ($1, $2, $3, $4, $5, now())
       RETURNING id, key, name, description, is_active
     `,
+    [id, input.key.trim().toUpperCase(), input.name.trim(), input.description ?? null, input.isActive ?? true],
   )
   const row = rows[0]
   if (!row) throw new Error("Failed to create master group")
@@ -209,26 +203,40 @@ export const updateMasterGroup = async (
   id: string,
   input: { name?: string; description?: string | null; isActive?: boolean },
 ) => {
-  const row = await prisma.masterGroup.update({
-    where: { id },
-    data: {
-      ...(input.name !== undefined && { name: input.name.trim() }),
-      ...(input.description !== undefined && { description: input.description }),
-      ...(input.isActive !== undefined && { isActive: input.isActive }),
-    },
-  })
+  const sets: string[] = []
+  const params: any[] = []
+  if (input.name !== undefined) {
+    params.push(input.name.trim())
+    sets.push(`name = $${params.length}`)
+  }
+  if (input.description !== undefined) {
+    params.push(input.description)
+    sets.push(`description = $${params.length}`)
+  }
+  if (input.isActive !== undefined) {
+    params.push(input.isActive)
+    sets.push(`is_active = $${params.length}`)
+  }
+  sets.push(`updated_at = now()`)
+  params.push(id)
+  const rows = await pgQuery<Array<{ id: string; key: string; name: string; description: string | null; is_active: boolean }>>(
+    `UPDATE master_groups SET ${sets.join(", ")} WHERE id = $${params.length} RETURNING id, key, name, description, is_active`,
+    params,
+  )
+  const row = rows[0]
+  if (!row) throw new Error("Master group not found")
 
   return {
     id: row.id,
     key: row.key,
     name: row.name,
     description: row.description,
-    isActive: mapBool(row.isActive),
+    isActive: mapBool(row.is_active),
   }
 }
 
 export const deleteMasterGroup = async (id: string) => {
-  await prisma.$executeRaw(Prisma.sql`DELETE FROM master_groups WHERE id = ${id}`)
+  await pgQuery(`DELETE FROM master_groups WHERE id = $1`, [id])
   return { id }
 }
 
@@ -241,7 +249,7 @@ export const createMasterValue = async (input: {
   isActive?: boolean
 }) => {
   const id = randomUUID()
-  const rows = await prisma.$queryRaw<
+  const rows = await pgQuery<
     Array<{
       id: string
       group_id: string
@@ -253,13 +261,22 @@ export const createMasterValue = async (input: {
       is_active: boolean
     }>
   >(
-    Prisma.sql`
+    `
       INSERT INTO master_values (id, group_id, label, value, sort_order, metadata, is_active, updated_at)
-      SELECT ${id}, mg.id, ${input.label.trim()}, ${input.value.trim()}, ${input.sortOrder ?? 0}, ${JSON.stringify(input.metadata ?? {})}::jsonb, ${input.isActive ?? true}, now()
+      SELECT $1, mg.id, $2, $3, $4, $5::jsonb, $6, now()
       FROM master_groups mg
-      WHERE mg.key = ${input.groupKey.trim().toUpperCase()}
-      RETURNING id, group_id, ${input.groupKey.trim().toUpperCase()} as group_key, label, value, sort_order, metadata, is_active
+      WHERE mg.key = $7
+      RETURNING id, group_id, $7 as group_key, label, value, sort_order, metadata, is_active
     `,
+    [
+      id,
+      input.label.trim(),
+      input.value.trim(),
+      input.sortOrder ?? 0,
+      JSON.stringify(input.metadata ?? {}),
+      input.isActive ?? true,
+      input.groupKey.trim().toUpperCase(),
+    ],
   )
   if (!rows[0]) throw new Error("Master group not found")
   const row = rows[0]
@@ -285,48 +302,86 @@ export const updateMasterValue = async (
     isActive?: boolean
   },
 ) => {
-  const row = await prisma.masterValue.update({
-    where: { id },
-    data: {
-      ...(input.label !== undefined && { label: input.label.trim() }),
-      ...(input.value !== undefined && { value: input.value.trim() }),
-      ...(input.sortOrder !== undefined && { sortOrder: input.sortOrder }),
-      ...(input.metadata !== undefined && { metadata: input.metadata as any }),
-      ...(input.isActive !== undefined && { isActive: input.isActive }),
-    },
-    include: { group: true }
-  })
+  const sets: string[] = []
+  const params: any[] = []
+  if (input.label !== undefined) {
+    params.push(input.label.trim())
+    sets.push(`label = $${params.length}`)
+  }
+  if (input.value !== undefined) {
+    params.push(input.value.trim())
+    sets.push(`value = $${params.length}`)
+  }
+  if (input.sortOrder !== undefined) {
+    params.push(input.sortOrder)
+    sets.push(`sort_order = $${params.length}`)
+  }
+  if (input.metadata !== undefined) {
+    params.push(JSON.stringify(input.metadata ?? {}))
+    sets.push(`metadata = $${params.length}::jsonb`)
+  }
+  if (input.isActive !== undefined) {
+    params.push(input.isActive)
+    sets.push(`is_active = $${params.length}`)
+  }
+  sets.push(`updated_at = now()`)
+  params.push(id)
+  const rows = await pgQuery<
+    Array<{
+      id: string
+      group_id: string
+      group_key: string
+      label: string
+      value: string
+      sort_order: number
+      metadata: unknown
+      is_active: boolean
+    }>
+  >(
+    `
+      UPDATE master_values mv
+      SET ${sets.join(", ")}
+      FROM master_groups mg
+      WHERE mv.id = $${params.length}
+        AND mg.id = mv.group_id
+      RETURNING mv.id, mv.group_id, mg.key as group_key, mv.label, mv.value, mv.sort_order, mv.metadata, mv.is_active
+    `,
+    params,
+  )
+  const row = rows[0]
+  if (!row) throw new Error("Master value not found")
 
   return {
     id: row.id,
-    groupId: row.groupId,
-    groupKey: row.group.key,
+    groupId: row.group_id,
+    groupKey: row.group_key,
     label: row.label,
     value: row.value,
-    sortOrder: mapNum(row.sortOrder),
+    sortOrder: mapNum(row.sort_order),
     metadata: mapJson(row.metadata),
-    isActive: mapBool(row.isActive),
+    isActive: mapBool(row.is_active),
   }
 }
 
 export const deleteMasterValue = async (id: string) => {
-  await prisma.$executeRaw(Prisma.sql`DELETE FROM master_values WHERE id = ${id}`)
+  await pgQuery(`DELETE FROM master_values WHERE id = $1`, [id])
   return { id }
 }
 
 export const assertMasterValueExists = async (groupKey: string, value: string) => {
-  const rows = await prisma.$queryRaw<Array<{ exists: boolean }>>(
-    Prisma.sql`
+  const rows = await pgQuery<Array<{ exists: boolean }>>(
+    `
       SELECT EXISTS (
         SELECT 1
         FROM master_values mv
         INNER JOIN master_groups mg ON mg.id = mv.group_id
-        WHERE mg.key = ${groupKey.trim().toUpperCase()}
-          AND mv.value = ${value}
+        WHERE mg.key = $1
+          AND mv.value = $2
           AND mg.is_active = true
           AND mv.is_active = true
       ) as exists
     `,
+    [groupKey.trim().toUpperCase(), value],
   )
   return Boolean(rows[0]?.exists)
 }

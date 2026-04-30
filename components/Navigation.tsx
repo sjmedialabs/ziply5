@@ -17,7 +17,7 @@ export default function Navigation() {
             <Link href="/#best-sellers" className="font-semibold text-amber-900 hover:text-amber-700 transition-colors text-[15px]">
               Best Sellers
             </Link>
-            <Link href="/#combos" className="font-semibold text-amber-900 hover:text-amber-700 transition-colors text-[15px]">
+            <Link href="/products?type=combo" className="font-semibold text-amber-900 hover:text-amber-700 transition-colors text-[15px]">
               Combos
             </Link>
           </div>

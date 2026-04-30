@@ -32,7 +32,15 @@ import { PageTransition } from "@/components/animations/PageTransition"
 const adminNav: DashboardNavItem[] = [
   { href: "/admin/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/admin/orders", label: "Orders", icon: ShoppingCart },
-  { href: "/admin/products", label: "Products", icon: Package },
+  {
+    label: "Products",
+    icon: Package,
+    subItems: [
+      { href: "/admin/products", label: "All Products", icon: Package },
+      { href: "/admin/products/add", label: "Add Product", icon: Package },
+      { href: "/admin/products?catalog=combos", label: "Combos", icon: Gift },
+    ],
+  },
   { href: "/admin/cms", label: "CMS", icon: FileText },
   { href: "/admin/users", label: "Users", icon: Users },
   { href: "/admin/reviews", label: "Reviews", icon: Star },

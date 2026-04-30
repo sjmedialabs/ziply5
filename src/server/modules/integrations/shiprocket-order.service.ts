@@ -1,5 +1,6 @@
-import { prisma } from "@/src/server/db/prisma"
+import { pgQuery, pgTx } from "@/src/server/db/pg"
 import { shiprocketClient } from "@/lib/integrations/shiprocket"
+import { randomUUID } from "crypto"
 
 const parsePostalCode = (text?: string | null) => {
   if (!text) return null
@@ -18,14 +19,13 @@ const toWeight = (weight?: string | null) => {
 }
 
 const addOrderNote = async (orderId: string, note: string, actorId?: string) => {
-  await prisma.orderNote.create({
-    data: {
-      orderId,
-      note,
-      isInternal: true,
-      createdById: actorId ?? null,
-    },
-  }).catch(() => null)
+  await pgQuery(
+    `
+      INSERT INTO "OrderNote" (id, "orderId", note, "isInternal", "createdById", "createdAt")
+      VALUES ($1,$2,$3,true,$4,now())
+    `,
+    [randomUUID(), orderId, note, actorId ?? null],
+  ).catch(() => null)
 }
 
 const persistExtendedShipmentFields = async (
@@ -61,33 +61,69 @@ const persistExtendedShipmentFields = async (
   if (sets.length === 0) return
   values.push(shipmentId)
   const shipmentIdPos = values.length
-  await prisma.$executeRawUnsafe(
-    `UPDATE "Shipment" SET ${sets.join(", ")} WHERE "id" = $${shipmentIdPos}`,
-    ...values,
-  ).catch(() => null)
+  await pgQuery(`UPDATE "Shipment" SET ${sets.join(", ")}, "updatedAt" = now() WHERE "id" = $${shipmentIdPos}`, values as any[]).catch(
+    () => null,
+  )
 }
 
 export const checkOrderServiceability = async (orderId: string) => {
-  const order = await prisma.order.findUnique({
-    where: { id: orderId },
-    include: {
-      items: {
-        include: {
-          product: true,
-        },
-      },
-      statusHistory: { orderBy: { changedAt: "desc" }, take: 1 },
-    },
-  })
+  const orderRows = await pgQuery<
+    Array<{
+      id: string
+      createdAt: Date
+      status: string
+      paymentMethod: string | null
+      paymentStatus: string | null
+      total: number
+      customerAddress: string | null
+      customerName: string | null
+      customerPhone: string | null
+      items: unknown
+      statusHistory: unknown
+    }>
+  >(
+    `
+      SELECT
+        o.*,
+        COALESCE((
+          SELECT jsonb_agg(
+            jsonb_build_object(
+              'id', oi.id,
+              'productId', oi."productId",
+              'quantity', oi.quantity,
+              'unitPrice', oi."unitPrice",
+              'product', jsonb_build_object('name', p.name, 'slug', p.slug, 'sku', p.sku, 'weight', p.weight)
+            )
+            ORDER BY oi.id ASC
+          )
+          FROM "OrderItem" oi
+          INNER JOIN "Product" p ON p.id = oi."productId"
+          WHERE oi."orderId" = o.id
+        ), '[]'::jsonb) as items,
+        COALESCE((
+          SELECT jsonb_agg(jsonb_build_object('toStatus', h."toStatus", 'changedAt', h."changedAt") ORDER BY h."changedAt" DESC)
+          FROM "OrderStatusHistory" h
+          WHERE h."orderId" = o.id
+          LIMIT 1
+        ), '[]'::jsonb) as "statusHistory"
+      FROM "Order" o
+      WHERE o.id = $1
+      LIMIT 1
+    `,
+    [orderId],
+  )
+  const order = orderRows[0] as any
   if (!order) throw new Error("Order not found")
-  const latest = order.statusHistory[0]?.toStatus ?? order.status
+  const statusHistory = Array.isArray(order.statusHistory) ? (order.statusHistory as any[]) : []
+  const latest = statusHistory[0]?.toStatus ?? order.status
   if (["cancelled", "delivered", "returned"].includes(latest)) {
     throw new Error("Order is not eligible for shipment")
   }
   const deliveryPostcode = parsePostalCode(order.customerAddress)
   const pickupPostcode = process.env.SHIPROCKET_PICKUP_POSTCODE?.trim() || "110001"
   if (!deliveryPostcode) throw new Error("Non-serviceable pincode: delivery postcode missing")
-  const weight = order.items.reduce((sum, item) => sum + toWeight(item.product.weight) * item.quantity, 0)
+  const items = Array.isArray(order.items) ? (order.items as any[]) : []
+  const weight = items.reduce((sum, item) => sum + toWeight(item.product?.weight) * Number(item.quantity ?? 0), 0)
   if (weight <= 0) throw new Error("Weight missing")
 
   const response = await shiprocketClient.checkServiceability({
@@ -120,9 +156,9 @@ export const createShiprocketShipmentForOrder = async (orderId: string, actorId:
     billing_email: "no-email@example.com",
     billing_phone: order.customerPhone ?? "9999999999",
     shipping_is_billing: true,
-    order_items: order.items.map((item) => ({
-      name: item.product.name,
-      sku: item.product.sku ?? item.product.slug,
+    order_items: (Array.isArray(order.items) ? order.items : []).map((item: any) => ({
+      name: item.product?.name,
+      sku: item.product?.sku ?? item.product?.slug,
       units: item.quantity,
       selling_price: Number(item.unitPrice),
     })),
@@ -136,39 +172,41 @@ export const createShiprocketShipmentForOrder = async (orderId: string, actorId:
 
   const created = await shiprocketClient.createOrder(createPayload)
   if (!created.shipment_id) throw new Error("Shiprocket shipment_id missing")
-  const exists = await prisma.shipment.findFirst({
-    where: { orderId, shipmentNo: String(created.shipment_id) },
-    select: { id: true },
-  })
+  const exists = await pgQuery<Array<{ id: string }>>(
+    `SELECT id FROM "Shipment" WHERE "orderId" = $1 AND "shipmentNo" = $2 LIMIT 1`,
+    [orderId, String(created.shipment_id)],
+  )
   if (exists) throw new Error("Duplicate shipment")
 
-  const orderItems = order.items.map((item) => ({ orderItemId: item.id, quantity: item.quantity }))
-  const shipment = await prisma.shipment.create({
-    data: {
-      orderId,
-      shipmentNo: String(created.shipment_id),
-      carrier: bestCourier?.name ?? "Shiprocket",
-      shipmentStatus: "shipment_created",
-      items: {
-        create: orderItems,
-      },
-    },
-    include: { items: true },
+  const orderItems = (Array.isArray(order.items) ? order.items : []).map((item: any) => ({ orderItemId: item.id, quantity: item.quantity }))
+  const shipment = await pgTx(async (client) => {
+    const shipmentId = randomUUID()
+    const shipmentRows = await client.query(
+      `
+        INSERT INTO "Shipment" (id, "orderId", "shipmentNo", carrier, "trackingNo", "shipmentStatus", "createdAt", "updatedAt")
+        VALUES ($1,$2,$3,$4,NULL,'shipment_created',now(),now())
+        RETURNING *
+      `,
+      [shipmentId, orderId, String(created.shipment_id), bestCourier?.name ?? "Shiprocket"],
+    )
+    for (const it of orderItems) {
+      await client.query(
+        `INSERT INTO "ShipmentItem" (id, "shipmentId", "orderItemId", quantity) VALUES ($1,$2,$3,$4)`,
+        [randomUUID(), shipmentId, it.orderItemId, it.quantity],
+      )
+    }
+    return shipmentRows.rows[0]
   })
-  await prisma.order.update({
-    where: { id: orderId },
-    data: {
-      statusHistory: {
-        create: {
-          fromStatus: order.statusHistory[0]?.toStatus ?? order.status,
-          toStatus: "packed",
-          reasonCode: "shipment_created",
-          notes: `Shipment Created via Shiprocket, order_id=${created.order_id ?? "na"}, shipment_id=${created.shipment_id}`,
-          changedById: actorId,
-        },
-      },
-    },
-  }).catch(() => null)
+
+  const statusHistory = Array.isArray(order.statusHistory) ? (order.statusHistory as any[]) : []
+  const fromStatus = statusHistory[0]?.toStatus ?? order.status
+  await pgQuery(
+    `
+      INSERT INTO "OrderStatusHistory" (id, "orderId", "fromStatus", "toStatus", "reasonCode", notes, "changedById", "changedAt")
+      VALUES (gen_random_uuid()::text, $1, $2, 'packed', 'shipment_created', $3, $4, now())
+    `,
+    [orderId, fromStatus, `Shipment Created via Shiprocket, order_id=${created.order_id ?? "na"}, shipment_id=${created.shipment_id}`, actorId],
+  ).catch(() => null)
   await addOrderNote(orderId, `Shiprocket shipment created (shipment_id=${created.shipment_id}, pickup=${pickupPostcode})`, actorId)
   await persistExtendedShipmentFields(shipment.id, {
     shiprocketOrderId: created.order_id ? String(created.order_id) : undefined,
@@ -179,25 +217,22 @@ export const createShiprocketShipmentForOrder = async (orderId: string, actorId:
 }
 
 export const assignAwbForOrderShipment = async (orderId: string, actorId: string) => {
-  const shipment = await prisma.shipment.findFirst({
-    where: { orderId },
-    orderBy: { createdAt: "desc" },
-    select: { id: true, shipmentNo: true, trackingNo: true, carrier: true },
-  })
+  const rows = await pgQuery<Array<{ id: string; shipmentNo: string | null; trackingNo: string | null; carrier: string | null }>>(
+    `SELECT id, "shipmentNo", "trackingNo", carrier FROM "Shipment" WHERE "orderId" = $1 ORDER BY "createdAt" DESC LIMIT 1`,
+    [orderId],
+  )
+  const shipment = rows[0]
   if (!shipment) throw new Error("Shipment not found")
   if (shipment.trackingNo) return { shipmentUpdated: false, reason: "AWB already assigned", shipment }
   const shipmentId = Number(shipment.shipmentNo ?? 0)
   if (!Number.isFinite(shipmentId) || shipmentId <= 0) throw new Error("Invalid shipment id for AWB assignment")
   const awb = await shiprocketClient.assignAwb({ shipment_id: shipmentId })
   if (!awb.awb_code) throw new Error("AWB assignment failed")
-  const updated = await prisma.shipment.update({
-    where: { id: shipment.id },
-    data: {
-      trackingNo: awb.awb_code,
-      carrier: awb.courier_name ?? shipment.carrier,
-      shipmentStatus: "ready_to_ship",
-    },
-  })
+  const updatedRows = await pgQuery(
+    `UPDATE "Shipment" SET "trackingNo"=$2, carrier=COALESCE($3, carrier), "shipmentStatus"='ready_to_ship', "updatedAt"=now() WHERE id=$1 RETURNING *`,
+    [shipment.id, awb.awb_code, awb.courier_name ?? null],
+  )
+  const updated = updatedRows[0]
   await persistExtendedShipmentFields(updated.id, {
     awbCode: awb.awb_code,
     courierId: awb.courier_company_id ? String(awb.courier_company_id) : undefined,
@@ -209,21 +244,20 @@ export const assignAwbForOrderShipment = async (orderId: string, actorId: string
 }
 
 export const generatePickupForOrderShipment = async (orderId: string, actorId: string) => {
-  const shipment = await prisma.shipment.findFirst({
-    where: { orderId },
-    orderBy: { createdAt: "desc" },
-    select: { id: true, shipmentNo: true, shipmentStatus: true },
-  })
+  const rows = await pgQuery<Array<{ id: string; shipmentNo: string | null; shipmentStatus: string | null }>>(
+    `SELECT id, "shipmentNo", "shipmentStatus" FROM "Shipment" WHERE "orderId" = $1 ORDER BY "createdAt" DESC LIMIT 1`,
+    [orderId],
+  )
+  const shipment = rows[0]
   if (!shipment) throw new Error("Shipment not found")
   const shipmentId = Number(shipment.shipmentNo ?? 0)
   if (!Number.isFinite(shipmentId) || shipmentId <= 0) throw new Error("Invalid shipment id for pickup")
   const pickup = await shiprocketClient.generatePickup({ shipment_id: shipmentId })
-  const updated = await prisma.shipment.update({
-    where: { id: shipment.id },
-    data: {
-      shipmentStatus: pickup.pickup_status ?? "pickup_requested",
-    },
-  })
+  const updatedRows = await pgQuery(
+    `UPDATE "Shipment" SET "shipmentStatus"=$2, "updatedAt"=now() WHERE id=$1 RETURNING *`,
+    [shipment.id, pickup.pickup_status ?? "pickup_requested"],
+  )
+  const updated = updatedRows[0]
   await persistExtendedShipmentFields(updated.id, {
     pickupStatus: pickup.pickup_status ?? "scheduled",
     lastSyncAt: new Date(),
@@ -233,22 +267,58 @@ export const generatePickupForOrderShipment = async (orderId: string, actorId: s
 }
 
 const getOrderSyncEligibility = async (orderId: string) => {
-  const order = await prisma.order.findUnique({
-    where: { id: orderId },
-    include: {
-      items: { include: { product: true } },
-      statusHistory: { orderBy: { changedAt: "desc" }, take: 1 },
-      shipments: { orderBy: { createdAt: "desc" }, take: 1 },
-    },
-  })
+  const rows = await pgQuery<
+    Array<{
+      id: string
+      status: string
+      paymentMethod: string | null
+      paymentStatus: string | null
+      customerAddress: string | null
+      customerPhone: string | null
+      items: unknown
+      statusHistory: unknown
+      shipments: unknown
+    }>
+  >(
+    `
+      SELECT
+        o.*,
+        COALESCE((
+          SELECT jsonb_agg(jsonb_build_object('id', oi.id, 'productId', oi."productId", 'quantity', oi.quantity, 'unitPrice', oi."unitPrice", 'product', jsonb_build_object('weight', p.weight, 'name', p.name, 'slug', p.slug, 'sku', p.sku)))
+          FROM "OrderItem" oi
+          INNER JOIN "Product" p ON p.id = oi."productId"
+          WHERE oi."orderId" = o.id
+        ), '[]'::jsonb) as items,
+        COALESCE((
+          SELECT jsonb_agg(jsonb_build_object('toStatus', h."toStatus", 'changedAt', h."changedAt") ORDER BY h."changedAt" DESC)
+          FROM "OrderStatusHistory" h
+          WHERE h."orderId" = o.id
+          LIMIT 1
+        ), '[]'::jsonb) as "statusHistory",
+        COALESCE((
+          SELECT jsonb_agg(jsonb_build_object('id', s.id, 'createdAt', s."createdAt") ORDER BY s."createdAt" DESC)
+          FROM "Shipment" s
+          WHERE s."orderId" = o.id
+          LIMIT 1
+        ), '[]'::jsonb) as shipments
+      FROM "Order" o
+      WHERE o.id = $1
+      LIMIT 1
+    `,
+    [orderId],
+  )
+  const order = rows[0] as any
   if (!order) return { eligible: false as const, reason: "Order not found" }
-  const latest = (order.statusHistory[0]?.toStatus ?? order.status ?? "").toLowerCase()
+  const statusHistory = Array.isArray(order.statusHistory) ? (order.statusHistory as any[]) : []
+  const shipments = Array.isArray(order.shipments) ? (order.shipments as any[]) : []
+  const items = Array.isArray(order.items) ? (order.items as any[]) : []
+  const latest = (statusHistory[0]?.toStatus ?? order.status ?? "").toLowerCase()
   const payment = (order.paymentStatus ?? "").toUpperCase()
   const paymentMethod = (order.paymentMethod ?? "").toLowerCase()
 
   if (["cancelled", "delivered", "returned"].includes(latest)) return { eligible: false as const, reason: "Order already closed" }
-  if (order.shipments.length > 0) return { eligible: false as const, reason: "Already synced" }
-  if (!order.items.length) return { eligible: false as const, reason: "No order items" }
+  if (shipments.length > 0) return { eligible: false as const, reason: "Already synced" }
+  if (!items.length) return { eligible: false as const, reason: "No order items" }
   if (!order.customerAddress?.trim()) return { eligible: false as const, reason: "Address incomplete" }
   if (!order.customerPhone?.trim()) return { eligible: false as const, reason: "Missing phone number" }
   const accepted = ["confirmed", "packed", "shipped"].includes(latest)

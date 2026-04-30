@@ -1,5 +1,6 @@
-import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/src/server/db/prisma";
+import { NextRequest, NextResponse } from "next/server"
+import { pgQuery, pgTx } from "@/src/server/db/pg"
+import { randomUUID } from "crypto"
 
 async function getAuthenticatedUserId(req: NextRequest) {
   const authHeader = req.headers.get("authorization");
@@ -13,21 +14,29 @@ export async function GET(request: NextRequest) {
   if (!userId) return NextResponse.json({ success: false, message: "Unauthorized" }, { status: 401 });
 
   try {
-    let user = await prisma.user.findUnique({
-      where: { id: userId },
-      include: { profile: true, addresses: true },
-    });
+    const userRows = await pgQuery<Array<{ id: string; email: string; name: string | null }>>(
+      `SELECT id, email, name FROM "User" WHERE id = $1 LIMIT 1`,
+      [userId],
+    )
+    const user = userRows[0]
 
     if (!user) return NextResponse.json({ success: false, message: "User not found" }, { status: 404 });
 
-    if (!user.profile) {
-      const newProfile = await prisma.userProfile.create({
-        data: { userId: user.id },
-      });
-      return NextResponse.json({ success: true, data: { ...user, profile: newProfile } });
+    const [profileRows, addresses] = await Promise.all([
+      pgQuery<Array<Record<string, unknown>>>(`SELECT * FROM "UserProfile" WHERE "userId" = $1 LIMIT 1`, [userId]),
+      pgQuery<Array<Record<string, unknown>>>(`SELECT * FROM "UserAddress" WHERE "userId" = $1 ORDER BY "createdAt" DESC`, [userId]),
+    ])
+    let profile = profileRows[0] ?? null
+    if (!profile) {
+      profile = (
+        await pgQuery<Array<Record<string, unknown>>>(
+          `INSERT INTO "UserProfile" (id, "userId", "createdAt", "updatedAt") VALUES ($1, $2, now(), now()) RETURNING *`,
+          [randomUUID(), userId],
+        )
+      )[0]
     }
 
-    return NextResponse.json({ success: true, data: user });
+    return NextResponse.json({ success: true, data: { ...user, profile, addresses } });
   } catch (error) {
     return NextResponse.json({ success: false, message: "Internal Server Error" }, { status: 500 });
   }
@@ -46,39 +55,34 @@ export async function PATCH(request: NextRequest) {
       avatarUrl?: string 
     };
 
-    // 1. Verify the user exists first
-    const user = await prisma.user.findUnique({
-      where: { id: userId }
-    });
+    const userRows = await pgQuery<Array<{ id: string }>>(`SELECT id FROM "User" WHERE id = $1 LIMIT 1`, [userId])
+    const user = userRows[0]
 
     if (!user) {
       return NextResponse.json({ success: false, message: "User account not found" }, { status: 404 });
     }
 
-    // 2. Update user name if provided
-    if (name !== undefined) {
-      await prisma.user.update({
-        where: { id: userId },
-        data: { name },
-      });
-    }
+    const updatedProfile = await pgTx(async (client) => {
+      if (name !== undefined) {
+        await client.query(`UPDATE "User" SET name = $2, "updatedAt" = now() WHERE id = $1`, [userId, name])
+      }
 
-    // 3. Upsert Profile: Creates if missing, updates if exists
-    const updatedProfile = await prisma.userProfile.upsert({
-      where: { userId },
-      create: { 
-        userId, 
-        bio: bio ?? null, 
-        phone: phone ?? null, 
-        avatarUrl: avatarUrl ?? null 
-      },
-      update: { 
-        // Only update fields that were actually passed in the request body
-        ...(bio !== undefined && { bio }),
-        ...(phone !== undefined && { phone }),
-        ...(avatarUrl !== undefined && { avatarUrl }),
-      },
-    });
+      // Note: UserProfile schema does not include `bio` in this project; ignore if provided.
+      const insertRows = await client.query<Record<string, unknown>>(
+        `
+          INSERT INTO "UserProfile" (id, "userId", phone, "avatarUrl", "createdAt", "updatedAt")
+          VALUES ($1, $2, $3, $4, now(), now())
+          ON CONFLICT ("userId") DO UPDATE
+          SET
+            phone = COALESCE(EXCLUDED.phone, "UserProfile".phone),
+            "avatarUrl" = COALESCE(EXCLUDED."avatarUrl", "UserProfile"."avatarUrl"),
+            "updatedAt" = now()
+          RETURNING *
+        `,
+        [randomUUID(), userId, phone ?? null, avatarUrl ?? null],
+      )
+      return insertRows.rows[0]
+    })
 
     return NextResponse.json({ success: true, data: updatedProfile, message: "Profile updated successfully" });
   } catch (error) {
@@ -93,10 +97,10 @@ export async function DELETE(request: NextRequest) {
 
   try {
     // Clear specific profile fields rather than deleting the user account
-    await prisma.userProfile.update({
-      where: { userId },
-      data: { bio: null, phone: null, avatarUrl: null }
-    });
+    await pgQuery(
+      `UPDATE "UserProfile" SET phone = NULL, "avatarUrl" = NULL, "updatedAt" = now() WHERE "userId" = $1`,
+      [userId],
+    )
     return NextResponse.json({ success: true, message: "Profile data cleared" });
   } catch (error) {
     return NextResponse.json({ success: false, message: "Delete failed" }, { status: 500 });

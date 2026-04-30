@@ -1,10 +1,8 @@
-import { prisma } from "@/src/server/db/prisma"
+import { pgQuery, pgTx } from "@/src/server/db/pg"
+import { randomUUID } from "crypto"
 
 export const listWarehouses = async () => {
-  return prisma.warehouse.findMany({
-    where: { isActive: true },
-    orderBy: [{ priority: "desc" }, { name: "asc" }],
-  })
+  return pgQuery(`SELECT * FROM "Warehouse" WHERE "isActive" = true ORDER BY priority DESC, name ASC`)
 }
 
 export const createWarehouse = async (input: {
@@ -15,16 +13,23 @@ export const createWarehouse = async (input: {
   state?: string
   postalCode?: string
 }) => {
-  return prisma.warehouse.create({
-    data: {
-      code: input.code.trim().toUpperCase(),
-      name: input.name.trim(),
-      region: input.region?.trim() || null,
-      city: input.city?.trim() || null,
-      state: input.state?.trim() || null,
-      postalCode: input.postalCode?.trim() || null,
-    },
-  })
+  const rows = await pgQuery(
+    `
+      INSERT INTO "Warehouse" (id, code, name, region, city, state, "postalCode", "isActive", priority, "createdAt", "updatedAt")
+      VALUES ($1,$2,$3,$4,$5,$6,$7,true,0,now(),now())
+      RETURNING *
+    `,
+    [
+      randomUUID(),
+      input.code.trim().toUpperCase(),
+      input.name.trim(),
+      input.region?.trim() || null,
+      input.city?.trim() || null,
+      input.state?.trim() || null,
+      input.postalCode?.trim() || null,
+    ],
+  )
+  return rows[0]
 }
 
 export const listInventoryLots = async (params?: {
@@ -33,19 +38,22 @@ export const listInventoryLots = async (params?: {
   includeExpired?: boolean
 }) => {
   const now = new Date()
-  return prisma.inventoryStockLot.findMany({
-    where: {
-      ...(params?.productId ? { productId: params.productId } : {}),
-      ...(params?.warehouseId ? { warehouseId: params.warehouseId } : {}),
-      ...(params?.includeExpired ? {} : { OR: [{ expiryDate: null }, { expiryDate: { gte: now } }] }),
-    },
-    orderBy: [{ expiryDate: "asc" }, { receivedAt: "asc" }],
-    include: {
-      product: { select: { id: true, name: true, slug: true } },
-      warehouse: { select: { id: true, code: true, name: true } },
-    },
-    take: 500,
-  })
+  const values: any[] = [params?.productId ?? null, params?.warehouseId ?? null, params?.includeExpired ? null : now]
+  return pgQuery(
+    `
+      SELECT
+        l.*,
+        (SELECT jsonb_build_object('id', p.id, 'name', p.name, 'slug', p.slug) FROM "Product" p WHERE p.id = l."productId") as product,
+        (SELECT jsonb_build_object('id', w.id, 'code', w.code, 'name', w.name) FROM "Warehouse" w WHERE w.id = l."warehouseId") as warehouse
+      FROM "InventoryStockLot" l
+      WHERE ($1::text IS NULL OR l."productId" = $1)
+        AND ($2::text IS NULL OR l."warehouseId" = $2)
+        AND ($3::timestamptz IS NULL OR l."expiryDate" IS NULL OR l."expiryDate" >= $3)
+      ORDER BY l."expiryDate" ASC NULLS LAST, l."receivedAt" ASC
+      LIMIT 500
+    `,
+    values,
+  )
 }
 
 export const createInventoryLot = async (input: {
@@ -59,55 +67,49 @@ export const createInventoryLot = async (input: {
   costPerUnit?: number | null
   notes?: string
 }) => {
-  return prisma.$transaction(async (tx) => {
-    const lot = await tx.inventoryStockLot.create({
-      data: {
-        productId: input.productId,
-        warehouseId: input.warehouseId,
-        variantId: input.variantId ?? undefined,
-        batchNo: input.batchNo.trim(),
-        mfgDate: input.mfgDate ?? null,
-        expiryDate: input.expiryDate ?? null,
-        qtyReceived: input.qtyReceived,
-        qtyAvailable: input.qtyReceived,
-        costPerUnit: input.costPerUnit ?? null,
-      },
-    })
+  return pgTx(async (client) => {
+    const lotId = randomUUID()
+    const lotRows = await client.query(
+      `
+        INSERT INTO "InventoryStockLot" (
+          id, "productId", "warehouseId", "variantId", "batchNo", "mfgDate", "expiryDate",
+          "qtyReceived", "qtyAvailable", "costPerUnit", "receivedAt", "createdAt", "updatedAt"
+        )
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$8,$9,now(),now(),now())
+        RETURNING *
+      `,
+      [
+        lotId,
+        input.productId,
+        input.warehouseId,
+        input.variantId ?? null,
+        input.batchNo.trim(),
+        input.mfgDate ?? null,
+        input.expiryDate ?? null,
+        input.qtyReceived,
+        input.costPerUnit ?? null,
+      ],
+    )
 
-    await tx.inventoryMovement.create({
-      data: {
-        lotId: lot.id,
-        movementType: "in",
-        quantity: input.qtyReceived,
-        referenceType: "lot_receipt",
-        referenceId: lot.id,
-        notes: input.notes?.trim() || null,
-      },
-    })
+    await client.query(
+      `
+        INSERT INTO "InventoryMovement" (id, "lotId", "movementType", quantity, "referenceType", "referenceId", notes, "createdAt")
+        VALUES ($1,$2,'in',$3,'lot_receipt',$2,$4,now())
+      `,
+      [randomUUID(), lotId, input.qtyReceived, input.notes?.trim() || null],
+    )
 
-    await tx.inventoryItem.upsert({
-      where: {
-        id: `${input.productId}:${input.warehouseId}`,
-      },
-      create: {
-        id: `${input.productId}:${input.warehouseId}`,
-        productId: input.productId,
-        warehouse: input.warehouseId,
-        available: input.qtyReceived,
-        reserved: 0,
-      },
-      update: {
-        available: { increment: input.qtyReceived },
-      },
-    }).catch(async () => {
-      // Compatibility fallback for legacy IDs not keyed as productId:warehouseId.
-      await tx.inventoryItem.updateMany({
-        where: { productId: input.productId, warehouse: input.warehouseId },
-        data: { available: { increment: input.qtyReceived } },
-      })
-    })
+    await client.query(
+      `
+        INSERT INTO "InventoryItem" (id, "productId", warehouse, available, reserved, "createdAt", "updatedAt")
+        VALUES ($1,$2,$3,$4,0,now(),now())
+        ON CONFLICT (id) DO UPDATE
+        SET available = "InventoryItem".available + EXCLUDED.available, "updatedAt" = now()
+      `,
+      [`${input.productId}:${input.warehouseId}`, input.productId, input.warehouseId, input.qtyReceived],
+    )
 
-    return lot
+    return lotRows.rows[0]
   })
 }
 
@@ -116,15 +118,18 @@ export const fifoAllocateLots = async (input: {
   requiredQty: number
   warehouseId?: string
 }) => {
-  const lots = await prisma.inventoryStockLot.findMany({
-    where: {
-      productId: input.productId,
-      qtyAvailable: { gt: 0 },
-      ...(input.warehouseId ? { warehouseId: input.warehouseId } : {}),
-      OR: [{ expiryDate: null }, { expiryDate: { gte: new Date() } }],
-    },
-    orderBy: [{ expiryDate: "asc" }, { receivedAt: "asc" }],
-  })
+  const lots = await pgQuery<Array<{ id: string; qtyAvailable: number }>>(
+    `
+      SELECT id, "qtyAvailable"
+      FROM "InventoryStockLot"
+      WHERE "productId" = $1
+        AND "qtyAvailable" > 0
+        AND ($2::text IS NULL OR "warehouseId" = $2)
+        AND ("expiryDate" IS NULL OR "expiryDate" >= now())
+      ORDER BY "expiryDate" ASC NULLS LAST, "receivedAt" ASC
+    `,
+    [input.productId, input.warehouseId ?? null],
+  )
 
   let remaining = input.requiredQty
   const allocations: Array<{ lotId: string; quantity: number }> = []
