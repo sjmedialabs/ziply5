@@ -607,16 +607,16 @@ const toggleTag = (tagId: string) => {
                   <p className="mt-1 text-[10px] uppercase tracking-wide text-white/90">
                     Home style meal | Net wt. {product.weight}
                   </p>
-                  {product.productKind === "simple" && product.stock && product?.stock > 0 && (
-                    <p className="mt-1 text-[11px] font-bold text-orange-200">
-                      {product?.stock < 5 ? `Hurry up only ${product.stock} left` : `${product.stock} in stock`}
+                  {product.productKind === "simple" && product.stock && product.stock > 0 && product.stock <= 5 && (
+                    <p className="mt-1 text-[11px] font-medium text-orange-200">
+                      Hurry up only {product.stock} left
                     </p>
                   )}
                    <p className="mt-1 text-sm font-melon text-[#FFF5C5]">Rs. {product.price.toFixed(2)}</p>
                 </div>
               </Link>
 
-                <div className="mt-3 flex items-center justify-between gap-2 font-melon tracking-wide font-light">
+                <div className="mt-auto flex items-end justify-between gap-2 pt-2 font-melon tracking-wide font-light">
                   {(cartQtyBySlug[product.slug] ?? 0) > 0 && product.productKind === "simple" ? (
                     <div className="flex items-center rounded-md border border-[#d5c4b8] bg-white/95 px-1 py-0.5">
                       <button
@@ -700,7 +700,7 @@ const toggleTag = (tagId: string) => {
                   <Image src={selectedProduct.image} alt={selectedProduct.name} fill className="object-contain" />
                 </div>
                 <div>
-                  <h4 className="font-melon text-base font-bold text-[#4A1D1F]">{selectedProduct.name}</h4>
+                  <h4 className="font-melon text-base font-medium text-[#4A1D1F]">{selectedProduct.name}</h4>
                   <p className="text-xs text-gray-500 line-clamp-2">{selectedProduct.description}</p>
                 </div>
               </div>
@@ -712,8 +712,8 @@ const toggleTag = (tagId: string) => {
                   return (
                     <div key={v.id} className="flex items-center justify-between rounded-2xl border border-gray-100 bg-gray-50/50 p-4 transition-all hover:border-orange-200">
                       <div>
-                        <p className="font-melon text-sm font-bold text-[#4A1D1F]">{v.weight || v.name}</p>
-                        <p className="text-sm font-bold text-orange-500">Rs. {v.price.toFixed(2)}</p>
+                        <p className="font-melon text-sm font-medium text-[#4A1D1F]">{v.weight || v.name}</p>
+                        <p className="text-sm font-medium text-orange-500">Rs. {v.price.toFixed(2)}</p>
                       </div>
                       
                       <div className="flex items-center gap-3">
@@ -732,10 +732,28 @@ const toggleTag = (tagId: string) => {
                           </button>
                         )}
                       </div>
-                    </div>
+                      </div>
                   )
                 })}
               </div>
+            </div>
+
+            <div className="border-t border-gray-100 p-5 flex items-center justify-between gap-3 bg-gray-50/50">
+              <button
+                onClick={() => setSelectedProduct(null)}
+                className="flex-1 rounded-full border-2 cursor-pointer border-primary py-2.5 text-[11px] font-bold uppercase tracking-widest text-primary hover:bg-primary/10 transition-colors"
+              >
+                Continue Shopping
+              </button>
+              <button
+                onClick={() => {
+                  setSelectedProduct(null);
+                  router.push("/cart");
+                }}
+                className="flex-1 rounded-full bg-primary cursor-pointer border-2 border-primary py-2.5 text-[11px] font-bold uppercase tracking-widest text-white hover:bg-[#3a1517] transition-colors"
+              >
+                Go to Cart
+              </button>
             </div>
           </div>
         </div>

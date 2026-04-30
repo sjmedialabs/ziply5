@@ -3,8 +3,8 @@
 import { Suspense, useEffect, useMemo, useState } from "react"
 import Link from "next/link"
 import Image from "next/image"
-import { Facebook, Twitter, Linkedin, X } from "lucide-react"
-import { User, Star, Package, Camera } from "lucide-react"
+import { Facebook, Twitter, Linkedin, X, Heart } from "lucide-react"
+import { User, Star, Package } from "lucide-react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query"
 import { getFavoriteSlugs, toggleFavoriteSlug } from "@/lib/favorites"
@@ -502,14 +502,15 @@ function ProfilePageContent() {
                 <span className="font-medium">Personal Information</span>
               </div>
 
-              <div
-                onClick={() => setActiveTab("favorite")}
-                className={`mt-1 flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-medium transition-colors ${activeTab === "favorite" ? "bg-[#FDE2E7] text-[#7A1F2A]" : "text-[#374151] hover:bg-[#F3F4F6]"
-                  }`}
-              >
-                <Star size={18} />
-                <span className="font-medium">wishlist</span>
-              </div>
+          <div
+            onClick={() => setActiveTab("favorite")}
+            className={`mt-1 flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-medium transition-colors ${
+              activeTab === "favorite" ? "bg-[#FDE2E7] text-[#7A1F2A]" : "text-[#374151] hover:bg-[#F3F4F6]"
+            }`}
+          >
+            <Heart size={18} />
+            <span className="font-medium">Wishlist</span>
+          </div>
 
               <div
                 onClick={() => setActiveTab("orders")}
@@ -584,23 +585,23 @@ function ProfilePageContent() {
                   Track return/replace
                 </Link>
               </div> */}
-                    <div className="flex justify-between items-center w-full">
-                      <button
-                        onClick={() => setIsManageModalOpen(true)}
-                        className="mt-4 text-xs font-bold text-primary underline uppercase tracking-widest"
-                      >
-                        Manage Profile
-                      </button>
-                      <div className="">
-                        <button
-                          type="button"
-                          onClick={handleLogout}
-                          className="rounded-md bg-[#5A272A] px-4 py-2 text-xs font-semibold uppercase tracking-wide text-white hover:bg-[#451f21]"
-                        >
-                          Logout
-                        </button>
-                      </div>
-                    </div>
+            <div className="flex justify-between items-center w-full">
+              <button
+                onClick={() => setIsManageModalOpen(true)}
+                className="mt-4 text-xs font-bold text-primary underline uppercase tracking-widest"
+              >
+                Manage Profile
+              </button>
+                        <div className="">
+            {/* <button
+              type="button"
+              onClick={handleLogout}
+              className="rounded-md bg-[#5A272A] px-4 py-2 text-xs font-semibold uppercase tracking-wide text-white hover:bg-[#451f21]"
+            >
+              Logout
+            </button> */}
+          </div>
+          </div>
 
                     {/* SOCIAL */}
                     {/* <div className="flex items-center">

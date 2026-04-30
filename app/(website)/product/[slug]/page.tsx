@@ -21,7 +21,7 @@ export default function ProductPage() {
   const [error, setError] = useState("")
   const [loading, setLoading] = useState(true)
     const [cartQtyBySlug, setCartQtyBySlug] = useState<Record<string, number>>({})
-  const [quantity, setQuantity] = useState(1)
+  const [quantity, setQuantity] = useState(0)
   const [selectedSize, setSelectedSize] = useState("")
   const [openSection, setOpenSection] = useState<string | null>(null)
   const [favorite, setFavorite] = useState(false)
@@ -133,7 +133,8 @@ export default function ProductPage() {
     setSelectedImage((product.gallery[0] ?? product.image ?? "").trim())
     const defaultVariant = product.variants.find((v) => v.isDefault) ?? product.variants[0]
     setSelectedSize(defaultVariant?.weight || defaultVariant?.name || product.weight)
-    setQuantity(getCartQuantity(product.id, defaultVariant?.id ?? null))
+    const initialQty = getCartQuantity(product.id, defaultVariant?.id ?? null)
+    setQuantity(initialQty)
     setOpenSection(null)
     setRelatedStart(0)
     setThumbStart(0)
@@ -150,12 +151,23 @@ export default function ProductPage() {
           }, {})
           setCartQtyBySlug(qtyMap)
         }
-    const syncQty = () => setQuantity(getCartQuantity(product.id, activeVariant?.id ?? null))
-    window.addEventListener("ziply5:cart-updated", syncQty)
-    window.addEventListener("storage", syncQty)
+    const syncQty = () => {
+      const qty = getCartQuantity(product.id, activeVariant?.id ?? null)
+      setQuantity(qty)
+    }
+
+    syncCartQty()
+    syncQty()
+
+    const handleUpdate = () => {
+      syncCartQty()
+      syncQty()
+    }
+    window.addEventListener("ziply5:cart-updated", handleUpdate)
+    window.addEventListener("storage", handleUpdate)
     return () => {
-      window.removeEventListener("ziply5:cart-updated", syncQty)
-      window.removeEventListener("storage", syncQty)
+      window.removeEventListener("ziply5:cart-updated", handleUpdate)
+      window.removeEventListener("storage", handleUpdate)
     }
   }, [activeVariant?.id, product])
 
