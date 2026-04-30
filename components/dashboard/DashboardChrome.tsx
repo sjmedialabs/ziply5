@@ -166,7 +166,7 @@ export function DashboardChrome({
       </aside>
 
       <div className="flex min-h-screen min-w-0 flex-1 flex-col">
-        <header className="sticky top-0 z-30 flex h-14 shrink-0 items-center justify-between gap-3 border-b border-[#E0D5C8] bg-white/95 px-3 backdrop-blur md:px-5">
+        <header className="sticky top-0 z-30 flex shrink-0 items-center justify-between gap-3 border-b border-[#E0D5C8] bg-white/95 px-3 py-[34px] backdrop-blur md:px-5">
           <div className="flex items-center gap-2">
             <button
               type="button"
