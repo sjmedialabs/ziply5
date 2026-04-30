@@ -1,4 +1,5 @@
 import { NextRequest } from "next/server"
+import { revalidatePath } from "next/cache"
 import { z } from "zod"
 import { fail, ok } from "@/src/server/core/http/response"
 import { requireAuth } from "@/src/server/middleware/auth"
@@ -84,5 +85,16 @@ export async function POST(request: NextRequest) {
       contentJson: section.contentJson,
     })),
   })
+
+  // Tell Next.js to purge the cache for the updated page
+  const slug = parsed.data.slug;
+  if (slug === "home") {
+    revalidatePath("/");
+  } else if (slug === "header" || slug === "footer") {
+    revalidatePath("/", "layout");
+  } else {
+    revalidatePath(`/${slug}`);
+  }
+
   return ok(page, "CMS page saved")
 }
