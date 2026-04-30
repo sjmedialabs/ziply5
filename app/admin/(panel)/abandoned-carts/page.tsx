@@ -4,6 +4,13 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { authedFetch, authedPost } from "@/lib/dashboard-fetch";
 import { ConsoleTable, ConsoleTd } from "@/components/dashboard/ConsoleTable";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 type CartRow = {
   id: string;
@@ -119,18 +126,28 @@ export default function AdminAbandonedCartsPage() {
         </div>
       </div>
       <div className="grid gap-2 rounded-xl border border-[#E8DCC8] bg-white p-3 md:grid-cols-4">
-        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search session/email/mobile" className="rounded border px-3 py-2 text-sm" />
-        <select value={converted} onChange={(e) => setConverted(e.target.value as "all" | "yes" | "no")} className="rounded border px-3 py-2 text-sm">
-          <option value="all">All conversions</option>
-          <option value="yes">Converted</option>
-          <option value="no">Unconverted</option>
-        </select>
-        <select value={userType} onChange={(e) => setUserType(e.target.value as "all" | "guest" | "registered")} className="rounded border px-3 py-2 text-sm">
-          <option value="all">All users</option>
-          <option value="guest">Guest</option>
-          <option value="registered">Registered</option>
-        </select>
-        <button type="button" onClick={() => load()} className="rounded bg-[#7B3010] px-3 py-2 text-xs font-semibold uppercase tracking-wide text-white">Apply Filters</button>
+        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search session/email/mobile" className="rounded-xl border px-3 py-2 text-sm" />
+        <Select value={converted} onValueChange={(v) => setConverted(v as "all" | "yes" | "no")}>
+          <SelectTrigger className="!h-auto rounded-xl bg-white shadow-none focus:ring-0 focus-visible:ring-0">
+            <SelectValue placeholder="All conversions" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All conversions</SelectItem>
+            <SelectItem value="yes">Converted</SelectItem>
+            <SelectItem value="no">Unconverted</SelectItem>
+          </SelectContent>
+        </Select>
+        <Select value={userType} onValueChange={(v) => setUserType(v as "all" | "guest" | "registered")}>
+          <SelectTrigger className="!h-auto rounded-xl bg-white shadow-none focus:ring-0 focus-visible:ring-0">
+            <SelectValue placeholder="All users" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All users</SelectItem>
+            <SelectItem value="guest">Guest</SelectItem>
+            <SelectItem value="registered">Registered</SelectItem>
+          </SelectContent>
+        </Select>
+        <button type="button" onClick={() => load()} className="rounded-xl bg-[#7B3010] px-3 py-2 text-xs font-semibold uppercase tracking-wide text-white">Apply Filters</button>
       </div>
 
       {error && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-800">{error}</p>}

@@ -3,6 +3,13 @@
 import { useState, useEffect } from "react";
 import { useLocations } from "../../hooks/useLocations";
 import { authedFetch } from "../../lib/dashboard-fetch";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 export default function LocationCreatorForm({
   type,
@@ -92,31 +99,43 @@ export default function LocationCreatorForm({
       {type === "city" && (
         <div className="space-y-1">
           <label className="text-[11px] font-bold uppercase text-[#646464]">Parent State</label>
-          <select required value={parentState} onChange={(e) => setParentState(e.target.value)} className="w-full px-3 py-2 text-sm border border-[#D9D9D1] rounded-lg outline-none focus:border-[#7B3010]">
-            <option value="">Select a state...</option>
-            {states?.map((s) => (
-              <option key={s.value} value={s.value}>{s.label}</option>
-            ))}
-          </select>
+          <Select required value={parentState} onValueChange={setParentState}>
+            <SelectTrigger className="!h-auto w-full rounded-lg border-[#D9D9D1] text-sm shadow-none focus:border-[#7B3010] focus:ring-0 focus-visible:ring-0">
+              <SelectValue placeholder="Select a state..." />
+            </SelectTrigger>
+            <SelectContent>
+              {states?.map((s) => (
+                <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
       )}
 
       <div className="space-y-1">
         <label className="text-[11px] font-bold uppercase text-[#646464]">Label (Name)</label>
         {type === "state" && (apiStates.length > 0 || apiLoading) ? (
-          <select required disabled={apiLoading} value={label} onChange={(e) => {
-            setLabel(e.target.value);
-            const s = apiStates.find((st) => st.name === e.target.value);
-            if (s) setValue(s.state_code);
-          }} className="w-full px-3 py-2 text-sm border border-[#D9D9D1] rounded-lg outline-none focus:border-[#7B3010] bg-white">
-            <option value="">{apiLoading ? "Loading Indian States..." : "Select an Indian State..."}</option>
-            {apiStates.map((s) => <option key={s.state_code} value={s.name}>{s.name}</option>)}
-          </select>
+          <Select required disabled={apiLoading} value={label} onValueChange={(newLabel) => {
+              setLabel(newLabel);
+              const s = apiStates.find((st) => st.name === newLabel);
+              if (s) setValue(s.state_code);
+            }}>
+            <SelectTrigger className="!h-auto w-full rounded-lg border-[#D9D9D1] bg-white text-sm shadow-none focus:border-[#7B3010] focus:ring-0 focus-visible:ring-0">
+              <SelectValue placeholder={apiLoading ? "Loading Indian States..." : "Select an Indian State..."} />
+            </SelectTrigger>
+            <SelectContent>
+              {apiStates.map((s) => <SelectItem key={s.state_code} value={s.name}>{s.name}</SelectItem>)}
+            </SelectContent>
+          </Select>
         ) : type === "city" && parentState && (apiCities.length > 0 || apiLoading) ? (
-          <select required disabled={apiLoading} value={label} onChange={(e) => setLabel(e.target.value)} className="w-full px-3 py-2 text-sm border border-[#D9D9D1] rounded-lg outline-none focus:border-[#7B3010] bg-white">
-            <option value="">{apiLoading ? "Loading Cities..." : "Select a City..."}</option>
-            {apiCities.map((c) => <option key={c} value={c}>{c}</option>)}
-          </select>
+          <Select required disabled={apiLoading} value={label} onValueChange={setLabel}>
+            <SelectTrigger className="!h-auto w-full rounded-lg border-[#D9D9D1] bg-white text-sm shadow-none focus:border-[#7B3010] focus:ring-0 focus-visible:ring-0">
+              <SelectValue placeholder={apiLoading ? "Loading Cities..." : "Select a City..."} />
+            </SelectTrigger>
+            <SelectContent>
+              {apiCities.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+            </SelectContent>
+          </Select>
         ) : (
           <input type="text" required placeholder={`e.g. ${type === 'state' ? 'Maharashtra' : type === 'city' ? 'Mumbai' : 'Main Hub'}`} value={label} onChange={(e) => setLabel(e.target.value)} className="w-full px-3 py-2 text-sm border border-[#D9D9D1] rounded-lg outline-none focus:border-[#7B3010]" />
         )}

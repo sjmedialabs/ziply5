@@ -4,6 +4,14 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { authedDelete, authedFetch, authedPost, authedPatch } from "@/lib/dashboard-fetch";
+import { useLocations } from "@/hooks/useLocations";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 type Addr = {
   id: string;
@@ -40,6 +48,39 @@ export default function AddressesPage() {
   const [country, setCountry] = useState("IN");
   const [phone, setPhone] = useState("");
   const [label, setLabel] = useState("");
+
+  const { data: states } = useLocations("state");
+  const { data: cities } = useLocations("city");
+  const [cityMap, setCityMap] = useState<Record<string, string[]>>({});
+
+  useEffect(() => {
+    fetch("/data/india-locations.json")
+      .then((res) => res.json())
+      .then((data) => {
+        if (data?.cities) setCityMap(data.cities);
+      })
+      .catch(() => {});
+  }, []);
+
+  const availableCities = cities?.filter((c: any) => {
+    if (!state) return false;
+    const selectedStateObj = states?.find((s) => s.label === state);
+    if (!selectedStateObj) return false;
+
+    // 1. Check for strict DB relationship (for custom-created locations)
+    const parentRef = c.parentState || c.valueJson?.parentState || c.meta?.parentState;
+    if (parentRef) {
+      return parentRef === selectedStateObj.value || parentRef === selectedStateObj.label;
+    }
+
+    // 2. Fallback to local JSON map (for standard India locations)
+    if (selectedStateObj.label && cityMap[selectedStateObj.label]) {
+      return cityMap[selectedStateObj.label].includes(c.label);
+    }
+
+    // 3. Absolute Failsafe: If mapping file fails to load, allow all cities so the dropdown isn't broken
+    return Object.keys(cityMap).length === 0;
+  });
 
   const load = useCallback(() => {
     const token = typeof window !== "undefined" ? window.localStorage.getItem("ziply5_access_token") : null;
@@ -263,22 +304,33 @@ export default function AddressesPage() {
                 />
               </label>
               <label className="text-xs font-semibold uppercase text-[#646464]">
-                City
-                <input
-                  required
-                  value={city}
-                  onChange={(e) => setCity(e.target.value)}
-                  className="mt-1 w-full rounded-lg border border-[#D9D9D1] bg-white px-3 py-2 text-sm"
-                />
+                State
+                <Select required value={state || undefined} onValueChange={(val) => {
+                  setState(val);
+                  setCity("");
+                }}>
+                  <SelectTrigger className="mt-1 !h-[38px] w-full rounded-lg border border-[#D9D9D1] bg-white px-3 py-2 text-sm shadow-none focus:border-[#7B3010] focus:ring-0 focus-visible:ring-0">
+                    <SelectValue placeholder="Select State" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {states?.map((s) => (
+                      <SelectItem key={s.value} value={s.label}>{s.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </label>
               <label className="text-xs font-semibold uppercase text-[#646464]">
-                State
-                <input
-                  required
-                  value={state}
-                  onChange={(e) => setState(e.target.value)}
-                  className="mt-1 w-full rounded-lg border border-[#D9D9D1] bg-white px-3 py-2 text-sm"
-                />
+                City
+                <Select required disabled={!state} value={city || undefined} onValueChange={setCity}>
+                  <SelectTrigger className="mt-1 !h-[38px] w-full rounded-lg border border-[#D9D9D1] bg-white px-3 py-2 text-sm shadow-none focus:border-[#7B3010] focus:ring-0 focus-visible:ring-0">
+                    <SelectValue placeholder={!state ? "Select state first" : "Select City"} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {availableCities?.map((c) => (
+                      <SelectItem key={c.value} value={c.label}>{c.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </label>
               <label className="text-xs font-semibold uppercase text-[#646464]">
                 Postal code
