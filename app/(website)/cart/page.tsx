@@ -6,10 +6,14 @@ import { getFavoriteSlugs, setFavoriteSlugs } from "@/lib/favorites";
 import { ArrowLeft, Minus, Plus, X } from "lucide-react";
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
-
+ import {  toggleFavoriteSlug } from "@/lib/favorites"
+import { toast } from "@/lib/toast"
+import { useRouter } from "next/navigation";
 const formatMoney = (amount: number) => amount.toFixed(2);
 
+
 export default function CartPage() {
+  const router = useRouter();
   const [cartItems, setLocalCartItems] = useState<CartItem[]>([]);
   const [couponCode, setCouponCode] = useState("");
   const [offerBreakdown, setOfferBreakdown] = useState<Array<{ label: string; amount: number; type: string }>>([]);
@@ -44,13 +48,24 @@ export default function CartPage() {
     persistCart(next);
   };
 
-  const moveToWishlist = (item: CartItem) => {
-    const existing = getFavoriteSlugs();
-    if (!existing.includes(item.slug)) {
-      setFavoriteSlugs([...existing, item.slug]);
+ const handleToggleFavorite = async (e: React.MouseEvent, slug: string,id:any) => {
+    e.stopPropagation();
+    const token = window.localStorage.getItem("ziply5_access_token");
+    if (!token) {
+      if (confirm("Log in to sync favorites across devices? Cancel to save locally.")) {
+        router.push("/login");
+        return;
+      }
     }
-    removeItem(item.id);
-  };
+    const isNowFav = await toggleFavoriteSlug(slug);
+    if (isNowFav) {
+      toast.success("Added to favorites", "The product is now in your favorites.");
+    } else {
+      toast.info("Removed from favorites", "The product has been removed from your favorites.");
+    }
+    removeItem(id);
+  
+  }
 
   const subTotal = cartItems.reduce(
     (acc, item) => acc + item.price * item.quantity,
@@ -228,7 +243,7 @@ export default function CartPage() {
                           <div className="flex items-center gap-2">
                             <button
                               className="rounded-full border border-[#D1D5DB] px-3 py-1 text-xs text-[#374151] hover:bg-[#F9FAFB]"
-                              onClick={() => moveToWishlist(item)}
+                              onClick={(e) => handleToggleFavorite(e, item.slug,item.id)}
                               aria-label={`Move ${item.name} to wishlist`}
                             >
                               Move to wishlist

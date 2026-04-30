@@ -66,15 +66,46 @@ export async function POST(request: NextRequest) {
     if (!product) {
       return NextResponse.json({ success: false, message: "Product not found" }, { status: 404 })
     }
+    
+    // Parse product ID as a number if it is purely numeric to prevent foreign key type mismatch errors
+    const parsedProductId = !isNaN(Number(product.id)) ? Number(product.id) : product.id
     const client = getSupabaseAdmin()
+    let lastError: any = null
+
     for (const table of FAVORITE_TABLES) {
-      const attempts = [
-        () => client.from(table).upsert({ userId, productId: product.id }, { onConflict: "userId,productId" }),
-        () => client.from(table).upsert({ user_id: userId, product_id: product.id }, { onConflict: "user_id,product_id" }),
+      const cols = [
+        { u: "userId", p: "productId" },
+        { u: "user_id", p: "product_id" },
       ]
-      for (const run of attempts) {
-        const { error } = await run()
-        if (!error) return NextResponse.json({ success: true, message: "Added to favorites" })
+      for (const { u, p } of cols) {
+        const { data, error: selectError } = await client.from(table).select(u).eq(u, userId).eq(p, parsedProductId).limit(1)
+        if (!selectError) {
+          if (data && data.length > 0) return NextResponse.json({ success: true, message: "Added to favorites" })
+          
+          const insertPayload: any = { [u]: userId, [p]: parsedProductId }
+          const { error: insertError } = await client.from(table).insert(insertPayload)
+          
+          if (!insertError || insertError.code === "23505") {
+            return NextResponse.json({ success: true, message: "Added to favorites" })
+          }
+
+          // Handle case where Prisma generated the schema and 'id' requires a client-side CUID/UUID
+          if (insertError?.message?.includes("null value") && insertError?.message?.includes("id")) {
+            insertPayload.id = typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).substring(2)
+            const { error: retryError } = await client.from(table).insert(insertPayload)
+            if (!retryError || retryError.code === "23505") {
+              return NextResponse.json({ success: true, message: "Added to favorites" })
+            }
+            lastError = retryError
+          } else {
+            lastError = insertError
+          }
+          
+          // Stop the loop and return the specific database error to aid in debugging
+          const errorMsg = lastError?.message || JSON.stringify(lastError) || "Favorites table not available"
+          console.error("POST Favorite Insert Error:", lastError)
+          return NextResponse.json({ success: false, message: `Failed to add favorite: ${errorMsg}` }, { status: 500 })
+        }
       }
     }
     return NextResponse.json({ success: false, message: "Favorites table not available" }, { status: 500 })

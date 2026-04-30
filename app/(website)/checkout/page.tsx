@@ -347,7 +347,9 @@ useEffect(() => {
         return;
       }
       window.localStorage.setItem("ziply5_checkout_billing_address", JSON.stringify(payload));
-
+      if (couponApplied) {
+        window.localStorage.setItem("ziply5_final_total", total.toString());
+      }
       const token =
         typeof window !== "undefined" ? window.localStorage.getItem("ziply5_access_token") : null;
       if (!token) {

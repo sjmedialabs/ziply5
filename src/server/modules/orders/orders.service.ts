@@ -1,8 +1,6 @@
 import { logActivity } from "@/src/server/modules/activity/activity.service"
 import { emailTemplates, enqueueEmail } from "@/src/server/modules/notifications/email.service"
 import { markCartConverted } from "@/src/server/modules/abandoned-carts/recovery.service"
-import { cache } from "@/lib/cache/redis"
-import { cacheKeys } from "@/lib/cache/cacheKeys"
 import {
   appendOrderStatusHistorySupabase,
   createOrderWithItemsSupabase,
@@ -34,7 +32,6 @@ import { logger } from "@/lib/logger"
 import { enqueueOutboxEvent } from "@/src/server/modules/integrations/outbox.service"
 import { assertMasterValueExists } from "@/src/server/modules/master/master.service"
 import { syncOrderStatusFromShiprocket } from "@/src/server/modules/integrations/shiprocket.service"
-import { calculateOffers, logOfferUsage, saveOrderOfferBreakdown } from "@/src/server/modules/offers/offers.service"
 
 export type OrderLifecycleStatus =
   | "pending"
@@ -225,7 +222,7 @@ const orderDetailSelect = {
 const getInitialLifecycleStatus = (gateway: string, paymentStatus?: string | null): OrderLifecycleStatus => {
   const normalizedGateway = gateway.trim().toLowerCase()
   const normalizedPayment = normalizePaymentStatus(paymentStatus)
-  if (normalizedGateway === "cod") return "pending"
+  if (normalizedGateway === "cod") return "confirmed"
   if (normalizedPayment === "SUCCESS") return "payment_success"
   if (normalizedPayment === "FAILED") return "failed"
   return "pending_payment"
@@ -287,6 +284,13 @@ export const createOrderFromCheckout = async (input: {
   paymentId?: string
 }) => {
   if (input.paymentId?.trim()) {
+    // For COD, paymentId is not provided initially, so this check should only apply to online payments
+    // or if a paymentId is explicitly passed for a retry.
+    const isCod = input.gateway.trim().toLowerCase() === "cod";
+
+    // If it's a COD order, we don't expect a paymentId to find an existing order.
+    // If it's an online payment and paymentId is present, check for existing order.
+    if (!isCod) {
     const existingId = await findOrderByPaymentRefSupabase({
       paymentId: input.paymentId.trim(),
       userId: input.userId ?? null,
@@ -294,6 +298,7 @@ export const createOrderFromCheckout = async (input: {
     if (existingId) {
       const existing = await getOrderByIdSupabaseBasic(existingId)
       if (existing) return existing
+    }
     }
   }
 
@@ -305,6 +310,19 @@ export const createOrderFromCheckout = async (input: {
   const products = await getCheckoutProductsSupabase({ slugs, productIds })
   const bySlug = Object.fromEntries(products.map((p) => [p.slug, p]))
   const byId = Object.fromEntries(products.map((p) => [p.id, p]))
+  const missingRefs = input.items
+    .map((line) => (line.productId ? line.productId : line.slug ?? ""))
+    .filter((ref) => {
+      if (!ref) return false
+      return lineIsMissing(ref)
+    })
+
+  function lineIsMissing(ref: string) {
+    return !(byId[ref] || bySlug[ref])
+  }
+  if (missingRefs.length > 0) {
+    throw new Error(`Products not available: ${missingRefs.join(", ")}`)
+  }
 
   let subtotal = 0
   const lines: { productId: string; variantId?: string | null; quantity: number; unitPrice: number; lineTotal: number }[] = []
@@ -377,6 +395,7 @@ export const createOrderFromCheckout = async (input: {
     })),
   })
   if (!created?.id) throw new Error("Unable to create order via Supabase")
+       console.log("Creating order with data:")
   await appendOrderStatusHistorySupabase({
     orderId: created.id,
     fromStatus: initialLifecycleStatus,
@@ -393,59 +412,9 @@ export const createOrderFromCheckout = async (input: {
   }).catch(() => null)
   const order = await getOrderByIdSupabaseBasic(created.id)
   if (!order) throw new Error("Unable to hydrate created order via Supabase")
-
-  // Record offer usage + order-level breakdown (non-blocking).
-  // This makes usage limits enforceable on subsequent checkouts, and provides admin/support analytics.
-  try {
-    const offers = await calculateOffers({
-      userId: input.userId ?? null,
-      couponCode: input.couponCode?.trim() ? input.couponCode.trim() : null,
-      items: lines.map((l) => ({
-        productId: l.productId,
-        categoryId: null,
-        quantity: l.quantity,
-        unitPrice: l.unitPrice,
-      })),
-      shippingAmount: shipping,
-      cartSubtotal: subtotal,
-      context: { firstOrder: input.userId ? (await countNonCancelledOrdersByUserSupabase(input.userId)) === 0 : undefined },
-    })
-
-    if (offers.breakdown?.length) {
-      await Promise.allSettled(
-        offers.breakdown.map((b) =>
-          logOfferUsage({
-            offerId: b.offerId,
-            userId: input.userId ?? null,
-            orderId: String(order.id),
-            savings: Number(b.amount) || 0,
-            status: "applied",
-            metadata: {
-              offerType: b.type,
-              label: b.label,
-              subtotal,
-              shipping,
-              finalTotal: offers.finalTotal,
-            },
-          }),
-        ),
-      )
-      await saveOrderOfferBreakdown({
-        orderId: String(order.id),
-        rows: offers.breakdown.map((b) => ({
-          offerId: b.offerId,
-          type: b.type,
-          label: b.label,
-          amount: Number(b.amount) || 0,
-          metadata: { stackable: b.stackable },
-        })),
-      })
-    }
-  } catch {
-    // Non-blocking: never prevent order creation.
-  }
-
+       console.log("Created order with ID:", created.id)
   const transactionStatus = input.paymentStatus === "paid" ? "paid" : input.paymentStatus === "failed" ? "failed" : "pending"
+  console.log("Recording initial transaction with status:", transactionStatus)
   await createTransactionSupabase({
     orderId: String(order.id),
     gateway: input.gateway,
@@ -453,19 +422,23 @@ export const createOrderFromCheckout = async (input: {
     status: transactionStatus,
     externalId: input.paymentId ?? null,
   }).catch(() => null)
+  console.log("Initial transaction recorded")
+  // For COD orders, the status is already 'confirmed', so no need to re-confirm.
+  // For online payments, confirm only if payment was successful and order is still pending.
+  if (input.gateway.trim().toLowerCase() !== "cod") {
+    const hasSuccessfulTransaction =
+      (order.transactions ?? []).some((tx) => ["paid", "captured", "success"].includes(String(tx?.status ?? "").toLowerCase())) ||
+      ["paid", "captured", "success"].includes(transactionStatus.toLowerCase())
+    const isPaymentSuccessful = String(order.paymentStatus ?? "").toUpperCase() === "SUCCESS" || hasSuccessfulTransaction
 
-  const hasSuccessfulTransaction =
-    (order.transactions ?? []).some((tx) => ["paid", "captured", "success"].includes(String(tx?.status ?? "").toLowerCase())) ||
-    ["paid", "captured", "success"].includes(transactionStatus.toLowerCase())
-  const isPaymentSuccessful = String(order.paymentStatus ?? "").toUpperCase() === "SUCCESS" || hasSuccessfulTransaction
-
-  if (isPaymentSuccessful && String(order.status ?? "").toLowerCase() === "pending") {
-    const confirmed = await mirrorOrderStatusSupabase(String(order.id), "confirmed")
-    if (confirmed) {
-      ;(order as Record<string, unknown>).status = "confirmed"
+    if (isPaymentSuccessful && String(order.status ?? "").toLowerCase() === "pending") {
+      const confirmed = await mirrorOrderStatusSupabase(String(order.id), "confirmed")
+      if (confirmed) {
+        ;(order as Record<string, unknown>).status = "confirmed"
+      }
     }
   }
-
+  console.log("Order creation process completed for order ID:", order.id, "with final status:", order.status, "and payment status:", order.paymentStatus)
   await logActivity({
     actorId: input.userId ?? undefined,
     action: "order.create",
@@ -473,42 +446,42 @@ export const createOrderFromCheckout = async (input: {
     entityId: order.id,
     metadata: { itemCount: lines.length, total },
   })
-
+  console.log("Activity logged for order creation", { orderId: order.id, userId: input.userId ?? null })
 if (input.userId) {
+  console.log("getting user email for order creation", input.userId)
   const userEmail = await getUserEmailSupabase(input.userId)
-  if (userEmail) {
-    try {
-      const mail = emailTemplates.orderPlaced(order.id)
-      await enqueueEmail({ to: userEmail, ...mail })
-    } catch {
-      // Non-blocking side effect
-    }
-  }
-}
 
+  // if (userEmail) {
+  //   try {
+  //     console.log("enqueuing email for order creation", userEmail)
+  //     const mail = emailTemplates.orderPlaced(order.id)
+  //     console.log("email template for order creation", mail)
+  //     await enqueueEmail({ to: userEmail, ...mail })
+  //     console.log("email enqueued for order creation", userEmail)
+  //   } catch {
+  //     // Non-blocking side effect
+  //   }
+  // }
+}
+  console.log("Enqueuing outbox event for order.created")
 await enqueueOutboxEvent({
   eventType: "order.created",
   aggregateType: "order",
   aggregateId: order.id,
   payload: { orderId: order.id, total, currency: input.currency ?? "INR" },
 }).catch(() => null)
+  console.log("Outbox event enqueued for order.created")
+await markCartConverted({
+  email: input.billingAddress?.email ?? null,
+  mobile: input.billingAddress?.phone ?? null,
+  orderId: order.id,
+  revenue: total,
+  channel: "checkout",
+}).catch(() => null)
 
-// Only mark abandoned cart as recovered when payment is actually successful.
-if (isPaymentSuccessful) {
-  await markCartConverted({
-    email: input.billingAddress?.email ?? null,
-    mobile: input.billingAddress?.phone ?? null,
-    orderId: order.id,
-    revenue: total,
-    channel: "checkout",
-  }).catch(() => null)
-}
-
-await cache.delMany([cacheKeys.dashboardSummary("admin"), cacheKeys.dashboardSummary("super_admin"), cacheKeys.financeSummary()]).catch(() => null)
-
+  console.log("Finished createOrderFromCheckout with order ID:", created.id)
 return order
 }
-
 export const listOrders = async (
   page: number,
   limit: number,
