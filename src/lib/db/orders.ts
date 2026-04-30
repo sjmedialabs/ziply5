@@ -1472,86 +1472,82 @@ export const createOrderWithItemsSupabase = async (input: {
   itemRows: Array<Record<string, unknown>>
 }) => {
   const client = getSupabaseAdmin()
-  const orderErrors: string[] = []
-  const table = "Order"
 
-  // ✅ Use camelCase only + ensure ID exists
   const now = new Date().toISOString()
-  const orderData = withId({
+  const camelOrderData = withId({
     ...input.orderData,
     createdAt: input.orderData.createdAt ?? now,
     updatedAt: now,
   })
+  const snakeOrderData = withId({
+    ...camelToSnakeObject(input.orderData),
+    created_at: input.orderData.createdAt ?? now,
+    updated_at: now,
+  })
 
-  const { data, error } = await client
-    .from(table)
-    .insert(orderData)
-    .select("id")
-    .single()
+  let orderId: string | null = null;
+  let insertedTable = "";
 
-  if (error || !data?.id) {
-    const message = error?.message ?? "Insert returned no id"
-    const details = error?.details ?? ""
-    const hint = error?.hint ?? ""
-
-    const logLine = `[orders.createOrderWithItemsSupabase] order insert failed table=${table} message=${message}${
-      details ? ` details=${details}` : ""
-    }${hint ? ` hint=${hint}` : ""}`
-
-    console.error(logLine)
-    return null
+  for (const table of ORDER_TABLES) {
+    const insertAttempts = [
+      () => client.from(table).insert(camelOrderData).select("id").single(),
+      () => client.from(table).insert(snakeOrderData).select("id").single(),
+    ]
+    for (const attempt of insertAttempts) {
+      const { data, error } = await attempt();
+      if (!error && data?.id) {
+         orderId = safeString(data.id);
+         insertedTable = table;
+         break;
+      }
+    }
+    if (orderId) break;
   }
-
-  const orderId = safeString(data.id)
 
   if (!orderId) {
-    console.error("[orders.createOrderWithItemsSupabase] blank order id")
-    return null
+    console.error("[orders.createOrderWithItemsSupabase] order insert failed in all attempts");
+    return null;
   }
 
-  // ✅ Insert order items (camelCase only)
+  // ✅ Insert order items
+  let itemOk = false;
   for (const itemTable of ORDER_ITEM_TABLES) {
     let inserted = false
 
-    const rows = input.itemRows.map((row) => ({
+    const camelRows = input.itemRows.map((row) => ({
       ...row,
       orderId,
     }))
+    const snakeRows = input.itemRows.map((row) => ({
+      ...camelToSnakeObject(row),
+      order_id: orderId,
+    }))
 
-    const result = await client.from(itemTable).insert(rows)
+    for (const rows of [camelRows, snakeRows]) {
+        const result = await client.from(itemTable).insert(rows)
 
-    if (!result.error) {
-      inserted = true
-    } else {
-      console.error(
-        `[orders.createOrderWithItemsSupabase] order item insert failed table=${itemTable} orderId=${orderId} message=${result.error.message}`
-      )
-
-      if (shouldRetryWithId(result.error.message)) {
-        const retry = await client.from(itemTable).insert(rows.map(withId))
-        if (!retry.error) inserted = true
-      }
+        if (!result.error) {
+          inserted = true;
+          break;
+        } else {
+          if (shouldRetryWithId(result.error.message)) {
+            const retry = await client.from(itemTable).insert(rows.map(withId))
+            if (!retry.error) {
+              inserted = true;
+              break;
+            }
+          }
+        }
     }
 
-    if (inserted) break
+    if (inserted) {
+        itemOk = true;
+        break;
+    }
   }
 
-  // ✅ Verify items inserted
-  const itemOk = await (async () => {
-    for (const itemTable of ORDER_ITEM_TABLES) {
-      const { data, error } = await client
-        .from(itemTable)
-        .select("id")
-        .eq("orderId", orderId)
-        .limit(1)
-
-      if (!error && Array.isArray(data) && data.length) return true
-    }
-    return false
-  })()
-
   if (!itemOk) {
-    await client.from(table).delete().eq("id", orderId)
+    await client.from(insertedTable).delete().eq("id", orderId)
     throw new Error("Order items insert failed; order rolled back")
   }
 
