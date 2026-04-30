@@ -23,6 +23,7 @@ function PaymentPageInner() {
   const [retryAmount, setRetryAmount] = useState<number | null>(null);
   const [retryMode, setRetryMode] = useState(false);
   const autoRetryTriggeredRef = useRef(false);
+  const [items, setItemsState] = useState<ReturnType<typeof getCartItems>>([]);
   const [billingAddress, setBillingAddress] = useState({
     fullName: "",
     line1: "",
@@ -34,11 +35,41 @@ function PaymentPageInner() {
   });
   const [hasCheckoutBilling, setHasCheckoutBilling] = useState(false);
 
-  const items = useMemo(() => getCartItems(), []);
+  useEffect(() => {
+    // Avoid hydration mismatch: cart is client-only (localStorage)
+    setItemsState(getCartItems());
+  }, []);
+
   const subTotal = items.reduce((sum, item) => sum + item.price * item.quantity, 0);
   const shipping = items.length > 0 ? 20 : 0;
   const total = subTotal + shipping;
   const payableAmount = retryMode ? retryAmount ?? total : total;
+
+  const postCartEvent = async (eventType: string, meta?: Record<string, unknown>) => {
+    try {
+      const sessionKey = window.localStorage.getItem("ziply5_session_key") || "";
+      if (!sessionKey) return;
+      await fetch("/api/cart/events", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sessionKey,
+          items,
+          total,
+          eventType,
+          meta,
+        }),
+      });
+    } catch {
+      // non-blocking
+    }
+  };
+
+  useEffect(() => {
+    if (!items.length) return;
+    void postCartEvent("payment_page_opened", { lastVisitedPage: "/payment" });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [items.length]);
 
   const createOrderMutation = useMutation({
     mutationFn: async (token: string) => {
@@ -286,6 +317,7 @@ function PaymentPageInner() {
         } catch (error) {
           setPaying(false)
           setError(error instanceof Error ? error.message : "Payment verification failed")
+          void postCartEvent("payment_failed", { reason: error instanceof Error ? error.message : "verify_failed" })
         }
       },
       modal: {
@@ -293,6 +325,7 @@ function PaymentPageInner() {
           setStatusText("Payment interrupted. You can retry.");
           setError("Payment was not completed. Please retry.");
           setPaying(false);
+          void postCartEvent("payment_cancelled", { source: "razorpay_modal_dismiss" })
         },
       },
     });
@@ -322,6 +355,7 @@ function PaymentPageInner() {
     setError("");
     setStatusText(retryMode ? "Retrying payment..." : "Creating order...");
     try {
+      void postCartEvent("payment_attempted", { retryMode })
       const token = window.localStorage.getItem("ziply5_access_token");
       if (!token) throw new Error("Please login to continue.");
       const orderId = retryMode ? createdOrderId : createdOrderId ?? (await createOrderMutation.mutateAsync(token));

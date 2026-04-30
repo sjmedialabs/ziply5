@@ -493,13 +493,16 @@ await enqueueOutboxEvent({
   payload: { orderId: order.id, total, currency: input.currency ?? "INR" },
 }).catch(() => null)
 
-await markCartConverted({
-  email: input.billingAddress?.email ?? null,
-  mobile: input.billingAddress?.phone ?? null,
-  orderId: order.id,
-  revenue: total,
-  channel: "checkout",
-}).catch(() => null)
+// Only mark abandoned cart as recovered when payment is actually successful.
+if (isPaymentSuccessful) {
+  await markCartConverted({
+    email: input.billingAddress?.email ?? null,
+    mobile: input.billingAddress?.phone ?? null,
+    orderId: order.id,
+    revenue: total,
+    channel: "checkout",
+  }).catch(() => null)
+}
 
 await cache.delMany([cacheKeys.dashboardSummary("admin"), cacheKeys.dashboardSummary("super_admin"), cacheKeys.financeSummary()]).catch(() => null)
 

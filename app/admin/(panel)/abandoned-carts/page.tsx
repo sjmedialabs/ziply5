@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { authedFetch, authedPost } from "@/lib/dashboard-fetch";
 import { ConsoleTable, ConsoleTd } from "@/components/dashboard/ConsoleTable";
@@ -39,7 +39,9 @@ export default function AdminAbandonedCartsPage() {
     recoveredCount: number;
     recoveryRate: number;
     recoveredRevenue: number;
+    topAbandonedProducts?: Array<{ name: string; count: number }>;
   } | null>(null);
+  const [activeTab, setActiveTab] = useState<"dashboard" | "live" | "campaigns" | "templates" | "settings" | "analytics">("dashboard");
 
   const load = useCallback(() => {
     setLoading(true);
@@ -50,7 +52,13 @@ export default function AdminAbandonedCartsPage() {
     if (userType !== "all") params.set("userType", userType);
     Promise.all([
       authedFetch<CartRow[]>(`/api/admin/abandoned-carts?${params.toString()}`),
-      authedFetch<{ totalAbandoned: number; recoveredCount: number; recoveryRate: number; recoveredRevenue: number }>("/api/admin/abandoned-carts/analytics"),
+      authedFetch<{
+        totalAbandoned: number;
+        recoveredCount: number;
+        recoveryRate: number;
+        recoveredRevenue: number;
+        topAbandonedProducts?: Array<{ name: string; count: number }>;
+      }>("/api/admin/abandoned-carts/analytics"),
     ])
       .then(([carts, kpi]) => {
         setRows(carts);
@@ -63,6 +71,19 @@ export default function AdminAbandonedCartsPage() {
   useEffect(() => {
     load();
   }, [load]);
+
+  const tabs = useMemo(
+    () =>
+      [
+        { id: "dashboard", label: "Dashboard" },
+        { id: "live", label: "Live Abandoned Carts" },
+        { id: "campaigns", label: "Recovery Campaigns" },
+        { id: "templates", label: "Templates" },
+        { id: "settings", label: "Settings" },
+        { id: "analytics", label: "Analytics" },
+      ] as const,
+    [],
+  );
 
   const openTimeline = async (id: string) => {
     try {
@@ -134,19 +155,22 @@ export default function AdminAbandonedCartsPage() {
           </button>
         </div>
       </div>
-      <div className="grid gap-2 rounded-xl border border-[#E8DCC8] bg-white p-3 md:grid-cols-4">
-        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search session/email/mobile" className="rounded border px-3 py-2 text-sm" />
-        <select value={converted} onChange={(e) => setConverted(e.target.value as "all" | "yes" | "no")} className="rounded border px-3 py-2 text-sm">
-          <option value="all">All conversions</option>
-          <option value="yes">Converted</option>
-          <option value="no">Unconverted</option>
-        </select>
-        <select value={userType} onChange={(e) => setUserType(e.target.value as "all" | "guest" | "registered")} className="rounded border px-3 py-2 text-sm">
-          <option value="all">All users</option>
-          <option value="guest">Guest</option>
-          <option value="registered">Registered</option>
-        </select>
-        <button type="button" onClick={() => load()} className="rounded bg-[#7B3010] px-3 py-2 text-xs font-semibold uppercase tracking-wide text-white">Apply Filters</button>
+
+      <div className="flex flex-wrap gap-2 rounded-2xl border border-[#E8DCC8] bg-white p-2">
+        {tabs.map((t) => (
+          <button
+            key={t.id}
+            type="button"
+            onClick={() => setActiveTab(t.id)}
+            className={
+              activeTab === t.id
+                ? "rounded-full bg-[#7B3010] px-4 py-2 text-xs font-semibold uppercase tracking-wide text-white"
+                : "rounded-full border border-[#E8DCC8] bg-white px-4 py-2 text-xs font-semibold uppercase tracking-wide text-[#4A1D1F] hover:bg-[#FFFBF3]"
+            }
+          >
+            {t.label}
+          </button>
+        ))}
       </div>
 
       {error && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-800">{error}</p>}
@@ -165,7 +189,9 @@ export default function AdminAbandonedCartsPage() {
           </div>
         </div>
       ) : null}
-      {analytics ? (
+      {loading && <p className="text-sm text-[#646464]">Loading…</p>}
+
+      {!loading && activeTab === "dashboard" && analytics ? (
         <div className="grid gap-2 md:grid-cols-4">
           <div className="rounded-xl border border-[#E8DCC8] bg-white p-3 text-sm"><p className="text-[#7A7A7A]">Total Abandoned</p><p className="font-semibold text-[#4A1D1F]">{analytics.totalAbandoned}</p></div>
           <div className="rounded-xl border border-[#E8DCC8] bg-white p-3 text-sm"><p className="text-[#7A7A7A]">Recovered</p><p className="font-semibold text-[#4A1D1F]">{analytics.recoveredCount}</p></div>
@@ -173,63 +199,128 @@ export default function AdminAbandonedCartsPage() {
           <div className="rounded-xl border border-[#E8DCC8] bg-white p-3 text-sm"><p className="text-[#7A7A7A]">Recovered Revenue</p><p className="font-semibold text-[#4A1D1F]">Rs.{analytics.recoveredRevenue.toFixed(2)}</p></div>
         </div>
       ) : null}
-      {loading && <p className="text-sm text-[#646464]">Loading…</p>}
 
-      {!loading && (
-        <ConsoleTable headers={["Cart ID", "Customer", "Type", "Items", "Cart Value", "Last Active", "Since Abandoned", "Recovery", "Actions"]}>
-          {rows.length === 0 ? (
-            <tr>
-              <ConsoleTd className="py-8 text-center text-[#646464]" colSpan={9}>
-                No abandoned carts recorded.
-              </ConsoleTd>
-            </tr>
-          ) : (
-            rows.map((r) => (
-              <tr key={r.id} className="hover:bg-[#FFFBF3]/80">
-                <ConsoleTd className="font-mono text-[11px]">{r.session_key.slice(0, 16)}…</ConsoleTd>
-                <ConsoleTd className="text-xs">
-                  <div>{r.email ?? "No email"}</div>
-                  <div className="text-[11px] text-[#646464]">{r.mobile ?? "No mobile"}</div>
-                </ConsoleTd>
-                <ConsoleTd className="text-xs">{r.user_id ? "Registered" : "Guest"}</ConsoleTd>
-                <ConsoleTd className="text-xs">{Array.isArray(r.items_json) ? r.items_json.length : 0}</ConsoleTd>
-                <ConsoleTd>{r.total != null ? `Rs.${Number(r.total).toFixed(2)}` : "—"}</ConsoleTd>
-                <ConsoleTd className="text-xs">{new Date(r.updated_at).toLocaleString()}</ConsoleTd>
-                <ConsoleTd className="text-xs">
-                  {r.abandoned_at ? `${Math.floor((Date.now() - new Date(r.abandoned_at).getTime()) / 60000)} min` : "Not abandoned"}
-                </ConsoleTd>
-                <ConsoleTd className="text-xs">
-                  <div>{r.converted_at ? "Converted" : "Pending"}</div>
-                  <div className="text-[11px] text-[#646464]">Sent: {r.messages_sent}</div>
-                  <div className="text-[11px] text-[#646464]">Last: {r.last_message_at ? new Date(r.last_message_at).toLocaleString() : "—"}</div>
-                </ConsoleTd>
-                <ConsoleTd className="text-xs">
-                  <div className="flex flex-wrap gap-1">
-                    <button type="button" className="rounded border px-2 py-1 text-[10px]" onClick={() => void sendNow(r.id)}>
-                      Send Recovery Now
-                    </button>
-                    <button type="button" className="rounded border px-2 py-1 text-[10px]" onClick={() => void openTimeline(r.id)}>
-                      View Timeline
-                    </button>
-                    <button type="button" className="rounded border px-2 py-1 text-[10px]" onClick={() => void createResumeLink(r.id)}>
-                      Resume Link
-                    </button>
-                    <button type="button" className="rounded border px-2 py-1 text-[10px]" onClick={() => void runAction(r.id, "disable_recovery")}>
-                      Disable Recovery
-                    </button>
-                    <button type="button" className="rounded border px-2 py-1 text-[10px]" onClick={() => void runAction(r.id, "mark_ignore")}>
-                      Mark Ignore
-                    </button>
-                    <a className="rounded border px-2 py-1 text-[10px]" href={`/cart/recover/${encodeURIComponent(r.session_key)}`} target="_blank" rel="noreferrer">
-                      View Cart
-                    </a>
-                  </div>
+      {!loading && activeTab === "live" ? (
+        <>
+          <div className="grid gap-2 rounded-xl border border-[#E8DCC8] bg-white p-3 md:grid-cols-4">
+            <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search session/email/mobile" className="rounded border px-3 py-2 text-sm" />
+            <select value={converted} onChange={(e) => setConverted(e.target.value as "all" | "yes" | "no")} className="rounded border px-3 py-2 text-sm">
+              <option value="all">All conversions</option>
+              <option value="yes">Converted</option>
+              <option value="no">Unconverted</option>
+            </select>
+            <select value={userType} onChange={(e) => setUserType(e.target.value as "all" | "guest" | "registered")} className="rounded border px-3 py-2 text-sm">
+              <option value="all">All users</option>
+              <option value="guest">Guest</option>
+              <option value="registered">Registered</option>
+            </select>
+            <button type="button" onClick={() => load()} className="rounded bg-[#7B3010] px-3 py-2 text-xs font-semibold uppercase tracking-wide text-white">Apply Filters</button>
+          </div>
+          <ConsoleTable headers={["Cart ID", "Customer", "Type", "Items", "Cart Value", "Last Active", "Since Abandoned", "Recovery", "Actions"]}>
+            {rows.length === 0 ? (
+              <tr>
+                <ConsoleTd className="py-8 text-center text-[#646464]" colSpan={9}>
+                  No abandoned carts recorded.
                 </ConsoleTd>
               </tr>
-            ))
-          )}
-        </ConsoleTable>
-      )}
+            ) : (
+              rows.map((r) => (
+                <tr key={r.id} className="hover:bg-[#FFFBF3]/80">
+                  <ConsoleTd className="font-mono text-[11px]">{r.session_key.slice(0, 16)}…</ConsoleTd>
+                  <ConsoleTd className="text-xs">
+                    <div>{r.email ?? "No email"}</div>
+                    <div className="text-[11px] text-[#646464]">{r.mobile ?? "No mobile"}</div>
+                  </ConsoleTd>
+                  <ConsoleTd className="text-xs">{r.user_id ? "Registered" : "Guest"}</ConsoleTd>
+                  <ConsoleTd className="text-xs">{Array.isArray(r.items_json) ? r.items_json.length : 0}</ConsoleTd>
+                  <ConsoleTd>{r.total != null ? `Rs.${Number(r.total).toFixed(2)}` : "—"}</ConsoleTd>
+                  <ConsoleTd className="text-xs">{new Date(r.updated_at).toLocaleString()}</ConsoleTd>
+                  <ConsoleTd className="text-xs">
+                    {r.abandoned_at ? `${Math.floor((Date.now() - new Date(r.abandoned_at).getTime()) / 60000)} min` : "Not abandoned"}
+                  </ConsoleTd>
+                  <ConsoleTd className="text-xs">
+                    <div>{r.converted_at ? "Converted" : "Pending"}</div>
+                    <div className="text-[11px] text-[#646464]">Sent: {r.messages_sent}</div>
+                    <div className="text-[11px] text-[#646464]">Last: {r.last_message_at ? new Date(r.last_message_at).toLocaleString() : "—"}</div>
+                  </ConsoleTd>
+                  <ConsoleTd className="text-xs">
+                    <div className="flex flex-wrap gap-1">
+                      <button type="button" className="rounded border px-2 py-1 text-[10px]" onClick={() => void sendNow(r.id)}>
+                        Send Recovery Now
+                      </button>
+                      <button type="button" className="rounded border px-2 py-1 text-[10px]" onClick={() => void openTimeline(r.id)}>
+                        View Timeline
+                      </button>
+                      <button type="button" className="rounded border px-2 py-1 text-[10px]" onClick={() => void createResumeLink(r.id)}>
+                        Resume Link
+                      </button>
+                      <button type="button" className="rounded border px-2 py-1 text-[10px]" onClick={() => void runAction(r.id, "disable_recovery")}>
+                        Disable Recovery
+                      </button>
+                      <button type="button" className="rounded border px-2 py-1 text-[10px]" onClick={() => void runAction(r.id, "mark_ignore")}>
+                        Mark Ignore
+                      </button>
+                      <a className="rounded border px-2 py-1 text-[10px]" href={`/cart/recover/${encodeURIComponent(r.session_key)}`} target="_blank" rel="noreferrer">
+                        View Cart
+                      </a>
+                    </div>
+                  </ConsoleTd>
+                </tr>
+              ))
+            )}
+          </ConsoleTable>
+        </>
+      ) : null}
+
+      {!loading && activeTab === "campaigns" ? (
+        <div className="rounded-2xl border border-[#E8DCC8] bg-white p-4">
+          <p className="font-semibold text-[#4A1D1F]">Recovery Campaigns</p>
+          <p className="mt-1 text-sm text-[#646464]">Automation builder (stage targeting + timing + channels + coupons) lands here next.</p>
+        </div>
+      ) : null}
+
+      {!loading && activeTab === "templates" ? (
+        <div className="rounded-2xl border border-[#E8DCC8] bg-white p-4">
+          <p className="font-semibold text-[#4A1D1F]">Templates</p>
+          <p className="mt-1 text-sm text-[#646464]">Professional grouped templates with preview and test send.</p>
+          <div className="mt-3">
+            <Link href="/admin/abandoned-carts/templates" className="rounded-full bg-[#7B3010] px-4 py-2 text-xs font-semibold uppercase tracking-wide text-white">
+              Open Templates
+            </Link>
+          </div>
+        </div>
+      ) : null}
+
+      {!loading && activeTab === "settings" ? (
+        <div className="rounded-2xl border border-[#E8DCC8] bg-white p-4">
+          <p className="font-semibold text-[#4A1D1F]">Settings</p>
+          <p className="mt-1 text-sm text-[#646464]">Thresholds, retry schedule, token expiry, max reminders, channel toggles.</p>
+          <div className="mt-3">
+            <Link href="/admin/abandoned-carts/settings" className="rounded-full bg-[#7B3010] px-4 py-2 text-xs font-semibold uppercase tracking-wide text-white">
+              Open Settings
+            </Link>
+          </div>
+        </div>
+      ) : null}
+
+      {!loading && activeTab === "analytics" && analytics ? (
+        <div className="rounded-2xl border border-[#E8DCC8] bg-white p-4">
+          <p className="font-semibold text-[#4A1D1F]">Analytics</p>
+          <p className="mt-1 text-sm text-[#646464]">Top abandoned products (quick view).</p>
+          <div className="mt-3 space-y-2">
+            {(analytics.topAbandonedProducts ?? []).length ? (
+              (analytics.topAbandonedProducts ?? []).map((p) => (
+                <div key={p.name} className="flex items-center justify-between gap-3 rounded-lg border bg-[#FFFBF3]/40 px-3 py-2 text-sm">
+                  <span className="truncate text-[#4A1D1F]">{p.name}</span>
+                  <span className="shrink-0 rounded bg-white px-2 py-0.5 text-xs font-semibold text-[#4A1D1F]">{p.count}</span>
+                </div>
+              ))
+            ) : (
+              <div className="text-sm text-[#646464]">No analytics yet.</div>
+            )}
+          </div>
+        </div>
+      ) : null}
       {timeline ? (
         <div className="rounded-xl border border-[#E8DCC8] bg-white p-4">
           <div className="mb-2 flex items-center justify-between">

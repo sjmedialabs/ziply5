@@ -18,6 +18,7 @@ import { type StorefrontProduct } from "@/lib/storefront-products"
 import { useStorefrontProducts } from "@/hooks/useStorefrontProducts"
 import { X } from "lucide-react"
 import { toast } from "@/lib/toast"
+import { FadeIn, SlideUp, ScaleHover, ModalAnimation } from "@/components/animations"
 
 type CategoryFilter = "all" | string
 type SortType = "popular" | "name-asc" | "name-desc" | "newest" | "price-low-high" | "price-high-low"
@@ -230,6 +231,7 @@ const toggleTag = (tagId: string) => {
   }
 
   return (
+    <FadeIn>
     <section className="w-full bg-[#F3F0DC] py-8 md:py-10">
       <div className="mx-auto w-full max-w-7xl px-4 sm:px-6 lg:px-8">
         {error && <p className="mb-4 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-800">{error}</p>}
@@ -403,11 +405,12 @@ const toggleTag = (tagId: string) => {
               : Number(product.price || 0);
 
             return (
-              <article
-                key={`${product.id || product.slug || "product"}-${idx}`}
-                className="group relative rounded-2xl border-2 border-transparent p-4 transition-all duration-300 hover:ring-4 hover:ring-[#F36E21] hover:shadow-xl]"
-                style={{ backgroundColor: "#3EA6CF" }}
-              >
+              <SlideUp key={`${product.id || product.slug || "product"}-${idx}`} delay={Math.min(0.18, idx * 0.03)}>
+                <ScaleHover>
+                  <article
+                    className="group relative rounded-2xl border-2 border-transparent p-4 transition-all duration-300 hover:ring-4 hover:ring-[#F36E21] hover:shadow-xl will-change-transform"
+                    style={{ backgroundColor: "#3EA6CF" }}
+                  >
               <button
                 type="button"
                 onClick={(e) => handleToggleFavorite(e, product.slug)}
@@ -507,15 +510,18 @@ const toggleTag = (tagId: string) => {
                     Buy Now
                   </button>
                 </div>
-              </article>
+                  </article>
+                </ScaleHover>
+              </SlideUp>
             );
           })}
         </div>
       </div>
 
       {/* VARIANT SELECTION MODAL */}
-      {selectedProduct && (
-        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm" onClick={() => setSelectedProduct(null)}>
+      <ModalAnimation open={Boolean(selectedProduct)} className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm" >
+        {selectedProduct ? (
+          <div onClick={() => setSelectedProduct(null)} className="fixed inset-0 flex items-center justify-center p-4">
           <div className="w-full max-w-md overflow-hidden rounded-3xl bg-white shadow-2xl" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between bg-primary p-5 text-white">
               <h3 className="font-melon text-lg font-bold uppercase tracking-wider">Select Options</h3>
@@ -569,8 +575,10 @@ const toggleTag = (tagId: string) => {
             </div>
           </div>
         </div>
-      )}
+        ) : null}
+      </ModalAnimation>
     </section>
+    </FadeIn>
   )
 }
 
