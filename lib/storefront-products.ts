@@ -17,6 +17,8 @@ export type StorefrontProduct = {
   type: "veg" | "non-veg"
   saleName?: string | null
   isFeatured?: boolean
+  spiceLevel: string | null
+  preparationType: string | null
   isBestSeller?: boolean
   tags?: Array<{ tag: { name: string } }>
   category: string
@@ -52,6 +54,8 @@ type ApiProduct = {
   images?: Array<{ url: string }>
   type?: "simple" | "variant"
   saleName?: string | null
+    spiceLevel: string | null
+  preparationType: string | null
   variants?: Array<{ id: string; name: string; weight?: string | null; price: string | number; sku: string; stock: number; isDefault?: boolean; discountPercent?: number | null; mrp?: number | null; promotion?: { name: string; kind: string } | null }>
   tags?: Array<{ tag: { name: string } }>
   labels?: Array<{ label: string; color: string | null }>
@@ -156,6 +160,8 @@ export const toStorefrontProduct = (p: ApiProduct): StorefrontProduct => {
     tags: p.tags ?? [],
     amazonLink: p.amazonLink ?? null,
     isFeatured: p.isFeatured ?? false,
+      spiceLevel: p.spiceLevel ?? null,
+  preparationType: p.preparationType ?? null,
     features: p.features ?? [],
     saleName:p?.saleName ?? null,
     details:
