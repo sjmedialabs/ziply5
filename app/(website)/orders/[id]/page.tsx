@@ -33,7 +33,14 @@ type OrderDetail = {
   statusHistory: Array<{ toStatus: string; changedAt: string }>
   transactions: Array<{ id: string; status: string; gateway: string; createdAt: string }>
   shipments: Array<{ id: string; carrier: string | null; trackingNo: string | null; shipmentStatus: string; eta?: string | null }>
-  returnRequests: Array<{ id: string; status: string; reason: string | null }>
+  returnRequests: Array<{
+    id: string
+    status: string
+    reason: string | null
+    productId?: string | null
+    items?: Array<{ id: string; orderItemId: string; requestedQty: number }>
+    createdAt?: string | null
+  }>
   refunds: Array<{ id: string; status: string; amount: string | number; createdAt: string }>
 }
 
@@ -86,10 +93,12 @@ export default function OrderDetailPage() {
   const openReturnModal = () => {
     if (!order) return
     const initialItems: typeof selectedItemsForReturn = {}
-    const autoSelect = order.items.length === 1
+    const selectableItems = order.items.filter((item) => !returnedProductIds.has(String(item.productId ?? "").trim()))
+    const autoSelect = selectableItems.length === 1
     order.items.forEach(item => {
+      const blocked = returnedProductIds.has(String(item.productId ?? "").trim())
       initialItems[item.id] = {
-        selected: autoSelect,
+        selected: !blocked && autoSelect,
         productId: item.productId || "",
         reasonCode: "",
         notes: "",
@@ -135,7 +144,7 @@ export default function OrderDetailPage() {
   const submitReturnRequest = async () => {
     if (!order) return
     const itemsToReturn = Object.entries(selectedItemsForReturn)
-      .filter(([_, data]) => data.selected)
+      .filter(([_, data]) => data.selected && !returnedProductIds.has(String(data.productId ?? "").trim()))
       .map(([id, data]) => ({
         orderItemId: id,
         productId: data.productId,
@@ -146,7 +155,7 @@ export default function OrderDetailPage() {
       }))
 
     if (itemsToReturn.length === 0) {
-      toast.error("Validation Error", "Please select at least one item to return.")
+      toast.error("Validation Error", "Please select at least one return-eligible item.")
       return
     }
 
@@ -232,6 +241,20 @@ export default function OrderDetailPage() {
 
   const order = orderQuery.data
   const historySet = useMemo(() => new Set(order?.statusHistory.map((entry) => entry.toStatus.toLowerCase())), [order?.statusHistory])
+  const returnedProductIds = useMemo(
+    () =>
+      new Set(
+        (order?.returnRequests ?? [])
+          .filter((req) => String(req.status ?? "").toLowerCase() !== "rejected")
+          .map((req) => String(req.productId ?? "").trim())
+          .filter(Boolean),
+      ),
+    [order?.returnRequests],
+  )
+  const hasReturnableItems = useMemo(
+    () => (order?.items ?? []).some((item) => !returnedProductIds.has(String(item.productId ?? "").trim())),
+    [order?.items, returnedProductIds],
+  )
   const returnExists = Boolean(order?.returnRequests?.length)
   const activeReturnRequest = order?.returnRequests?.find(r => r.status.toLowerCase() !== "rejected")
   const cancelRequested = historySet.has("cancel_requested")
@@ -448,7 +471,9 @@ export default function OrderDetailPage() {
               <div className="space-y-2">
                 {order.returnRequests.map((req) => (
                   <p key={req.id} className="text-sm text-[#646464]">
-                    Return Request: <span className="font-semibold uppercase">{req.status}</span> {req.reason ? `— ${req.reason}` : ""}
+                    Return Request: <span className="font-semibold uppercase">{req.status}</span>
+                    {req.productId ? ` — Product ${req.productId}` : ""}
+                    {req.reason ? ` — ${req.reason}` : ""}
                   </p>
                 ))}
                 {order.refunds?.map((ref) => (
@@ -545,7 +570,7 @@ export default function OrderDetailPage() {
 
           {order.status.toLowerCase() === "delivered" && (
             <div className="rounded-2xl border border-[#E8DCC8] bg-white p-4 shadow-sm">
-              {!activeReturnRequest ? (
+              {hasReturnableItems ? (
                 <button
                   type="button"
                   onClick={openReturnModal}
@@ -556,7 +581,7 @@ export default function OrderDetailPage() {
               ) : (
                 <div className="space-y-1">
                   <p className="text-sm font-semibold text-[#4A1D1F] uppercase">Return Processing</p>
-                  <p className="text-xs text-[#646464]">An active return request is already in progress.</p>
+                  <p className="text-xs text-[#646464]">All products in this order already have active return requests.</p>
                 </div>
               )}
             </div>
@@ -595,10 +620,13 @@ export default function OrderDetailPage() {
                             <div>
                               <p className="text-sm font-semibold text-gray-900">{item.product?.name ?? "Product"}</p>
                               <p className="text-xs text-gray-500">Qty: {item.quantity}</p>
+                                  {returnedProductIds.has(String(item.productId ?? "").trim()) ? (
+                                    <p className="text-[11px] font-semibold text-amber-700">Return already requested for this product.</p>
+                                  ) : null}
                             </div>
                           </div>
 
-                          {itemState.selected && (
+                          {itemState.selected && !returnedProductIds.has(String(item.productId ?? "").trim()) && (
                             <div className="pl-7 space-y-3">
                               <div>
                                 <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Reason</label>
