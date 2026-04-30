@@ -1,11 +1,11 @@
 import { NextRequest } from "next/server"
 import { fail, ok } from "@/src/server/core/http/response"
-import { getRecoverableCartBySession, trackCartEvent } from "@/src/server/modules/abandoned-carts/recovery.service"
+import { getRecoverableCartByTokenOrSession, trackCartEvent } from "@/src/server/modules/abandoned-carts/recovery.service"
 
 export async function GET(_request: NextRequest, context: { params: Promise<{ token: string }> }) {
   const { token } = await context.params
   if (!token) return fail("Invalid token", 400)
-  const cart = await getRecoverableCartBySession(token)
+  const cart = await getRecoverableCartByTokenOrSession(token)
   if (!cart) return fail("Recovery cart not found", 404)
   await trackCartEvent({
     sessionKey: cart.sessionKey,

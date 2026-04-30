@@ -25,6 +25,7 @@ export default function AdminAbandonedCartsPage() {
   const [rows, setRows] = useState<CartRow[]>([]);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
+  const [resumeLink, setResumeLink] = useState<string | null>(null);
   const [timeline, setTimeline] = useState<null | {
     events: Array<{ id: string; event_type: string; created_at: string }>;
     messages: Array<{ id: string; channel: string; status: string; sent_at: string; sent_to: string | null }>;
@@ -72,6 +73,18 @@ export default function AdminAbandonedCartsPage() {
     }
   };
 
+  const createResumeLink = async (id: string) => {
+    try {
+      setError("")
+      setResumeLink(null)
+      const res = await authedPost<{ token: string; ttlMinutes: number }>("/api/admin/abandoned-carts/resume-link", { cartId: id })
+      const base = typeof window !== "undefined" ? window.location.origin : ""
+      setResumeLink(`${base}/cart/recover/${encodeURIComponent(res.token)}`)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to create resume link")
+    }
+  }
+
   const sendNow = async (id: string, channels: Array<"email" | "sms" | "whatsapp"> = ["email", "sms", "whatsapp"]) => {
     try {
       await authedPost("/api/admin/abandoned-carts/send-now", { cartId: id, channels });
@@ -110,6 +123,9 @@ export default function AdminAbandonedCartsPage() {
           <Link href="/admin/abandoned-carts/settings" className="rounded-full border border-[#E8DCC8] bg-white px-4 py-2 text-xs font-semibold uppercase tracking-wide text-[#4A1D1F] hover:bg-[#FFFBF3]">
             Recovery Settings
           </Link>
+          <Link href="/admin/abandoned-carts/templates" className="rounded-full border border-[#E8DCC8] bg-white px-4 py-2 text-xs font-semibold uppercase tracking-wide text-[#4A1D1F] hover:bg-[#FFFBF3]">
+            Templates
+          </Link>
           <button type="button" onClick={() => void triggerDetection()} className="rounded-full border border-[#E8DCC8] bg-white px-4 py-2 text-xs font-semibold uppercase tracking-wide text-[#4A1D1F] hover:bg-[#FFFBF3]">
             Detect Now
           </button>
@@ -134,6 +150,21 @@ export default function AdminAbandonedCartsPage() {
       </div>
 
       {error && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-800">{error}</p>}
+      {resumeLink ? (
+        <div className="rounded-xl border border-[#E8DCC8] bg-white p-3 text-sm">
+          <p className="text-[#7A7A7A]">Resume link (expiring)</p>
+          <div className="mt-1 flex flex-wrap items-center gap-2">
+            <code className="break-all rounded bg-[#FFFBF3] px-2 py-1 text-xs">{resumeLink}</code>
+            <button
+              type="button"
+              className="rounded border px-2 py-1 text-[10px]"
+              onClick={() => void navigator.clipboard?.writeText(resumeLink)}
+            >
+              Copy
+            </button>
+          </div>
+        </div>
+      ) : null}
       {analytics ? (
         <div className="grid gap-2 md:grid-cols-4">
           <div className="rounded-xl border border-[#E8DCC8] bg-white p-3 text-sm"><p className="text-[#7A7A7A]">Total Abandoned</p><p className="font-semibold text-[#4A1D1F]">{analytics.totalAbandoned}</p></div>
@@ -179,6 +210,9 @@ export default function AdminAbandonedCartsPage() {
                     </button>
                     <button type="button" className="rounded border px-2 py-1 text-[10px]" onClick={() => void openTimeline(r.id)}>
                       View Timeline
+                    </button>
+                    <button type="button" className="rounded border px-2 py-1 text-[10px]" onClick={() => void createResumeLink(r.id)}>
+                      Resume Link
                     </button>
                     <button type="button" className="rounded border px-2 py-1 text-[10px]" onClick={() => void runAction(r.id, "disable_recovery")}>
                       Disable Recovery
