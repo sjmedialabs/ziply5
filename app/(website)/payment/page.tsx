@@ -425,59 +425,18 @@ const handleOnlinePayment = async () => {
         ondismiss: () => {
           setStatusText("Payment interrupted. You can retry.");
           setError("Payment was not completed. Please retry.");
-          void postCartEvent("payment_cancelled", { source: "razorpay_modal_dismiss" })
           setProcessingGateway(null);
+          void postCartEvent("payment_cancelled", { source: "razorpay_modal_dismiss" });
         },
       },
     });
     razorpay.open();
   };
 
-  const handlePlaceOrder = async () => {
-    if (!loggedIn) {
-      setError("Please login to complete purchase.")
-      askLogin()
-      return
-    }
-
-    if (!billingAddress.fullName.trim()) {
-      setError("Fill billing details.")
-      return
-    }
-
-    try {
-      setProcessingGateway("ONLINE")
-      setError("")
-      setStatusText(retryMode ? "Retrying payment..." : "Creating order...")
-      void postCartEvent("payment_attempted", { retryMode })
-
-      const token = window.localStorage.getItem("ziply5_access_token")
-      if (!token) throw new Error("Please login to continue.")
-
-      if (!scriptReady || !window.Razorpay) {
-        throw new Error("Payment gateway not ready")
-      }
-
-      const orderId =
-        createdOrderId ?? (await createOrderMutation.mutateAsync({ token, gateway: "razorpay" }))
-
-      if (!createdOrderId) {
-        setCreatedOrderId(orderId)
-        window.localStorage.setItem("ziply5_pending_order_id", orderId)
-      }
-
-      setStatusText("Redirecting to payment...")
-      await openRazorpay(token, orderId)
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Something failed")
-      setProcessingGateway(null)
-    }
-  }
-
   useEffect(() => {
     if (!retryMode || !createdOrderId || !loggedIn || !scriptReady || autoRetryTriggeredRef.current) return;
     autoRetryTriggeredRef.current = true;
-    void handlePlaceOrder();
+    void handleOnlinePayment();
   }, [retryMode, createdOrderId, loggedIn, scriptReady]);
 
   const retryPayment = async () => {
