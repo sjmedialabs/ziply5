@@ -1,4 +1,4 @@
-import { prisma } from "@/src/server/db/prisma"
+import { getSupabaseAdmin } from "@/src/lib/supabase/admin"
 import { createBrandSupabase, listBrandsSupabase } from "@/src/lib/db/brands"
 import {
   createUserAddressSupabase,
@@ -6,138 +6,168 @@ import {
   listUserAddressesSupabase,
   updateUserAddressSupabase,
 } from "@/src/lib/db/users"
+import { createReturnRequestSupabase } from "@/src/lib/db/returns"
 import { logger } from "@/lib/logger"
 
+const supabase = () => getSupabaseAdmin()
+const normalizeSlug = (slug: string) => slug.trim().toLowerCase().replace(/\s+/g, "-")
+
 export const listBrands = async () => {
-  try {
-    return await listBrandsSupabase()
-  } catch (error) {
-    logger.warn("brands.list.supabase_fallback_prisma", {
-      error: error instanceof Error ? error.message : "unknown",
-    })
-    return prisma.brand.findMany({ orderBy: { name: "asc" } })
-  }
+  return listBrandsSupabase()
 }
 
 export const createBrand = (name: string, slug: string) =>
-  createBrandSupabase({ name, slug }).catch((error) => {
-    logger.warn("brands.create.supabase_fallback_prisma", {
-      error: error instanceof Error ? error.message : "unknown",
-    })
-    return prisma.brand.create({ data: { name, slug: slug.trim().toLowerCase().replace(/\s+/g, "-") } })
-  })
+  createBrandSupabase({ name, slug })
 
-export const listTags = () => prisma.tag.findMany({ orderBy: { name: "asc" } })
-
-export const createTag = (name: string, slug: string) =>
-  prisma.tag.create({
-    data: { name, slug: slug.trim().toLowerCase().replace(/\s+/g, "-") },
-  })
-
-export const updateTag = async (id: string, name: string, slug: string, isActive: boolean) => {
-  return prisma.tag.update({
-    where: { id },
-    data: { 
-      ...(name !== undefined ? { name } : {}),
-      ...(slug !== undefined ? { slug: slug.trim().toLowerCase().replace(/\s+/g, "-") } : {}),
-      ...(isActive !== undefined ? { isActive } : {}),
-    },
-  })
+export const listTags = async () => {
+  const { data, error } = await supabase().from("Tag").select("*").order("name", { ascending: true })
+  if (error) throw new Error(error.message)
+  return data ?? []
 }
 
-export const listAttributeDefs = () => prisma.attributeDef.findMany({ orderBy: { name: "asc" } })
+export const createTag = (name: string, slug: string) =>
+  supabase()
+    .from("Tag")
+    .insert({ name, slug: normalizeSlug(slug) })
+    .select("*")
+    .single()
+    .then(({ data, error }) => {
+      if (error) throw new Error(error.message)
+      return data
+    })
+
+export const updateTag = async (id: string, name: string, slug: string, isActive: boolean) => {
+  const { data, error } = await supabase()
+    .from("Tag")
+    .update({
+      ...(name !== undefined ? { name } : {}),
+      ...(slug !== undefined ? { slug: normalizeSlug(slug) } : {}),
+      ...(isActive !== undefined ? { isActive } : {}),
+    })
+    .eq("id", id)
+    .select("*")
+    .single()
+  if (error) throw new Error(error.message)
+  return data
+}
+
+export const listAttributeDefs = async () => {
+  const { data, error } = await supabase().from("AttributeDef").select("*").order("name", { ascending: true })
+  if (error) throw new Error(error.message)
+  return data ?? []
+}
 
 export const createAttributeDef = (name: string, slug: string) =>
-  prisma.attributeDef.create({
-    data: { name, slug: slug.trim().toLowerCase().replace(/\s+/g, "-") },
-  })
+  supabase()
+    .from("AttributeDef")
+    .insert({ name, slug: normalizeSlug(slug) })
+    .select("*")
+    .single()
+    .then(({ data, error }) => {
+      if (error) throw new Error(error.message)
+      return data
+    })
 
 export type InventoryRow =
   | {
-      id: string
-      productId: string
-      warehouse: string | null
-      available: number
-      reserved: number
-      source: "warehouse"
-      product: { name: string; slug: string }
-    }
+    id: string
+    productId: string
+    warehouse: string | null
+    available: number
+    reserved: number
+    source: "warehouse"
+    product: { name: string; slug: string }
+  }
   | {
-      id: string
-      productId: string
-      warehouse: null
-      available: number
-      reserved: number
-      source: "variant"
-      variantName: string
-      product: { name: string; slug: string }
-    }
+    id: string
+    productId: string
+    warehouse: null
+    available: number
+    reserved: number
+    source: "variant"
+    variantName: string
+    product: { name: string; slug: string }
+  }
 
 export const listInventoryOverview = async (): Promise<InventoryRow[]> => {
-  const rows = await prisma.inventoryItem.findMany({
-    include: { product: { select: { name: true, slug: true } } },
-    orderBy: { available: "asc" },
-    take: 200,
-  })
+  const { data: rows, error: rowsError } = await supabase()
+    .from("InventoryItem")
+    .select("id,productId,warehouse,available,reserved,product:Product(name,slug)")
+    .order("available", { ascending: true })
+    .limit(200)
+  if (rowsError) throw new Error(rowsError.message)
   const fromWarehouse: InventoryRow[] = rows.map((r) => ({
-    id: r.id,
-    productId: r.productId,
-    warehouse: r.warehouse,
-    available: r.available,
-    reserved: r.reserved,
+    id: (r as any).id,
+    productId: (r as any).productId,
+    warehouse: (r as any).warehouse,
+    available: Number((r as any).available ?? 0),
+    reserved: Number((r as any).reserved ?? 0),
     source: "warehouse" as const,
-    product: r.product,
+    product: ((r as any).product?.[0] ?? (r as any).product ?? { name: "", slug: "" }) as any,
   }))
-  const variants = await prisma.productVariant.findMany({
-    include: { product: { select: { name: true, slug: true } } },
-    orderBy: { stock: "asc" },
-    take: 200,
-  })
+  const { data: variants, error: variantsError } = await supabase()
+    .from("ProductVariant")
+    .select("id,productId,name,stock,product:Product(name,slug)")
+    .order("stock", { ascending: true })
+    .limit(200)
+  if (variantsError) throw new Error(variantsError.message)
   const fromVariant: InventoryRow[] = variants.map((v) => ({
-    id: v.id,
-    productId: v.productId,
+    id: (v as any).id,
+    productId: (v as any).productId,
     warehouse: null,
-    available: v.stock,
+    available: Number((v as any).stock ?? 0),
     reserved: 0,
     source: "variant" as const,
-    variantName: v.name,
-    product: v.product,
+    variantName: (v as any).name,
+    product: ((v as any).product?.[0] ?? (v as any).product ?? { name: "", slug: "" }) as any,
   }))
   if (fromWarehouse.length > 0) return fromWarehouse
   return fromVariant
 }
 
 export const updateInventoryItem = async (id: string, available: number, reserved?: number) => {
-  return prisma.inventoryItem.update({
-    where: { id },
-    data: { available, ...(reserved !== undefined ? { reserved } : {}) },
-    include: { product: { select: { name: true, slug: true } } },
-  })
+  const { data, error } = await supabase()
+    .from("InventoryItem")
+    .update({ available, ...(reserved !== undefined ? { reserved } : {}) })
+    .eq("id", id)
+    .select("id,productId,warehouse,available,reserved,product:Product(name,slug)")
+    .single()
+  if (error) throw new Error(error.message)
+  return data
 }
 
 export const updateVariantStock = async (id: string, stock: number) => {
-  return prisma.productVariant.update({
-    where: { id },
-    data: { stock },
-    include: { product: { select: { name: true, slug: true } } },
-  })
+  const { data, error } = await supabase()
+    .from("ProductVariant")
+    .update({ stock })
+    .eq("id", id)
+    .select("id,productId,name,stock,product:Product(name,slug)")
+    .single()
+  if (error) throw new Error(error.message)
+  return data
 }
 
 export const listReviews = (filters?: { status?: string; productId?: string; orderId?: string; userId?: string }) =>
-  prisma.productReview.findMany({
-    where: {
-      ...(filters?.status ? { status: filters.status } : {}),
-      ...(filters?.productId ? { productId: filters.productId } : {}),
-      ...(filters?.orderId ? { orderId: filters.orderId } : {}),
-      ...(filters?.userId ? { userId: filters.userId } : {}),
-    },
-    orderBy: { createdAt: "desc" },
-    take: 200,
-    include: { product: { select: { name: true, slug: true } }, user: { select: { email: true, name: true } } },
-  })
+  (async () => {
+    let query = supabase()
+      .from("ProductReview")
+      .select("*,product:Product(name,slug),user:User(email,name)")
+      .order("createdAt", { ascending: false })
+      .limit(200)
+    if (filters?.status) query = query.eq("status", filters.status)
+    if (filters?.productId) query = query.eq("productId", filters.productId)
+    if (filters?.orderId) query = query.eq("orderId", filters.orderId)
+    if (filters?.userId) query = query.eq("userId", filters.userId)
+    const { data, error } = await query
+    if (error) throw new Error(error.message)
+    return data ?? []
+  })()
 
 export const updateReviewStatus = (id: string, status: string) =>
-  prisma.productReview.update({ where: { id }, data: { status } })
+  supabase().from("ProductReview").update({ status }).eq("id", id).select("*").single().then(({ data, error }) => {
+    if (error) throw new Error(error.message)
+    return data
+  })
 
 export const createReview = async (input: {
   productId: string
@@ -151,81 +181,95 @@ export const createReview = async (input: {
   status?: string
 }) => {
   if (input.userId && input.orderId) {
-    const existing = await prisma.productReview.findFirst({
-      where: {
-        productId: input.productId,
-        orderId: input.orderId,
-        userId: input.userId,
-      },
-      select: { id: true },
-    })
-    if (existing) throw new Error("Already reviewed")
+    const { data: existing, error: existingError } = await supabase()
+      .from("ProductReview")
+      .select("id")
+      .eq("productId", input.productId)
+      .eq("orderId", input.orderId)
+      .eq("userId", input.userId)
+      .limit(1)
+      .maybeSingle()
+    if (existingError) throw new Error(existingError.message)
+    if (existing?.id) throw new Error("Already reviewed")
   }
-  return prisma.productReview.create({
-    data: {
+  const { data, error } = await supabase()
+    .from("ProductReview")
+    .insert({
       productId: input.productId,
-      orderId: input.orderId ?? undefined,
-      userId: input.userId ?? undefined,
-      guestName: input.guestName ?? undefined,
-      guestEmail: input.guestEmail ?? undefined,
+      orderId: input.orderId ?? null,
+      userId: input.userId ?? null,
+      guestName: input.guestName ?? null,
+      guestEmail: input.guestEmail ?? null,
       rating: input.rating,
-      title: input.title,
-      body: input.body,
+      title: input.title ?? null,
+      body: input.body ?? null,
       status: input.status ?? "published",
-    },
-  })
+    })
+    .select("*")
+    .single()
+  if (error) throw new Error(error.message)
+  return data
 }
 
 export const listReturnRequests = () =>
-  prisma.returnRequest.findMany({
-    orderBy: { createdAt: "desc" },
-    take: 200,
-    include: {
-      order: {
-        select: {
-          id: true,
-          total: true,
-          status: true,
-          userId: true,
-          refunds: { select: { id: true, amount: true, status: true, createdAt: true } },
-        },
-      },
-      pickup: true,
-      items: true,
-    },
-  })
+  supabase()
+    .from("ReturnRequest")
+    .select(`
+      *,
+      order:Order(
+        id,
+        total,
+        status,
+        userId,
+        refunds:RefundRecord(
+          id,
+          amount,
+          status,
+          createdAt
+        )
+      ),
+      pickup:ReturnPickup(*)
+    `)
+    .order("createdAt", { ascending: false })
+    .limit(200)
+    .then(({ data, error }) => {
+      if (error) throw new Error(error.message)
+      return data ?? []
+    })
 
 export const updateReturnStatus = (id: string, status: string) =>
-  prisma.returnRequest.update({ where: { id }, data: { status } })
-
-export const createReturnRequest = async (orderId: string, userId: string | null, reason?: string) => {
-  const order = await prisma.order.findUnique({
-    where: { id: orderId },
-    include: { returnRequests: true },
+  supabase().from("ReturnRequest").update({ status }).eq("id", id).select("*").single().then(({ data, error }) => {
+    if (error) throw new Error(error.message)
+    return data
   })
-  if (!order) throw new Error("Order not found")
-  if (order.status !== "delivered") throw new Error("Returns are allowed only for delivered orders")
 
-  const duplicate = order.returnRequests.find((row) => row.status !== "rejected")
-  if (duplicate) throw new Error("Return request already exists for this order")
-
-  return prisma.returnRequest.create({
-    data: {
-      orderId,
-      userId: userId ?? undefined,
-      reason: reason?.trim() || null,
-      status: "requested",
-    },
-    include: {
-      order: { select: { id: true, total: true, status: true } },
-      pickup: true,
-      items: true,
-    },
-  })
+export const createReturnRequest = async (
+  orderId: string,
+  userId: string | null,
+  reason?: string,
+  items?: Array<{ orderItemId: string; productId: string; requestedQty: number; reasonCode?: string; notes?: string; imageUrl?: string }>
+) => {
+  try {
+    return await createReturnRequestSupabase(orderId, userId, reason, items)
+  } catch (error) {
+    logger.error("returns.create.supabase_failed", {
+      error: error instanceof Error ? error.message : "unknown",
+      orderId
+    })
+    throw error
+  }
 }
 
 export const listAbandonedCarts = () =>
-  prisma.abandonedCart.findMany({ orderBy: { updatedAt: "desc" }, take: 100 })
+  supabase()
+    .from("AbandonedCart")
+    .select("*")
+    .order("updatedAt", { ascending: false })
+    .limit(100)
+    .then(({ data, error }) => {
+      if (error) throw new Error(error.message)
+      return data ?? []
+    })
 
 export const upsertAbandonedCart = async (input: {
   sessionKey: string
@@ -233,41 +277,50 @@ export const upsertAbandonedCart = async (input: {
   itemsJson: unknown
   total?: number | null
 }) => {
-  return prisma.abandonedCart.upsert({
-    where: { sessionKey: input.sessionKey },
-    create: {
+  const { data: existing, error: existingError } = await supabase()
+    .from("AbandonedCart")
+    .select("id")
+    .eq("sessionKey", input.sessionKey)
+    .maybeSingle()
+  if (existingError) throw new Error(existingError.message)
+  if (existing?.id) {
+    const { data, error } = await supabase()
+      .from("AbandonedCart")
+      .update({
+        email: input.email ?? null,
+        itemsJson: input.itemsJson as any,
+        total: input.total ?? null,
+      })
+      .eq("id", existing.id)
+      .select("*")
+      .single()
+    if (error) throw new Error(error.message)
+    return data
+  }
+  const { data, error } = await supabase()
+    .from("AbandonedCart")
+    .insert({
       sessionKey: input.sessionKey,
-      email: input.email ?? undefined,
-      itemsJson: input.itemsJson as never,
-      total: input.total ?? undefined,
-    },
-    update: {
-      email: input.email ?? undefined,
-      itemsJson: input.itemsJson as never,
-      total: input.total ?? undefined,
-    },
-  })
+      email: input.email ?? null,
+      itemsJson: input.itemsJson as any,
+      total: input.total ?? null,
+    })
+    .select("*")
+    .single()
+  if (error) throw new Error(error.message)
+  return data
 }
 
 export const listPromotions = () =>
-  prisma.promotion.findMany({
-    orderBy: { updatedAt: "desc" },
-    take: 100,
-
-    include: {
-      products: {
-        include: {
-          product: true,
-        },
-      },
-
-      variants: {
-        include: {
-          variant: true,
-        },
-      },
-    },
-  })
+  supabase()
+    .from("Promotion")
+    .select("*,products:PromotionProduct(*,product:Product(*)),variants:PromotionVariant(*,variant:ProductVariant(*))")
+    .order("updatedAt", { ascending: false })
+    .limit(100)
+    .then(({ data, error }) => {
+      if (error) throw new Error(error.message)
+      return data ?? []
+    })
 
 export const createPromotion = async (input: {
   kind: string
@@ -288,93 +341,43 @@ export const createPromotion = async (input: {
 
   metadata?: unknown
 }) => {
-
-  return prisma.promotion.create({
-
-    data: {
-
+  const { data: promotion, error } = await supabase()
+    .from("Promotion")
+    .insert({
       kind: input.kind,
-
       name: input.name,
-
       active: input.active ?? true,
-
-      startsAt: input.startsAt ?? undefined,
-
-      endsAt: input.endsAt ?? undefined,
-
-      /* 🔥 Store product-level discount */
-
+      startsAt: input.startsAt ?? null,
+      endsAt: input.endsAt ?? null,
       metadata: {
-
         products:
-          input.products?.map(p => ({
-
+          input.products?.map((p) => ({
             productId: p.productId,
-
-            discountPercent:
-              p.discountPercent ?? null
-
-          })) ?? []
-
+            discountPercent: p.discountPercent ?? null,
+          })) ?? [],
       },
-
-      /* Product links */
-
-      products: input.products
-        ? {
-            create: input.products.map((p) => ({
-
-              product: {
-
-                connect: {
-
-                  id: p.productId,
-
-                },
-
-              },
-
-            })),
-          }
-        : undefined,
-
-      /* Variant discounts */
-
-      variants: input.products
-        ? {
-            create: input.products.flatMap((p) =>
-
-              p.variants
-                ? p.variants.map((v) => ({
-
-                    variant: {
-
-                      connect: {
-
-                        id: v.variantId,
-
-                      },
-
-                    },
-
-                    metadata: {
-
-                      discountPercent:
-                        v.discountPercent,
-
-                    },
-
-                  }))
-                : []
-
-            ),
-          }
-        : undefined,
-
-    },
-
-  })
+    })
+    .select("*")
+    .single()
+  if (error) throw new Error(error.message)
+  if (input.products?.length) {
+    const { error: ppError } = await supabase().from("PromotionProduct").insert(
+      input.products.map((p) => ({ promotionId: promotion.id, productId: p.productId })),
+    )
+    if (ppError) throw new Error(ppError.message)
+    const variantRows = input.products.flatMap((p) =>
+      (p.variants ?? []).map((v) => ({
+        promotionId: promotion.id,
+        variantId: v.variantId,
+        metadata: { discountPercent: v.discountPercent },
+      })),
+    )
+    if (variantRows.length) {
+      const { error: pvError } = await supabase().from("PromotionVariant").insert(variantRows)
+      if (pvError) throw new Error(pvError.message)
+    }
+  }
+  return promotion
 
 }
 
@@ -400,233 +403,162 @@ export const updatePromotion = async (
     metadata: unknown
   }>
 ) => {
-
-  return prisma.promotion.update({
-
-    where: { id },
-
-    data: {
-
-      /* ---------- BASIC FIELDS ---------- */
-
-      kind: input.kind,
-
-      name: input.name,
-
-      active: input.active,
-
-      startsAt:
-        input.startsAt ?? undefined,
-
-      endsAt:
-        input.endsAt ?? undefined,
-
-      /* ---------- STORE SIMPLE PRODUCT DISCOUNTS ---------- */
-
-      metadata:
-        input.products
-          ? {
-              products: input.products.map(p => ({
-
-                productId: p.productId,
-
-                discountPercent:
-                  p.discountPercent ?? null
-
-              }))
-            }
-          : input.metadata === undefined
-            ? undefined
-            : (input.metadata as never),
-
-      /* ---------- REPLACE PRODUCT LINKS ---------- */
-
-      products: input.products
+  const { data: updated, error } = await supabase()
+    .from("Promotion")
+    .update({
+      ...(input.kind !== undefined ? { kind: input.kind } : {}),
+      ...(input.name !== undefined ? { name: input.name } : {}),
+      ...(input.active !== undefined ? { active: input.active } : {}),
+      ...(input.startsAt !== undefined ? { startsAt: input.startsAt } : {}),
+      ...(input.endsAt !== undefined ? { endsAt: input.endsAt } : {}),
+      ...(input.products
         ? {
-
-            deleteMany: {},
-
-            create: input.products.map(p => ({
-
-              product: {
-
-                connect: {
-                  id: p.productId
-                }
-
-              }
-
-            }))
-
-          }
-        : undefined,
-
-      /* ---------- REPLACE VARIANT DISCOUNTS ---------- */
-
-      variants: input.products
-        ? {
-
-            deleteMany: {},
-
-            create: input.products.flatMap(p =>
-
-              p.variants
-                ? p.variants.map(v => ({
-
-                    variant: {
-
-                      connect: {
-                        id: v.variantId
-                      }
-
-                    },
-
-                    metadata: {
-
-                      discountPercent:
-                        v.discountPercent
-
-                    }
-
-                  }))
-                : []
-
-            )
-
-          }
-        : undefined,
-
+          metadata: {
+            products: input.products.map((p) => ({
+              productId: p.productId,
+              discountPercent: p.discountPercent ?? null,
+            })),
+          },
+        }
+        : input.metadata === undefined
+          ? {}
+          : { metadata: input.metadata as any }),
+    })
+    .eq("id", id)
+    .select("*")
+    .single()
+  if (error) throw new Error(error.message)
+  if (input.products) {
+    const { error: delPpError } = await supabase().from("PromotionProduct").delete().eq("promotionId", id)
+    if (delPpError) throw new Error(delPpError.message)
+    const { error: delPvError } = await supabase().from("PromotionVariant").delete().eq("promotionId", id)
+    if (delPvError) throw new Error(delPvError.message)
+    if (input.products.length) {
+      const { error: ppError } = await supabase().from("PromotionProduct").insert(
+        input.products.map((p) => ({ promotionId: id, productId: p.productId })),
+      )
+      if (ppError) throw new Error(ppError.message)
+      const variantRows = input.products.flatMap((p) =>
+        (p.variants ?? []).map((v) => ({
+          promotionId: id,
+          variantId: v.variantId,
+          metadata: { discountPercent: v.discountPercent },
+        })),
+      )
+      if (variantRows.length) {
+        const { error: pvError } = await supabase().from("PromotionVariant").insert(variantRows)
+        if (pvError) throw new Error(pvError.message)
+      }
     }
-
-  })
+  }
+  return updated
 
 }
 
 export const financeSummary = async () => {
-
-  // 1️⃣ Total Sales
-  const sales = await prisma.order.aggregate({
-    _sum: { total: true },
-    _count: true,
-  });
-
-  // 2️⃣ Completed Refunds only
-  const completedRefunds =
-    await prisma.refundRecord.aggregate({
-      where: {
-        status: "completed",
-      },
-      _sum: {
-        amount: true,
-      },
-    });
-
-  const grossSales =
-    sales._sum.total ?? 0;
-
-  const refundsTotal =
-    completedRefunds._sum.amount ?? 0;
-
-  // ✅ Net Revenue Calculation
-  const netRevenue =
-    grossSales - refundsTotal;
-
-  return {
-
-    grossSales,
-
-    netRevenue, // ⭐ NEW (Important)
-
-    orderCount: sales._count,
-
-    refundsTotal,
-
-  };
-};
+  const { data: orders, error: ordersError } = await supabase().from("Order").select("total")
+  if (ordersError) throw new Error(ordersError.message)
+  const { data: refunds, error: refundsError } = await supabase().from("RefundRecord").select("amount").eq("status", "completed")
+  if (refundsError) throw new Error(refundsError.message)
+  const grossSales = (orders ?? []).reduce((sum, row: any) => sum + Number(row.total ?? 0), 0)
+  const refundsTotal = (refunds ?? []).reduce((sum, row: any) => sum + Number(row.amount ?? 0), 0)
+  const netRevenue = grossSales - refundsTotal
+  return { grossSales, netRevenue, orderCount: (orders ?? []).length, refundsTotal }
+}
 export const listWithdrawals = () =>
-  prisma.withdrawalRequest.findMany({
-    orderBy: { createdAt: "desc" },
-    take: 100,
-    include: {
-      createdBy: { select: { id: true, name: true, email: true } },
-      managedBy: { select: { id: true, name: true, email: true } },
-    },
-  })
+  supabase()
+    .from("WithdrawalRequest")
+    .select("*,createdBy:User!WithdrawalRequest_createdById_fkey(id,name,email),managedBy:User!WithdrawalRequest_managedById_fkey(id,name,email)")
+    .order("createdAt", { ascending: false })
+    .limit(100)
+    .then(({ data, error }) => {
+      if (error) throw new Error(error.message)
+      return data ?? []
+    })
 
 export const updateWithdrawalStatus = (id: string, status: string) =>
-  prisma.withdrawalRequest.update({ where: { id }, data: { status } })
+  supabase().from("WithdrawalRequest").update({ status }).eq("id", id).select("*").single().then(({ data, error }) => {
+    if (error) throw new Error(error.message)
+    return data
+  })
 
 export const listRefunds = (page = 1, limit = 20) =>
-  prisma.refundRecord.findMany({
-    orderBy: { createdAt: "desc" },
-    skip: (Math.max(page, 1) - 1) * Math.min(Math.max(limit, 1), 100),
-    take: Math.min(Math.max(limit, 1), 100),
-    include: { order: { select: { id: true, total: true } } },
-  })
-
-export const createRefund = (orderId: string, amount: number, reason?: string) =>
-  prisma.$transaction(async (tx) => {
-    const order = await tx.order.findUnique({
-      where: { id: orderId },
-      include: { refunds: true },
+  supabase()
+    .from("RefundRecord")
+    .select("*,order:Order(id,total)")
+    .order("createdAt", { ascending: false })
+    .range((Math.max(page, 1) - 1) * Math.min(Math.max(limit, 1), 100), Math.max(page, 1) * Math.min(Math.max(limit, 1), 100) - 1)
+    .then(({ data, error }) => {
+      if (error) throw new Error(error.message)
+      return data ?? []
     })
-    if (!order) throw new Error("Order not found")
 
-    const alreadyRefunded = order.refunds
-      .filter((row) => !["rejected", "failed"].includes(row.status))
-      .reduce((sum, row) => sum + Number(row.amount), 0)
-    const refundable = Number(order.total) - alreadyRefunded
-    if (refundable <= 0) throw new Error("Order already fully refunded")
-    if (amount > refundable) throw new Error(`Amount exceeds refundable balance (${refundable.toFixed(2)})`)
-
-    const created = await tx.refundRecord.create({
-      data: {
-        orderId,
-        amount,
-        reason,
-        status: "pending",
-      },
-    })
-    await tx.$executeRawUnsafe('UPDATE "Order" SET "refundStatus" = $1 WHERE id = $2', "PENDING", orderId)
-    return created
-  })
+export const createRefund = async (orderId: string, amount: number, reason?: string) => {
+  const { data: order, error: orderError } = await supabase().from("Order").select("id,total").eq("id", orderId).maybeSingle()
+  if (orderError) throw new Error(orderError.message)
+  if (!order) throw new Error("Order not found")
+  const { data: refunds, error: refundsError } = await supabase().from("RefundRecord").select("amount,status").eq("orderId", orderId)
+  if (refundsError) throw new Error(refundsError.message)
+  const alreadyRefunded = (refunds ?? [])
+    .filter((row: any) => !["rejected", "failed"].includes(String(row.status ?? "")))
+    .reduce((sum: number, row: any) => sum + Number(row.amount ?? 0), 0)
+  const refundable = Number((order as any).total ?? 0) - alreadyRefunded
+  if (refundable <= 0) throw new Error("Order already fully refunded")
+  if (amount > refundable) throw new Error(`Amount exceeds refundable balance (${refundable.toFixed(2)})`)
+  const { data: created, error: createError } = await supabase()
+    .from("RefundRecord")
+    .insert({ orderId, amount, reason: reason ?? null, status: "pending" })
+    .select("*")
+    .single()
+  if (createError) throw new Error(createError.message)
+  const { error: orderUpdateError } = await supabase().from("Order").update({ refundStatus: "PENDING" }).eq("id", orderId)
+  if (orderUpdateError) throw new Error(orderUpdateError.message)
+  return created
+}
 
 export const updateRefundStatus = (id: string, status: string) =>
-  prisma.refundRecord.update({ where: { id }, data: { status } })
+  supabase().from("RefundRecord").update({ status }).eq("id", id).select("*").single().then(({ data, error }) => {
+    if (error) throw new Error(error.message)
+    return data
+  })
 
 export const reportTopProducts = async (limit = 20) => {
-  const rows = await prisma.orderItem.groupBy({
-    by: ["productId"],
-    _sum: { quantity: true, lineTotal: true },
-    orderBy: { _sum: { lineTotal: "desc" } },
-    take: limit,
-  })
-  const products = await prisma.product.findMany({
-    where: { id: { in: rows.map((r) => r.productId) } },
-    select: { id: true, name: true, slug: true },
-  })
-  const byId = Object.fromEntries(products.map((p) => [p.id, p]))
-  return rows.map((r) => ({
-    productId: r.productId,
-    name: byId[r.productId]?.name ?? "—",
-    slug: byId[r.productId]?.slug ?? "",
-    units: r._sum.quantity ?? 0,
-    revenue: r._sum.lineTotal ?? 0,
+  const { data: items, error: itemsError } = await supabase().from("OrderItem").select("productId,quantity,lineTotal")
+  if (itemsError) throw new Error(itemsError.message)
+  const grouped = new Map<string, { units: number; revenue: number }>()
+  for (const row of items ?? []) {
+    const productId = String((row as any).productId ?? "")
+    if (!productId) continue
+    const curr = grouped.get(productId) ?? { units: 0, revenue: 0 }
+    curr.units += Number((row as any).quantity ?? 0)
+    curr.revenue += Number((row as any).lineTotal ?? 0)
+    grouped.set(productId, curr)
+  }
+  const sorted = [...grouped.entries()].sort((a, b) => b[1].revenue - a[1].revenue).slice(0, limit)
+  const ids = sorted.map(([id]) => id)
+  const { data: products, error: productsError } = await supabase().from("Product").select("id,name,slug").in("id", ids)
+  if (productsError) throw new Error(productsError.message)
+  const byId = Object.fromEntries((products ?? []).map((p: any) => [p.id, p]))
+  return sorted.map(([productId, agg]) => ({
+    productId,
+    name: byId[productId]?.name ?? "—",
+    slug: byId[productId]?.slug ?? "",
+    units: agg.units,
+    revenue: agg.revenue,
   }))
 }
 
 export const reportPlatformPerformance = async () => {
-  const totals = await prisma.orderItem.aggregate({
-    _sum: { lineTotal: true },
-    _count: { _all: true },
-  })
+  const { data: rows, error } = await supabase().from("OrderItem").select("lineTotal")
+  if (error) throw new Error(error.message)
+  const revenue = (rows ?? []).reduce((sum, row: any) => sum + Number(row.lineTotal ?? 0), 0)
   return [
     {
       sellerId: "platform",
       name: "Platform",
       email: "",
-      revenue: Number(totals._sum.lineTotal ?? 0),
-      lines: totals._count._all ?? 0,
+      revenue,
+      lines: (rows ?? []).length,
     },
   ]
 }
@@ -635,12 +567,7 @@ export const reportPlatformPerformance = async () => {
 export const reportSellerPerformance = reportPlatformPerformance
 
 export const listUserAddresses = (userId: string) =>
-  listUserAddressesSupabase(userId).catch((error) => {
-    logger.warn("addresses.list.supabase_fallback_prisma", {
-      error: error instanceof Error ? error.message : "unknown",
-    })
-    return prisma.userAddress.findMany({ where: { userId }, orderBy: { createdAt: "desc" } })
-  })
+  listUserAddressesSupabase(userId)
 
 export const createUserAddress = (
   userId: string,
@@ -659,12 +586,7 @@ export const createUserAddress = (
     isDefault?: boolean
   },
 ) =>
-  createUserAddressSupabase(userId, data).catch((error) => {
-    logger.warn("addresses.create.supabase_fallback_prisma", {
-      error: error instanceof Error ? error.message : "unknown",
-    })
-    return prisma.userAddress.create({ data: { ...data, userId } })
-  })
+  createUserAddressSupabase(userId, data)
 
 export const updateUserAddress = async (
   id: string,
@@ -684,38 +606,39 @@ export const updateUserAddress = async (
     isDefault?: boolean
   }>,
 ) => {
-  try {
-    const result = await updateUserAddressSupabase(id, userId, data)
-    if (result.count > 0) return result
-  } catch (error) {
-    logger.warn("addresses.update.supabase_fallback_prisma", {
-      error: error instanceof Error ? error.message : "unknown",
-    })
-  }
-  const found = await prisma.userAddress.findFirst({ where: { id, userId } })
-  if (!found) return { count: 0 }
-  await prisma.userAddress.update({ where: { id }, data })
-  return { count: 1 }
+  return updateUserAddressSupabase(id, userId, data)
 }
 
 export const deleteUserAddress = (id: string, userId: string) =>
-  deleteUserAddressSupabase(id, userId).catch((error) => {
-    logger.warn("addresses.delete.supabase_fallback_prisma", {
-      error: error instanceof Error ? error.message : "unknown",
-    })
-    return prisma.userAddress.deleteMany({ where: { id, userId } })
-  })
+  deleteUserAddressSupabase(id, userId)
 
 export const listSavedPaymentMethods = (userId: string) =>
-  prisma.savedPaymentMethod.findMany({ where: { userId }, orderBy: { createdAt: "desc" } })
+  supabase()
+    .from("SavedPaymentMethod")
+    .select("*")
+    .eq("userId", userId)
+    .order("createdAt", { ascending: false })
+    .then(({ data, error }) => {
+      if (error) throw new Error(error.message)
+      return data ?? []
+    })
 
 export const createSavedPaymentMethod = (
   userId: string,
   data: { provider: string; externalRef: string; last4?: string; brand?: string; isDefault?: boolean },
-) => prisma.savedPaymentMethod.create({ data: { ...data, userId } })
+) =>
+  supabase()
+    .from("SavedPaymentMethod")
+    .insert({ ...data, userId })
+    .select("*")
+    .single()
+    .then(({ data, error }) => {
+      if (error) throw new Error(error.message)
+      return data
+    })
 
 export async function deleteAbandonedCartBySession(sessionKey: string) {
-  return prisma.abandonedCart.deleteMany({
-    where: { sessionKey },
-  });
+  const { data, error } = await supabase().from("AbandonedCart").delete().eq("sessionKey", sessionKey).select("id")
+  if (error) throw new Error(error.message)
+  return { count: (data ?? []).length }
 }

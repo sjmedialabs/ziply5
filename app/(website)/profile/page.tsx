@@ -4,7 +4,7 @@ import { Suspense, useEffect, useMemo, useState } from "react"
 import Link from "next/link"
 import Image from "next/image"
 import { Facebook, Twitter, Linkedin, X } from "lucide-react"
-import { User, Star, Package } from "lucide-react"
+import { User, Star, Package, Camera } from "lucide-react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query"
 import { getFavoriteSlugs, toggleFavoriteSlug } from "@/lib/favorites"
@@ -24,7 +24,7 @@ type ApiOrderRow = {
   refunds?: Array<{ status: string }>
   total: string | number
   createdAt: string
-  items: Array<{ quantity: number; product: { name: string } }>
+  items: Array<{ id: string; productId: string; quantity: number; product: { name: string } }>
   transactions?: Array<{ status: string }>
 }
 
@@ -46,6 +46,144 @@ function ProfilePageContent() {
     role: null,
   })
 
+  // Return modal state
+  const [isReturnModalOpen, setIsReturnModalOpen] = useState(false)
+  const [selectedOrderForReturn, setSelectedOrderForReturn] = useState<ApiOrderRow | null>(null)
+  const [returnReasons, setReturnReasons] = useState<{ id: string; label: string; value: string }[]>([])
+  const [selectedItemsForReturn, setSelectedItemsForReturn] = useState<Record<string, {
+    selected: boolean;
+    productId: string;
+    reasonCode: string;
+    notes: string;
+    imageUrl: string;
+    quantity: number;
+    uploading: boolean;
+  }>>({})
+
+  useEffect(() => {
+    const fetchReasons = async () => {
+      const token = window.localStorage.getItem("ziply5_access_token")
+      if (!token) return
+      try {
+        const res = await fetch("/api/master/all", {
+          headers: { Authorization: `Bearer ${token}` }
+        })
+        const payload = await res.json()
+        if (payload.success && Array.isArray(payload.data)) {
+          const group = payload.data.find((g: any) => g.key === "RETURN_REASONS")
+          if (group && Array.isArray(group.values)) {
+            setReturnReasons(group.values)
+          }
+        }
+      } catch (e) {
+        // Ignore
+      }
+    }
+    fetchReasons()
+  }, [])
+
+  const openReturnModal = (order: ApiOrderRow) => {
+    setSelectedOrderForReturn(order)
+    const initialItems: typeof selectedItemsForReturn = {}
+    const autoSelect = order.items.length === 1
+    order.items.forEach(item => {
+      initialItems[item.id] = {
+        selected: autoSelect,
+        productId: item.productId,
+        reasonCode: "",
+        notes: "",
+        imageUrl: "",
+        quantity: item.quantity,
+        uploading: false,
+      }
+    })
+    setSelectedItemsForReturn(initialItems)
+    setIsReturnModalOpen(true)
+  }
+
+  const handleImageUpload = async (orderItemId: string, file: File) => {
+    setSelectedItemsForReturn(prev => ({
+      ...prev,
+      [orderItemId]: { ...prev[orderItemId], uploading: true }
+    }))
+    try {
+      const formData = new FormData()
+      formData.append("file", file)
+      const token = window.localStorage.getItem("ziply5_access_token")
+      const res = await fetch("/api/v1/uploads", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+        body: formData
+      })
+      const payload = await res.json()
+      if (!res.ok || !payload.success) throw new Error(payload.message || "Upload failed")
+
+      setSelectedItemsForReturn(prev => ({
+        ...prev,
+        [orderItemId]: { ...prev[orderItemId], imageUrl: payload.data.url, uploading: false }
+      }))
+    } catch (error) {
+      toast.error("Upload Failed", error instanceof Error ? error.message : "Failed to upload image")
+      setSelectedItemsForReturn(prev => ({
+        ...prev,
+        [orderItemId]: { ...prev[orderItemId], uploading: false }
+      }))
+    }
+  }
+
+  const submitReturnRequest = async () => {
+    if (!selectedOrderForReturn) return
+    const itemsToReturn = Object.entries(selectedItemsForReturn)
+      .filter(([_, data]) => data.selected)
+      .map(([id, data]) => ({
+        orderItemId: id,
+        productId: data.productId,
+        quantity: data.quantity,
+        reasonCode: data.reasonCode,
+        notes: data.notes,
+        imageUrl: data.imageUrl
+      }))
+
+    if (itemsToReturn.length === 0) {
+      toast.error("Validation Error", "Please select at least one item to return.")
+      return
+    }
+
+    for (const item of itemsToReturn) {
+      if (!item.reasonCode) {
+        toast.error("Validation Error", "Please select a reason for all selected items.")
+        return
+      }
+    }
+
+    const token = window.localStorage.getItem("ziply5_access_token")
+    if (!token) return
+    setOrderActionBusy(`${selectedOrderForReturn.id}:return_request`)
+    try {
+      const res = await fetch(`/api/v1/returns`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          orderId: selectedOrderForReturn.id,
+          items: itemsToReturn
+        }),
+      })
+      const payload = await res.json()
+      if (!res.ok || !payload.success) throw new Error(payload.message || "Failed to submit return request")
+
+      toast.success("Return Requested", "Your return request has been submitted successfully.")
+      setIsReturnModalOpen(false)
+      void queryClient.invalidateQueries({ queryKey: ["profile-orders"] })
+    } catch (error) {
+      toast.error("Error", error instanceof Error ? error.message : "Failed to submit return request")
+    } finally {
+      setOrderActionBusy(null)
+    }
+  }
+
   useEffect(() => {
     if (initialTab === "favorite" || initialTab === "about" || initialTab === "orders") {
       setActiveTab(initialTab)
@@ -60,9 +198,9 @@ function ProfilePageContent() {
       const token = window.localStorage.getItem("ziply5_access_token");
       const userId = JSON.parse(window.localStorage.getItem("ziply5_user") || "{}").id;
       const res = await fetch("/api/v1/profile", {
-        headers: { 
+        headers: {
           Authorization: `Bearer ${token}`,
-          "x-user-id": userId 
+          "x-user-id": userId
         },
       });
       const payload = await res.json();
@@ -175,9 +313,9 @@ function ProfilePageContent() {
 
       try {
         const res = await fetch("/api/v1/favorites", {
-          headers: { 
+          headers: {
             Authorization: `Bearer ${authSnapshot.token}`,
-            "x-user-id": userId 
+            "x-user-id": userId
           },
         });
         const payload = await res.json();
@@ -315,25 +453,25 @@ function ProfilePageContent() {
       router.push("/login")
     }
   }
-const cancelPendingOrder = async (orderId: string) => {
-  const token = window.localStorage.getItem("ziply5_access_token")
-  if (!token) return
+  const cancelPendingOrder = async (orderId: string) => {
+    const token = window.localStorage.getItem("ziply5_access_token")
+    if (!token) return
 
-  setOrderActionBusy(`${orderId}:cancel`)
+    setOrderActionBusy(`${orderId}:cancel`)
 
-  try {
-    await fetch(`/api/v1/orders/${orderId}/cancel`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-      },
-    })
-  } finally {
-    setOrderActionBusy(null)
-    void queryClient.invalidateQueries({ queryKey: ["profile-orders"] })
+    try {
+      await fetch(`/api/v1/orders/${orderId}/cancel`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+      })
+    } finally {
+      setOrderActionBusy(null)
+      void queryClient.invalidateQueries({ queryKey: ["profile-orders"] })
+    }
   }
-}
   const sectionTitle =
     activeTab === "about"
       ? "Personal Information"
@@ -348,95 +486,92 @@ const cancelPendingOrder = async (orderId: string) => {
 
         <div className="grid grid-cols-1 gap-6 md:grid-cols-[280px_1fr]">
 
-        {/* LEFT SIDEBAR */}
-        <div>
-        <div
-          className="w-full rounded-2xl bg-white p-2 shadow-sm ring-1 ring-black/5"
-        >
-
-          {/* TAB ITEM */}
-          <div
-            onClick={() => setActiveTab("about")}
-            className={`flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-medium transition-colors ${
-              activeTab === "about" ? "bg-[#FDE2E7] text-[#7A1F2A]" : "text-[#374151] hover:bg-[#F3F4F6]"
-            }`}
-          >
-            <User size={18} />
-            <span className="font-medium">Personal Information</span>
-          </div>
-
-          <div
-            onClick={() => setActiveTab("favorite")}
-            className={`mt-1 flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-medium transition-colors ${
-              activeTab === "favorite" ? "bg-[#FDE2E7] text-[#7A1F2A]" : "text-[#374151] hover:bg-[#F3F4F6]"
-            }`}
-          >
-            <Star size={18} />
-            <span className="font-medium">wishlist</span>
-          </div>
-
-          <div
-            onClick={() => setActiveTab("orders")}
-            className={`mt-1 flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-medium transition-colors ${
-              activeTab === "orders" ? "bg-[#FDE2E7] text-[#7A1F2A]" : "text-[#374151] hover:bg-[#F3F4F6]"
-            }`}
-          >
-            <Package size={18} />
-            <span className="font-medium">My orders</span>
-          </div>
-        </div>
-        </div>
-        {/* RIGHT CONTENT */}
-        <div className="w-full">
-          <div className="rounded-2xl bg-white shadow-sm ring-1 ring-black/5">
-            <div className="flex flex-col gap-3 border-b border-black/5 p-5 sm:flex-row sm:items-center sm:justify-between">
-              <div className="min-w-0">
-                <p className="text-base font-semibold text-[#111827]">{sectionTitle}</p>
-                <p className="mt-0.5 text-xs text-[#6B7280]">Manage your account details and preferences.</p>
-              </div>
-            <button
-              type="button"
-              onClick={handleLogout}
-                className="h-10 rounded-xl bg-[#5A272A] px-4 text-xs font-semibold uppercase tracking-wide text-white hover:bg-[#451f21]"
+          {/* LEFT SIDEBAR */}
+          <div>
+            <div
+              className="w-full rounded-2xl bg-white p-2 shadow-sm ring-1 ring-black/5"
             >
-              Logout
-            </button>
+
+              {/* TAB ITEM */}
+              <div
+                onClick={() => setActiveTab("about")}
+                className={`flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-medium transition-colors ${activeTab === "about" ? "bg-[#FDE2E7] text-[#7A1F2A]" : "text-[#374151] hover:bg-[#F3F4F6]"
+                  }`}
+              >
+                <User size={18} />
+                <span className="font-medium">Personal Information</span>
+              </div>
+
+              <div
+                onClick={() => setActiveTab("favorite")}
+                className={`mt-1 flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-medium transition-colors ${activeTab === "favorite" ? "bg-[#FDE2E7] text-[#7A1F2A]" : "text-[#374151] hover:bg-[#F3F4F6]"
+                  }`}
+              >
+                <Star size={18} />
+                <span className="font-medium">wishlist</span>
+              </div>
+
+              <div
+                onClick={() => setActiveTab("orders")}
+                className={`mt-1 flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-medium transition-colors ${activeTab === "orders" ? "bg-[#FDE2E7] text-[#7A1F2A]" : "text-[#374151] hover:bg-[#F3F4F6]"
+                  }`}
+              >
+                <Package size={18} />
+                <span className="font-medium">My orders</span>
+              </div>
+            </div>
           </div>
-
-            <div className="p-5">
-          {activeTab === "about" && (
-            <div className="space-y-6 text-sm gap-2">
-
-              <div className="flex">
-                <p className="w-24 font-bold text-gray-700">Bio</p>
-                <p className="text-gray-600 max-w-md italic">
-                  {profileQuery.data?.profile?.bio || "No bio set yet. Click edit to add one!"}
-                </p>
+          {/* RIGHT CONTENT */}
+          <div className="w-full">
+            <div className="rounded-2xl bg-white shadow-sm ring-1 ring-black/5">
+              <div className="flex flex-col gap-3 border-b border-black/5 p-5 sm:flex-row sm:items-center sm:justify-between">
+                <div className="min-w-0">
+                  <p className="text-base font-semibold text-[#111827]">{sectionTitle}</p>
+                  <p className="mt-0.5 text-xs text-[#6B7280]">Manage your account details and preferences.</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleLogout}
+                  className="h-10 rounded-xl bg-[#5A272A] px-4 text-xs font-semibold uppercase tracking-wide text-white hover:bg-[#451f21]"
+                >
+                  Logout
+                </button>
               </div>
 
-              <div className="flex">
-                <p className="w-24 font-bold text-gray-700">Email</p>
-                <p className="text-gray-600">{profileQuery.data?.email || "Loading..."}</p>
-              </div>
+              <div className="p-5">
+                {activeTab === "about" && (
+                  <div className="space-y-6 text-sm gap-2">
 
-              <div className="flex">
-                <p className="w-24 font-bold text-gray-700">Contact</p>
-                <p className="text-gray-600">{profileQuery.data?.profile?.phone || "Not provided"}</p>
-              </div>
-              <div className="flex">
-                <p className="w-24 font-bold text-gray-700">Address</p>
-                <p className="text-gray-600">
-                  {profileQuery.data?.addresses?.[0]?.line1 || "No primary address set."}
-                </p>
-              </div>
-              <div className="flex">
-                <p className="w-24 font-bold text-gray-700">Addresses</p>
-                <Link href="/addresses" className="text-orange-600 underline hover:text-orange-700">
-                  Manage saved addresses
-                </Link>
-              </div>
+                    <div className="flex">
+                      <p className="w-24 font-bold text-gray-700">Bio</p>
+                      <p className="text-gray-600 max-w-md italic">
+                        {profileQuery.data?.profile?.bio || "No bio set yet. Click edit to add one!"}
+                      </p>
+                    </div>
 
-              {/* <div className="flex">
+                    <div className="flex">
+                      <p className="w-24 font-bold text-gray-700">Email</p>
+                      <p className="text-gray-600">{profileQuery.data?.email || "Loading..."}</p>
+                    </div>
+
+                    <div className="flex">
+                      <p className="w-24 font-bold text-gray-700">Contact</p>
+                      <p className="text-gray-600">{profileQuery.data?.profile?.phone || "Not provided"}</p>
+                    </div>
+                    <div className="flex">
+                      <p className="w-24 font-bold text-gray-700">Address</p>
+                      <p className="text-gray-600">
+                        {profileQuery.data?.addresses?.[0]?.line1 || "No primary address set."}
+                      </p>
+                    </div>
+                    <div className="flex">
+                      <p className="w-24 font-bold text-gray-700">Addresses</p>
+                      <Link href="/addresses" className="text-orange-600 underline hover:text-orange-700">
+                        Manage saved addresses
+                      </Link>
+                    </div>
+
+                    {/* <div className="flex">
                 <p className="w-24 font-bold text-gray-700">Support</p>
                 <Link href="/support" className="text-orange-600 underline hover:text-orange-700">
                   Open support center
@@ -449,26 +584,26 @@ const cancelPendingOrder = async (orderId: string) => {
                   Track return/replace
                 </Link>
               </div> */}
-            <div className="flex justify-between items-center w-full">
-              <button
-                onClick={() => setIsManageModalOpen(true)}
-                className="mt-4 text-xs font-bold text-primary underline uppercase tracking-widest"
-              >
-                Manage Profile
-              </button>
-                        <div className="">
-            <button
-              type="button"
-              onClick={handleLogout}
-              className="rounded-md bg-[#5A272A] px-4 py-2 text-xs font-semibold uppercase tracking-wide text-white hover:bg-[#451f21]"
-            >
-              Logout
-            </button>
-          </div>
-          </div>
+                    <div className="flex justify-between items-center w-full">
+                      <button
+                        onClick={() => setIsManageModalOpen(true)}
+                        className="mt-4 text-xs font-bold text-primary underline uppercase tracking-widest"
+                      >
+                        Manage Profile
+                      </button>
+                      <div className="">
+                        <button
+                          type="button"
+                          onClick={handleLogout}
+                          className="rounded-md bg-[#5A272A] px-4 py-2 text-xs font-semibold uppercase tracking-wide text-white hover:bg-[#451f21]"
+                        >
+                          Logout
+                        </button>
+                      </div>
+                    </div>
 
-              {/* SOCIAL */}
-              {/* <div className="flex items-center">
+                    {/* SOCIAL */}
+                    {/* <div className="flex items-center">
                 <p className="w-24 font-bold text-gray-700">Social</p>
 
                 <div className="flex gap-3">
@@ -496,63 +631,63 @@ const cancelPendingOrder = async (orderId: string) => {
                 </div>
               </div> */}
 
-            </div>
-          )}
-
-          {/* MANAGE PROFILE MODAL */}
-          {isManageModalOpen && (
-            <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm" onClick={() => setIsManageModalOpen(false)}>
-              <div className="w-full max-w-md overflow-hidden rounded-3xl bg-white shadow-2xl" onClick={(e) => e.stopPropagation()}>
-                <div className="flex items-center justify-between bg-primary p-5 text-white">
-                  <h3 className="font-melon text-lg font-bold uppercase tracking-wider">Manage Profile</h3>
-                  <button onClick={() => setIsManageModalOpen(false)} className="rounded-full bg-white/20 p-1 hover:bg-white/30 transition-colors">
-                    <X size={20} />
-                  </button>
-                </div>
-                
-                <form className="p-6 space-y-4" onSubmit={(e) => {
-                  e.preventDefault()
-                  updateProfileMutation.mutate(editForm)
-                }}>
-                  <div>
-                    <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Full Name</label>
-                    <input 
-                      type="text" 
-                      value={editForm.name}
-                      onChange={(e) => setEditForm({...editForm, name: e.target.value})}
-                      className="w-full rounded-xl border border-gray-200 px-4 py-3 text-sm focus:border-orange-500 focus:ring-1 focus:ring-orange-500 outline-none transition-all"
-                    />
                   </div>
+                )}
 
-                  <div>
-                    <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Bio</label>
-                    <textarea 
-                      rows={3}
-                      value={editForm.bio}
-                      onChange={(e) => setEditForm({...editForm, bio: e.target.value})}
-                      className="w-full rounded-xl border border-gray-200 px-4 py-3 text-sm focus:border-orange-500 focus:ring-1 focus:ring-orange-500 outline-none transition-all resize-none"
-                    />
-                  </div>
+                {/* MANAGE PROFILE MODAL */}
+                {isManageModalOpen && (
+                  <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm" onClick={() => setIsManageModalOpen(false)}>
+                    <div className="w-full max-w-md overflow-hidden rounded-3xl bg-white shadow-2xl" onClick={(e) => e.stopPropagation()}>
+                      <div className="flex items-center justify-between bg-primary p-5 text-white">
+                        <h3 className="font-melon text-lg font-bold uppercase tracking-wider">Manage Profile</h3>
+                        <button onClick={() => setIsManageModalOpen(false)} className="rounded-full bg-white/20 p-1 hover:bg-white/30 transition-colors">
+                          <X size={20} />
+                        </button>
+                      </div>
 
-                  <div>
-                    <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Contact Phone</label>
-                    <input 
-                      type="text" 
-                      value={editForm.phone}
-                      onChange={(e) => setEditForm({...editForm, phone: e.target.value})}
-                      className="w-full rounded-xl border border-gray-200 px-4 py-3 text-sm focus:border-orange-500 focus:ring-1 focus:ring-orange-500 outline-none transition-all"
-                    />
-                  </div>
+                      <form className="p-6 space-y-4" onSubmit={(e) => {
+                        e.preventDefault()
+                        updateProfileMutation.mutate(editForm)
+                      }}>
+                        <div>
+                          <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Full Name</label>
+                          <input
+                            type="text"
+                            value={editForm.name}
+                            onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
+                            className="w-full rounded-xl border border-gray-200 px-4 py-3 text-sm focus:border-orange-500 focus:ring-1 focus:ring-orange-500 outline-none transition-all"
+                          />
+                        </div>
 
-                  <div className="flex gap-3 pt-2">
-                    <button
-                      type="submit"
-                      disabled={updateProfileMutation.isPending}
-                      className="flex-1 rounded-xl bg-primary py-4 text-xs font-bold uppercase tracking-widest text-white shadow-lg hover:opacity-90 disabled:opacity-50 transition-all"
-                    >
-                      {updateProfileMutation.isPending ? "Updating..." : "Update Profile"}
-                    </button>
-                    {/* <button
+                        <div>
+                          <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Bio</label>
+                          <textarea
+                            rows={3}
+                            value={editForm.bio}
+                            onChange={(e) => setEditForm({ ...editForm, bio: e.target.value })}
+                            className="w-full rounded-xl border border-gray-200 px-4 py-3 text-sm focus:border-orange-500 focus:ring-1 focus:ring-orange-500 outline-none transition-all resize-none"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Contact Phone</label>
+                          <input
+                            type="text"
+                            value={editForm.phone}
+                            onChange={(e) => setEditForm({ ...editForm, phone: e.target.value })}
+                            className="w-full rounded-xl border border-gray-200 px-4 py-3 text-sm focus:border-orange-500 focus:ring-1 focus:ring-orange-500 outline-none transition-all"
+                          />
+                        </div>
+
+                        <div className="flex gap-3 pt-2">
+                          <button
+                            type="submit"
+                            disabled={updateProfileMutation.isPending}
+                            className="flex-1 rounded-xl bg-primary py-4 text-xs font-bold uppercase tracking-widest text-white shadow-lg hover:opacity-90 disabled:opacity-50 transition-all"
+                          >
+                            {updateProfileMutation.isPending ? "Updating..." : "Update Profile"}
+                          </button>
+                          {/* <button
                       type="button"
                       disabled={deleteProfileMutation.isPending}
                       onClick={() => {
@@ -564,208 +699,332 @@ const cancelPendingOrder = async (orderId: string) => {
                     >
                       Delete
                     </button> */}
-                  </div>
-                </form>
-              </div>
-            </div>
-          )}
-
-          {activeTab === "favorite" && (
-            <>
-              {favoriteProducts.length === 0 ? (
-                <p className="text-gray-500">No favorites yet.</p>
-              ) : (
-                <>
-                  <div className="mb-5 flex items-center justify-between">
-                    <p className="text-base font-semibold text-[#111827]">Wishlist ({favoriteProducts.length})</p>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        favoriteProducts.forEach((p) => {
-                          setCartItemQuantity(toCartProduct(p), 1)
-                          removeFavorite(p.slug)
-                        })
-                      }}
-                      className="rounded-md border border-[#D1D5DB] bg-white px-4 py-2 text-xs font-medium text-[#111827] hover:bg-[#F9FAFB]"
-                    >
-                      Move all to cart
-                    </button>
-                  </div>
-
-                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                    {favoriteProducts.map((product) => (
-                      <article
-                        key={product.slug}
-                        className="rounded-xl border border-[#E5E7EB] bg-white p-3 shadow-sm transition hover:shadow-md"
-                      >
-                        <div className="relative rounded-md bg-[#F8F9FB] p-3">
-                          <button
-                            type="button"
-                            onClick={() => removeFavorite(product.slug)}
-                            className="absolute right-2 top-2 h-7 w-7 rounded-full border border-[#E5E7EB] bg-white text-sm text-[#6B7280]"
-                            aria-label="Remove from wishlist"
-                          >
-                            ×
-                          </button>
-                          <Link href={`/product/${product.slug}`} className="block">
-                            <div className="relative mx-auto h-[140px] w-full max-w-[130px]">
-                              <Image src={product.image} alt={product.name} fill className="object-contain" />
-                            </div>
-                          </Link>
                         </div>
-
-                        <h3 className="mt-3 line-clamp-2 text-sm font-semibold text-[#111827]">{product.name}</h3>
-                        <p className="mt-1 text-xs text-[#6B7280]">Net wt. {product.weight}</p>
-                        <p className="mt-2 text-sm font-semibold text-[#B91C1C]">Rs.{Number(product.price).toFixed(2)}</p>
-
-                        <div className="mt-3 flex items-center justify-end">
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              moveFavoriteToCart(product)
-                            }}
-                            className="rounded-md border border-[#D1D5DB] px-3 py-1.5 text-xs font-medium text-[#111827] hover:bg-[#F9FAFB]"
-                          >
-                            Move to cart
-                          </button>
-                        </div>
-                      </article>
-                    ))}
-                  </div>
-                </>
-              )}
-            </>
-          )}
-
-          {activeTab === "orders" && (
-            <div className="space-y-4 text-sm">
-              {!authSnapshot.token && (
-                <p className="text-gray-500">Please log in to see your orders.</p>
-              )}
-              {authSnapshot.token && authSnapshot.role && authSnapshot.role !== "customer" && (
-                <p className="text-gray-500">
-                  Order history is available for customer accounts. Use the website login to shop and track orders.
-                </p>
-              )}
-              {authSnapshot.token && authSnapshot.role === "customer" && ordersQuery.isLoading && (
-                <p className="text-gray-500">Loading orders…</p>
-              )}
-              {authSnapshot.token && authSnapshot.role === "customer" && ordersQuery.error && (
-                <p className="text-red-600">{ordersQuery.error instanceof Error ? ordersQuery.error.message : "Could not load orders."}</p>
-              )}
-              {authSnapshot.token &&
-                authSnapshot.role === "customer" &&
-                !ordersQuery.isLoading &&
-                !ordersQuery.error &&
-                orders.length === 0 && <p className="text-gray-500">No orders yet.</p>}
-              {authSnapshot.token && authSnapshot.role === "customer" && orders.map((order) => {
-                const paymentStatus = order.paymentStatus ?? (order.transactions?.some((tx) => tx.status === "paid") ? "paid" : "pending")
-                const previewItems = order.items.slice(0, 2)
-                const moreItems = Math.max(order.items.length - 2, 0)
-                return (<div
-                  key={order.id}
-                  className="rounded-2xl border border-[#E8DCC8] bg-white p-4 shadow-sm"
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="space-y-1">
-                      <p className="text-[11px] uppercase tracking-[0.15em] text-[#8A6A52]">Order {order.id.slice(0, 8)}</p>
-                      <p className="text-xs text-[#646464]">
-                        Order created on {new Date(order.createdAt).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })}
-                      </p>
+                      </form>
                     </div>
-                    <span className="rounded-full bg-[#FDF0E6] px-2.5 py-1 text-[10px] font-semibold uppercase text-[#7B3010]">
-                      {order.status}
-                    </span>
                   </div>
+                )}
 
-                  <div className="mt-3 space-y-1 text-sm text-[#2A1810]">
-                    {previewItems.map((line, idx) => (
-                      <p key={`${order.id}-${idx}`}>{line.product.name}</p>
-                    ))}
-                    {moreItems > 0 && <p className="text-xs text-[#646464]">+{moreItems} more items</p>}
-                  </div>
+                {activeTab === "favorite" && (
+                  <>
+                    {favoriteProducts.length === 0 ? (
+                      <p className="text-gray-500">No favorites yet.</p>
+                    ) : (
+                      <>
+                        <div className="mb-5 flex items-center justify-between">
+                          <p className="text-base font-semibold text-[#111827]">Wishlist ({favoriteProducts.length})</p>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              favoriteProducts.forEach((p) => {
+                                setCartItemQuantity(toCartProduct(p), 1)
+                                removeFavorite(p.slug)
+                              })
+                            }}
+                            className="rounded-md border border-[#D1D5DB] bg-white px-4 py-2 text-xs font-medium text-[#111827] hover:bg-[#F9FAFB]"
+                          >
+                            Move all to cart
+                          </button>
+                        </div>
 
-                  <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
-                    <p className="font-semibold text-[#5A272A]">Rs. {Number(order.total).toFixed(2)}</p>
-                    {/* <span className="rounded-full border border-[#E8DCC8] px-2.5 py-1 text-[10px] font-semibold uppercase text-[#4A1D1F]">
+                        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                          {favoriteProducts.map((product) => (
+                            <article
+                              key={product.slug}
+                              className="rounded-xl border border-[#E5E7EB] bg-white p-3 shadow-sm transition hover:shadow-md"
+                            >
+                              <div className="relative rounded-md bg-[#F8F9FB] p-3">
+                                <button
+                                  type="button"
+                                  onClick={() => removeFavorite(product.slug)}
+                                  className="absolute right-2 top-2 h-7 w-7 rounded-full border border-[#E5E7EB] bg-white text-sm text-[#6B7280]"
+                                  aria-label="Remove from wishlist"
+                                >
+                                  ×
+                                </button>
+                                <Link href={`/product/${product.slug}`} className="block">
+                                  <div className="relative mx-auto h-[140px] w-full max-w-[130px]">
+                                    <Image src={product.image} alt={product.name} fill className="object-contain" />
+                                  </div>
+                                </Link>
+                              </div>
+
+                              <h3 className="mt-3 line-clamp-2 text-sm font-semibold text-[#111827]">{product.name}</h3>
+                              <p className="mt-1 text-xs text-[#6B7280]">Net wt. {product.weight}</p>
+                              <p className="mt-2 text-sm font-semibold text-[#B91C1C]">Rs.{Number(product.price).toFixed(2)}</p>
+
+                              <div className="mt-3 flex items-center justify-end">
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    moveFavoriteToCart(product)
+                                  }}
+                                  className="rounded-md border border-[#D1D5DB] px-3 py-1.5 text-xs font-medium text-[#111827] hover:bg-[#F9FAFB]"
+                                >
+                                  Move to cart
+                                </button>
+                              </div>
+                            </article>
+                          ))}
+                        </div>
+                      </>
+                    )}
+                  </>
+                )}
+
+                {activeTab === "orders" && (
+                  <div className="space-y-4 text-sm">
+                    {!authSnapshot.token && (
+                      <p className="text-gray-500">Please log in to see your orders.</p>
+                    )}
+                    {authSnapshot.token && authSnapshot.role && authSnapshot.role !== "customer" && (
+                      <p className="text-gray-500">
+                        Order history is available for customer accounts. Use the website login to shop and track orders.
+                      </p>
+                    )}
+                    {authSnapshot.token && authSnapshot.role === "customer" && ordersQuery.isLoading && (
+                      <p className="text-gray-500">Loading orders…</p>
+                    )}
+                    {authSnapshot.token && authSnapshot.role === "customer" && ordersQuery.error && (
+                      <p className="text-red-600">{ordersQuery.error instanceof Error ? ordersQuery.error.message : "Could not load orders."}</p>
+                    )}
+                    {authSnapshot.token &&
+                      authSnapshot.role === "customer" &&
+                      !ordersQuery.isLoading &&
+                      !ordersQuery.error &&
+                      orders.length === 0 && <p className="text-gray-500">No orders yet.</p>}
+                    {authSnapshot.token && authSnapshot.role === "customer" && orders.map((order) => {
+                      const paymentStatus = order.paymentStatus ?? (order.transactions?.some((tx) => tx.status === "paid") ? "paid" : "pending")
+                      const previewItems = order.items.slice(0, 2)
+                      const moreItems = Math.max(order.items.length - 2, 0)
+                      return (<div
+                        key={order.id}
+                        className="rounded-2xl border border-[#E8DCC8] bg-white p-4 shadow-sm"
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="space-y-1">
+                            <p className="text-[11px] uppercase tracking-[0.15em] text-[#8A6A52]">Order {order.id.slice(0, 8)}</p>
+                            <p className="text-xs text-[#646464]">
+                              Order created on {new Date(order.createdAt).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })}
+                            </p>
+                          </div>
+                          <span className="rounded-full bg-[#FDF0E6] px-2.5 py-1 text-[10px] font-semibold uppercase text-[#7B3010]">
+                            {order.status}
+                          </span>
+                        </div>
+
+                        <div className="mt-3 space-y-1 text-sm text-[#2A1810]">
+                          {previewItems.map((line, idx) => (
+                            <p key={`${order.id}-${idx}`}>{line.product.name}</p>
+                          ))}
+                          {moreItems > 0 && <p className="text-xs text-[#646464]">+{moreItems} more items</p>}
+                        </div>
+
+                        <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+                          <p className="font-semibold text-[#5A272A]">Rs. {Number(order.total).toFixed(2)}</p>
+                          {/* <span className="rounded-full border border-[#E8DCC8] px-2.5 py-1 text-[10px] font-semibold uppercase text-[#4A1D1F]">
                       {paymentStatus}
                     </span> */}
-                  </div>
+                        </div>
 
-                  <div className="mt-3 flex flex-wrap items-center gap-2">
-                    {paymentStatus.toLowerCase() === "pending" && order.status.toLowerCase() === "pending" && (
-                      <button className="rounded-md border border-[#E8DCC8] bg-white px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-[#4A1D1F]" type="button" onClick={() => void runOrderAction(order.id, "cancel_pending")}>
-                        Cancel Order
+                        <div className="mt-3 flex flex-wrap items-center gap-2">
+                          {paymentStatus.toLowerCase() === "pending" && order.status.toLowerCase() === "pending" && (
+                            <button className="rounded-md border border-[#E8DCC8] bg-white px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-[#4A1D1F]" type="button" onClick={() => void runOrderAction(order.id, "cancel_pending")}>
+                              Cancel Order
+                            </button>
+                          )}
+                          {paymentStatus.toLowerCase() === "pending" && order.status.toLowerCase() !== "delivered" && order.status.toLowerCase() !== "cancelled" && (
+                            <button
+                              className="rounded-md border border-[#E8DCC8] bg-white px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-[#4A1D1F]"
+                              type="button"
+                              onClick={() =>
+                                router.push(
+                                  `/payment?orderId=${encodeURIComponent(order.id)}&amount=${encodeURIComponent(String(order.total ?? ""))}&name=${encodeURIComponent(order.customerName ?? "")}&phone=${encodeURIComponent(order.customerPhone ?? "")}&address=${encodeURIComponent(order.customerAddress ?? "")}`,
+                                )
+                              }
+                            >
+                              Pay Now
+                            </button>
+                          )}
+                          {(order.paymentStatus ?? "").toUpperCase() === "SUCCESS" &&
+                            ["confirmed", "packed"].includes(order.status.toLowerCase()) && (
+                              <button
+                                type="button"
+                                disabled={orderActionBusy === `${order.id}:cancel_request`}
+                                onClick={() => void runOrderAction(order.id, "cancel_request")}
+                                className="rounded-md border border-[#E8DCC8] bg-white px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-[#4A1D1F] disabled:opacity-40"
+                              >
+                                Cancel order
+                              </button>
+                            )}
+                          {order.status.toLowerCase() === "delivered" && (
+                            <button
+                              type="button"
+                              disabled={orderActionBusy === `${order.id}:return_request`}
+                              onClick={() => openReturnModal(order)}
+                              className="rounded-md border border-[#E8DCC8] bg-white px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-[#4A1D1F] disabled:opacity-40"
+                            >
+                              Return order
+                            </button>
+                          )}
+                          {order.status.toLowerCase() === "delivered" && (
+                            <button
+                              type="button"
+                              onClick={() => router.push(`/orders/${order.id}`)}
+                              className="rounded-md border border-[#E8DCC8] bg-white px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-[#4A1D1F]"
+                            >
+                              Review
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => router.push(`/orders/${order.id}/track`)}
+                            className="rounded-md border border-[#E8DCC8] bg-white px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-[#4A1D1F]"
+                          >
+                            Track my order
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => router.push(`/orders/${order.id}`)}
+                            className="ml-auto rounded-md bg-[#5A272A] px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-white"
+                          >
+                            View details →
+                          </button>
+                        </div>
+                      </div>)
+                    })}
+                  </div>
+                )}
+              </div>
+
+
+              {/* RETURN MODAL */}
+              {isReturnModalOpen && selectedOrderForReturn && (
+                <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm" onClick={() => setIsReturnModalOpen(false)}>
+                  <div className="w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-3xl bg-white shadow-2xl" onClick={(e) => e.stopPropagation()}>
+                    <div className="flex items-center justify-between bg-primary p-5 text-white sticky top-0 z-10">
+                      <h3 className="font-melon text-lg font-bold uppercase tracking-wider">Return Request</h3>
+                      <button onClick={() => setIsReturnModalOpen(false)} className="rounded-full bg-white/20 p-1 hover:bg-white/30 transition-colors">
+                        <X size={20} />
                       </button>
-                    )}
-                    {paymentStatus.toLowerCase() === "pending" && (
-                      <button
-                        className="rounded-md border border-[#E8DCC8] bg-white px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-[#4A1D1F]"
-                        type="button"
-                        onClick={() =>
-                          router.push(
-                            `/payment?orderId=${encodeURIComponent(order.id)}&amount=${encodeURIComponent(String(order.total ?? ""))}&name=${encodeURIComponent(order.customerName ?? "")}&phone=${encodeURIComponent(order.customerPhone ?? "")}&address=${encodeURIComponent(order.customerAddress ?? "")}`,
+                    </div>
+
+                    <div className="p-6 space-y-6">
+                      <p className="text-sm text-gray-600">Select the items you wish to return and provide a reason and photo for each.</p>
+
+                      <div className="space-y-4">
+                        {selectedOrderForReturn.items.map((item) => {
+                          const itemState = selectedItemsForReturn[item.id]
+                          if (!itemState) return null
+
+                          return (
+                            <div key={item.id} className="border border-gray-200 rounded-xl p-4 space-y-4">
+                              <div className="flex items-start gap-3">
+                                <input
+                                  type="checkbox"
+                                  className="mt-1 w-4 h-4 text-primary"
+                                  checked={itemState.selected}
+                                  onChange={(e) => setSelectedItemsForReturn(prev => ({
+                                    ...prev,
+                                    [item.id]: { ...prev[item.id], selected: e.target.checked }
+                                  }))}
+                                />
+                                <div>
+                                  <p className="text-sm font-semibold text-gray-900">{item.product.name}</p>
+                                  <p className="text-xs text-gray-500">Qty: {item.quantity}</p>
+                                </div>
+                              </div>
+
+                              {itemState.selected && (
+                                <div className="pl-7 space-y-3">
+                                  <div>
+                                    <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Reason</label>
+                                    <select
+                                      value={itemState.reasonCode}
+                                      onChange={(e) => setSelectedItemsForReturn(prev => ({
+                                        ...prev,
+                                        [item.id]: { ...prev[item.id], reasonCode: e.target.value }
+                                      }))}
+                                      className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm focus:border-orange-500 focus:ring-1 outline-none"
+                                    >
+                                      <option value="">Select a reason</option>
+                                      {returnReasons.map(r => (
+                                        <option key={r.id} value={r.value}>{r.label}</option>
+                                      ))}
+                                    </select>
+                                  </div>
+
+                                  <div>
+                                    <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Details / Issue</label>
+                                    <textarea
+                                      rows={2}
+                                      value={itemState.notes}
+                                      onChange={(e) => setSelectedItemsForReturn(prev => ({
+                                        ...prev,
+                                        [item.id]: { ...prev[item.id], notes: e.target.value }
+                                      }))}
+                                      placeholder="Describe the issue..."
+                                      className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm focus:border-orange-500 focus:ring-1 outline-none resize-none"
+                                    />
+                                  </div>
+
+                                  <div>
+                                    <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Photo Evidence</label>
+                                    <div className="flex items-center gap-3">
+                                      <label className="cursor-pointer flex items-center gap-2 rounded-lg border border-gray-300 px-3 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50">
+                                        <Camera size={14} />
+                                        <span>{itemState.uploading ? "Uploading..." : "Upload Photo"}</span>
+                                        <input
+                                          type="file"
+                                          accept="image/*"
+                                          className="hidden"
+                                          disabled={itemState.uploading}
+                                          onChange={(e) => {
+                                            if (e.target.files && e.target.files[0]) {
+                                              void handleImageUpload(item.id, e.target.files[0])
+                                            }
+                                          }}
+                                        />
+                                      </label>
+                                      {itemState.imageUrl && (
+                                        <span className="text-xs text-green-600 font-medium">Image attached ✓</span>
+                                      )}
+                                    </div>
+                                  </div>
+                                </div>
+                              )}
+                            </div>
                           )
-                        }
-                      >
-                        Pay Now
-                      </button>
-                    )}
-                    {(order.paymentStatus ?? "").toUpperCase() === "SUCCESS" &&
-                      ["confirmed", "packed"].includes(order.status.toLowerCase()) && (
+                        })}
+                      </div>
+
+                      <div className="flex gap-3 pt-4 border-t border-gray-100">
                         <button
                           type="button"
-                          disabled={orderActionBusy === `${order.id}:cancel_request`}
-                          onClick={() => void runOrderAction(order.id, "cancel_request")}
-                          className="rounded-md border border-[#E8DCC8] bg-white px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-[#4A1D1F] disabled:opacity-40"
+                          onClick={() => setIsReturnModalOpen(false)}
+                          className="flex-1 rounded-xl border border-gray-200 py-3 text-xs font-bold uppercase tracking-widest text-gray-600 hover:bg-gray-50 transition-all"
                         >
-                          Cancel order
+                          Cancel
                         </button>
-                      )}
-                    {order.status.toLowerCase() === "delivered" && (
-                      <button
-                        type="button"
-                        disabled={orderActionBusy === `${order.id}:return_request`}
-                        onClick={() => void runOrderAction(order.id, "return_request")}
-                        className="rounded-md border border-[#E8DCC8] bg-white px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-[#4A1D1F] disabled:opacity-40"
-                      >
-                        Return order
-                      </button>
-                    )}
-                    {order.status.toLowerCase() === "delivered" && (
-                      <button
-                        type="button"
-                        onClick={() => router.push(`/orders/${order.id}`)}
-                        className="rounded-md border border-[#E8DCC8] bg-white px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-[#4A1D1F]"
-                      >
-                        Review
-                      </button>
-                    )}
-                    <button
-                      type="button"
-                      onClick={() => router.push(`/orders/${order.id}/track`)}
-                      className="rounded-md border border-[#E8DCC8] bg-white px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-[#4A1D1F]"
-                    >
-                      Track my order
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => router.push(`/orders/${order.id}`)}
-                      className="ml-auto rounded-md bg-[#5A272A] px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-white"
-                    >
-                      View details →
-                    </button>
+                        <button
+                          type="button"
+                          onClick={() => void submitReturnRequest()}
+                          disabled={orderActionBusy === `${selectedOrderForReturn.id}:return_request`}
+                          className="flex-1 rounded-xl bg-primary py-3 text-xs font-bold uppercase tracking-widest text-white shadow-md hover:opacity-90 disabled:opacity-50 transition-all"
+                        >
+                          {orderActionBusy === `${selectedOrderForReturn.id}:return_request` ? "Submitting..." : "Submit Return Request"}
+                        </button>
+                      </div>
+                    </div>
                   </div>
-                </div>)
-              })}
-            </div>
-          )}
+                </div>
+              )}
+
             </div>
           </div>
         </div>
 
-        </div>
       </div>
     </div>
   )

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/src/server/db/prisma";
+import { getSupabaseAdmin } from "@/src/lib/supabase/admin";
 
 async function getAuthenticatedUserId(req: NextRequest) {
   const authHeader = req.headers.get("authorization");
@@ -9,35 +9,50 @@ async function getAuthenticatedUserId(req: NextRequest) {
 }
 
 export async function GET(request: NextRequest) {
-  const userId = await getAuthenticatedUserId(request);
-  if (!userId) return NextResponse.json({ success: false, message: "Unauthorized" }, { status: 401 });
+  const authUserId = await getAuthenticatedUserId(request);
+  if (!authUserId) return NextResponse.json({ success: false, message: "Unauthorized" }, { status: 401 });
+  const userId = request.nextUrl.searchParams.get("userId")?.trim() ?? "";
+  if (!userId) return NextResponse.json({ success: false, message: "userId is required" }, { status: 400 });
 
   try {
-    let user = await prisma.user.findUnique({
-      where: { id: userId },
-      include: { profile: true, addresses: true },
-    });
+    const client = getSupabaseAdmin();
+    const { data: user, error: userError } = await client
+      .from("User")
+      .select("id,name,email")
+      .eq("id", userId)
+      .maybeSingle();
+    if (userError) throw userError;
 
     if (!user) return NextResponse.json({ success: false, message: "User not found" }, { status: 404 });
 
-    if (!user.profile) {
-      const newProfile = await prisma.userProfile.create({
-        data: { userId: user.id },
-      });
-      return NextResponse.json({ success: true, data: { ...user, profile: newProfile } });
-    }
+    const { data: profile, error: profileError } = await client
+      .from("UserProfile")
+      .select("*")
+      .eq("userId", userId)
+      .maybeSingle();
+    if (profileError) throw profileError;
 
-    return NextResponse.json({ success: true, data: user });
+    const { data: addresses, error: addressesError } = await client
+      .from("UserAddress")
+      .select("*")
+      .eq("userId", userId)
+      .order("createdAt", { ascending: false });
+    if (addressesError) throw addressesError;
+
+    return NextResponse.json({ success: true, data: { ...user, profile: profile ?? null, addresses: addresses ?? [] } });
   } catch (error) {
     return NextResponse.json({ success: false, message: "Internal Server Error" }, { status: 500 });
   }
 }
 
 export async function PATCH(request: NextRequest) {
-  const userId = await getAuthenticatedUserId(request);
-  if (!userId) return NextResponse.json({ success: false, message: "Unauthorized" }, { status: 401 });
+  const authUserId = await getAuthenticatedUserId(request);
+  if (!authUserId) return NextResponse.json({ success: false, message: "Unauthorized" }, { status: 401 });
+  const userId = request.nextUrl.searchParams.get("userId")?.trim() ?? "";
+  if (!userId) return NextResponse.json({ success: false, message: "userId is required" }, { status: 400 });
 
   try {
+    const client = getSupabaseAdmin();
     const body = await request.json();
     const { name, bio, phone, avatarUrl } = body as { 
       name?: string; 
@@ -46,39 +61,57 @@ export async function PATCH(request: NextRequest) {
       avatarUrl?: string 
     };
 
-    // 1. Verify the user exists first
-    const user = await prisma.user.findUnique({
-      where: { id: userId }
-    });
+    const { data: user, error: userError } = await client
+      .from("User")
+      .select("id")
+      .eq("id", userId)
+      .maybeSingle();
+    if (userError) throw userError;
 
     if (!user) {
       return NextResponse.json({ success: false, message: "User account not found" }, { status: 404 });
     }
 
-    // 2. Update user name if provided
     if (name !== undefined) {
-      await prisma.user.update({
-        where: { id: userId },
-        data: { name },
-      });
+      const { error } = await client.from("User").update({ name }).eq("id", userId);
+      if (error) throw error;
     }
 
-    // 3. Upsert Profile: Creates if missing, updates if exists
-    const updatedProfile = await prisma.userProfile.upsert({
-      where: { userId },
-      create: { 
-        userId, 
-        bio: bio ?? null, 
-        phone: phone ?? null, 
-        avatarUrl: avatarUrl ?? null 
-      },
-      update: { 
-        // Only update fields that were actually passed in the request body
-        ...(bio !== undefined && { bio }),
-        ...(phone !== undefined && { phone }),
-        ...(avatarUrl !== undefined && { avatarUrl }),
-      },
-    });
+    const { data: existingProfile, error: profileReadError } = await client
+      .from("UserProfile")
+      .select("id,userId")
+      .eq("userId", userId)
+      .maybeSingle();
+    if (profileReadError) throw profileReadError;
+
+    let updatedProfile: any = null;
+    if (existingProfile?.id) {
+      const { data, error } = await client
+        .from("UserProfile")
+        .update({
+          ...(bio !== undefined ? { bio } : {}),
+          ...(phone !== undefined ? { phone } : {}),
+          ...(avatarUrl !== undefined ? { avatarUrl } : {}),
+        })
+        .eq("id", existingProfile.id)
+        .select("*")
+        .single();
+      if (error) throw error;
+      updatedProfile = data;
+    } else {
+      const { data, error } = await client
+        .from("UserProfile")
+        .insert({
+          userId,
+          bio: bio ?? null,
+          phone: phone ?? null,
+          avatarUrl: avatarUrl ?? null,
+        })
+        .select("*")
+        .single();
+      if (error) throw error;
+      updatedProfile = data;
+    }
 
     return NextResponse.json({ success: true, data: updatedProfile, message: "Profile updated successfully" });
   } catch (error) {
@@ -88,15 +121,17 @@ export async function PATCH(request: NextRequest) {
 }
 
 export async function DELETE(request: NextRequest) {
-  const userId = await getAuthenticatedUserId(request);
-  if (!userId) return NextResponse.json({ success: false, message: "Unauthorized" }, { status: 401 });
+  const authUserId = await getAuthenticatedUserId(request);
+  if (!authUserId) return NextResponse.json({ success: false, message: "Unauthorized" }, { status: 401 });
+  const userId = request.nextUrl.searchParams.get("userId")?.trim() ?? "";
+  if (!userId) return NextResponse.json({ success: false, message: "userId is required" }, { status: 400 });
 
   try {
-    // Clear specific profile fields rather than deleting the user account
-    await prisma.userProfile.update({
-      where: { userId },
-      data: { bio: null, phone: null, avatarUrl: null }
-    });
+    const { error } = await getSupabaseAdmin()
+      .from("UserProfile")
+      .update({ bio: null, phone: null, avatarUrl: null })
+      .eq("userId", userId);
+    if (error) throw error;
     return NextResponse.json({ success: true, message: "Profile data cleared" });
   } catch (error) {
     return NextResponse.json({ success: false, message: "Delete failed" }, { status: 500 });

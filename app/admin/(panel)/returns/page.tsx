@@ -5,16 +5,55 @@ import { authedFetch, authedPatch } from "@/lib/dashboard-fetch";
 import { ConsoleTable, ConsoleTd } from "@/components/dashboard/ConsoleTable";
 import { useRealtimeTables } from "@/hooks/useRealtimeTables";
 import { useMasterValues } from "@/hooks/useMasterData";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 type ReturnRow = {
   id: string;
   status: string;
   reason: string | null;
+  imageUrl?: string | null;
   createdAt: string;
-  pickup?: { trackingRef: string | null; status: string } | null;
-  order: { id: string; total: string | number; status: string };
-};
+  updatedAt?: string;
+  productId: string;
+  orderId: string;
+  userId: string;
+  user?: {
+    id: string;
+    name?: string;
+    email?: string;
+    phone?: string;
+  };
 
+  order: {
+    id: string;
+    total: string | number;
+    status: string;
+    createdAt?: string;
+    customerName?: string;
+    customerPhone?: string;
+    customerAddress?: string;
+  };
+
+  items?: Array<{
+    id: string;
+    productId: string;
+    productName?: string;
+    productSlug?: string;
+    quantity?: number;
+    imageUrl?: string;
+  }>;
+
+  pickup?: {
+    trackingRef: string | null;
+    status: string;
+  } | null;
+};
 export default function AdminReturnsPage() {
   const returnStatusMasterQuery = useMasterValues("RETURN_STATUS");
   const statuses = returnStatusMasterQuery.data?.length
@@ -26,6 +65,9 @@ export default function AdminReturnsPage() {
   const [draft, setDraft] = useState<Record<string, string>>({});
   const [updating, setUpdating] = useState<string | null>(null);
   const [filter, setFilter] = useState("all");
+  const [selectedReturn, setSelectedReturn] = useState<ReturnRow | null>(null);
+  const [returnProduct, setReturnProduct] = useState<any>(null);
+  const [user, setUser] = useState<any>(null);
 
   const filteredRows = rows.filter((row) => {
     if (filter === "pending" && !["requested", "approved", "picked_up"].includes(row.status)) return false;
@@ -38,6 +80,7 @@ export default function AdminReturnsPage() {
     authedFetch<ReturnRow[]>("/api/v1/returns")
       .then((r) => {
         setRows(r);
+        console.log(r);
         const d: Record<string, string> = {};
         r.forEach((x) => {
           d[x.id] = x.status;
@@ -47,18 +90,46 @@ export default function AdminReturnsPage() {
       .catch((e: Error) => setError(e.message))
       .finally(() => setLoading(false));
   }, []);
+  const loadProduct = useCallback(async (productId: string) => {
+    try {
+      setLoading(true);
+      setError("");
+
+      const product = await authedFetch(
+        `/api/v1/products/${productId}`
+      );
+
+      console.log("PRODUCT:", product);
+
+      setReturnProduct(product);
+
+    } catch (e) {
+      setError(
+        e instanceof Error
+          ? e.message
+          : "Failed to load product"
+      );
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+  useEffect(() => {
+    load();
+  }, [load, loadProduct]);
 
   useEffect(() => {
     load();
-  }, [load]);
-
-  useRealtimeTables({
-    tables: ["returns", "orders"],
-    onChange: () => {
-      void load();
-    },
-  });
-
+  }, [load, loadProduct]);
+  const loadOrder = async (orderId: string) => {
+    if (!orderId) return
+    setLoading(true)
+    setError("")
+    return authedFetch(`/api/v1/orders/${orderId}`)
+      .then((data) => setUser(data))
+      .catch((e: Error) => setError(e.message))
+      .finally(() => setLoading(false))
+  }
+  console.log("loaded order:", user);
   const save = async (id: string) => {
     const status = draft[id];
     if (!status) return;
@@ -96,14 +167,21 @@ export default function AdminReturnsPage() {
         <h1 className="font-melon text-2xl font-bold text-[#4A1D1F]">Returns</h1>
         <p className="text-sm text-[#646464]">Return requests tied to orders.</p>
         <div className="mt-3">
-          <select
-            value={filter}
-            onChange={(event) => setFilter(event.target.value)}
-            className="rounded-lg border border-[#D9D9D1] bg-white px-3 py-2 text-xs text-[#4A1D1F]"
-          >
-            <option value="all">All returns</option>
-            <option value="pending">Pending returns</option>
-          </select>
+          <Select value={filter} onValueChange={setFilter}>
+            <SelectTrigger className="w-[180px] border-[#D9D9D1] text-xs text-[#4A1D1F]">
+              <SelectValue placeholder="Filter returns" />
+            </SelectTrigger>
+
+            <SelectContent>
+              <SelectItem value="all">
+                All returns
+              </SelectItem>
+
+              <SelectItem value="pending">
+                Pending returns
+              </SelectItem>
+            </SelectContent>
+          </Select>
         </div>
       </div>
 
@@ -111,7 +189,7 @@ export default function AdminReturnsPage() {
       {loading && <p className="text-sm text-[#646464]">Loading…</p>}
 
       {!loading && (
-        <ConsoleTable headers={["Order", "Placed", "Reason", "Status", ""]}>
+        <ConsoleTable headers={["Order", "Placed", "Reason", "Status", "Actions"]}>
           {rows.length === 0 ? (
             <tr>
               <ConsoleTd className="py-8 text-center text-[#646464]" colSpan={5}>
@@ -128,19 +206,34 @@ export default function AdminReturnsPage() {
                 <ConsoleTd>{new Date(r.createdAt).toLocaleString()}</ConsoleTd>
                 <ConsoleTd className="max-w-[200px] text-xs">{r.reason ?? "—"}</ConsoleTd>
                 <ConsoleTd>
-                  <select
+                  <Select
                     value={draft[r.id] ?? r.status}
-                    onChange={(e) => setDraft((d) => ({ ...d, [r.id]: e.target.value }))}
-                    className="w-full max-w-[140px] rounded-lg border border-[#D9D9D1] bg-white px-2 py-1 text-xs capitalize"
+                    onValueChange={(value) =>
+                      setDraft((d) => ({
+                        ...d,
+                        [r.id]: value,
+                      }))
+                    }
                   >
-                    {statuses.map((s) => (
-                      <option key={s} value={s}>
-                        {s}
-                      </option>
-                    ))}
-                  </select>
+                    <SelectTrigger className="w-full max-w-[140px] border-[#D9D9D1] text-xs capitalize">
+                      <SelectValue placeholder="Select status" />
+                    </SelectTrigger>
+
+                    <SelectContent>
+                      {statuses.map((s) => (
+                        <SelectItem
+                          key={s}
+                          value={s}
+                          className="capitalize"
+                        >
+                          {s}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </ConsoleTd>
-                <ConsoleTd>
+                <ConsoleTd className="flex flex-row gap-2 h-full items-center py-4">
+                  <div className="">
                   <button
                     type="button"
                     disabled={updating === r.id || (draft[r.id] ?? r.status) === r.status}
@@ -149,7 +242,8 @@ export default function AdminReturnsPage() {
                   >
                     {updating === r.id ? "Saving…" : "Apply"}
                   </button>
-                  <div className="mt-2 flex flex-wrap gap-1">
+                  </div>
+                  {/* <div className="mt-2 flex flex-wrap gap-1">
                     <button
                       type="button"
                       disabled={Boolean(updating)}
@@ -182,12 +276,164 @@ export default function AdminReturnsPage() {
                     >
                       Mark received
                     </button>
-                  </div>
+                  </div> */}
+                  <div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedReturn(r);
+                      loadProduct(r.productId);
+                      loadOrder(r.orderId);
+                    }}
+                    className=" rounded-full border border-[#7B3010] px-3 py-1.5 text-[11px] font-semibold text-[#7B3010]"
+                  >
+                    View Details
+                  </button></div>
                 </ConsoleTd>
               </tr>
             ))
           )}
         </ConsoleTable>
+
+      )}
+      {selectedReturn && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-3xl rounded-2xl bg-white p-6 shadow-xl overflow-y-auto max-h-[90vh]">
+
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-xl font-bold text-[#4A1D1F]">
+                Return Details
+              </h2>
+
+              <button
+                onClick={() => setSelectedReturn(null)}
+                className="text-sm text-[#646464]"
+              >
+                Close
+              </button>
+            </div>
+
+            {/* RETURN INFO */}
+            <div className="grid grid-cols-2 gap-4 mb-6">
+              <div>
+                <p className="text-xs text-[#646464]">Return ID</p>
+                <p className="font-medium">{selectedReturn.id}</p>
+              </div>
+
+              <div>
+                <p className="text-xs text-[#646464]">Status</p>
+                <p className="capitalize font-medium">
+                  {selectedReturn.status}
+                </p>
+              </div>
+
+              <div>
+                <p className="text-xs text-[#646464]">Created At</p>
+                <p>
+                  {new Date(selectedReturn.createdAt).toLocaleString()}
+                </p>
+              </div>
+
+              <div>
+                <p className="text-xs text-[#646464]">Updated At</p>
+                <p>
+                  {selectedReturn.updatedAt
+                    ? new Date(selectedReturn.updatedAt).toLocaleString()
+                    : "—"}
+                </p>
+              </div>
+            </div>
+
+            {/* USER DETAILS */}
+            <div className="mb-6 rounded-xl border p-4">
+              <h3 className="mb-3 font-semibold text-[#4A1D1F]">
+                Customer Details
+              </h3>
+
+              <div className="space-y-2 text-sm">
+                <p><span className="font-medium">Name:</span> {user?.customerName ?? "—"}</p>
+                <p><span className="font-medium">Phone:</span> {user?.customerPhone ?? "—"}</p>
+                <p><span className="font-medium">Delivery Address:</span> {user?.customerAddress ?? "—"}</p>
+              </div>
+            </div>
+
+            {/* ORDER DETAILS */}
+            <div className="mb-6 rounded-xl border p-4">
+              <h3 className="mb-3 font-semibold text-[#4A1D1F]">
+                Order Details
+              </h3>
+
+              <div className="space-y-2 text-sm">
+                <p>Order ID: {selectedReturn.order.id}</p>
+                <p>Status: {selectedReturn.order.status}</p>
+                <p>
+                  Total: Rs.
+                  {Number(selectedReturn.order.total).toFixed(2)}
+                </p>
+              </div>
+            </div>
+
+            {/* RETURN REASON */}
+            <div className="mb-6 rounded-xl border p-4">
+              <h3 className="mb-3 font-semibold text-[#4A1D1F]">
+                Return Reason
+              </h3>
+
+              <p className="text-sm">
+                {selectedReturn.reason ?? "No reason provided"}
+              </p>
+            </div>
+
+            {/* RETURN IMAGE */}
+            {selectedReturn.imageUrl && (
+              <div className="mb-6 rounded-xl border p-4">
+                <h3 className="mb-3 font-semibold text-[#4A1D1F]">
+                  Return Image
+                </h3>
+
+                <img
+                  src={selectedReturn.imageUrl}
+                  alt="Return"
+                  className="max-h-72 rounded-xl border object-cover"
+                />
+              </div>
+            )}
+
+            {/* ITEMS */}
+            <div className="rounded-xl border p-4">
+              <h3 className="mb-4 font-semibold text-[#4A1D1F]">
+                Returned Items
+              </h3>
+
+              <div className="space-y-4">
+
+                <div
+                  className="flex items-center gap-4 border-b pb-3"
+                >
+                  {returnProduct?.thumbnail ? (
+                    <img
+                      src={returnProduct?.thumbnail}
+                      alt={returnProduct?.name ?? "Product"}
+                      className="h-16 w-16 rounded-lg object-cover border"
+                    />
+                  ) : null}
+
+                  <div>
+                    <p className="font-medium">
+                      {returnProduct?.name ?? returnProduct?.id}
+                    </p>
+
+                    <p className="text-sm text-[#646464]">
+                      Qty: {returnProduct?.quantity ?? 1}
+                    </p>
+                  </div>
+                </div>
+
+              </div>
+            </div>
+
+          </div>
+        </div>
       )}
     </section>
   );
