@@ -9,6 +9,7 @@ import { useSearch } from "../hooks/useSearch"
 import LocationDropdown from "./LocationDropdown"
 import { Search, User, ShoppingCart } from "lucide-react"
 import { getCartItems, setCartItems, type CartItem } from "@/lib/cart"
+import { AnimatePresence, m, useReducedMotion } from "framer-motion"
 
 type MenuCategory = {
   id: string
@@ -26,6 +27,7 @@ type ApiProduct = {
 }
 
 export default function Header() {
+  const reduce = useReducedMotion()
   const [menuOpen, setMenuOpen] = useState(false)
   const { searchOpen, setSearchOpen, searchQuery, setSearchQuery, searchResults, handleSearch } = useSearch()
   const [cartItems, setLocalCartItems] = useState<CartItem[]>([])
@@ -281,7 +283,10 @@ export default function Header() {
               {cmsData?.link1Title || "Best Sellers"}
             </Link>
 
-            <Link href={cmsData?.link2Url || "/#combos"} className="font-extrabold text-black hover:text-[#f97316] transition-colors text-[15px]">
+            <Link
+              href={cmsData?.link2Url || "/products?type=combo"}
+              className="font-extrabold text-black hover:text-[#f97316] transition-colors text-[15px]"
+            >
               {cmsData?.link2Title || "Combos"}
             </Link>
           </div>
@@ -327,9 +332,15 @@ export default function Header() {
                 >
                   <ShoppingCart size={20} className="text-zinc-700 hover:text-[#f97316]" />
                   {cartCount > 0 && (
-                    <span className="absolute -top-1.5 -right-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-[#f97316] px-1 text-[10px] font-bold text-white">
+                    <m.span
+                      key={cartCount}
+                      initial={reduce ? undefined : { scale: 0.9 }}
+                      animate={reduce ? undefined : { scale: [1, 1.15, 1] }}
+                      transition={reduce ? undefined : { duration: 0.35, ease: "easeOut" }}
+                      className="absolute -top-1.5 -right-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-[#f97316] px-1 text-[10px] font-bold text-white"
+                    >
                       {cartCount}
-                    </span>
+                    </m.span>
                   )}
                 </Link>
 
@@ -349,65 +360,95 @@ export default function Header() {
         </div>
       </nav>
 
-      {menuOpen && (
-        <div className="lg:hidden bg-white border-t px-6 py-4 space-y-4 shadow-md">
-          <div className="pb-4 border-b">
-            <LocationDropdown />
-          </div>
-
-          <Link href="/products" onClick={() => setMenuOpen(false)} className="block font-semibold text-black">
-            Products
-          </Link>
-          <Link href={cmsData?.link1Url || "/#best-sellers"} onClick={() => setMenuOpen(false)} className="block font-semibold text-black">
-            {cmsData?.link1Title || "Best Sellers"}
-          </Link>
-          <Link href={cmsData?.link2Url || "/#combos"} onClick={() => setMenuOpen(false)} className="block font-semibold text-black">
-            {cmsData?.link2Title || "Combos"}
-          </Link>
-          <Link href={profileHref} onClick={() => setMenuOpen(false)} className="block font-semibold text-black">
-            Profile
-          </Link>
-          <Link href="/cart" onClick={() => setMenuOpen(false)} className="block font-semibold text-black">
-            Cart
-          </Link>
-        </div>
-      )}
-
-      {searchOpen && (
-        <div className="fixed inset-0 bg-black/60 z-50 flex items-start justify-center pt-24" onClick={() => setSearchOpen(false)}>
-          <div className="bg-white rounded-2xl p-6 w-[90%] max-w-xl shadow-2xl" onClick={(e) => e.stopPropagation()}>
-            <form onSubmit={handleSearch} className="flex gap-3">
-              <input
-                type="text"
-                placeholder="Search for delicious meals..."
-                className="flex-1 px-4 py-3 border-2 border-orange-200 rounded-xl focus:outline-none focus:border-orange-500 font-medium"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                autoFocus
-              />
-              <button type="submit" className="px-6 py-3 bg-orange-500 text-white font-bold rounded-xl hover:bg-orange-600 transition-colors">
-                Search
-              </button>
-            </form>
-            <div className="mt-4 max-h-80 overflow-auto rounded-xl border border-orange-100">
-              {searchResults.map((item) => (
-                <Link
-                  key={item.slug}
-                  href={`/product/${item.slug}`}
-                  onClick={() => setSearchOpen(false)}
-                  className="flex items-center justify-between border-b border-orange-50 px-4 py-3 last:border-b-0 hover:bg-orange-50"
-                >
-                  <span className="text-sm font-medium text-zinc-800">{item.name}</span>
-                  <span className="text-xs font-semibold text-zinc-500">Rs.{item.price.toFixed(2)}</span>
-                </Link>
-              ))}
-              {searchResults.length === 0 && (
-                <p className="px-4 py-5 text-center text-sm text-zinc-500">No products found for "{searchQuery}"</p>
-              )}
+      <AnimatePresence initial={false}>
+        {menuOpen ? (
+          <m.div
+            key="mobile-menu"
+            initial={reduce ? { opacity: 1 } : { opacity: 0, y: -8 }}
+            animate={reduce ? { opacity: 1 } : { opacity: 1, y: 0 }}
+            exit={reduce ? { opacity: 0 } : { opacity: 0, y: -8 }}
+            transition={reduce ? { duration: 0.12 } : { duration: 0.22, ease: "easeOut" }}
+            className="lg:hidden bg-white border-t px-6 py-4 space-y-4 shadow-md"
+          >
+            <div className="pb-4 border-b">
+              <LocationDropdown />
             </div>
-          </div>
-        </div>
-      )}
+
+            <Link href="/products" onClick={() => setMenuOpen(false)} className="block font-semibold text-black">
+              Products
+            </Link>
+            <Link href={cmsData?.link1Url || "/#best-sellers"} onClick={() => setMenuOpen(false)} className="block font-semibold text-black">
+              {cmsData?.link1Title || "Best Sellers"}
+            </Link>
+            <Link
+              href={cmsData?.link2Url || "/products?type=combo"}
+              onClick={() => setMenuOpen(false)}
+              className="block font-semibold text-black"
+            >
+              {cmsData?.link2Title || "Combos"}
+            </Link>
+            <Link href={profileHref} onClick={() => setMenuOpen(false)} className="block font-semibold text-black">
+              Profile
+            </Link>
+            <Link href="/cart" onClick={() => setMenuOpen(false)} className="block font-semibold text-black">
+              Cart
+            </Link>
+          </m.div>
+        ) : null}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {searchOpen ? (
+          <m.div
+            key="search-overlay"
+            className="fixed inset-0 bg-black/60 z-50 flex items-start justify-center pt-24"
+            onClick={() => setSearchOpen(false)}
+            initial={reduce ? { opacity: 1 } : { opacity: 0 }}
+            animate={reduce ? { opacity: 1 } : { opacity: 1 }}
+            exit={reduce ? { opacity: 0 } : { opacity: 0 }}
+            transition={reduce ? { duration: 0.12 } : { duration: 0.22, ease: "easeOut" }}
+          >
+            <m.div
+              className="bg-white rounded-2xl p-6 w-[90%] max-w-xl shadow-2xl"
+              onClick={(e) => e.stopPropagation()}
+              initial={reduce ? { opacity: 1 } : { opacity: 0, scale: 0.98, y: 8 }}
+              animate={reduce ? { opacity: 1 } : { opacity: 1, scale: 1, y: 0 }}
+              exit={reduce ? { opacity: 0 } : { opacity: 0, scale: 0.98, y: 8 }}
+              transition={reduce ? { duration: 0.12 } : { duration: 0.22, ease: "easeOut" }}
+            >
+              <form onSubmit={handleSearch} className="flex gap-3">
+                <input
+                  type="text"
+                  placeholder="Search for delicious meals..."
+                  className="flex-1 px-4 py-3 border-2 border-orange-200 rounded-xl focus:outline-none focus:border-orange-500 font-medium"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  autoFocus
+                />
+                <button type="submit" className="px-6 py-3 bg-orange-500 text-white font-bold rounded-xl hover:bg-orange-600 transition-colors">
+                  Search
+                </button>
+              </form>
+              <div className="mt-4 max-h-80 overflow-auto rounded-xl border border-orange-100">
+                {searchResults.map((item) => (
+                  <Link
+                    key={item.slug}
+                    href={`/product/${item.slug}`}
+                    onClick={() => setSearchOpen(false)}
+                    className="flex items-center justify-between border-b border-orange-50 px-4 py-3 last:border-b-0 hover:bg-orange-50"
+                  >
+                    <span className="text-sm font-medium text-zinc-800">{item.name}</span>
+                    <span className="text-xs font-semibold text-zinc-500">Rs.{item.price.toFixed(2)}</span>
+                  </Link>
+                ))}
+                {searchResults.length === 0 && (
+                  <p className="px-4 py-5 text-center text-sm text-zinc-500">No products found for "{searchQuery}"</p>
+                )}
+              </div>
+            </m.div>
+          </m.div>
+        ) : null}
+      </AnimatePresence>
     </header>
   )
 }

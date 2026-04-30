@@ -5,6 +5,13 @@ import { useRouter } from "next/navigation";
 import { authedFetch, authedPost } from "@/lib/dashboard-fetch";
 import { useRealtimeTables } from "@/hooks/useRealtimeTables";
 import { Download } from "lucide-react";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 type OrderRow = {
   id: string;
@@ -229,15 +236,65 @@ export default function AdminOrdersPage() {
 
         <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
           <input type="text" placeholder="Search by order, customer, mobile..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full rounded-full border border-[#E3E3DA] bg-[#FAFBF9] px-4 py-2.5 text-sm placeholder-[#8A8A8A] focus:border-[#7B3010] focus:outline-none" />
-          <select value={paymentFilter} onChange={(e) => setPaymentFilter(e.target.value)} className="rounded-full border border-[#E3E3DA] bg-white px-4 py-2.5 text-sm text-[#4A1D1F] focus:border-[#7B3010] focus:outline-none"><option value="all">All payment statuses</option><option value="success">Success</option><option value="pending">Pending</option><option value="initiated">Initiated</option><option value="failed">Failed</option></select>
-          <select value={orderFilter} onChange={(e) => setOrderFilter(e.target.value)} className="rounded-full border border-[#E3E3DA] bg-white px-4 py-2.5 text-sm text-[#4A1D1F] focus:border-[#7B3010] focus:outline-none"><option value="all">All order statuses</option>{Array.from(new Set(rows.map((o) => lifecycleStatus(o)))).map((status) => <option key={status} value={status}>{status.replaceAll("_", " ")}</option>)}</select>
-          <select value={shipmentFilter} onChange={(e) => setShipmentFilter(e.target.value)} className="rounded-full border border-[#E3E3DA] bg-white px-4 py-2.5 text-sm text-[#4A1D1F] focus:border-[#7B3010] focus:outline-none"><option value="all">All shipment statuses</option>{Array.from(new Set(rows.map((o) => latestShipmentStatus(o)))).map((status) => <option key={status} value={status}>{status.replaceAll("_", " ")}</option>)}</select>
+          <Select value={paymentFilter} onValueChange={setPaymentFilter}>
+            <SelectTrigger className="h-auto w-full rounded-full border border-[#E3E3DA] bg-white px-4 py-2.5 text-sm text-[#4A1D1F] shadow-none focus:border-[#7B3010] focus:outline-none focus:ring-0 focus-visible:ring-0">
+              <SelectValue placeholder="All payment statuses" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All payment statuses</SelectItem>
+              <SelectItem value="success">Success</SelectItem>
+              <SelectItem value="pending">Pending</SelectItem>
+              <SelectItem value="initiated">Initiated</SelectItem>
+              <SelectItem value="failed">Failed</SelectItem>
+            </SelectContent>
+          </Select>
+          <Select value={orderFilter} onValueChange={setOrderFilter}>
+            <SelectTrigger className="h-auto w-full rounded-full border border-[#E3E3DA] bg-white px-4 py-2.5 text-sm text-[#4A1D1F] shadow-none focus:border-[#7B3010] focus:outline-none focus:ring-0 focus-visible:ring-0">
+              <SelectValue placeholder="All order statuses" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All order statuses</SelectItem>
+              {Array.from(new Set(rows.map((o) => lifecycleStatus(o)))).map((status) => (
+                <SelectItem key={status} value={status}>{status.replaceAll("_", " ")}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Select value={shipmentFilter} onValueChange={setShipmentFilter}>
+            <SelectTrigger className="h-auto w-full rounded-full border border-[#E3E3DA] bg-white px-4 py-2.5 text-sm text-[#4A1D1F] shadow-none focus:border-[#7B3010] focus:outline-none focus:ring-0 focus-visible:ring-0">
+              <SelectValue placeholder="All shipment statuses" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All shipment statuses</SelectItem>
+              {Array.from(new Set(rows.map((o) => latestShipmentStatus(o)))).map((status) => (
+                <SelectItem key={status} value={status}>{status.replaceAll("_", " ")}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
         <div className="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
           <input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="rounded-full border border-[#E3E3DA] bg-white px-4 py-2.5 text-sm text-[#4A1D1F] focus:border-[#7B3010] focus:outline-none" />
           <input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="rounded-full border border-[#E3E3DA] bg-white px-4 py-2.5 text-sm text-[#4A1D1F] focus:border-[#7B3010] focus:outline-none" />
-          <select value={sortBy} onChange={(e) => setSortBy(e.target.value as "latest" | "oldest" | "amount_desc" | "amount_asc")} className="rounded-full border border-[#E3E3DA] bg-white px-4 py-2.5 text-sm text-[#4A1D1F] focus:border-[#7B3010] focus:outline-none"><option value="latest">Latest first</option><option value="oldest">Oldest first</option><option value="amount_desc">Amount high to low</option><option value="amount_asc">Amount low to high</option></select>
-          <select value={String(pageSize)} onChange={(e) => setPageSize(Number(e.target.value))} className="rounded-full border border-[#E3E3DA] bg-white px-4 py-2.5 text-sm text-[#4A1D1F] focus:border-[#7B3010] focus:outline-none"><option value="10">10 / page</option><option value="20">20 / page</option><option value="50">50 / page</option></select>
+          <Select value={sortBy} onValueChange={(v) => setSortBy(v as "latest" | "oldest" | "amount_desc" | "amount_asc")}>
+            <SelectTrigger className="h-auto w-full rounded-full border border-[#E3E3DA] bg-white px-4 py-2.5 text-sm text-[#4A1D1F] shadow-none focus:border-[#7B3010] focus:outline-none focus:ring-0 focus-visible:ring-0">
+              <SelectValue placeholder="Sort by" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="latest">Latest first</SelectItem>
+              <SelectItem value="oldest">Oldest first</SelectItem>
+              <SelectItem value="amount_desc">Amount high to low</SelectItem>
+              <SelectItem value="amount_asc">Amount low to high</SelectItem>
+            </SelectContent>
+          </Select>
+          <Select value={String(pageSize)} onValueChange={(v) => setPageSize(Number(v))}>
+            <SelectTrigger className="h-auto w-full rounded-full border border-[#E3E3DA] bg-white px-4 py-2.5 text-sm text-[#4A1D1F] shadow-none focus:border-[#7B3010] focus:outline-none focus:ring-0 focus-visible:ring-0">
+              <SelectValue placeholder="Page size" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="10">10 / page</SelectItem>
+              <SelectItem value="20">20 / page</SelectItem>
+              <SelectItem value="50">50 / page</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
 
         <div className="mt-3 flex flex-wrap items-center gap-2">

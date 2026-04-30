@@ -13,7 +13,7 @@ import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
-import { Eye, Pencil, Save } from "lucide-react"
+import { Eye, Pencil, Save, Trash2 } from "lucide-react"
 import { toast } from "../ui/use-toast"
 import { useMasterValues } from "@/hooks/useMasterData"
 
@@ -209,6 +209,19 @@ export function ProductConsolePage({
     { title: "Key Features", description: "<ul><li></li></ul>", sortOrder: 0, isActive: true },
   ])
   const [searchQuery, setSearchQuery] = useState("")
+  const [catalog, setCatalog] = useState<"products" | "combos">("products")
+  const [comboRows, setComboRows] = useState<
+    Array<{
+      id: string
+      name: string
+      slug: string
+      pricingMode?: string
+      comboPrice?: number | null
+      isActive?: boolean
+      items?: Array<{ id: string; quantity: number; product?: { name?: string } | null }>
+    }>
+  >([])
+  const [activeCombo, setActiveCombo] = useState<any | null>(null)
   const [filterStatus, setFilterStatus] = useState<"all" | "draft" | "published" | "archived">("all")
   const [filterCategory, setFilterCategory] = useState<"all" | string>("all")
   const [filterPreparationType, setFilterPreparationType] = useState<"all" | "ready_to_eat" | "ready_to_cook">("all")
@@ -232,6 +245,21 @@ export function ProductConsolePage({
     setFilterStockStatus("all")
     setFilterFoodType("all")
   }
+
+  const loadCombos = useCallback(async () => {
+    setLoading(true)
+    setError("")
+    try {
+      const data = await authedFetch<any[]>("/api/v1/bundles")
+      const rows = (Array.isArray(data) ? data : []).filter((b) => b?.isCombo !== false)
+      setComboRows(rows as any)
+      setTotal(rows.length)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to load combos")
+    } finally {
+      setLoading(false)
+    }
+  }, [])
 
   const filteredRows = useMemo(() => {
     let result = rows
@@ -436,9 +464,25 @@ export function ProductConsolePage({
   }, [productId])
 
   useEffect(() => {
-    if (mode === "list" || mode === "add") loadList()
+    if (mode === "list" || mode === "add") {
+      if (catalog === "combos") {
+        void loadCombos()
+      } else {
+        loadList()
+      }
+    }
     if (mode === "edit" || mode === "view") void loadEdit()
-  }, [loadEdit, loadList, mode])
+  }, [catalog, loadCombos, loadEdit, loadList, mode])
+
+  useEffect(() => {
+    if (mode !== "list") return
+    // Read query param client-side to avoid Suspense requirement from useSearchParams().
+    const params = new URLSearchParams(window.location.search)
+    const next = params.get("catalog") === "combos" ? "combos" : "products"
+    setCatalog(next)
+    if (next === "combos") void loadCombos()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mode])
 
   const payload = useMemo(() => {
     const normalizedVariants = variants
@@ -888,6 +932,184 @@ export function ProductConsolePage({
   }
 
   if (mode === "list") {
+    if (catalog === "combos") {
+      const q = searchQuery.trim().toLowerCase()
+      const filteredCombos = q ? comboRows.filter((b) => `${b.name} ${b.slug}`.toLowerCase().includes(q)) : comboRows
+      return (
+        <section className="mx-auto max-w-7xl space-y-4">
+          <div className="flex flex-wrap items-end justify-between gap-3">
+            <div>
+              <h1 className="font-melon text-2xl font-bold text-[#4A1D1F]">Products</h1>
+              <p className="text-sm text-[#646464]">
+                <span className="font-semibold">Combos</span> selected — {filteredCombos.length} combos.
+              </p>
+            </div>
+            <div className="flex gap-2">
+              <Link
+                href={`${basePath}?catalog=products`}
+                className="rounded-full border border-[#E8DCC8] bg-white px-4 py-2 text-xs font-semibold uppercase tracking-wide text-[#4A1D1F] hover:bg-[#FFFBF3]"
+              >
+                View Products
+              </Link>
+              <Link
+                href="/admin/products/combos/add"
+                className="rounded-full bg-[#7B3010] px-4 py-2 text-xs font-semibold uppercase tracking-wide text-white"
+              >
+                Create combo
+              </Link>
+              <button
+                type="button"
+                onClick={() => void loadCombos()}
+                className="rounded-full border border-[#E8DCC8] bg-white px-4 py-2 text-xs font-semibold uppercase tracking-wide text-[#4A1D1F] hover:bg-[#FFFBF3]"
+              >
+                Refresh
+              </button>
+            </div>
+          </div>
+
+          <div className="flex gap-2 w-full">
+            <Input
+              type="text"
+              placeholder="Search combos..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="max-w-sm bg-white rounded-lg"
+            />
+          </div>
+
+          {error && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-800">{error}</p>}
+          {loading && <p className="text-sm text-[#646464]">Loading...</p>}
+
+          {!loading && (
+            <ConsoleTable headers={["Combo", "Slug", "Items", "Price", "Mode", "Active", "Actions"]}>
+              {filteredCombos.length === 0 ? (
+                <tr>
+                  <ConsoleTd colSpan={7} className="py-8 text-center text-[#646464]">
+                    No combos yet.
+                  </ConsoleTd>
+                </tr>
+              ) : (
+                filteredCombos.map((b) => (
+                  <tr key={b.id} className="hover:bg-[#FFFBF3]/80">
+                    <ConsoleTd className="align-middle">
+                      <span className="font-semibold text-[#4A1D1F]">{b.name}</span>
+                    </ConsoleTd>
+                    <ConsoleTd className="align-middle">
+                      <code className="text-[11px]">{b.slug}</code>
+                    </ConsoleTd>
+                    <ConsoleTd className="align-middle">
+                      <span className="text-[12px] font-semibold text-[#2A1810]">{b.items?.length ?? 0}</span>
+                    </ConsoleTd>
+                    <ConsoleTd className="align-middle font-semibold text-[11px]">
+                      {b.pricingMode === "fixed"
+                        ? b.comboPrice != null
+                          ? `Rs.${Number(b.comboPrice).toFixed(2)}`
+                          : "—"
+                        : "Dynamic"}
+                    </ConsoleTd>
+                    <ConsoleTd className="align-middle text-[11px] text-[#646464]">{b.pricingMode ?? "fixed"}</ConsoleTd>
+                    <ConsoleTd className="align-middle text-[11px] text-[#646464]">{b.isActive === false ? "No" : "Yes"}</ConsoleTd>
+                    <ConsoleTd className="align-middle">
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          title="View"
+                          aria-label="View combo"
+                          onClick={() => setActiveCombo(b)}
+                          className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-[#D9D9D1] text-[#4A1D1F] hover:bg-[#FFFBF3]"
+                        >
+                          <Eye className="h-4 w-4" />
+                        </button>
+                        <button
+                          type="button"
+                          title="Edit (coming soon)"
+                          aria-label="Edit combo"
+                          disabled
+                          className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-[#D9D9D1] text-[#4A1D1F] opacity-50"
+                        >
+                          <Pencil className="h-4 w-4" />
+                        </button>
+                        <button
+                          type="button"
+                          title="Delete (coming soon)"
+                          aria-label="Delete combo"
+                          disabled
+                          className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-[#D9D9D1] text-[#C03621] opacity-50"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </div>
+                    </ConsoleTd>
+                  </tr>
+                ))
+              )}
+            </ConsoleTable>
+          )}
+
+          {activeCombo ? (
+            <div
+              className="fixed inset-0 z-[120] flex items-center justify-center bg-black/50 p-4"
+              role="dialog"
+              aria-modal="true"
+              onClick={() => setActiveCombo(null)}
+            >
+              <div
+                className="w-full max-w-xl rounded-2xl border border-[#E8DCC8] bg-white p-5 shadow-xl"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="font-melon text-lg font-bold text-[#4A1D1F]">{activeCombo.name}</p>
+                    <p className="mt-0.5 font-mono text-xs text-[#646464]">{activeCombo.slug}</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setActiveCombo(null)}
+                    className="rounded-lg px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-[#4A1D1F] hover:bg-[#FFFBF3]"
+                  >
+                    Close
+                  </button>
+                </div>
+
+                <div className="mt-4 grid gap-3 md:grid-cols-2">
+                  <div className="rounded-xl border border-[#E8DCC8] bg-[#FFFBF3] p-3 text-sm">
+                    <p className="text-[11px] font-bold uppercase tracking-wide text-[#7A7A7A]">Pricing</p>
+                    <p className="mt-1 text-[#2A1810]">
+                      {activeCombo.pricingMode === "fixed"
+                        ? activeCombo.comboPrice != null
+                          ? `Rs.${Number(activeCombo.comboPrice).toFixed(2)}`
+                          : "—"
+                        : "Dynamic"}
+                    </p>
+                  </div>
+                  <div className="rounded-xl border border-[#E8DCC8] bg-[#FFFBF3] p-3 text-sm">
+                    <p className="text-[11px] font-bold uppercase tracking-wide text-[#7A7A7A]">Items</p>
+                    <p className="mt-1 text-[#2A1810]">{activeCombo.items?.length ?? 0}</p>
+                  </div>
+                </div>
+
+                <div className="mt-3 rounded-xl border border-[#E8DCC8] bg-white p-3">
+                  <p className="text-[11px] font-bold uppercase tracking-wide text-[#7A7A7A]">Composition</p>
+                  <div className="mt-2 space-y-1 text-sm text-[#2A1810]">
+                    {(activeCombo.items ?? []).length ? (
+                      (activeCombo.items as any[]).slice(0, 12).map((it, idx) => (
+                        <div key={idx} className="flex items-center justify-between gap-3">
+                          <span className="truncate">{it.product?.name ?? it.productId}</span>
+                          <span className="font-mono text-xs text-[#646464]">x{it.quantity}</span>
+                        </div>
+                      ))
+                    ) : (
+                      <p className="text-sm text-[#646464]">No items found.</p>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+          ) : null}
+        </section>
+      )
+    }
+
     return (
       <section className="mx-auto max-w-7xl space-y-4">
         <div className="flex flex-wrap items-end justify-between gap-3">
@@ -896,6 +1118,12 @@ export function ProductConsolePage({
             <p className="text-sm text-[#646464]">{filteredRows.length} of {total} items. Published products appear on website.</p>
           </div>
           <div className="flex gap-2">
+            <Link
+              href={`${basePath}?catalog=combos`}
+              className="rounded-full border border-[#E8DCC8] bg-white px-4 py-2 text-xs font-semibold uppercase tracking-wide text-[#4A1D1F] hover:bg-[#FFFBF3]"
+            >
+              View combos
+            </Link>
             <Link href={`${basePath}/add`} className="rounded-full bg-[#7B3010] px-4 py-2 text-xs font-semibold uppercase tracking-wide text-white">
               Add product
             </Link>

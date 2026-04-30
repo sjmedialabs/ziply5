@@ -1,4 +1,4 @@
-import { prisma } from "@/src/server/db/prisma"
+import { pgQuery } from "@/src/server/db/pg"
 
 export const isMissingUserTableError = (error: unknown) => {
   if (!(error instanceof Error)) return false
@@ -6,7 +6,7 @@ export const isMissingUserTableError = (error: unknown) => {
 }
 
 export const bootstrapAuthSchema = async () => {
-  await prisma.$executeRawUnsafe(`
+  await pgQuery(`
     DO $$
     BEGIN
       IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'UserStatus') THEN
@@ -16,7 +16,7 @@ export const bootstrapAuthSchema = async () => {
     $$;
   `)
 
-  await prisma.$executeRawUnsafe(`
+  await pgQuery(`
     CREATE TABLE IF NOT EXISTS "User" (
       "id" TEXT PRIMARY KEY,
       "email" TEXT NOT NULL,
@@ -28,9 +28,9 @@ export const bootstrapAuthSchema = async () => {
     );
   `)
 
-  await prisma.$executeRawUnsafe(`CREATE UNIQUE INDEX IF NOT EXISTS "User_email_key" ON "User"("email");`)
+  await pgQuery(`CREATE UNIQUE INDEX IF NOT EXISTS "User_email_key" ON "User"("email");`)
 
-  await prisma.$executeRawUnsafe(`
+  await pgQuery(`
     CREATE TABLE IF NOT EXISTS "Role" (
       "id" TEXT PRIMARY KEY,
       "key" TEXT NOT NULL,
@@ -38,9 +38,9 @@ export const bootstrapAuthSchema = async () => {
     );
   `)
 
-  await prisma.$executeRawUnsafe(`CREATE UNIQUE INDEX IF NOT EXISTS "Role_key_key" ON "Role"("key");`)
+  await pgQuery(`CREATE UNIQUE INDEX IF NOT EXISTS "Role_key_key" ON "Role"("key");`)
 
-  await prisma.$executeRawUnsafe(`
+  await pgQuery(`
     CREATE TABLE IF NOT EXISTS "UserRole" (
       "userId" TEXT NOT NULL,
       "roleId" TEXT NOT NULL,
@@ -48,7 +48,7 @@ export const bootstrapAuthSchema = async () => {
     );
   `)
 
-  await prisma.$executeRawUnsafe(`
+  await pgQuery(`
     CREATE TABLE IF NOT EXISTS "RefreshToken" (
       "id" TEXT PRIMARY KEY,
       "userId" TEXT NOT NULL,
@@ -59,5 +59,5 @@ export const bootstrapAuthSchema = async () => {
     );
   `)
 
-  await prisma.$executeRawUnsafe(`CREATE UNIQUE INDEX IF NOT EXISTS "RefreshToken_tokenHash_key" ON "RefreshToken"("tokenHash");`)
+  await pgQuery(`CREATE UNIQUE INDEX IF NOT EXISTS "RefreshToken_tokenHash_key" ON "RefreshToken"("tokenHash");`)
 }

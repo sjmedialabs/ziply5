@@ -3,6 +3,13 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
 import Link from "next/link"
 import { authedFetch } from "@/lib/dashboard-fetch"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 
 type ProductRow = {
   id: string
@@ -140,18 +147,16 @@ function ProductDiscountsReadOnly() {
         <div className="mt-3 flex items-center justify-between text-xs text-[#7A7A7A]">
           <span>Showing {discounted.length} discounted products (of {total} loaded)</span>
           <div className="flex items-center gap-2">
-            <select
-              className="rounded-full border px-2 py-1"
-              value={pageSize}
-              onChange={(e) => {
-                setPageSize(Number(e.target.value))
-                setPage(1)
-              }}
-            >
-              <option value={10}>10</option>
-              <option value={20}>20</option>
-              <option value={50}>50</option>
-            </select>
+            <Select value={String(pageSize)} onValueChange={(v) => { setPageSize(Number(v)); setPage(1) }}>
+              <SelectTrigger className="!h-[28px] w-[65px] rounded-full border px-2 py-1 text-xs shadow-none focus:ring-0">
+                <SelectValue placeholder="Size" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="10">10</SelectItem>
+                <SelectItem value="20">20</SelectItem>
+                <SelectItem value="50">50</SelectItem>
+              </SelectContent>
+            </Select>
             <button type="button" className="rounded-full border px-2 py-1 disabled:opacity-40" disabled={page <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))}>
               Prev
             </button>

@@ -1,7 +1,8 @@
-import { prisma } from "@/src/server/db/prisma"
+import { pgQuery, pgTx } from "@/src/server/db/pg"
 import { logActivity } from "@/src/server/modules/activity/activity.service"
 import { enqueueOutboxEvent } from "@/src/server/modules/integrations/outbox.service"
 import { updateOrderStatus } from "@/src/server/modules/orders/orders.service"
+import { randomUUID } from "crypto"
 
 type ReturnLifecycleStatus =
   | "requested"
@@ -35,17 +36,45 @@ export const scheduleReturnPickup = async (input: {
     notes?: string
   }>
 }) => {
-  const req = await prisma.returnRequest.findUnique({
-    where: { id: input.returnRequestId },
-    include: { order: { include: { items: true } } },
-  })
+  const reqRows = await pgQuery<
+    Array<{
+      id: string
+      status: string
+      orderId: string
+      items: unknown
+      order_items: unknown
+    }>
+  >(
+    `
+      SELECT
+        rr.id,
+        rr.status,
+        rr."orderId" as "orderId",
+        COALESCE((
+          SELECT jsonb_agg(jsonb_build_object('orderItemId', i."orderItemId", 'requestedQty', i."requestedQty") ORDER BY i."createdAt" DESC)
+          FROM "ReturnRequestItem" i
+          WHERE i."returnRequestId" = rr.id
+        ), '[]'::jsonb) as items,
+        COALESCE((
+          SELECT jsonb_agg(jsonb_build_object('id', oi.id, 'quantity', oi.quantity) ORDER BY oi.id ASC)
+          FROM "OrderItem" oi
+          WHERE oi."orderId" = rr."orderId"
+        ), '[]'::jsonb) as order_items
+      FROM "ReturnRequest" rr
+      WHERE rr.id = $1
+      LIMIT 1
+    `,
+    [input.returnRequestId],
+  )
+  const req = reqRows[0] as any
   if (!req) throw new Error("Return request not found")
 
   const current = (req.status || "requested") as ReturnLifecycleStatus
   if (!["requested", "approved"].includes(current)) {
     throw new Error(`Cannot schedule pickup when return is ${current}`)
   }
-  const orderItemById = new Map(req.order.items.map((i) => [i.id, i]))
+  const orderItems = Array.isArray(req.order_items) ? (req.order_items as any[]) : []
+  const orderItemById = new Map(orderItems.map((i) => [i.id, i]))
   for (const item of input.items) {
     const orderItem = orderItemById.get(item.orderItemId)
     if (!orderItem) throw new Error(`Invalid order item: ${item.orderItemId}`)
@@ -54,58 +83,53 @@ export const scheduleReturnPickup = async (input: {
     }
   }
 
-  const result = await prisma.$transaction(async (tx) => {
-    const pickup = await tx.returnPickup.upsert({
-      where: { returnRequestId: input.returnRequestId },
-      create: {
-        returnRequestId: input.returnRequestId,
-        pickupDate: input.pickupDate,
-        timeSlot: input.timeSlot?.trim() || null,
-        carrier: input.carrier?.trim() || null,
-        trackingRef: input.trackingRef?.trim() || null,
-        status: "scheduled",
-        notes: input.notes?.trim() || null,
-      },
-      update: {
-        pickupDate: input.pickupDate,
-        timeSlot: input.timeSlot?.trim() || null,
-        carrier: input.carrier?.trim() || null,
-        trackingRef: input.trackingRef?.trim() || null,
-        status: "scheduled",
-        notes: input.notes?.trim() || null,
-      },
-    })
+  const result = await pgTx(async (tx) => {
+    const pickupRows = await tx.query(
+      `
+        INSERT INTO "ReturnPickup" (id, "returnRequestId", "pickupDate", "timeSlot", carrier, "trackingRef", status, notes, "createdAt", "updatedAt")
+        VALUES ($1,$2,$3,$4,$5,$6,'scheduled',$7,now(),now())
+        ON CONFLICT ("returnRequestId") DO UPDATE SET
+          "pickupDate"=EXCLUDED."pickupDate",
+          "timeSlot"=EXCLUDED."timeSlot",
+          carrier=EXCLUDED.carrier,
+          "trackingRef"=EXCLUDED."trackingRef",
+          status='scheduled',
+          notes=EXCLUDED.notes,
+          "updatedAt"=now()
+        RETURNING *
+      `,
+      [
+        randomUUID(),
+        input.returnRequestId,
+        input.pickupDate,
+        input.timeSlot?.trim() || null,
+        input.carrier?.trim() || null,
+        input.trackingRef?.trim() || null,
+        input.notes?.trim() || null,
+      ],
+    )
+    const pickup = pickupRows.rows[0]
 
     for (const item of input.items) {
-      await tx.returnRequestItem.upsert({
-        where: {
-          returnRequestId_orderItemId: {
-            returnRequestId: input.returnRequestId,
-            orderItemId: item.orderItemId,
-          },
-        },
-        create: {
-          returnRequestId: input.returnRequestId,
-          orderItemId: item.orderItemId,
-          requestedQty: item.requestedQty,
-          receivedQty: 0,
-          reasonCode: item.reasonCode ?? null,
-          notes: item.notes?.trim() || null,
-        },
-        update: {
-          requestedQty: item.requestedQty,
-          reasonCode: item.reasonCode ?? null,
-          notes: item.notes?.trim() || null,
-        },
-      })
+      await tx.query(
+        `
+          INSERT INTO "ReturnRequestItem" (
+            id, "returnRequestId", "orderItemId", "requestedQty", "receivedQty", "reasonCode", notes, "createdAt", "updatedAt"
+          )
+          VALUES ($1,$2,$3,$4,0,$5,$6,now(),now())
+          ON CONFLICT ("returnRequestId","orderItemId") DO UPDATE SET
+            "requestedQty"=EXCLUDED."requestedQty",
+            "reasonCode"=EXCLUDED."reasonCode",
+            notes=EXCLUDED.notes,
+            "updatedAt"=now()
+        `,
+        [randomUUID(), input.returnRequestId, item.orderItemId, item.requestedQty, item.reasonCode ?? null, item.notes?.trim() || null],
+      )
     }
 
     const nextStatus: ReturnLifecycleStatus = current === "requested" ? "approved" : current
     if (nextStatus !== current) {
-      await tx.returnRequest.update({
-        where: { id: input.returnRequestId },
-        data: { status: nextStatus },
-      })
+      await tx.query(`UPDATE "ReturnRequest" SET status=$2, "updatedAt"=now() WHERE id=$1`, [input.returnRequestId, nextStatus])
     }
 
     return pickup
@@ -149,14 +173,44 @@ export const recordReturnReceiving = async (input: {
     notes?: string
   }>
 }) => {
-  const req = await prisma.returnRequest.findUnique({
-    where: { id: input.returnRequestId },
-    include: {
-      order: { include: { items: true } },
-      items: true,
-      pickup: true,
-    },
-  })
+  const reqRows = await pgQuery<
+    Array<{
+      id: string
+      status: string
+      orderId: string
+      order_items: unknown
+      items: unknown
+      pickup: unknown
+    }>
+  >(
+    `
+      SELECT
+        rr.id,
+        rr.status,
+        rr."orderId" as "orderId",
+        COALESCE((
+          SELECT jsonb_agg(jsonb_build_object('id', oi.id, 'quantity', oi.quantity) ORDER BY oi.id ASC)
+          FROM "OrderItem" oi
+          WHERE oi."orderId" = rr."orderId"
+        ), '[]'::jsonb) as order_items,
+        COALESCE((
+          SELECT jsonb_agg(jsonb_build_object('orderItemId', i."orderItemId", 'requestedQty', i."requestedQty", 'receivedQty', i."receivedQty") ORDER BY i."createdAt" DESC)
+          FROM "ReturnRequestItem" i
+          WHERE i."returnRequestId" = rr.id
+        ), '[]'::jsonb) as items,
+        (
+          SELECT to_jsonb(pu)
+          FROM "ReturnPickup" pu
+          WHERE pu."returnRequestId" = rr.id
+          LIMIT 1
+        ) as pickup
+      FROM "ReturnRequest" rr
+      WHERE rr.id = $1
+      LIMIT 1
+    `,
+    [input.returnRequestId],
+  )
+  const req = reqRows[0] as any
   if (!req) throw new Error("Return request not found")
   const current = (req.status || "requested") as ReturnLifecycleStatus
   const target = input.status as ReturnLifecycleStatus
@@ -164,10 +218,12 @@ export const recordReturnReceiving = async (input: {
     throw new Error(`Invalid return transition: ${current} -> ${target}`)
   }
 
-  const byOrderItemId = new Map(req.order.items.map((i) => [i.id, i]))
-  const byReturnItemId = new Map(req.items.map((i) => [i.orderItemId, i]))
+  const orderItems = Array.isArray(req.order_items) ? (req.order_items as any[]) : []
+  const items = Array.isArray(req.items) ? (req.items as any[]) : []
+  const byOrderItemId = new Map(orderItems.map((i) => [i.id, i]))
+  const byReturnItemId = new Map(items.map((i) => [i.orderItemId, i]))
 
-  await prisma.$transaction(async (tx) => {
+  await pgTx(async (tx) => {
     for (const item of input.items) {
       const orderItem = byOrderItemId.get(item.orderItemId)
       if (!orderItem) throw new Error(`Invalid order item: ${item.orderItemId}`)
@@ -176,41 +232,36 @@ export const recordReturnReceiving = async (input: {
       if (item.receivedQty > requestedQty) {
         throw new Error(`receivedQty exceeds requestedQty for ${item.orderItemId}`)
       }
-      await tx.returnRequestItem.upsert({
-        where: {
-          returnRequestId_orderItemId: {
-            returnRequestId: input.returnRequestId,
-            orderItemId: item.orderItemId,
-          },
-        },
-        create: {
-          returnRequestId: input.returnRequestId,
-          orderItemId: item.orderItemId,
+      await tx.query(
+        `
+          INSERT INTO "ReturnRequestItem" (
+            id, "returnRequestId", "orderItemId", "requestedQty", "receivedQty", "conditionStatus", notes, "createdAt", "updatedAt"
+          )
+          VALUES ($1,$2,$3,$4,$5,$6,$7,now(),now())
+          ON CONFLICT ("returnRequestId","orderItemId") DO UPDATE SET
+            "receivedQty"=EXCLUDED."receivedQty",
+            "conditionStatus"=EXCLUDED."conditionStatus",
+            notes=EXCLUDED.notes,
+            "updatedAt"=now()
+        `,
+        [
+          randomUUID(),
+          input.returnRequestId,
+          item.orderItemId,
           requestedQty,
-          receivedQty: item.receivedQty,
-          conditionStatus: item.conditionStatus ?? null,
-          notes: item.notes?.trim() || null,
-        },
-        update: {
-          receivedQty: item.receivedQty,
-          conditionStatus: item.conditionStatus ?? null,
-          notes: item.notes?.trim() || null,
-        },
-      })
+          item.receivedQty,
+          item.conditionStatus ?? null,
+          item.notes?.trim() || null,
+        ],
+      )
     }
 
-    await tx.returnRequest.update({
-      where: { id: input.returnRequestId },
-      data: { status: input.status },
-    })
+    await tx.query(`UPDATE "ReturnRequest" SET status=$2, "updatedAt"=now() WHERE id=$1`, [input.returnRequestId, input.status])
     if (req.pickup) {
-      await tx.returnPickup.update({
-        where: { returnRequestId: input.returnRequestId },
-        data: {
-          status: input.status === "picked_up" ? "picked_up" : "received",
-          notes: input.notes?.trim() || req.pickup.notes || null,
-        },
-      })
+      await tx.query(
+        `UPDATE "ReturnPickup" SET status=$2, notes=COALESCE($3, notes), "updatedAt"=now() WHERE "returnRequestId"=$1`,
+        [input.returnRequestId, input.status === "picked_up" ? "picked_up" : "received", input.notes?.trim() || null],
+      )
     }
   })
 
@@ -235,10 +286,11 @@ export const recordReturnReceiving = async (input: {
     },
   }).catch(() => null)
 
-  return prisma.returnRequest.findUnique({
-    where: { id: input.returnRequestId },
-    include: { items: true, pickup: true },
-  })
+  const out = await pgQuery<Array<Record<string, unknown>>>(
+    `SELECT * FROM "ReturnRequest" WHERE id=$1 LIMIT 1`,
+    [input.returnRequestId],
+  )
+  return out[0] ?? null
 }
 
 export const settleReturnRequest = async (input: {
@@ -250,10 +302,19 @@ export const settleReturnRequest = async (input: {
   reason?: string
   notes?: string
 }) => {
-  const req = await prisma.returnRequest.findUnique({
-    where: { id: input.returnRequestId },
-    include: { order: { select: { id: true, total: true } } },
-  })
+  const reqRows = await pgQuery<
+    Array<{ id: string; status: string; orderId: string; order_total: number }>
+  >(
+    `
+      SELECT rr.id, rr.status, rr."orderId" as "orderId", o.total as order_total
+      FROM "ReturnRequest" rr
+      INNER JOIN "Order" o ON o.id = rr."orderId"
+      WHERE rr.id = $1
+      LIMIT 1
+    `,
+    [input.returnRequestId],
+  )
+  const req = reqRows[0]
   if (!req) throw new Error("Return request not found")
 
   const fromStatus = (req.status || "requested") as ReturnLifecycleStatus
@@ -264,64 +325,74 @@ export const settleReturnRequest = async (input: {
     throw new Error(`Invalid return transition: ${fromStatus} -> ${toStatus}`)
   }
 
-  const updated = await prisma.$transaction(async (tx) => {
-    const row = await tx.returnRequest.update({
-      where: { id: input.returnRequestId },
-      data: { status: input.status },
-      include: { order: { select: { id: true, total: true, status: true } } },
-    })
+  const updated = await pgTx(async (tx) => {
+    const rowRows = await tx.query(
+      `UPDATE "ReturnRequest" SET status=$2, "updatedAt"=now() WHERE id=$1 RETURNING *`,
+      [input.returnRequestId, input.status],
+    )
+    const row = rowRows.rows[0]
 
     let refund = null as null | { id: string; amount: number; status: string }
     if (input.status === "refunded") {
-      const refundedAgg = await tx.refundRecord.aggregate({
-        where: {
-          orderId: row.order.id,
-          status: { notIn: ["rejected", "failed"] },
-        },
-        _sum: { amount: true },
-      })
-      const alreadyRefunded = Number(refundedAgg._sum.amount ?? 0)
-      const orderTotal = Number(row.order.total)
-      const returnedItems = await tx.returnRequestItem.findMany({
-        where: { returnRequestId: input.returnRequestId },
-        include: { orderItem: true },
-      })
-      const eligibleFromItems = returnedItems.reduce((sum, item) => {
-        if (item.receivedQty <= 0 || item.orderItem.quantity <= 0) return sum
-        const unit = Number(item.orderItem.lineTotal) / item.orderItem.quantity
-        return sum + unit * item.receivedQty
+      const refundedAgg = await tx.query<{ already: any }>(
+        `SELECT COALESCE(SUM(amount),0)::numeric as already FROM "RefundRecord" WHERE "orderId"=$1 AND status NOT IN ('rejected','failed')`,
+        [req.orderId],
+      )
+      const alreadyRefunded = Number(refundedAgg.rows[0]?.already ?? 0)
+      const orderTotal = Number(req.order_total ?? 0)
+
+      const returnedItems = await tx.query<{
+        receivedQty: number
+        requestedQty: number
+        quantity: number
+        lineTotal: any
+      }>(
+        `
+          SELECT
+            rri."receivedQty",
+            rri."requestedQty",
+            oi.quantity,
+            oi."lineTotal"
+          FROM "ReturnRequestItem" rri
+          INNER JOIN "OrderItem" oi ON oi.id = rri."orderItemId"
+          WHERE rri."returnRequestId" = $1
+        `,
+        [input.returnRequestId],
+      )
+      const eligibleFromItems = returnedItems.rows.reduce((sum, item) => {
+        if (Number(item.receivedQty ?? 0) <= 0 || Number(item.quantity ?? 0) <= 0) return sum
+        const unit = Number(item.lineTotal ?? 0) / Number(item.quantity ?? 1)
+        return sum + unit * Number(item.receivedQty ?? 0)
       }, 0)
-      const eligibleBase = returnedItems.length > 0 ? eligibleFromItems : orderTotal
+      const eligibleBase = returnedItems.rows.length > 0 ? eligibleFromItems : orderTotal
       const maxRefundable = Math.max(Math.min(eligibleBase, orderTotal) - alreadyRefunded, 0)
-      if (maxRefundable <= 0) {
-        throw new Error("Order already fully refunded")
-      }
+      if (maxRefundable <= 0) throw new Error("Order already fully refunded")
       const amount = Number((input.refundAmount ?? maxRefundable).toFixed(2))
       if (amount > maxRefundable) {
         throw new Error(`Refund amount exceeds remaining refundable amount (${maxRefundable})`)
       }
-      const created = await tx.refundRecord.create({
-        data: {
-          orderId: row.order.id,
-          amount,
-          reason:
-            [
-              input.reasonCode ? `[${input.reasonCode}]` : null,
-              input.reason?.trim() || `Return refund: ${row.id}`,
-            ]
-              .filter(Boolean)
-              .join(" "),
-          status: "processed",
-        },
-      })
-      refund = { id: created.id, amount: Number(created.amount), status: created.status }
+
+      const reason = [input.reasonCode ? `[${input.reasonCode}]` : null, input.reason?.trim() || `Return refund: ${row.id}`]
+        .filter(Boolean)
+        .join(" ")
+
+      const refundId = randomUUID()
+      const refundRows = await tx.query(
+        `
+          INSERT INTO "RefundRecord" (id, "orderId", amount, reason, status, "createdAt", "updatedAt")
+          VALUES ($1,$2,$3::numeric,$4,'processed',now(),now())
+          RETURNING id, amount, status
+        `,
+        [refundId, req.orderId, amount, reason],
+      )
+      refund = refundRows.rows[0] as any
     }
 
     return { row, refund }
   })
 
   if (input.status === "refunded") {
-    await updateOrderStatus(req.order.id, "returned", input.actorId, {
+    await updateOrderStatus(req.orderId, "returned", input.actorId, {
       reasonCode: "return_refunded",
       note: input.notes?.trim() || "Return request refunded",
     }).catch(() => null)
@@ -337,7 +408,7 @@ export const settleReturnRequest = async (input: {
       fromStatus,
       reasonCode: input.reasonCode ?? null,
       refundAmount: input.refundAmount ?? null,
-      orderId: req.order.id,
+      orderId: req.orderId,
     },
   })
   await enqueueOutboxEvent({
@@ -346,7 +417,7 @@ export const settleReturnRequest = async (input: {
     aggregateId: input.returnRequestId,
     payload: {
       returnRequestId: input.returnRequestId,
-      orderId: req.order.id,
+      orderId: req.orderId,
       fromStatus,
       status: input.status,
       reasonCode: input.reasonCode ?? null,

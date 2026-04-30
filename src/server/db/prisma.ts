@@ -1,20 +1,18 @@
-import { PrismaClient } from "@prisma/client"
+/**
+ * Prisma has been intentionally retired from the runtime path.
+ *
+ * This file remains ONLY to avoid breaking legacy imports during migration.
+ * Any attempt to use `prisma` will throw at runtime so we can find and remove
+ * remaining call-sites deterministically.
+ */
 
-const globalForPrisma = globalThis as unknown as {
-  prisma?: PrismaClient
-}
-
-export const prisma =
-  globalForPrisma.prisma ??
-  new PrismaClient({
-    log:
-      process.env.NODE_ENV === "production"
-        ? ["error", "warn"]
-        : process.env.DEBUG_MODE === "true"
-          ? ["query", "warn", "error"]
-          : ["warn", "error"],
-  })
-
-if (process.env.NODE_ENV !== "production") {
-  globalForPrisma.prisma = prisma
-}
+export const prisma: never = new Proxy(
+  {},
+  {
+    get() {
+      throw new Error(
+        "Prisma is disabled in this project. Use Supabase or pg queries (src/server/db/pg.ts) instead.",
+      )
+    },
+  },
+) as never

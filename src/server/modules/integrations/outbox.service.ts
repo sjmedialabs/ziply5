@@ -1,4 +1,5 @@
-import { prisma } from "@/src/server/db/prisma"
+import { pgQuery, pgTx } from "@/src/server/db/pg"
+import { randomUUID } from "crypto"
 
 export const enqueueOutboxEvent = async (input: {
   eventType: string
@@ -7,75 +8,95 @@ export const enqueueOutboxEvent = async (input: {
   payload: unknown
   headers?: unknown
 }) => {
-  return prisma.integrationOutboxEvent.create({
-    data: {
-      eventType: input.eventType,
-      aggregateType: input.aggregateType,
-      aggregateId: input.aggregateId,
-      payload: input.payload as never,
-      headers: input.headers === undefined ? undefined : (input.headers as never),
-      status: "pending",
-    },
-  })
+  const rows = await pgQuery<
+    Array<{ id: string; eventType: string; aggregateType: string; aggregateId: string; status: string }>
+  >(
+    `
+      INSERT INTO "IntegrationOutboxEvent" (
+        id, "eventType", "aggregateType", "aggregateId", payload, headers, status, "availableAt", "attemptCount", "createdAt"
+      )
+      VALUES ($1, $2, $3, $4, $5::jsonb, $6::jsonb, 'pending', now(), 0, now())
+      RETURNING id, "eventType", "aggregateType", "aggregateId", status
+    `,
+    [
+      randomUUID(),
+      input.eventType,
+      input.aggregateType,
+      input.aggregateId,
+      JSON.stringify(input.payload ?? null),
+      JSON.stringify(input.headers ?? null),
+    ],
+  )
+  return rows[0]
 }
 
 export const dispatchPendingOutboxEvents = async (limit = 50) => {
-  const events = await prisma.integrationOutboxEvent.findMany({
-    where: { status: "pending", availableAt: { lte: new Date() } },
-    orderBy: { createdAt: "asc" },
-    take: Math.max(1, Math.min(limit, 200)),
-  })
+  const events = await pgQuery<
+    Array<{ id: string; attemptCount: number; eventType: string; aggregateType: string; aggregateId: string; payload: any; headers: any }>
+  >(
+    `
+      SELECT id, "attemptCount" as "attemptCount", "eventType", "aggregateType", "aggregateId", payload, headers
+      FROM "IntegrationOutboxEvent"
+      WHERE status = 'pending' AND "availableAt" <= now()
+      ORDER BY "createdAt" ASC
+      LIMIT $1
+    `,
+    [Math.max(1, Math.min(limit, 200))],
+  )
 
-  const endpoints = await prisma.integrationEndpoint.findMany({
-    where: { isActive: true },
-    select: { id: true, endpointType: true, targetUrl: true },
-  })
+  const endpoints = await pgQuery<Array<{ id: string; endpointType: string; targetUrl: string }>>(
+    `SELECT id, "endpointType", "targetUrl" FROM "IntegrationEndpoint" WHERE "isActive" = true`,
+  )
 
   let sent = 0
   let failed = 0
   for (const event of events) {
     try {
-      await prisma.$transaction(async (tx) => {
+      await pgTx(async (client) => {
         if (endpoints.length === 0) {
-          await tx.integrationOutboxEvent.update({
-            where: { id: event.id },
-            data: { status: "sent", sentAt: new Date(), attemptCount: { increment: 1 } },
-          })
+          await client.query(
+            `UPDATE "IntegrationOutboxEvent" SET status='sent', "sentAt"=now(), "attemptCount"="attemptCount"+1 WHERE id=$1`,
+            [event.id],
+          )
           return
         }
 
         const now = new Date()
-        await Promise.all(
-          endpoints.map((endpoint, idx) =>
-            tx.integrationOutboxAttempt.create({
-              data: {
-                outboxEventId: event.id,
-                endpointId: endpoint.id,
-                attemptNo: event.attemptCount + idx + 1,
-                responseCode: 202,
-                responseBody: `Queued to ${endpoint.endpointType}:${endpoint.targetUrl}`,
-                attemptedAt: now,
-              },
-            }),
-          ),
+        for (const [idx, endpoint] of endpoints.entries()) {
+          await client.query(
+            `
+              INSERT INTO "IntegrationOutboxAttempt" (id, "outboxEventId", "endpointId", "attemptNo", "responseCode", "responseBody", "attemptedAt")
+              VALUES ($1, $2, $3, $4, 202, $5, $6)
+            `,
+            [
+              randomUUID(),
+              event.id,
+              endpoint.id,
+              (event.attemptCount ?? 0) + idx + 1,
+              `Queued to ${endpoint.endpointType}:${endpoint.targetUrl}`,
+              now,
+            ],
+          )
+        }
+        await client.query(
+          `UPDATE "IntegrationOutboxEvent" SET status='sent', "sentAt"=$2, "attemptCount"="attemptCount"+1 WHERE id=$1`,
+          [event.id, now],
         )
-        await tx.integrationOutboxEvent.update({
-          where: { id: event.id },
-          data: { status: "sent", sentAt: now, attemptCount: { increment: 1 } },
-        })
       })
       sent += 1
     } catch (error) {
       failed += 1
-      await prisma.integrationOutboxEvent.update({
-        where: { id: event.id },
-        data: {
-          status: "failed",
-          attemptCount: { increment: 1 },
-          lastError: error instanceof Error ? error.message : "Dispatch failed",
-          availableAt: new Date(Date.now() + 60_000),
-        },
-      })
+      await pgQuery(
+        `
+          UPDATE "IntegrationOutboxEvent"
+          SET status='failed',
+              "attemptCount"="attemptCount"+1,
+              "lastError"=$2,
+              "availableAt"=$3
+          WHERE id=$1
+        `,
+        [event.id, error instanceof Error ? error.message : "Dispatch failed", new Date(Date.now() + 60_000)],
+      )
     }
   }
 

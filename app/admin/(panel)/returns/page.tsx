@@ -1,10 +1,17 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, useMemo } from "react";
 import { authedFetch, authedPatch } from "@/lib/dashboard-fetch";
 import { ConsoleTable, ConsoleTd } from "@/components/dashboard/ConsoleTable";
 import { useRealtimeTables } from "@/hooks/useRealtimeTables";
 import { useMasterValues } from "@/hooks/useMasterData";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 type ReturnRow = {
   id: string;
@@ -26,11 +33,18 @@ export default function AdminReturnsPage() {
   const [draft, setDraft] = useState<Record<string, string>>({});
   const [updating, setUpdating] = useState<string | null>(null);
   const [filter, setFilter] = useState("all");
+  const [searchTerm, setSearchTerm] = useState("");
 
-  const filteredRows = rows.filter((row) => {
-    if (filter === "pending" && !["requested", "approved", "picked_up"].includes(row.status)) return false;
-    return true;
-  });
+  const filteredRows = useMemo(() => {
+    return rows.filter((row) => {
+      if (filter === "pending" && !["requested", "approved", "picked_up"].includes(row.status)) return false;
+      if (searchTerm) {
+        const term = searchTerm.toLowerCase();
+        return row.order.id.toLowerCase().includes(term) || (row.reason || "").toLowerCase().includes(term);
+      }
+      return true;
+    });
+  }, [rows, filter, searchTerm]);
 
   const load = useCallback(() => {
     setLoading(true);
@@ -95,15 +109,17 @@ export default function AdminReturnsPage() {
       <div>
         <h1 className="font-melon text-2xl font-bold text-[#4A1D1F]">Returns</h1>
         <p className="text-sm text-[#646464]">Return requests tied to orders.</p>
-        <div className="mt-3">
-          <select
-            value={filter}
-            onChange={(event) => setFilter(event.target.value)}
-            className="rounded-lg border border-[#D9D9D1] bg-white px-3 py-2 text-xs text-[#4A1D1F]"
-          >
-            <option value="all">All returns</option>
-            <option value="pending">Pending returns</option>
-          </select>
+        <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+          <input type="text" placeholder="Search by order ID or reason..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full rounded-full border border-[#E3E3DA] bg-[#FAFBF9] px-4 py-2.5 text-sm placeholder-[#8A8A8A] focus:border-[#7B3010] focus:outline-none" />
+          <Select value={filter} onValueChange={setFilter}>
+            <SelectTrigger className="h-auto w-full rounded-full border border-[#E3E3DA] bg-white px-4 py-2.5 text-sm text-[#4A1D1F] shadow-none focus:border-[#7B3010] focus:outline-none focus:ring-0 focus-visible:ring-0">
+              <SelectValue placeholder="All returns" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All returns</SelectItem>
+              <SelectItem value="pending">Pending returns</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
       </div>
 
@@ -112,10 +128,10 @@ export default function AdminReturnsPage() {
 
       {!loading && (
         <ConsoleTable headers={["Order", "Placed", "Reason", "Status", ""]}>
-          {rows.length === 0 ? (
+          {filteredRows.length === 0 ? (
             <tr>
               <ConsoleTd className="py-8 text-center text-[#646464]" colSpan={5}>
-                No return requests.
+                No returns found.
               </ConsoleTd>
             </tr>
           ) : (
@@ -128,17 +144,16 @@ export default function AdminReturnsPage() {
                 <ConsoleTd>{new Date(r.createdAt).toLocaleString()}</ConsoleTd>
                 <ConsoleTd className="max-w-[200px] text-xs">{r.reason ?? "—"}</ConsoleTd>
                 <ConsoleTd>
-                  <select
-                    value={draft[r.id] ?? r.status}
-                    onChange={(e) => setDraft((d) => ({ ...d, [r.id]: e.target.value }))}
-                    className="w-full max-w-[140px] rounded-lg border border-[#D9D9D1] bg-white px-2 py-1 text-xs capitalize"
-                  >
-                    {statuses.map((s) => (
-                      <option key={s} value={s}>
-                        {s}
-                      </option>
-                    ))}
-                  </select>
+                  <Select value={draft[r.id] ?? r.status} onValueChange={(val) => setDraft((d) => ({ ...d, [r.id]: val }))}>
+                    <SelectTrigger className="h-8 w-full max-w-[140px] rounded-lg border border-[#D9D9D1] bg-white px-2 py-1 text-xs capitalize shadow-none focus:border-[#7B3010] focus:outline-none focus:ring-0 focus-visible:ring-0">
+                      <SelectValue placeholder="Status" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {statuses.map((s) => (
+                        <SelectItem key={s} value={s} className="capitalize">{s.replaceAll("_", " ")}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </ConsoleTd>
                 <ConsoleTd>
                   <button

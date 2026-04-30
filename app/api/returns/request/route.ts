@@ -3,7 +3,7 @@ import { z } from "zod"
 import { fail, ok } from "@/src/server/core/http/response"
 import { requireAuth } from "@/src/server/middleware/auth"
 import { requirePermission } from "@/src/server/middleware/rbac"
-import { prisma } from "@/src/server/db/prisma"
+import { pgQuery } from "@/src/server/db/pg"
 import { createReturnRequest } from "@/src/server/modules/extended/extended.service"
 import { assertMasterValueExists, listMasterValues } from "@/src/server/modules/master/master.service"
 
@@ -23,7 +23,11 @@ export async function POST(request: NextRequest) {
   const parsed = schema.safeParse(body)
   if (!parsed.success) return fail("Validation failed", 422, parsed.error.flatten())
 
-  const order = await prisma.order.findUnique({ where: { id: parsed.data.orderId } })
+  const orderRows = await pgQuery<Array<{ id: string; userId: string | null }>>(
+    `SELECT id, "userId" FROM "Order" WHERE id = $1 LIMIT 1`,
+    [parsed.data.orderId],
+  )
+  const order = orderRows[0]
   if (!order) return fail("Order not found", 404)
   if (order.userId && order.userId !== auth.user.sub) return fail("Not your order", 403)
 

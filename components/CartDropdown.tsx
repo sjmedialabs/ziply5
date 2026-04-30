@@ -2,6 +2,7 @@
 
 import Image from "next/image"
 import Link from "next/link"
+import { AnimatePresence, m, useReducedMotion } from "framer-motion"
 
 interface CartItem {
   id: string
@@ -22,12 +23,17 @@ interface CartDropdownProps {
 }
 
 export default function CartDropdown({ items, total, open, onIncrement, onDecrement }: CartDropdownProps) {
+  const reduce = useReducedMotion()
   return (
-      <div
-        className={`absolute right-0 top-full mt-2 w-[420px] rounded-[28px] border-2 border-[#e64a19] bg-white shadow-[0_10px_30px_rgba(0,0,0,0.15)] transition-all duration-200 ease-out z-50 ${
-          open ? "visible opacity-100" : "invisible opacity-0"
-        }`}
-      >
+    <AnimatePresence initial={false}>
+      {open ? (
+        <m.div
+          initial={reduce ? { opacity: 1 } : { opacity: 0, y: 8, scale: 0.98 }}
+          animate={reduce ? { opacity: 1 } : { opacity: 1, y: 0, scale: 1 }}
+          exit={reduce ? { opacity: 0 } : { opacity: 0, y: 8, scale: 0.98 }}
+          transition={reduce ? { duration: 0.12 } : { duration: 0.22, ease: "easeOut" }}
+          className="absolute right-0 top-full z-50 mt-2 w-[420px] rounded-[28px] border-2 border-[#e64a19] bg-white shadow-[0_10px_30px_rgba(0,0,0,0.15)] will-change-transform"
+        >
 
         <div className="px-6 py-6">
 
@@ -89,6 +95,8 @@ export default function CartDropdown({ items, total, open, onIncrement, onDecrem
   )}
 
       </div>
-      </div>
+        </m.div>
+      ) : null}
+    </AnimatePresence>
   )
 }

@@ -1,6 +1,6 @@
-import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/src/server/db/prisma";
-import { requireAuth } from "@/src/server/middleware/auth";
+import { NextRequest, NextResponse } from "next/server"
+import { pgQuery } from "@/src/server/db/pg"
+import { requireAuth } from "@/src/server/middleware/auth"
 
 export async function PATCH(request: NextRequest, context: { params: Promise<{ id: string }> }) {
   try {
@@ -11,10 +11,11 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
     const { status } = body;
     const { id } = await context.params;
 
-    const updated = await prisma.contactMessage.update({
-      where: { id },
-      data: { status },
-    });
+    const rows = await pgQuery<Array<Record<string, unknown>>>(
+      `UPDATE contact_messages SET status=$2, updated_at=now() WHERE id=$1::uuid RETURNING *`,
+      [id, status],
+    )
+    const updated = rows[0]
 
     return NextResponse.json({ success: true, data: updated });
   } catch (error: any) {
@@ -30,9 +31,7 @@ export async function DELETE(request: NextRequest, context: { params: Promise<{ 
 
     const { id } = await context.params;
 
-    await prisma.contactMessage.delete({
-      where: { id },
-    });
+    await pgQuery(`DELETE FROM contact_messages WHERE id=$1::uuid`, [id])
 
     return NextResponse.json({ success: true, message: "Deleted successfully" });
   } catch (error: any) {

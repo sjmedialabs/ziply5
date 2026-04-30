@@ -1,4 +1,5 @@
 import { authFetch } from "@/lib/auth-session"
+import { clearSession } from "@/lib/auth-session"
 
 export type ApiEnvelope<T> = {
   success: boolean
@@ -9,6 +10,15 @@ export type ApiEnvelope<T> = {
 
 export async function authedFetch<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await authFetch(path, init)
+
+  // Admin UX: if session is missing/expired, redirect to the correct login page
+  // instead of spamming 401 errors and leaving the UI in a broken state.
+  if (typeof window !== "undefined" && res.status === 401) {
+    const isAdmin = window.location.pathname.startsWith("/admin")
+    clearSession({ silent: true })
+    window.location.href = isAdmin ? "/admin/login" : "/login"
+    throw new Error("Unauthorized")
+  }
 
   let json: ApiEnvelope<T> = { success: false, message: "Invalid response" }
   try {
