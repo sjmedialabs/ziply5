@@ -24,6 +24,26 @@ type CategoryFilter = "all" | string
 type SortType = "popular" | "name-asc" | "name-desc" | "newest" | "price-low-high" | "price-high-low"
 type CategoryApi = { id: string; name: string; slug: string }
 
+function mulberry32(seed: number) {
+  let t = seed >>> 0
+  return () => {
+    t += 0x6d2b79f5
+    let x = Math.imul(t ^ (t >>> 15), 1 | t)
+    x ^= x + Math.imul(x ^ (x >>> 7), 61 | x)
+    return ((x ^ (x >>> 14)) >>> 0) / 4294967296
+  }
+}
+
+function inForbiddenHue(h: number) {
+  // avoid brown/yellow/gold range (roughly orange→yellow)
+  const hue = ((h % 360) + 360) % 360
+  return hue >= 15 && hue <= 75
+}
+
+function clamp(n: number, min: number, max: number) {
+  return Math.max(min, Math.min(max, n))
+}
+
 function ProductsPageContent() {
   const searchParams = useSearchParams()
   const { products, loading, error } = useStorefrontProducts(60)
@@ -41,6 +61,15 @@ function ProductsPageContent() {
   const [cartQtyBySlug, setCartQtyBySlug] = useState<Record<string, number>>({})
   const searchTerm = (searchParams.get("search") || "").trim().toLowerCase()
   const router = useRouter()
+  const pageSeedRef = useState(() => {
+    // Random per page load, stable for this mounted session
+    if (typeof crypto !== "undefined" && "getRandomValues" in crypto) {
+      const arr = new Uint32Array(1)
+      crypto.getRandomValues(arr)
+      return Number(arr[0] ?? Date.now())
+    }
+    return Date.now()
+  })[0]
   const packParam = (searchParams.get("pack") || "").trim().toLowerCase()
   const typeParam = (searchParams.get("type") || "").trim().toLowerCase()
   const comboParam = (searchParams.get("combo") || "").trim().toLowerCase()
@@ -221,6 +250,36 @@ const tagMatch =
 
     return items
   }, [products, categoryFilter, packFilter, mealTimeFilter, availabilityFilter, bestSellerFilter, featuredFilter, selectedTagIds, sortBy, searchTerm])
+
+  const productBgBySlug = useMemo(() => {
+    const rng = mulberry32(pageSeedRef)
+    const GOLDEN_ANGLE = 137.50776405003785
+
+    // mid-tone constraints: not too bright/dark
+    const satBase = 38 + rng() * 12 // 38–50
+    const lightBase = 52 + rng() * 10 // 52–62
+
+    // random start hue, but not in forbidden range
+    let startHue = rng() * 360
+    for (let tries = 0; tries < 20 && inForbiddenHue(startHue); tries++) {
+      startHue = (startHue + 23 + rng() * 37) % 360
+    }
+
+    const map: Record<string, string> = {}
+    for (let i = 0; i < filteredProducts.length; i++) {
+      const p = filteredProducts[i] as any
+      const key = String(p.slug || p.id || i)
+
+      let hue = (startHue + i * GOLDEN_ANGLE) % 360
+      // if hue lands in forbidden band, walk forward until it doesn't
+      for (let tries = 0; tries < 24 && inForbiddenHue(hue); tries++) hue = (hue + 9) % 360
+
+      const s = clamp(satBase + (rng() - 0.5) * 8, 34, 52)
+      const l = clamp(lightBase + (rng() - 0.5) * 8, 48, 66)
+      map[key] = `hsl(${hue.toFixed(0)} ${s.toFixed(0)}% ${l.toFixed(0)}%)`
+    }
+    return map
+  }, [filteredProducts, pageSeedRef])
 
 const toggleTag = (tagId: string) => {
   setSelectedTagIds(prev =>
@@ -419,13 +478,14 @@ const toggleTag = (tagId: string) => {
                     (product as any).variants[0].price
                 )
               : Number(product.price || 0);
+            const cardBg = productBgBySlug[String(product.slug || product.id || idx)] || "#3EA6CF"
 
             return (
               <SlideUp key={`${product.id || product.slug || "product"}-${idx}`} delay={Math.min(0.18, idx * 0.03)}>
                 <ScaleHover>
                   <article
                     className="group relative rounded-2xl border-2 border-transparent p-4 transition-all duration-300 hover:ring-4 hover:ring-[#F36E21] hover:shadow-xl will-change-transform"
-                    style={{ backgroundColor: "#3EA6CF" }}
+                    style={{ backgroundColor: cardBg }}
                   >
               <button
                 type="button"
