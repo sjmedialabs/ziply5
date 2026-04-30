@@ -8,6 +8,7 @@ import type { LucideIcon } from "lucide-react"
 import { Menu, X } from "lucide-react"
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
 import { authFetch, clearSession } from "@/lib/auth-session"
+import { AnimatePresence, m, useReducedMotion } from "framer-motion"
 
 export type DashboardNavItem = {
   href?: string
@@ -42,6 +43,7 @@ export function DashboardChrome({
   const pathname = usePathname()
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [me, setMe] = useState<MePayload | null>(null)
+  const reduce = useReducedMotion()
 
   useEffect(() => {
     authFetch("/api/v1/auth/me")
@@ -125,19 +127,30 @@ export function DashboardChrome({
 
   return (
     <div className="flex h-screen scrollbar-hide bg-[#F5F1E6] text-[#2A1810]">
-      {sidebarOpen && (
-        <button
-          type="button"
-          className="fixed inset-0 z-40 bg-black/40 lg:hidden"
-          aria-label="Close menu"
-          onClick={() => setSidebarOpen(false)}
-        />
-      )}
+      <AnimatePresence>
+        {sidebarOpen ? (
+          <m.button
+            type="button"
+            className="fixed inset-0 z-40 bg-black/40 lg:hidden"
+            aria-label="Close menu"
+            onClick={() => setSidebarOpen(false)}
+            initial={reduce ? { opacity: 1 } : { opacity: 0 }}
+            animate={reduce ? { opacity: 1 } : { opacity: 1 }}
+            exit={reduce ? { opacity: 0 } : { opacity: 0 }}
+            transition={reduce ? { duration: 0.12 } : { duration: 0.18, ease: "easeOut" }}
+          />
+        ) : null}
+      </AnimatePresence>
 
-      <aside
-        className={`fixed inset-y-0 left-0 z-50 flex w-64 flex-col border-r border-[#E0D5C8] bg-white shadow-xl transition-transform duration-200 lg:static lg:z-0 lg:translate-x-0 lg:shadow-none ${
-          sidebarOpen ? "translate-x-0" : "-translate-x-full"
-        }`}
+      <m.aside
+        className="fixed inset-y-0 left-0 z-50 flex w-64 flex-col border-r border-[#E0D5C8] bg-white shadow-xl lg:static lg:z-0 lg:translate-x-0 lg:shadow-none"
+        initial={false}
+        animate={
+          reduce
+            ? { x: sidebarOpen ? 0 : -320 }
+            : { x: sidebarOpen ? 0 : -320, transition: { duration: 0.22, ease: "easeOut" } }
+        }
+        style={{ willChange: "transform" }}
       >
         <div className="flex items-center justify-between gap-2 border-b border-[#E0D5C8] px-4 py-4">
           <Link href={navItems[0]?.href ?? websiteHref} className="flex items-center gap-2" onClick={() => setSidebarOpen(false)}>
@@ -163,7 +176,7 @@ export function DashboardChrome({
             ← Back to store website
           </Link>
         </div>
-      </aside>
+      </m.aside>
 
       <div className="flex min-h-screen min-w-0 flex-1 flex-col">
         <header className="sticky top-0 z-30 flex shrink-0 items-center justify-between gap-3 border-b border-[#E0D5C8] bg-white/95 px-3 py-[34px] backdrop-blur md:px-5">

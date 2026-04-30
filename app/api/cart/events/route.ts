@@ -11,7 +11,25 @@ const schema = z.object({
   mobile: z.string().optional().nullable(),
   items: z.array(z.unknown()).default([]),
   total: z.number().optional().nullable(),
-  eventType: z.enum(["add_to_cart", "remove_item", "quantity_update"]),
+  eventType: z.enum([
+    // legacy
+    "add_to_cart",
+    "remove_item",
+    "quantity_update",
+    // spec / forward-compatible
+    "cart_item_added",
+    "cart_updated",
+    "checkout_started",
+    "address_entered",
+    "payment_page_opened",
+    "payment_attempted",
+    "payment_failed",
+    "payment_cancelled",
+    "payment_timeout",
+    "order_completed",
+    "tab_closed",
+    "session_expired",
+  ]),
   meta: z.record(z.string(), z.any()).optional(),
 })
 

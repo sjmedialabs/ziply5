@@ -7,6 +7,7 @@ import { safeString } from "@/src/lib/db/supabaseIntegrity"
 import { renderPlaceholders } from "@/src/server/modules/abandoned-carts/templateRender"
 
 type CartEventType =
+  // Legacy event names (already used in the app)
   | "add_to_cart"
   | "remove_item"
   | "quantity_update"
@@ -18,23 +19,37 @@ type CartEventType =
   | "order_placed"
   | "manual_clear"
   | "page_view"
+  // Spec event names (supported for forward-compat)
+  | "cart_item_added"
+  | "cart_updated"
+  | "payment_page_opened"
+  | "payment_attempted"
+  | "payment_cancelled"
+  | "payment_timeout"
+  | "tab_closed"
+  | "session_expired"
+  | "order_completed"
 
 type RecoveryChannel = "email" | "sms" | "whatsapp"
 type RecoveryStatus = "pending" | "sent" | "failed" | "cancelled" | "skipped"
 
 type LifecycleState =
-  | "ACTIVE_CART"
+  | "CART_ONLY"
   | "CHECKOUT_STARTED"
   | "PAYMENT_PENDING"
   | "PAYMENT_FAILED"
-  | "PAYMENT_CANCELLED"
-  | "PAYMENT_TIMEOUT"
+  | "CONTACT_CAPTURED"
   | "ORDER_COMPLETED"
   | "ABANDONED"
 
 const DEFAULT_SETTINGS = {
   enabled: true,
+  // Backwards compatible: previous single-threshold fallback.
   abandonThresholdMinutes: 30,
+  // Production thresholds by stage (minutes).
+  cartOnlyThresholdMinutes: 30,
+  checkoutStartedThresholdMinutes: 20,
+  paymentPendingThresholdMinutes: 10,
   maxRemindersPerCart: 4,
   stopAfterPurchase: true,
   respectOptOut: true,
@@ -60,10 +75,21 @@ const mergeMeta = (existing: unknown, patch: Record<string, unknown>) => {
 
 const eventToLifecycleState = (eventType: CartEventType): LifecycleState => {
   if (eventType === "checkout_started") return "CHECKOUT_STARTED"
-  if (eventType === "payment_initiated") return "PAYMENT_PENDING"
+  if (eventType === "address_entered") return "CONTACT_CAPTURED"
+  if (eventType === "payment_initiated" || eventType === "payment_page_opened" || eventType === "payment_attempted") return "PAYMENT_PENDING"
   if (eventType === "payment_failed") return "PAYMENT_FAILED"
-  if (eventType === "payment_success" || eventType === "order_placed") return "ORDER_COMPLETED"
-  return "ACTIVE_CART"
+  if (eventType === "payment_cancelled" || eventType === "payment_timeout") return "PAYMENT_PENDING"
+  if (eventType === "payment_success" || eventType === "order_placed" || eventType === "order_completed") return "ORDER_COMPLETED"
+  return "CART_ONLY"
+}
+
+const normalizeEventType = (eventType: CartEventType): CartEventType => {
+  if (eventType === "add_to_cart") return "cart_item_added"
+  if (eventType === "remove_item" || eventType === "quantity_update") return "cart_updated"
+  if (eventType === "payment_initiated") return "payment_attempted"
+  if (eventType === "payment_success") return "order_completed"
+  if (eventType === "order_placed") return "order_completed"
+  return eventType
 }
 
 const ensureRecoveryTables = async () => {
@@ -73,7 +99,7 @@ const ensureRecoveryTables = async () => {
       ADD COLUMN IF NOT EXISTS guest_id text NULL,
       ADD COLUMN IF NOT EXISTS mobile text NULL,
       ADD COLUMN IF NOT EXISTS status text NOT NULL DEFAULT 'active',
-      ADD COLUMN IF NOT EXISTS lifecycle_state text NOT NULL DEFAULT 'ACTIVE_CART',
+      ADD COLUMN IF NOT EXISTS lifecycle_state text NOT NULL DEFAULT 'CART_ONLY',
       ADD COLUMN IF NOT EXISTS checkout_stage text NULL,
       ADD COLUMN IF NOT EXISTS payment_status text NULL,
       ADD COLUMN IF NOT EXISTS coupon_code text NULL,
@@ -259,7 +285,8 @@ export const trackCartEvent = async (input: {
   meta?: Record<string, unknown>
 }) => {
   await ensureRecoveryTables()
-  const lifecycleState = eventToLifecycleState(input.eventType)
+  const eventType = normalizeEventType(input.eventType)
+  const lifecycleState = eventToLifecycleState(eventType)
   const row = await prisma.abandonedCart.upsert({
     where: { sessionKey: input.sessionKey },
     create: {
@@ -300,24 +327,24 @@ export const trackCartEvent = async (input: {
       address_json = CASE WHEN ${addressJson ? 1 : 0} = 1 THEN (${(addressJson as unknown) as Prisma.JsonObject})::jsonb ELSE address_json END,
       metadata = metadata || ${((meta as unknown) as Prisma.JsonObject)}::jsonb,
       status = CASE
-        WHEN ${input.eventType} IN ('payment_success', 'order_placed', 'manual_clear') THEN 'converted'
-        WHEN ${input.eventType} IN ('payment_failed') THEN 'abandoned'
+        WHEN ${eventType} IN ('order_completed', 'manual_clear') THEN 'converted'
+        WHEN ${eventType} IN ('payment_failed') THEN 'abandoned'
         ELSE status
       END,
       abandoned_at = CASE
-        WHEN ${input.eventType} IN ('payment_success', 'order_placed', 'manual_clear') THEN NULL
-        WHEN ${input.eventType} IN ('payment_failed') THEN COALESCE(abandoned_at, now())
+        WHEN ${eventType} IN ('order_completed', 'manual_clear') THEN NULL
+        WHEN ${eventType} IN ('payment_failed') THEN COALESCE(abandoned_at, now())
         ELSE abandoned_at
       END
     WHERE id = ${row.id}
   `)
   await prisma.$executeRaw(Prisma.sql`
     INSERT INTO abandoned_cart_events_v2 (cart_id, event_type, meta)
-    VALUES (${row.id}, ${input.eventType}, ${((input.meta ?? {}) as unknown) as Prisma.JsonObject})
+    VALUES (${row.id}, ${eventType}, ${((input.meta ?? {}) as unknown) as Prisma.JsonObject})
   `)
 
   // Payment failure should be immediately eligible for follow-up: enqueue schedule now (idempotent via unique constraint).
-  if (input.eventType === "payment_failed") {
+  if (eventType === "payment_failed") {
     const settings = await getSettings()
     const schedule = (Array.isArray((settings as any).schedule) ? (settings as any).schedule : DEFAULT_SETTINGS.schedule) as Array<{
       stepNo: number
@@ -356,7 +383,11 @@ export const detectAbandonedCarts = async () => {
   await ensureRecoveryTables()
   const settings = await getSettings()
   if (!settings.enabled) return { scanned: 0, marked: 0, queued: 0 }
-  const threshold = Math.max(1, Number(settings.abandonThresholdMinutes ?? DEFAULT_SETTINGS.abandonThresholdMinutes))
+  const thresholds = {
+    cartOnlyMinutes: Math.max(1, Number((settings as any).cartOnlyThresholdMinutes ?? 30)),
+    checkoutStartedMinutes: Math.max(1, Number((settings as any).checkoutStartedThresholdMinutes ?? 20)),
+    paymentPendingMinutes: Math.max(1, Number((settings as any).paymentPendingThresholdMinutes ?? 10)),
+  }
   const schedule = (Array.isArray(settings.schedule) ? settings.schedule : DEFAULT_SETTINGS.schedule) as Array<{
     stepNo: number
     delayMinutes: number
@@ -365,19 +396,42 @@ export const detectAbandonedCarts = async () => {
     includeCoupon?: boolean
     active?: boolean
   }>
-  const candidates = await prisma.$queryRaw<Array<{ id: string; status: string; updated_at: Date; total: number | null; items_json: Prisma.JsonValue; recovery_disabled: boolean; ignored: boolean }>>(Prisma.sql`
-    SELECT id, status, "updatedAt" as updated_at, total, "itemsJson" as items_json, recovery_disabled, ignored
+  const candidates = await prisma.$queryRaw<
+    Array<{
+      id: string
+      status: string
+      updated_at: Date
+      last_active_at: Date | null
+      lifecycle_state: string
+      total: number | null
+      items_json: Prisma.JsonValue
+      recovery_disabled: boolean
+      ignored: boolean
+    }>
+  >(Prisma.sql`
+    SELECT id, status, "updatedAt" as updated_at, last_active_at, lifecycle_state, total, "itemsJson" as items_json, recovery_disabled, ignored
     FROM "AbandonedCart"
     WHERE status IN ('active', 'abandoned')
       AND recovery_disabled = false
       AND ignored = false
-      AND "updatedAt" <= now() - (${threshold} * interval '1 minute')
   `)
   let marked = 0
   let queued = 0
   for (const cart of candidates) {
     const items = Array.isArray(cart.items_json) ? cart.items_json : []
     if (!items.length) continue
+    const lastActivity = cart.last_active_at ?? cart.updated_at
+    const minutesInactive = Math.floor((Date.now() - new Date(lastActivity).getTime()) / 60000)
+    const stage = String(cart.lifecycle_state || "CART_ONLY")
+    const thresholdMinutes =
+      stage === "PAYMENT_FAILED"
+        ? 0
+        : stage === "PAYMENT_PENDING"
+          ? thresholds.paymentPendingMinutes
+          : stage === "CHECKOUT_STARTED" || stage === "CONTACT_CAPTURED"
+            ? thresholds.checkoutStartedMinutes
+            : thresholds.cartOnlyMinutes
+    if (minutesInactive < thresholdMinutes) continue
     await prisma.$executeRaw(Prisma.sql`
       UPDATE "AbandonedCart"
       SET status = 'abandoned', abandoned_at = COALESCE(abandoned_at, now())
@@ -418,13 +472,13 @@ const renderMessage = async (input: {
   templateKey: string
   channel: RecoveryChannel
 }) => {
-  const vars = {
+  const vars = buildDefaultVars({
     name: input.name || "there",
-    amount: input.cartValue.toFixed(2),
+    cart_value: input.cartValue.toFixed(2),
     items: String(input.itemsCount),
     resume_link: input.checkoutLink,
     coupon: input.coupon ?? "",
-  }
+  })
   const stored = await getTemplate(input.templateKey, input.channel)
   const defaultSubject = "You left something in your cart"
   const defaultBody =
@@ -440,6 +494,48 @@ const renderMessage = async (input: {
 const sendWhatsapp = async (to: string, body: string) => {
   // Reuse SMS adapter as a safe fallback if dedicated provider is absent.
   await smsService.send({ to, body: `[WA] ${body}` })
+}
+
+function normalizeVars(vars: Record<string, string | number | null | undefined>) {
+  const out: Record<string, string> = {}
+  for (const [k, v] of Object.entries(vars)) out[k] = v == null ? "" : String(v)
+  return out
+}
+
+function buildDefaultVars(
+  input: Partial<{
+    name: string
+    first_name: string
+    cart_value: number | string
+    items: number | string
+    item_names: string
+    coupon: string
+    discount: string
+    resume_link: string
+    payment_link: string
+    support_number: string
+    store_name: string
+    expiry_time: string
+  }>,
+) {
+  const storeName = process.env.NEXT_PUBLIC_STORE_NAME ?? process.env.NEXT_PUBLIC_APP_NAME ?? "Store"
+  const supportNumber = process.env.NEXT_PUBLIC_SUPPORT_NUMBER ?? ""
+  return normalizeVars({
+    name: input.name ?? "there",
+    first_name: input.first_name ?? (input.name ? String(input.name).split(" ")[0] : "there"),
+    cart_value: input.cart_value ?? "",
+    items: input.items ?? "",
+    item_names: input.item_names ?? "",
+    coupon: input.coupon ?? "",
+    discount: input.discount ?? "",
+    resume_link: input.resume_link ?? "",
+    payment_link: input.payment_link ?? "",
+    support_number: input.support_number ?? supportNumber,
+    store_name: input.store_name ?? storeName,
+    expiry_time: input.expiry_time ?? "",
+    // Backwards compatible keys used by older templates
+    amount: input.cart_value ?? "",
+  })
 }
 
 export const processRecoveryQueue = async () => {
@@ -899,5 +995,39 @@ export const aggregateAbandonedAnalyticsDaily = async () => {
       updated_at = now()
   `)
   return { date: new Date().toISOString().slice(0, 10), aggregated: true }
+}
+
+export const sendRecoveryTemplateTest = async (input: { templateKey: string; channel: RecoveryChannel; to: string }) => {
+  await ensureRecoveryTables()
+  const template = await getTemplate(input.templateKey, input.channel)
+  const vars = buildDefaultVars({
+    name: "Asha",
+    cart_value: "1299",
+    items: "3",
+    item_names: "Vitamin C Serum, Sunscreen, Lip Balm",
+    coupon: "WELCOME10",
+    discount: "10%",
+    resume_link: "https://example.test/cart/recover/demo",
+    payment_link: "https://example.test/payment/demo",
+    expiry_time: "24 hours",
+  })
+
+  const subject = renderPlaceholders(template?.subject ?? "Test recovery message", vars)
+  const body = renderPlaceholders(
+    template?.body ??
+      (input.channel === "email"
+        ? "<p>Hi {{name}}, this is a test message from {{store_name}}.</p>"
+        : "Hi {{name}}, this is a test message from {{store_name}}."),
+    vars,
+  )
+
+  if (input.channel === "email") {
+    await enqueueEmail({ to: input.to, subject, html: body })
+  } else if (input.channel === "sms") {
+    await smsService.send({ to: input.to, body })
+  } else {
+    await sendWhatsapp(input.to, body)
+  }
+  return { sent: true }
 }
 

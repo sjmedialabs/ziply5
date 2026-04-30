@@ -440,25 +440,43 @@ useEffect(() => {
           : `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`);
       window.localStorage.setItem("ziply5_checkout_ref", checkoutRef);
 
-      // Save as Abandoned Cart instead of creating an actual Order
+      // Track checkout started + contact capture (for abandoned cart recovery engine)
+      await fetch("/api/checkout/start", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sessionKey,
+          email: billing.email || null,
+          mobile: billing.phone || null,
+          items: items,
+          total,
+          meta: {
+            checkoutStage: "CHECKOUT_STARTED",
+            couponCode: couponCode.trim() || null,
+            address: payload,
+            lastVisitedPage: "/checkout",
+          },
+        }),
+      }).catch(() => null)
+
+      // Backwards-compatible: ensure the older abandoned cart endpoint gets a valid payload
       await fetch("/api/v1/abandoned-carts", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          items: items.map((item) => ({
+          sessionKey,
+          email: billing.email || null,
+          itemsJson: items.map((item) => ({
             slug: item.slug,
             productId: item.productId,
             variantId: item.variantId ?? null,
             quantity: item.quantity,
+            name: item.name,
+            price: item.price,
           })),
-          shipping,
-          couponCode: couponCode.trim() || undefined,
-          gateway: "razorpay",
-          billingAddress: payload,
-          paymentStatus: "pending",
-          paymentId: `checkout_ref:${checkoutRef}`,
+          total,
         }),
-      });
+      }).catch(() => null);
 
       router.push("/payment");
     } catch (e) {
