@@ -5,6 +5,13 @@ import { authedFetch, authedPatch, authedPost } from "@/lib/dashboard-fetch";
 import { ConsoleTable, ConsoleTd } from "@/components/dashboard/ConsoleTable";
 import { useRealtimeTables } from "@/hooks/useRealtimeTables";
 import { useMasterValues } from "@/hooks/useMasterData";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 type Summary = {
   grossSales: string | number;
@@ -272,21 +279,25 @@ export default function AdminFinancePage() {
                 }}
                   className="w-40 rounded-lg border border-[#D9D9D1] bg-white px-3 py-1.5 text-xs focus:border-[#7B3010] focus:outline-none"
                 />
-                <select
+                <Select
                   value={refundStatusFilter}
-                onChange={(e) => {
-                  setRefundStatusFilter(e.target.value);
-                  setRefundPage(1);
-                }}
-                  className="rounded-lg border border-[#D9D9D1] bg-white px-2 py-1.5 text-xs capitalize focus:border-[#7B3010] focus:outline-none"
+                  onValueChange={(val) => {
+                    setRefundStatusFilter(val);
+                    setRefundPage(1);
+                  }}
                 >
-                  <option value="all">All Statuses</option>
-                  {refundStatusOptions.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
+                  <SelectTrigger className="!h-[30px] w-36 rounded-lg border border-[#D9D9D1] bg-white px-2 py-1 text-xs capitalize shadow-none focus:border-[#7B3010] focus:outline-none focus:ring-0 focus-visible:ring-0">
+                    <SelectValue placeholder="All Statuses" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Statuses</SelectItem>
+                    {refundStatusOptions.map((option) => (
+                      <SelectItem key={option.value} value={option.value} className="capitalize">
+                        {option.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
                 <button
                   type="button"
                   onClick={() => {
@@ -314,17 +325,21 @@ export default function AdminFinancePage() {
                     <ConsoleTd className="text-[11px]">{r.id.slice(0, 10)}...</ConsoleTd>
                     <ConsoleTd>Rs.{Number(r.amount).toFixed(2)}</ConsoleTd>
                     <ConsoleTd>
-                      <select
+                      <Select
                         value={rfDraft[r.id] ?? r.status}
-                        onChange={(e) => setRfDraft((d) => ({ ...d, [r.id]: e.target.value }))}
-                        className="rounded-lg border border-[#D9D9D1] bg-white px-2 py-1 text-xs capitalize"
+                        onValueChange={(val) => setRfDraft((d) => ({ ...d, [r.id]: val }))}
                       >
-                        {refundStatusOptions.map((option) => (
-                          <option key={option.value} value={option.value}>
-                            {option.label}
-                          </option>
-                        ))}
-                      </select>
+                        <SelectTrigger className="!h-[26px] w-full max-w-[130px] rounded-lg border border-[#D9D9D1] bg-white px-2 py-1 text-xs capitalize shadow-none focus:border-[#7B3010] focus:outline-none focus:ring-0 focus-visible:ring-0">
+                          <SelectValue placeholder="Status" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {refundStatusOptions.map((option) => (
+                            <SelectItem key={option.value} value={option.value} className="capitalize">
+                              {option.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
                     </ConsoleTd>
                     <ConsoleTd className="text-xs">{r.reason || "—"}</ConsoleTd>
 
@@ -402,21 +417,25 @@ export default function AdminFinancePage() {
                 }}
                 className="w-40 rounded-lg border border-[#D9D9D1] bg-white px-3 py-1.5 text-xs focus:border-[#7B3010] focus:outline-none"
               />
-              <select
+              <Select
                 value={transactionStatusFilter}
-                onChange={(e) => {
-                  setTransactionStatusFilter(e.target.value);
+                onValueChange={(val) => {
+                  setTransactionStatusFilter(val);
                   setTransactionPage(1);
                 }}
-                className="rounded-lg border border-[#D9D9D1] bg-white px-2 py-1.5 text-xs capitalize focus:border-[#7B3010] focus:outline-none"
               >
-                <option value="all">All Statuses</option>
-                {transactionStatusOptions.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
+                <SelectTrigger className="!h-[30px] w-36 rounded-lg border border-[#D9D9D1] bg-white px-2 py-1 text-xs capitalize shadow-none focus:border-[#7B3010] focus:outline-none focus:ring-0 focus-visible:ring-0">
+                  <SelectValue placeholder="All Statuses" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Statuses</SelectItem>
+                  {transactionStatusOptions.map((option) => (
+                    <SelectItem key={option.value} value={option.value} className="capitalize">
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
               <button
                 type="button"
                 onClick={() => {

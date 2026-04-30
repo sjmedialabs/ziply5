@@ -225,7 +225,7 @@ export default function CmsDashboard() {
           <TabsTrigger className='cursor-pointer data-[state=active]:bg-primary data-[state=active]:text-white' value="shipping">Shipping Info</TabsTrigger>
           <TabsTrigger className='cursor-pointer data-[state=active]:bg-primary data-[state=active]:text-white' value="contact">Contact Us</TabsTrigger>
           <TabsTrigger className='cursor-pointer data-[state=active]:bg-primary data-[state=active]:text-white' value="faq">FAQ</TabsTrigger>
-          <TabsTrigger className='cursor-pointer data-[state=active]:bg-primary data-[state=active]:text-white' value="promos">Promos</TabsTrigger>
+          {/* <TabsTrigger className='cursor-pointer data-[state=active]:bg-primary data-[state=active]:text-white' value="promos">Promos</TabsTrigger> */}
           <TabsTrigger className='cursor-pointer data-[state=active]:bg-primary data-[state=active]:text-white' value="header">Header</TabsTrigger>
           <TabsTrigger className='cursor-pointer data-[state=active]:bg-primary data-[state=active]:text-white' value="footer">Footer</TabsTrigger>
         </TabsList>
@@ -334,7 +334,7 @@ export default function CmsDashboard() {
           </div>
         </TabsContent>
 
-        <TabsContent value="promos" className="space-y-6 mt-0">
+        {/* <TabsContent value="promos" className="space-y-6 mt-0">
           <div className="space-y-6">
             {promoSections.map(({ type, component: Component }) => (
               <div key={type}>
@@ -345,7 +345,7 @@ export default function CmsDashboard() {
               </div>
             ))}
           </div>
-        </TabsContent>
+        </TabsContent> */}
 
         <TabsContent value="header" className="space-y-6 mt-0">
           <div className="space-y-6">

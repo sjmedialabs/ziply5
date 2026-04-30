@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, useMemo } from "react";
 import { authedFetch } from "@/lib/dashboard-fetch";
 
 import { ConsoleTable, ConsoleTd } from "@/components/dashboard/ConsoleTable";
@@ -17,6 +17,13 @@ import {
 
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 type UserRow = {
   id: string;
@@ -32,6 +39,10 @@ export default function AdminUsersPage() {
   const [total, setTotal] = useState(0);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
+
+  // Search & Filter State
+  const [searchTerm, setSearchTerm] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
 
   // Modal State
   const [open, setOpen] = useState(false);
@@ -136,6 +147,16 @@ export default function AdminUsersPage() {
   }
 };
 
+  const filteredRows = useMemo(() => {
+    return rows.filter((u) => {
+      const matchesSearch =
+        (u.name || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (u.email || "").toLowerCase().includes(searchTerm.toLowerCase());
+      const matchesStatus = statusFilter === "all" || u.status === statusFilter;
+      return matchesSearch && matchesStatus;
+    });
+  }, [rows, searchTerm, statusFilter]);
+
   return (
     <section className="mx-auto max-w-7xl space-y-4">
       <div className="flex flex-wrap items-end justify-between gap-3">
@@ -166,6 +187,20 @@ export default function AdminUsersPage() {
         </div>
       </div>
 
+      <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+        <input type="text" placeholder="Search by name or email..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full rounded-full border border-[#E3E3DA] bg-[#FAFBF9] px-4 py-2.5 text-sm placeholder-[#8A8A8A] focus:border-[#7B3010] focus:outline-none" />
+        <Select value={statusFilter} onValueChange={setStatusFilter}>
+          <SelectTrigger className="h-auto w-full rounded-full border border-[#E3E3DA] bg-white px-4 py-2.5 text-sm text-[#4A1D1F] shadow-none focus:border-[#7B3010] focus:outline-none focus:ring-0 focus-visible:ring-0">
+            <SelectValue placeholder="All statuses" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All statuses</SelectItem>
+            <SelectItem value="active">Active</SelectItem>
+            <SelectItem value="suspended">Suspended</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+
       {error && (
         <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-800">
           {error}
@@ -180,17 +215,17 @@ export default function AdminUsersPage() {
         <ConsoleTable
           headers={["Name", "Email", "Roles", "Status", "Joined","Edit"]}
         >
-          {rows.length === 0 ? (
+          {filteredRows.length === 0 ? (
             <tr>
               <ConsoleTd
-                colSpan={5}
+                colSpan={6}
                 className="py-8 text-center text-[#646464]"
               >
-                No users.
+                No users found.
               </ConsoleTd>
             </tr>
           ) : (
-            rows.map((u) => (
+            filteredRows.map((u) => (
               <tr
                 key={u.id}
                 className="hover:bg-[#FFFBF3]/80"
