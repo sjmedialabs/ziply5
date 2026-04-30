@@ -3,7 +3,7 @@
 import BannerSection from "@/components/BannerSection";
 import { ArrowLeft } from "lucide-react";
 import Link from "next/link";
-import { useLocation } from "@/hooks/useLocation"; // Custom hook to manage state/city selection
+import { useLocations } from "@/hooks/useLocations";
 import { getCartItems, type CartItem, setCartItems, validateCartItems } from "@/lib/cart"; 
 import { useStorefrontProducts } from "@/hooks/useStorefrontProducts";
 import {
@@ -42,16 +42,44 @@ type ValidatedCartItem = CartItem & {
 };
 
 export default function CheckoutPage() {
-  const {
-    state,
-    setState,
-    city,
-    setCity,
-    states,
-    cities,
-  } = useLocation();
   const router = useRouter();
   const { products } = useStorefrontProducts(200);
+
+  const [state, setState] = useState("");
+  const [city, setCity] = useState("");
+
+  const { data: states } = useLocations("state");
+  const { data: cities } = useLocations("city");
+  const [cityMap, setCityMap] = useState<Record<string, string[]>>({});
+
+  useEffect(() => {
+    fetch("/data/india-locations.json")
+      .then((res) => res.json())
+      .then((data) => {
+        if (data?.cities) setCityMap(data.cities);
+      })
+      .catch(() => {});
+  }, []);
+
+  const availableCities = cities?.filter((c: any) => {
+    if (!state) return false;
+    const selectedStateObj = states?.find((s) => s.label === state);
+    if (!selectedStateObj) return false;
+
+    // 1. Check for strict DB relationship
+    const parentRef = c.parentState || c.valueJson?.parentState || c.meta?.parentState;
+    if (parentRef) {
+      return parentRef === selectedStateObj.value || parentRef === selectedStateObj.label;
+    }
+
+    // 2. Fallback to local JSON map
+    if (selectedStateObj.label && cityMap[selectedStateObj.label]) {
+      return cityMap[selectedStateObj.label].includes(c.label);
+    }
+
+    // 3. Absolute Failsafe
+    return Object.keys(cityMap).length === 0;
+  });
 
   const sessionKey = useMemo(() => {
     if (typeof window === "undefined") return "";
@@ -560,7 +588,7 @@ useEffect(() => {
         {/* State */}
         <div>
           <label className="text-[#646464] text-sm">State</label>
-          <Select value={state} onValueChange={(val) => {
+          <Select value={state || undefined} onValueChange={(val) => {
             setState(val);
             setCity(""); // reset city
           }}>
@@ -568,9 +596,9 @@ useEffect(() => {
               <SelectValue placeholder="Select State" />
             </SelectTrigger>
             <SelectContent>
-              {states.map((s) => (
-                <SelectItem key={s} value={s}>
-                  {s}
+              {states?.map((s) => (
+                <SelectItem key={s.value} value={s.label}>
+                  {s.label}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -581,17 +609,17 @@ useEffect(() => {
         <div>
           <label className="text-[#646464] text-sm">City</label>
           <Select
-            value={city}
+            value={city || undefined}
             onValueChange={setCity}
             disabled={!state}
           >
             <SelectTrigger className="input mt-1">
-              <SelectValue placeholder="Select City" />
+              <SelectValue placeholder={!state ? "Select state first" : "Select City"} />
             </SelectTrigger>
             <SelectContent>
-              {cities.map((c) => (
-                <SelectItem key={c} value={c}>
-                  {c}
+              {availableCities?.map((c) => (
+                <SelectItem key={c.value} value={c.label}>
+                  {c.label}
                 </SelectItem>
               ))}
             </SelectContent>

@@ -111,13 +111,13 @@ export default function OurProductsSectionEditor({ value = { title: '', items: [
         />
       </div>
 
-      <DynamicList
+      {/* <DynamicList
         title="Product Items"
         items={localValue.items}
         onChange={updateItems}
         renderItem={renderItem}
         emptyMessage="No products. Add products to showcase."
-      />
+      /> */}
     </Card>
   );
 }

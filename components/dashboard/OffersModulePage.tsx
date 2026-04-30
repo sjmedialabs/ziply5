@@ -2,6 +2,13 @@
 
 import { useCallback, useEffect, useState } from "react"
 import { authedDelete, authedFetch, authedPatch, authedPost, authedPut } from "@/lib/dashboard-fetch"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 
 type OfferType = "coupon" | "automatic" | "product_discount" | "cart_discount" | "shipping_discount" | "bogo"
 type OfferStatus = "draft" | "active" | "inactive" | "expired"
@@ -232,11 +239,16 @@ export default function OffersModulePage({ type, title, subtitle }: { type: Offe
     if (type === "shipping_discount") {
       return (
         <>
-          <select className="rounded-xl border px-3 py-2 text-sm" value={draft.shippingMode} onChange={(e) => setDraft((p) => ({ ...p, shippingMode: e.target.value }))}>
-            <option value="free">Free Shipping</option>
-            <option value="flat">Reduced Shipping (flat)</option>
-            <option value="percentage">Reduced Shipping (%)</option>
-          </select>
+          <Select value={draft.shippingMode} onValueChange={(v) => setDraft((p) => ({ ...p, shippingMode: v }))}>
+            <SelectTrigger className="!h-[38px] w-full rounded-xl border px-3 py-2 text-sm shadow-none focus:ring-0">
+              <SelectValue placeholder="Shipping Mode" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="free">Free Shipping</SelectItem>
+              <SelectItem value="flat">Reduced Shipping (flat)</SelectItem>
+              <SelectItem value="percentage">Reduced Shipping (%)</SelectItem>
+            </SelectContent>
+          </Select>
           <input className="rounded-xl border px-3 py-2 text-sm" placeholder="Shipping discount value" value={draft.shippingDiscountValue} onChange={(e) => setDraft((p) => ({ ...p, shippingDiscountValue: e.target.value }))} />
         </>
       )
@@ -246,10 +258,15 @@ export default function OffersModulePage({ type, title, subtitle }: { type: Offe
         <>
           <input className="rounded-xl border px-3 py-2 text-sm" placeholder="Buy qty" value={draft.buyQty} onChange={(e) => setDraft((p) => ({ ...p, buyQty: e.target.value }))} />
           <input className="rounded-xl border px-3 py-2 text-sm" placeholder="Get qty" value={draft.getQty} onChange={(e) => setDraft((p) => ({ ...p, getQty: e.target.value }))} />
-          <select className="rounded-xl border px-3 py-2 text-sm" value={draft.rewardType} onChange={(e) => setDraft((p) => ({ ...p, rewardType: e.target.value }))}>
-            <option value="free">Free</option>
-            <option value="percentage_off">% Off</option>
-          </select>
+          <Select value={draft.rewardType} onValueChange={(v) => setDraft((p) => ({ ...p, rewardType: v }))}>
+            <SelectTrigger className="!h-[28px] w-full rounded-xl border px-3 py-2 text-sm shadow-none focus:ring-0">
+              <SelectValue placeholder="Reward Type" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="free">Free</SelectItem>
+              <SelectItem value="percentage_off">% Off</SelectItem>
+            </SelectContent>
+          </Select>
           <input className="rounded-xl border px-3 py-2 text-sm" placeholder="Reward value (for % off)" value={draft.rewardValue} onChange={(e) => setDraft((p) => ({ ...p, rewardValue: e.target.value }))} />
           <label className="flex items-center gap-2 rounded-xl border px-3 py-2 text-sm"><input type="checkbox" checked={draft.repeatable} onChange={(e) => setDraft((p) => ({ ...p, repeatable: e.target.checked }))} />Repeatable</label>
           <input className="rounded-xl border px-3 py-2 text-sm" placeholder="Max free units" value={draft.maxFreeUnits} onChange={(e) => setDraft((p) => ({ ...p, maxFreeUnits: e.target.value }))} />
@@ -277,10 +294,15 @@ export default function OffersModulePage({ type, title, subtitle }: { type: Offe
           <input type="checkbox" checked={draft.enabled} onChange={(e) => setDraft((p) => ({ ...p, enabled: e.target.checked }))} />
         </label>
         <input type="number" className="rounded-xl border px-3 py-2 text-sm" placeholder="Priority" value={draft.priority} onChange={(e) => setDraft((p) => ({ ...p, priority: Number(e.target.value) }))} />
-        <select className="rounded-xl border px-3 py-2 text-sm" value={draft.discountType} onChange={(e) => setDraft((p) => ({ ...p, discountType: e.target.value }))}>
-          <option value="percentage">Percentage</option>
-          <option value="flat">Flat</option>
-        </select>
+        <Select value={draft.discountType} onValueChange={(v) => setDraft((p) => ({ ...p, discountType: v }))}>
+          <SelectTrigger className="!h-[38px] w-full rounded-xl border px-3 py-2 text-sm shadow-none focus:ring-0">
+            <SelectValue placeholder="Discount Type" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="percentage">Percentage</SelectItem>
+            <SelectItem value="flat">Flat</SelectItem>
+          </SelectContent>
+        </Select>
         <input className="rounded-xl border px-3 py-2 text-sm" placeholder="Discount value" value={draft.discountValue} onChange={(e) => setDraft((p) => ({ ...p, discountValue: e.target.value }))} />
         <input className="rounded-xl border px-3 py-2 text-sm" placeholder="Max discount cap (optional)" value={draft.maxDiscountCap} onChange={(e) => setDraft((p) => ({ ...p, maxDiscountCap: e.target.value }))} />
         <input className="rounded-xl border px-3 py-2 text-sm" placeholder="Min cart value (optional)" value={draft.minCartValue} onChange={(e) => setDraft((p) => ({ ...p, minCartValue: e.target.value }))} />
@@ -306,15 +328,37 @@ export default function OffersModulePage({ type, title, subtitle }: { type: Offe
       <div className="rounded-2xl border border-[#E8DCC8] bg-white p-4 shadow-sm">
         <div className="mb-3 flex items-center justify-between gap-3">
           <input className="w-full max-w-sm rounded-full border px-4 py-2 text-sm" placeholder="Search by offer/coupon code" value={query} onChange={(e) => { setQuery(e.target.value); setPage(1) }} />
-          <select className="rounded-full border px-3 py-2 text-xs" value={statusFilter} onChange={(e) => { setStatusFilter(e.target.value as any); setPage(1) }}>
-            <option value="all">All statuses</option><option value="draft">Draft</option><option value="active">Active</option><option value="inactive">Inactive</option><option value="expired">Expired</option>
-          </select>
-          <select className="rounded-full border px-3 py-2 text-xs" value={sortBy} onChange={(e) => setSortBy(e.target.value as any)}>
-            <option value="priority">Sort: Priority</option><option value="created_at">Sort: Created</option><option value="name">Sort: Name</option>
-          </select>
-          <select className="rounded-full border px-3 py-2 text-xs" value={sortDir} onChange={(e) => setSortDir(e.target.value as any)}>
-            <option value="asc">Asc</option><option value="desc">Desc</option>
-          </select>
+          <Select value={statusFilter} onValueChange={(v: any) => { setStatusFilter(v); setPage(1) }}>
+            <SelectTrigger className="!h-[37px] w-[140px] rounded-full border px-4 py-2 text-sm shadow-none focus:ring-0">
+              <SelectValue placeholder="All statuses" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All statuses</SelectItem>
+              <SelectItem value="draft">Draft</SelectItem>
+              <SelectItem value="active">Active</SelectItem>
+              <SelectItem value="inactive">Inactive</SelectItem>
+              <SelectItem value="expired">Expired</SelectItem>
+            </SelectContent>
+          </Select>
+          <Select value={sortBy} onValueChange={(v: any) => setSortBy(v)}>
+            <SelectTrigger className="!h-[37px] w-[140px] rounded-full border px-4 py-2 text-sm shadow-none focus:ring-0">
+              <SelectValue placeholder="Sort By" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="priority">Sort: Priority</SelectItem>
+              <SelectItem value="created_at">Sort: Created</SelectItem>
+              <SelectItem value="name">Sort: Name</SelectItem>
+            </SelectContent>
+          </Select>
+          <Select value={sortDir} onValueChange={(v: any) => setSortDir(v)}>
+            <SelectTrigger className="!h-[37px] w-[90px] rounded-full border px-4 py-2 text-sm shadow-none focus:ring-0">
+              <SelectValue placeholder="Dir" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="asc">Asc</SelectItem>
+              <SelectItem value="desc">Desc</SelectItem>
+            </SelectContent>
+          </Select>
           <button type="button" className="rounded-full border border-[#7B3010] px-3 py-1.5 text-xs font-semibold uppercase text-[#7B3010]" onClick={() => void load()} disabled={busy}>
             Refresh
           </button>
@@ -437,9 +481,16 @@ export default function OffersModulePage({ type, title, subtitle }: { type: Offe
         <div className="mt-3 flex items-center justify-between text-xs text-[#7A7A7A]">
           <span>Total {total}</span>
           <div className="flex items-center gap-2">
-            <select className="rounded-full border px-2 py-1" value={pageSize} onChange={(e) => { setPageSize(Number(e.target.value)); setPage(1) }}>
-              <option value={10}>10</option><option value={20}>20</option><option value={50}>50</option>
-            </select>
+            <Select value={String(pageSize)} onValueChange={(v) => { setPageSize(Number(v)); setPage(1) }}>
+              <SelectTrigger className="!h-[28px] w-[65px] rounded-full border px-2 py-1 text-xs shadow-none focus:ring-0">
+                <SelectValue placeholder="Size" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="10">10</SelectItem>
+                <SelectItem value="20">20</SelectItem>
+                <SelectItem value="50">50</SelectItem>
+              </SelectContent>
+            </Select>
             <button type="button" className="rounded-full border px-2 py-1 disabled:opacity-40" disabled={page <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))}>Prev</button>
             <span>Page {page}</span>
             <button type="button" className="rounded-full border px-2 py-1 disabled:opacity-40" disabled={page * pageSize >= total} onClick={() => setPage((p) => p + 1)}>Next</button>
@@ -466,4 +517,3 @@ export default function OffersModulePage({ type, title, subtitle }: { type: Offe
     </section>
   )
 }
-
