@@ -1,7 +1,10 @@
-import { PrismaClient } from "@prisma/client"
 import bcrypt from "bcryptjs"
+import pg from "pg"
 
-const prisma = new PrismaClient()
+const { Pool } = pg
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+})
 
 const roles = [
   { key: "super_admin", name: "super admin" },
@@ -25,52 +28,62 @@ const usersToSeed = [
 ]
 
 async function main() {
-  for (const role of roles) {
-    await prisma.role.upsert({
-      where: { key: role.key },
-      update: { name: role.name },
-      create: role,
-    })
-  }
+  const client = await pool.connect()
+  try {
+    await client.query("BEGIN")
 
-  for (const item of usersToSeed) {
-    const role = await prisma.role.findUnique({ where: { key: item.roleKey } })
-    if (!role) {
-      throw new Error(`Missing role: ${item.roleKey}`)
+    for (const role of roles) {
+      await client.query(
+        `
+          INSERT INTO "Role" (id, key, name)
+          VALUES (gen_random_uuid()::text, $1, $2)
+          ON CONFLICT (key) DO UPDATE SET name = EXCLUDED.name
+        `,
+        [role.key, role.name],
+      )
     }
 
-    const passwordHash = await bcrypt.hash(item.password, 12)
-    const user = await prisma.user.upsert({
-      where: { email: item.email },
-      update: {
-        name: item.name,
-        passwordHash,
-      },
-      create: {
-        name: item.name,
-        email: item.email,
-        passwordHash,
-      },
-    })
+    for (const item of usersToSeed) {
+      const roleRes = await client.query(`SELECT id, key FROM "Role" WHERE key = $1 LIMIT 1`, [item.roleKey])
+      const role = roleRes.rows[0]
+      if (!role) throw new Error(`Missing role: ${item.roleKey}`)
 
-    await prisma.userRole.upsert({
-      where: {
-        userId_roleId: {
-          userId: user.id,
-          roleId: role.id,
-        },
-      },
-      update: {},
-      create: {
-        userId: user.id,
-        roleId: role.id,
-      },
-    })
+      const passwordHash = await bcrypt.hash(item.password, 12)
 
-    console.log(`Seeded user: ${item.email} (${item.roleKey})`)
-  }
+      const userRes = await client.query(
+        `
+          INSERT INTO "User" (id, name, email, "passwordHash", status, "createdAt", "updatedAt")
+          VALUES (gen_random_uuid()::text, $1, $2, $3, 'active', now(), now())
+          ON CONFLICT (email) DO UPDATE
+          SET name = EXCLUDED.name, "passwordHash" = EXCLUDED."passwordHash", "updatedAt" = now()
+          RETURNING id, email
+        `,
+        [item.name, item.email, passwordHash],
+      )
+      const user = userRes.rows[0]
+      if (!user) throw new Error(`Failed to upsert user: ${item.email}`)
+
+      await client.query(
+        `
+          INSERT INTO "UserRole" ("userId", "roleId")
+          VALUES ($1, $2)
+          ON CONFLICT ("userId","roleId") DO NOTHING
+        `,
+        [user.id, role.id],
+      )
+
+      console.log(`Seeded user: ${item.email} (${item.roleKey})`)
+    }
+
+    await client.query("COMMIT")
 
   console.log("Auth seed completed.")
+  } catch (e) {
+    await client.query("ROLLBACK").catch(() => null)
+    throw e
+  } finally {
+    client.release()
+  }
 }
 
 main()
@@ -79,5 +92,5 @@ main()
     process.exitCode = 1
   })
   .finally(async () => {
-    await prisma.$disconnect()
+    await pool.end()
   })

@@ -44,14 +44,44 @@ export function DashboardChrome({
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [me, setMe] = useState<MePayload | null>(null)
   const reduce = useReducedMotion()
+  // Critical: nav must render instantly on first paint (no "blank sidebar" flash).
+  const [isDesktop, setIsDesktop] = useState(() => {
+    if (typeof window === "undefined") return true
+    try {
+      return window.matchMedia("(min-width: 1024px)").matches
+    } catch {
+      return true
+    }
+  })
 
   useEffect(() => {
     authFetch("/api/v1/auth/me")
-      .then((r) => r.json())
-      .then((p: { success?: boolean; data?: MePayload }) => {
+      .then(async (r) => {
+        if (r.status === 401) {
+          // Do not render "unauthorized" pages; send user to login immediately.
+          clearSession({ silent: true })
+          window.location.href = loginPath
+          return null
+        }
+        return (await r.json()) as { success?: boolean; data?: MePayload }
+      })
+      .then((p) => {
+        if (!p) return
         if (p.success && p.data) setMe(p.data)
       })
       .catch(() => {})
+  }, [])
+
+  useEffect(() => {
+    const mq = window.matchMedia("(min-width: 1024px)")
+    const apply = () => setIsDesktop(mq.matches)
+    apply()
+    if ("addEventListener" in mq) mq.addEventListener("change", apply)
+    else mq.addListener(apply)
+    return () => {
+      if ("removeEventListener" in mq) mq.removeEventListener("change", apply)
+      else mq.removeListener(apply)
+    }
   }, [])
 
   const logout = () => {
@@ -67,8 +97,16 @@ export function DashboardChrome({
     window.location.href = loginPath
   }
 
-  const isActive = (href: string) =>
-    pathname === href || (href !== "/" && pathname.startsWith(`${href}/`))
+  const currentPathWithSearch =
+    typeof window !== "undefined" ? `${window.location.pathname}${window.location.search}` : pathname
+
+  const isActive = (href: string) => {
+    // Support query-based nav items like "/admin/products?catalog=combos"
+    if (href.includes("?")) {
+      return currentPathWithSearch === href
+    }
+    return pathname === href || (href !== "/" && pathname.startsWith(`${href}/`))
+  }
 
   const NavList = ({ onNavigate }: { onNavigate?: () => void }) => (
     <nav className="flex flex-col gap-0.5 px-2 py-3">
@@ -147,8 +185,11 @@ export function DashboardChrome({
         initial={false}
         animate={
           reduce
-            ? { x: sidebarOpen ? 0 : -320 }
-            : { x: sidebarOpen ? 0 : -320, transition: { duration: 0.22, ease: "easeOut" } }
+            ? { x: isDesktop ? 0 : sidebarOpen ? 0 : -320 }
+            : {
+                x: isDesktop ? 0 : sidebarOpen ? 0 : -320,
+                transition: isDesktop ? { duration: 0 } : { duration: 0.22, ease: "easeOut" },
+              }
         }
         style={{ willChange: "transform" }}
       >

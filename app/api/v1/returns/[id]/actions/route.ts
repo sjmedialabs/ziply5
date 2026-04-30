@@ -3,8 +3,7 @@ import { z } from "zod"
 import { fail, ok } from "@/src/server/core/http/response"
 import { requireAuth } from "@/src/server/middleware/auth"
 import { requirePermission } from "@/src/server/middleware/rbac"
-import { prisma } from "@/src/server/db/prisma"
-import { settleReturnRequest, recordReturnReceiving } from "@/src/server/modules/returns/returns.service"
+import { pgQuery } from "@/src/server/db/pg"
 import { updateOrderStatus } from "@/src/server/modules/orders/orders.service"
 
 const schema = z.object({
@@ -25,54 +24,36 @@ export async function POST(request: NextRequest, ctx: { params: Promise<{ id: st
 
   try {
     if (parsed.data.action === "approve") {
-      const row = await settleReturnRequest({ returnRequestId: id, actorId: auth.user.sub, status: "approved", notes: parsed.data.notes })
-      if (row.returnRequest?.orderId) {
-        await updateOrderStatus(row.returnRequest.orderId, "return_approved", auth.user.sub, {
+      const rows = await pgQuery<Array<{ orderId: string }>>(
+        `UPDATE "ReturnRequest" SET status='approved', "updatedAt"=now() WHERE id=$1 RETURNING "orderId"`,
+        [id],
+      )
+      const orderId = rows[0]?.orderId
+      if (orderId) {
+        await updateOrderStatus(orderId, "return_approved", auth.user.sub, {
           reasonCode: "return_approved",
           note: "Return approved by admin",
         }).catch(() => null)
       }
-      return ok(row, "Return approved")
+      return ok({ updated: true, orderId }, "Return approved")
     }
     if (parsed.data.action === "reject") {
-      const row = await settleReturnRequest({ returnRequestId: id, actorId: auth.user.sub, status: "rejected", notes: parsed.data.notes })
-      return ok(row, "Return rejected")
+      await pgQuery(`UPDATE "ReturnRequest" SET status='rejected', "updatedAt"=now() WHERE id=$1`, [id])
+      return ok({ updated: true }, "Return rejected")
     }
-
-    const req = await prisma.returnRequest.findUnique({
-      where: { id },
-      include: {
-        items: true,
-        order: { include: { items: true } },
-      },
-    })
-    if (!req) return fail("Return request not found", 404)
-
-    const items = req.order.items.map((orderItem) => {
-      const reqItem = req.items.find((entry) => entry.orderItemId === orderItem.id)
-      const qty = reqItem?.requestedQty ?? orderItem.quantity
-      return {
-        orderItemId: orderItem.id,
-        receivedQty: qty,
-        conditionStatus: "good" as const,
-      }
-    })
-
-    const status = parsed.data.action === "mark_picked" ? "picked_up" : "received"
-    const row = await recordReturnReceiving({
-      returnRequestId: id,
-      actorId: auth.user.sub,
-      status,
-      notes: parsed.data.notes,
-      items,
-    })
-    if (status === "received" && req.order?.id) {
-      await updateOrderStatus(req.order.id, "refund_initiated", auth.user.sub, {
+    const nextStatus = parsed.data.action === "mark_picked" ? "picked_up" : "received"
+    const rows = await pgQuery<Array<{ orderId: string }>>(
+      `UPDATE "ReturnRequest" SET status=$2, "updatedAt"=now() WHERE id=$1 RETURNING "orderId"`,
+      [id, nextStatus],
+    )
+    const orderId = rows[0]?.orderId
+    if (nextStatus === "received" && orderId) {
+      await updateOrderStatus(orderId, "refund_initiated", auth.user.sub, {
         reasonCode: "refund_initiated",
         note: "Return received, refund can be initiated",
       }).catch(() => null)
     }
-    return ok(row, status === "picked_up" ? "Return marked picked up" : "Return marked received")
+    return ok({ updated: true, status: nextStatus, orderId }, nextStatus === "picked_up" ? "Return marked picked up" : "Return marked received")
   } catch (error) {
     const message = error instanceof Error ? error.message : "Action failed"
     if (message.toLowerCase().includes("not found")) return fail(message, 404)

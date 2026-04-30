@@ -1,18 +1,15 @@
-import { prisma } from "@/src/server/db/prisma"
+import { pgQuery } from "@/src/server/db/pg"
 
 export const listNotifications = async (userId: string) => {
-  return prisma.notification.findMany({
-    where: { userId },
-    orderBy: { createdAt: "desc" },
-    take: 50,
-  })
+  return pgQuery(`SELECT * FROM "Notification" WHERE "userId" = $1 ORDER BY "createdAt" DESC LIMIT 50`, [userId])
 }
 
 export const markNotificationRead = async (id: string, userId: string) => {
-  const n = await prisma.notification.findFirst({ where: { id, userId } })
-  if (!n) throw new Error("Notification not found")
-  return prisma.notification.update({
-    where: { id },
-    data: { readAt: new Date() },
-  })
+  const found = await pgQuery<Array<{ id: string }>>(
+    `SELECT id FROM "Notification" WHERE id = $1 AND "userId" = $2 LIMIT 1`,
+    [id, userId],
+  )
+  if (!found[0]) throw new Error("Notification not found")
+  const rows = await pgQuery(`UPDATE "Notification" SET "readAt" = now() WHERE id = $1 RETURNING *`, [id])
+  return rows[0]
 }

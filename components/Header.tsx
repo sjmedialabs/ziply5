@@ -175,12 +175,7 @@ export default function Header() {
   const total = cartItems.reduce((sum, item) => sum + item.price * item.quantity, 0)
 
   return (
-    <m.header
-      className="sticky top-0 z-[100]"
-      initial={reduce ? undefined : { y: -10, opacity: 0 }}
-      animate={reduce ? undefined : { y: 0, opacity: 1 }}
-      transition={reduce ? undefined : { duration: 0.28, ease: "easeOut" }}
-    >
+    <header className="sticky top-0 z-[100]">
       {/* Top Marquee Bar */}
       <div className="bg-yellow-400 py-2.5 overflow-hidden relative z-0">
         <div className="marquee-container">
@@ -288,7 +283,10 @@ export default function Header() {
               {cmsData?.link1Title || "Best Sellers"}
             </Link>
 
-            <Link href={cmsData?.link2Url || "/#combos"} className="font-extrabold text-black hover:text-[#f97316] transition-colors text-[15px]">
+            <Link
+              href={cmsData?.link2Url || "/products?type=combo"}
+              className="font-extrabold text-black hover:text-[#f97316] transition-colors text-[15px]"
+            >
               {cmsData?.link2Title || "Combos"}
             </Link>
           </div>
@@ -382,7 +380,11 @@ export default function Header() {
             <Link href={cmsData?.link1Url || "/#best-sellers"} onClick={() => setMenuOpen(false)} className="block font-semibold text-black">
               {cmsData?.link1Title || "Best Sellers"}
             </Link>
-            <Link href={cmsData?.link2Url || "/#combos"} onClick={() => setMenuOpen(false)} className="block font-semibold text-black">
+            <Link
+              href={cmsData?.link2Url || "/products?type=combo"}
+              onClick={() => setMenuOpen(false)}
+              className="block font-semibold text-black"
+            >
               {cmsData?.link2Title || "Combos"}
             </Link>
             <Link href={profileHref} onClick={() => setMenuOpen(false)} className="block font-semibold text-black">
@@ -447,6 +449,6 @@ export default function Header() {
           </m.div>
         ) : null}
       </AnimatePresence>
-    </m.header>
+    </header>
   )
 }

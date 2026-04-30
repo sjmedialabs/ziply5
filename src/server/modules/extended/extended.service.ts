@@ -1,4 +1,5 @@
-import { prisma } from "@/src/server/db/prisma"
+import { pgQuery, pgTx } from "@/src/server/db/pg"
+import { randomUUID } from "crypto"
 import { createBrandSupabase, listBrandsSupabase } from "@/src/lib/db/brands"
 import {
   createUserAddressSupabase,
@@ -15,7 +16,7 @@ export const listBrands = async () => {
     logger.warn("brands.list.supabase_fallback_prisma", {
       error: error instanceof Error ? error.message : "unknown",
     })
-    return prisma.brand.findMany({ orderBy: { name: "asc" } })
+    return pgQuery(`SELECT * FROM "Brand" ORDER BY name ASC`)
   }
 }
 
@@ -24,33 +25,48 @@ export const createBrand = (name: string, slug: string) =>
     logger.warn("brands.create.supabase_fallback_prisma", {
       error: error instanceof Error ? error.message : "unknown",
     })
-    return prisma.brand.create({ data: { name, slug: slug.trim().toLowerCase().replace(/\s+/g, "-") } })
+    return pgQuery(
+      `INSERT INTO "Brand" (id, name, slug, "createdAt", "updatedAt") VALUES ($1, $2, $3, now(), now()) RETURNING *`,
+      [randomUUID(), name, slug.trim().toLowerCase().replace(/\s+/g, "-")],
+    ).then((rows) => rows[0])
   })
 
-export const listTags = () => prisma.tag.findMany({ orderBy: { name: "asc" } })
+export const listTags = () => pgQuery(`SELECT * FROM "Tag" ORDER BY name ASC`)
 
 export const createTag = (name: string, slug: string) =>
-  prisma.tag.create({
-    data: { name, slug: slug.trim().toLowerCase().replace(/\s+/g, "-") },
-  })
+  pgQuery(
+    `INSERT INTO "Tag" (id, name, slug, "createdAt", "updatedAt", "isActive") VALUES ($1, $2, $3, now(), now(), true) RETURNING *`,
+    [randomUUID(), name, slug.trim().toLowerCase().replace(/\s+/g, "-")],
+  ).then((rows) => rows[0])
 
 export const updateTag = async (id: string, name: string, slug: string, isActive: boolean) => {
-  return prisma.tag.update({
-    where: { id },
-    data: { 
-      ...(name !== undefined ? { name } : {}),
-      ...(slug !== undefined ? { slug: slug.trim().toLowerCase().replace(/\s+/g, "-") } : {}),
-      ...(isActive !== undefined ? { isActive } : {}),
-    },
-  })
+  const sets: string[] = []
+  const values: any[] = []
+  if (name !== undefined) {
+    values.push(name)
+    sets.push(`name = $${values.length}`)
+  }
+  if (slug !== undefined) {
+    values.push(slug.trim().toLowerCase().replace(/\s+/g, "-"))
+    sets.push(`slug = $${values.length}`)
+  }
+  if (isActive !== undefined) {
+    values.push(isActive)
+    sets.push(`"isActive" = $${values.length}`)
+  }
+  sets.push(`"updatedAt" = now()`)
+  values.push(id)
+  const rows = await pgQuery(`UPDATE "Tag" SET ${sets.join(", ")} WHERE id = $${values.length} RETURNING *`, values)
+  return rows[0]
 }
 
-export const listAttributeDefs = () => prisma.attributeDef.findMany({ orderBy: { name: "asc" } })
+export const listAttributeDefs = () => pgQuery(`SELECT * FROM "AttributeDef" ORDER BY name ASC`)
 
 export const createAttributeDef = (name: string, slug: string) =>
-  prisma.attributeDef.create({
-    data: { name, slug: slug.trim().toLowerCase().replace(/\s+/g, "-") },
-  })
+  pgQuery(
+    `INSERT INTO "AttributeDef" (id, name, slug, "createdAt", "updatedAt", "isActive") VALUES ($1, $2, $3, now(), now(), true) RETURNING *`,
+    [randomUUID(), name, slug.trim().toLowerCase().replace(/\s+/g, "-")],
+  ).then((rows) => rows[0])
 
 export type InventoryRow =
   | {
@@ -74,70 +90,127 @@ export type InventoryRow =
     }
 
 export const listInventoryOverview = async (): Promise<InventoryRow[]> => {
-  const rows = await prisma.inventoryItem.findMany({
-    include: { product: { select: { name: true, slug: true } } },
-    orderBy: { available: "asc" },
-    take: 200,
-  })
+  const rows = await pgQuery<
+    Array<{
+      id: string
+      productId: string
+      warehouse: string | null
+      available: number
+      reserved: number
+      product_name: string
+      product_slug: string
+    }>
+  >(
+    `
+      SELECT ii.id, ii."productId" as "productId", ii.warehouse, ii.available, ii.reserved,
+             p.name as product_name, p.slug as product_slug
+      FROM "InventoryItem" ii
+      INNER JOIN "Product" p ON p.id = ii."productId"
+      ORDER BY ii.available ASC
+      LIMIT 200
+    `,
+  )
   const fromWarehouse: InventoryRow[] = rows.map((r) => ({
     id: r.id,
     productId: r.productId,
     warehouse: r.warehouse,
-    available: r.available,
-    reserved: r.reserved,
+    available: Number(r.available ?? 0),
+    reserved: Number(r.reserved ?? 0),
     source: "warehouse" as const,
-    product: r.product,
+    product: { name: r.product_name, slug: r.product_slug },
   }))
-  const variants = await prisma.productVariant.findMany({
-    include: { product: { select: { name: true, slug: true } } },
-    orderBy: { stock: "asc" },
-    take: 200,
-  })
+
+  const variants = await pgQuery<
+    Array<{ id: string; productId: string; name: string; stock: number; product_name: string; product_slug: string }>
+  >(
+    `
+      SELECT v.id, v."productId" as "productId", v.name, v.stock,
+             p.name as product_name, p.slug as product_slug
+      FROM "ProductVariant" v
+      INNER JOIN "Product" p ON p.id = v."productId"
+      ORDER BY v.stock ASC
+      LIMIT 200
+    `,
+  )
   const fromVariant: InventoryRow[] = variants.map((v) => ({
     id: v.id,
     productId: v.productId,
     warehouse: null,
-    available: v.stock,
+    available: Number(v.stock ?? 0),
     reserved: 0,
     source: "variant" as const,
     variantName: v.name,
-    product: v.product,
+    product: { name: v.product_name, slug: v.product_slug },
   }))
   if (fromWarehouse.length > 0) return fromWarehouse
   return fromVariant
 }
 
 export const updateInventoryItem = async (id: string, available: number, reserved?: number) => {
-  return prisma.inventoryItem.update({
-    where: { id },
-    data: { available, ...(reserved !== undefined ? { reserved } : {}) },
-    include: { product: { select: { name: true, slug: true } } },
-  })
+  const rows = await pgQuery<
+    Array<{
+      id: string
+      productId: string
+      warehouse: string | null
+      available: number
+      reserved: number
+      product: { name: string; slug: string }
+    }>
+  >(
+    `
+      UPDATE "InventoryItem" ii
+      SET available = $2, reserved = COALESCE($3, ii.reserved), "updatedAt" = now()
+      WHERE ii.id = $1
+      RETURNING ii.id, ii."productId" as "productId", ii.warehouse, ii.available, ii.reserved,
+        (SELECT jsonb_build_object('name', p.name, 'slug', p.slug) FROM "Product" p WHERE p.id = ii."productId") as product
+    `,
+    [id, available, reserved ?? null],
+  )
+  return rows[0]
 }
 
 export const updateVariantStock = async (id: string, stock: number) => {
-  return prisma.productVariant.update({
-    where: { id },
-    data: { stock },
-    include: { product: { select: { name: true, slug: true } } },
-  })
+  const rows = await pgQuery<
+    Array<{ id: string; productId: string; name: string; stock: number; product: { name: string; slug: string } }>
+  >(
+    `
+      UPDATE "ProductVariant" v
+      SET stock = $2, "updatedAt" = now()
+      WHERE v.id = $1
+      RETURNING v.id, v."productId" as "productId", v.name, v.stock,
+        (SELECT jsonb_build_object('name', p.name, 'slug', p.slug) FROM "Product" p WHERE p.id = v."productId") as product
+    `,
+    [id, stock],
+  )
+  return rows[0]
 }
 
-export const listReviews = (filters?: { status?: string; productId?: string; orderId?: string; userId?: string }) =>
-  prisma.productReview.findMany({
-    where: {
-      ...(filters?.status ? { status: filters.status } : {}),
-      ...(filters?.productId ? { productId: filters.productId } : {}),
-      ...(filters?.orderId ? { orderId: filters.orderId } : {}),
-      ...(filters?.userId ? { userId: filters.userId } : {}),
-    },
-    orderBy: { createdAt: "desc" },
-    take: 200,
-    include: { product: { select: { name: true, slug: true } }, user: { select: { email: true, name: true } } },
-  })
+export const listReviews = async (filters?: { status?: string; productId?: string; orderId?: string; userId?: string }) => {
+  const params: any[] = []
+  const where: string[] = []
+  if (filters?.status) (params.push(filters.status), where.push(`r.status = $${params.length}`))
+  if (filters?.productId) (params.push(filters.productId), where.push(`r."productId" = $${params.length}`))
+  if (filters?.orderId) (params.push(filters.orderId), where.push(`r."orderId" = $${params.length}`))
+  if (filters?.userId) (params.push(filters.userId), where.push(`r."userId" = $${params.length}`))
+  const sql = `
+    SELECT
+      r.*,
+      jsonb_build_object('name', p.name, 'slug', p.slug) as product,
+      CASE WHEN u.id IS NULL THEN NULL ELSE jsonb_build_object('email', u.email, 'name', u.name) END as "user"
+    FROM "ProductReview" r
+    INNER JOIN "Product" p ON p.id = r."productId"
+    LEFT JOIN "User" u ON u.id = r."userId"
+    ${where.length ? `WHERE ${where.join(" AND ")}` : ""}
+    ORDER BY r."createdAt" DESC
+    LIMIT 200
+  `
+  return pgQuery(sql, params)
+}
 
-export const updateReviewStatus = (id: string, status: string) =>
-  prisma.productReview.update({ where: { id }, data: { status } })
+export const updateReviewStatus = async (id: string, status: string) => {
+  const rows = await pgQuery(`UPDATE "ProductReview" SET status=$2, "updatedAt"=now() WHERE id=$1 RETURNING *`, [id, status])
+  return rows[0]
+}
 
 export const createReview = async (input: {
   productId: string
@@ -151,81 +224,116 @@ export const createReview = async (input: {
   status?: string
 }) => {
   if (input.userId && input.orderId) {
-    const existing = await prisma.productReview.findFirst({
-      where: {
-        productId: input.productId,
-        orderId: input.orderId,
-        userId: input.userId,
-      },
-      select: { id: true },
-    })
-    if (existing) throw new Error("Already reviewed")
+    const existing = await pgQuery<Array<{ id: string }>>(
+      `SELECT id FROM "ProductReview" WHERE "productId"=$1 AND "orderId"=$2 AND "userId"=$3 LIMIT 1`,
+      [input.productId, input.orderId, input.userId],
+    )
+    if (existing[0]) throw new Error("Already reviewed")
   }
-  return prisma.productReview.create({
-    data: {
-      productId: input.productId,
-      orderId: input.orderId ?? undefined,
-      userId: input.userId ?? undefined,
-      guestName: input.guestName ?? undefined,
-      guestEmail: input.guestEmail ?? undefined,
-      rating: input.rating,
-      title: input.title,
-      body: input.body,
-      status: input.status ?? "published",
-    },
-  })
+  const rows = await pgQuery(
+    `
+      INSERT INTO "ProductReview" (
+        id, "productId", "orderId", "userId", "guestName", "guestEmail", rating, title, body, status, "createdAt", "updatedAt"
+      )
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,now(),now())
+      RETURNING *
+    `,
+    [
+      randomUUID(),
+      input.productId,
+      input.orderId ?? null,
+      input.userId ?? null,
+      input.guestName ?? null,
+      input.guestEmail ?? null,
+      input.rating,
+      input.title ?? null,
+      input.body ?? null,
+      input.status ?? "published",
+    ],
+  )
+  return rows[0]
 }
 
 export const listReturnRequests = () =>
-  prisma.returnRequest.findMany({
-    orderBy: { createdAt: "desc" },
-    take: 200,
-    include: {
-      order: {
-        select: {
-          id: true,
-          total: true,
-          status: true,
-          userId: true,
-          refunds: { select: { id: true, amount: true, status: true, createdAt: true } },
-        },
-      },
-      pickup: true,
-      items: true,
-    },
-  })
+  pgQuery<Array<Record<string, unknown>>>(
+    `
+      SELECT
+        rr.*,
+        (
+          SELECT jsonb_build_object(
+            'id', o.id,
+            'total', o.total,
+            'status', o.status,
+            'userId', o."userId",
+            'refunds', COALESCE((
+              SELECT jsonb_agg(jsonb_build_object('id', r.id, 'amount', r.amount, 'status', r.status, 'createdAt', r."createdAt") ORDER BY r."createdAt" DESC)
+              FROM "RefundRecord" r
+              WHERE r."orderId" = o.id
+            ), '[]'::jsonb)
+          )
+          FROM "Order" o
+          WHERE o.id = rr."orderId"
+        ) as "order",
+        (
+          SELECT to_jsonb(pu)
+          FROM "ReturnPickup" pu
+          WHERE pu."returnRequestId" = rr.id
+          LIMIT 1
+        ) as pickup,
+        COALESCE((
+          SELECT jsonb_agg(to_jsonb(it) ORDER BY it."createdAt" DESC)
+          FROM "ReturnRequestItem" it
+          WHERE it."returnRequestId" = rr.id
+        ), '[]'::jsonb) as items
+      FROM "ReturnRequest" rr
+      ORDER BY rr."createdAt" DESC
+      LIMIT 200
+    `,
+  )
 
 export const updateReturnStatus = (id: string, status: string) =>
-  prisma.returnRequest.update({ where: { id }, data: { status } })
+  pgQuery(`UPDATE "ReturnRequest" SET status=$2, "updatedAt"=now() WHERE id=$1 RETURNING *`, [id, status]).then((r) => r[0])
 
 export const createReturnRequest = async (orderId: string, userId: string | null, reason?: string) => {
-  const order = await prisma.order.findUnique({
-    where: { id: orderId },
-    include: { returnRequests: true },
-  })
+  const orderRows = await pgQuery<Array<{ id: string; status: string }>>(`SELECT id, status FROM "Order" WHERE id=$1 LIMIT 1`, [orderId])
+  const order = orderRows[0]
   if (!order) throw new Error("Order not found")
-  if (order.status !== "delivered") throw new Error("Returns are allowed only for delivered orders")
+  if (String(order.status) !== "delivered") throw new Error("Returns are allowed only for delivered orders")
 
-  const duplicate = order.returnRequests.find((row) => row.status !== "rejected")
-  if (duplicate) throw new Error("Return request already exists for this order")
+  const dup = await pgQuery<Array<{ id: string }>>(
+    `SELECT id FROM "ReturnRequest" WHERE "orderId"=$1 AND status <> 'rejected' LIMIT 1`,
+    [orderId],
+  )
+  if (dup[0]) throw new Error("Return request already exists for this order")
 
-  return prisma.returnRequest.create({
-    data: {
-      orderId,
-      userId: userId ?? undefined,
-      reason: reason?.trim() || null,
-      status: "requested",
-    },
-    include: {
-      order: { select: { id: true, total: true, status: true } },
-      pickup: true,
-      items: true,
-    },
-  })
+  const created = await pgQuery<Array<Record<string, unknown>>>(
+    `
+      INSERT INTO "ReturnRequest" (id, "orderId", "userId", reason, status, "createdAt", "updatedAt")
+      VALUES ($1, $2, $3, $4, 'requested', now(), now())
+      RETURNING *
+    `,
+    [randomUUID(), orderId, userId ?? null, reason?.trim() || null],
+  )
+  return created[0]
 }
 
 export const listAbandonedCarts = () =>
-  prisma.abandonedCart.findMany({ orderBy: { updatedAt: "desc" }, take: 100 })
+  pgQuery<
+    Array<{
+      id: string
+      sessionKey: string
+      email: string | null
+      itemsJson: unknown
+      total: number | null
+      updatedAt: Date
+      createdAt: Date
+    }>
+  >(
+    `SELECT id, "sessionKey", email, "itemsJson", total, "updatedAt", "createdAt"
+     FROM "AbandonedCart"
+     ORDER BY "updatedAt" DESC
+     LIMIT 100`,
+  )
 
 export const upsertAbandonedCart = async (input: {
   sessionKey: string
@@ -233,41 +341,73 @@ export const upsertAbandonedCart = async (input: {
   itemsJson: unknown
   total?: number | null
 }) => {
-  return prisma.abandonedCart.upsert({
-    where: { sessionKey: input.sessionKey },
-    create: {
-      sessionKey: input.sessionKey,
-      email: input.email ?? undefined,
-      itemsJson: input.itemsJson as never,
-      total: input.total ?? undefined,
-    },
-    update: {
-      email: input.email ?? undefined,
-      itemsJson: input.itemsJson as never,
-      total: input.total ?? undefined,
-    },
-  })
+  const rows = await pgQuery<
+    Array<{
+      id: string
+      sessionKey: string
+      email: string | null
+      itemsJson: unknown
+      total: number | null
+      updatedAt: Date
+      createdAt: Date
+    }>
+  >(
+    `
+      INSERT INTO "AbandonedCart" (id, "sessionKey", email, "itemsJson", total, "createdAt", "updatedAt")
+      VALUES (gen_random_uuid()::text, $1, $2, $3::jsonb, $4, now(), now())
+      ON CONFLICT ("sessionKey") DO UPDATE
+      SET email = EXCLUDED.email,
+          "itemsJson" = EXCLUDED."itemsJson",
+          total = EXCLUDED.total,
+          "updatedAt" = now()
+      RETURNING id, "sessionKey", email, "itemsJson", total, "updatedAt", "createdAt"
+    `,
+    [input.sessionKey, input.email ?? null, JSON.stringify(input.itemsJson ?? []), input.total ?? null],
+  )
+  return rows[0]
 }
 
 export const listPromotions = () =>
-  prisma.promotion.findMany({
-    orderBy: { updatedAt: "desc" },
-    take: 100,
-
-    include: {
-      products: {
-        include: {
-          product: true,
-        },
-      },
-
-      variants: {
-        include: {
-          variant: true,
-        },
-      },
-    },
-  })
+  (async () => {
+    const promos = await pgQuery<Array<any>>(`SELECT * FROM "Promotion" ORDER BY "updatedAt" DESC LIMIT 100`)
+    const promoIds = promos.map((p) => p.id)
+    if (promoIds.length === 0) return promos
+    const products = await pgQuery<Array<any>>(
+      `
+        SELECT pp.*, to_jsonb(p) as product
+        FROM "PromotionProduct" pp
+        INNER JOIN "Product" p ON p.id = pp."productId"
+        WHERE pp."promotionId" = ANY($1::text[])
+      `,
+      [promoIds],
+    )
+    const variants = await pgQuery<Array<any>>(
+      `
+        SELECT pv.*, to_jsonb(v) as variant
+        FROM "PromotionVariant" pv
+        INNER JOIN "ProductVariant" v ON v.id = pv."variantId"
+        WHERE pv."promotionId" = ANY($1::text[])
+      `,
+      [promoIds],
+    )
+    const byPromoProducts = new Map<string, any[]>()
+    for (const row of products) {
+      const arr = byPromoProducts.get(row.promotionId) ?? []
+      arr.push(row)
+      byPromoProducts.set(row.promotionId, arr)
+    }
+    const byPromoVariants = new Map<string, any[]>()
+    for (const row of variants) {
+      const arr = byPromoVariants.get(row.promotionId) ?? []
+      arr.push(row)
+      byPromoVariants.set(row.promotionId, arr)
+    }
+    return promos.map((p) => ({
+      ...p,
+      products: byPromoProducts.get(p.id) ?? [],
+      variants: byPromoVariants.get(p.id) ?? [],
+    }))
+  })()
 
 export const createPromotion = async (input: {
   kind: string
@@ -288,94 +428,36 @@ export const createPromotion = async (input: {
 
   metadata?: unknown
 }) => {
-
-  return prisma.promotion.create({
-
-    data: {
-
-      kind: input.kind,
-
-      name: input.name,
-
-      active: input.active ?? true,
-
-      startsAt: input.startsAt ?? undefined,
-
-      endsAt: input.endsAt ?? undefined,
-
-      /* 🔥 Store product-level discount */
-
-      metadata: {
-
-        products:
-          input.products?.map(p => ({
-
-            productId: p.productId,
-
-            discountPercent:
-              p.discountPercent ?? null
-
-          })) ?? []
-
-      },
-
-      /* Product links */
-
-      products: input.products
-        ? {
-            create: input.products.map((p) => ({
-
-              product: {
-
-                connect: {
-
-                  id: p.productId,
-
-                },
-
-              },
-
-            })),
-          }
-        : undefined,
-
-      /* Variant discounts */
-
-      variants: input.products
-        ? {
-            create: input.products.flatMap((p) =>
-
-              p.variants
-                ? p.variants.map((v) => ({
-
-                    variant: {
-
-                      connect: {
-
-                        id: v.variantId,
-
-                      },
-
-                    },
-
-                    metadata: {
-
-                      discountPercent:
-                        v.discountPercent,
-
-                    },
-
-                  }))
-                : []
-
-            ),
-          }
-        : undefined,
-
-    },
-
+  return pgTx(async (client) => {
+    const promoId = randomUUID()
+    const metadata =
+      input.products
+        ? { products: input.products.map((p) => ({ productId: p.productId, discountPercent: p.discountPercent ?? null })) }
+        : input.metadata ?? null
+    await client.query(
+      `INSERT INTO "Promotion" (id, name, active, "startsAt", "endsAt", metadata, kind, "createdAt", "updatedAt")
+       VALUES ($1,$2,$3,$4,$5,$6::jsonb,$7,now(),now())`,
+      [promoId, input.name, input.active ?? true, input.startsAt ?? null, input.endsAt ?? null, JSON.stringify(metadata), input.kind],
+    )
+    if (input.products?.length) {
+      for (const p of input.products) {
+        await client.query(
+          `INSERT INTO "PromotionProduct" (id, "promotionId", "productId") VALUES ($1,$2,$3) ON CONFLICT ("promotionId","productId") DO NOTHING`,
+          [randomUUID(), promoId, p.productId],
+        )
+        for (const v of p.variants ?? []) {
+          await client.query(
+            `INSERT INTO "PromotionVariant" (id, "promotionId", "variantId", metadata)
+             VALUES ($1,$2,$3,$4::jsonb)
+             ON CONFLICT ("promotionId","variantId") DO UPDATE SET metadata = EXCLUDED.metadata`,
+            [randomUUID(), promoId, v.variantId, JSON.stringify({ discountPercent: v.discountPercent })],
+          )
+        }
+      }
+    }
+    const rows = await client.query(`SELECT * FROM "Promotion" WHERE id=$1 LIMIT 1`, [promoId])
+    return rows.rows[0]
   })
-
 }
 
 export const updatePromotion = async (
@@ -400,132 +482,68 @@ export const updatePromotion = async (
     metadata: unknown
   }>
 ) => {
-
-  return prisma.promotion.update({
-
-    where: { id },
-
-    data: {
-
-      /* ---------- BASIC FIELDS ---------- */
-
-      kind: input.kind,
-
-      name: input.name,
-
-      active: input.active,
-
-      startsAt:
-        input.startsAt ?? undefined,
-
-      endsAt:
-        input.endsAt ?? undefined,
-
-      /* ---------- STORE SIMPLE PRODUCT DISCOUNTS ---------- */
-
-      metadata:
-        input.products
-          ? {
-              products: input.products.map(p => ({
-
-                productId: p.productId,
-
-                discountPercent:
-                  p.discountPercent ?? null
-
-              }))
-            }
-          : input.metadata === undefined
-            ? undefined
-            : (input.metadata as never),
-
-      /* ---------- REPLACE PRODUCT LINKS ---------- */
-
-      products: input.products
-        ? {
-
-            deleteMany: {},
-
-            create: input.products.map(p => ({
-
-              product: {
-
-                connect: {
-                  id: p.productId
-                }
-
-              }
-
-            }))
-
-          }
-        : undefined,
-
-      /* ---------- REPLACE VARIANT DISCOUNTS ---------- */
-
-      variants: input.products
-        ? {
-
-            deleteMany: {},
-
-            create: input.products.flatMap(p =>
-
-              p.variants
-                ? p.variants.map(v => ({
-
-                    variant: {
-
-                      connect: {
-                        id: v.variantId
-                      }
-
-                    },
-
-                    metadata: {
-
-                      discountPercent:
-                        v.discountPercent
-
-                    }
-
-                  }))
-                : []
-
-            )
-
-          }
-        : undefined,
-
+  return pgTx(async (client) => {
+    const sets: string[] = []
+    const params: any[] = []
+    const push = (col: string, v: any, castJson = false) => {
+      params.push(v)
+      sets.push(`${col} = $${params.length}${castJson ? "::jsonb" : ""}`)
     }
 
-  })
+    if (input.kind !== undefined) push(`kind`, input.kind)
+    if (input.name !== undefined) push(`name`, input.name)
+    if (input.active !== undefined) push(`active`, input.active)
+    if (input.startsAt !== undefined) push(`"startsAt"`, input.startsAt)
+    if (input.endsAt !== undefined) push(`"endsAt"`, input.endsAt)
 
+    if (input.products !== undefined) {
+      push(
+        `metadata`,
+        JSON.stringify({ products: input.products.map((p) => ({ productId: p.productId, discountPercent: p.discountPercent ?? null })) }),
+        true,
+      )
+    } else if (input.metadata !== undefined) {
+      push(`metadata`, JSON.stringify(input.metadata ?? null), true)
+    }
+
+    sets.push(`"updatedAt" = now()`)
+    params.push(id)
+    await client.query(`UPDATE "Promotion" SET ${sets.join(", ")} WHERE id = $${params.length}`, params)
+
+    if (input.products !== undefined) {
+      await client.query(`DELETE FROM "PromotionProduct" WHERE "promotionId" = $1`, [id])
+      await client.query(`DELETE FROM "PromotionVariant" WHERE "promotionId" = $1`, [id])
+      for (const p of input.products) {
+        await client.query(
+          `INSERT INTO "PromotionProduct" (id, "promotionId", "productId") VALUES ($1,$2,$3) ON CONFLICT ("promotionId","productId") DO NOTHING`,
+          [randomUUID(), id, p.productId],
+        )
+        for (const v of p.variants ?? []) {
+          await client.query(
+            `INSERT INTO "PromotionVariant" (id, "promotionId", "variantId", metadata)
+             VALUES ($1,$2,$3,$4::jsonb)
+             ON CONFLICT ("promotionId","variantId") DO UPDATE SET metadata = EXCLUDED.metadata`,
+            [randomUUID(), id, v.variantId, JSON.stringify({ discountPercent: v.discountPercent })],
+          )
+        }
+      }
+    }
+
+    const rows = await client.query(`SELECT * FROM "Promotion" WHERE id=$1 LIMIT 1`, [id])
+    return rows.rows[0]
+  })
 }
 
 export const financeSummary = async () => {
 
-  // 1️⃣ Total Sales
-  const sales = await prisma.order.aggregate({
-    _sum: { total: true },
-    _count: true,
-  });
-
-  // 2️⃣ Completed Refunds only
-  const completedRefunds =
-    await prisma.refundRecord.aggregate({
-      where: {
-        status: "completed",
-      },
-      _sum: {
-        amount: true,
-      },
-    });
-
-  const grossSales =
-    sales._sum.total ?? 0;
-
-  const refundsTotal =
-    completedRefunds._sum.amount ?? 0;
+  const salesRows = await pgQuery<Array<{ gross_sales: number; order_count: number }>>(
+    `SELECT COALESCE(SUM(total),0)::numeric as gross_sales, COUNT(*)::int as order_count FROM "Order"`,
+  )
+  const refundRows = await pgQuery<Array<{ refunds_total: number }>>(
+    `SELECT COALESCE(SUM(amount),0)::numeric as refunds_total FROM "RefundRecord" WHERE status='completed'`,
+  )
+  const grossSales = Number(salesRows[0]?.gross_sales ?? 0)
+  const refundsTotal = Number(refundRows[0]?.refunds_total ?? 0)
 
   // ✅ Net Revenue Calculation
   const netRevenue =
@@ -537,96 +555,112 @@ export const financeSummary = async () => {
 
     netRevenue, // ⭐ NEW (Important)
 
-    orderCount: sales._count,
+    orderCount: Number(salesRows[0]?.order_count ?? 0),
 
     refundsTotal,
 
   };
 };
 export const listWithdrawals = () =>
-  prisma.withdrawalRequest.findMany({
-    orderBy: { createdAt: "desc" },
-    take: 100,
-    include: {
-      createdBy: { select: { id: true, name: true, email: true } },
-      managedBy: { select: { id: true, name: true, email: true } },
-    },
-  })
+  pgQuery(
+    `
+      SELECT
+        wr.*,
+        CASE WHEN u1.id IS NULL THEN NULL ELSE jsonb_build_object('id', u1.id, 'name', u1.name, 'email', u1.email) END as "createdBy",
+        CASE WHEN u2.id IS NULL THEN NULL ELSE jsonb_build_object('id', u2.id, 'name', u2.name, 'email', u2.email) END as "managedBy"
+      FROM "WithdrawalRequest" wr
+      LEFT JOIN "User" u1 ON u1.id = wr."createdById"
+      LEFT JOIN "User" u2 ON u2.id = wr."managedById"
+      ORDER BY wr."createdAt" DESC
+      LIMIT 100
+    `,
+  )
 
 export const updateWithdrawalStatus = (id: string, status: string) =>
-  prisma.withdrawalRequest.update({ where: { id }, data: { status } })
+  pgQuery(`UPDATE "WithdrawalRequest" SET status=$2, "updatedAt"=now() WHERE id=$1 RETURNING *`, [id, status]).then((r) => r[0])
 
 export const listRefunds = (page = 1, limit = 20) =>
-  prisma.refundRecord.findMany({
-    orderBy: { createdAt: "desc" },
-    skip: (Math.max(page, 1) - 1) * Math.min(Math.max(limit, 1), 100),
-    take: Math.min(Math.max(limit, 1), 100),
-    include: { order: { select: { id: true, total: true } } },
-  })
+  pgQuery(
+    `
+      SELECT
+        r.*,
+        (SELECT jsonb_build_object('id', o.id, 'total', o.total) FROM "Order" o WHERE o.id = r."orderId") as "order"
+      FROM "RefundRecord" r
+      ORDER BY r."createdAt" DESC
+      OFFSET $1
+      LIMIT $2
+    `,
+    [
+      (Math.max(page, 1) - 1) * Math.min(Math.max(limit, 1), 100),
+      Math.min(Math.max(limit, 1), 100),
+    ],
+  )
 
 export const createRefund = (orderId: string, amount: number, reason?: string) =>
-  prisma.$transaction(async (tx) => {
-    const order = await tx.order.findUnique({
-      where: { id: orderId },
-      include: { refunds: true },
-    })
+  pgTx(async (client) => {
+    const orderRows = await client.query<{ total: any }>(`SELECT total FROM "Order" WHERE id=$1 LIMIT 1`, [orderId])
+    const order = orderRows.rows[0]
     if (!order) throw new Error("Order not found")
-
-    const alreadyRefunded = order.refunds
-      .filter((row) => !["rejected", "failed"].includes(row.status))
-      .reduce((sum, row) => sum + Number(row.amount), 0)
-    const refundable = Number(order.total) - alreadyRefunded
+    const refundAgg = await client.query<{ already: any }>(
+      `SELECT COALESCE(SUM(amount),0)::numeric as already FROM "RefundRecord" WHERE "orderId"=$1 AND status NOT IN ('rejected','failed')`,
+      [orderId],
+    )
+    const refundable = Number(order.total) - Number(refundAgg.rows[0]?.already ?? 0)
     if (refundable <= 0) throw new Error("Order already fully refunded")
     if (amount > refundable) throw new Error(`Amount exceeds refundable balance (${refundable.toFixed(2)})`)
-
-    const created = await tx.refundRecord.create({
-      data: {
-        orderId,
-        amount,
-        reason,
-        status: "pending",
-      },
-    })
-    await tx.$executeRawUnsafe('UPDATE "Order" SET "refundStatus" = $1 WHERE id = $2', "PENDING", orderId)
-    return created
+    const created = await client.query(
+      `INSERT INTO "RefundRecord" (id, "orderId", amount, reason, status, "createdAt", "updatedAt")
+       VALUES ($1,$2,$3::numeric,$4,'pending',now(),now())
+       RETURNING *`,
+      [randomUUID(), orderId, amount, reason ?? null],
+    )
+    await client.query(`UPDATE "Order" SET "refundStatus" = 'PENDING', "updatedAt" = now() WHERE id = $1`, [orderId]).catch(() => null)
+    return created.rows[0]
   })
 
 export const updateRefundStatus = (id: string, status: string) =>
-  prisma.refundRecord.update({ where: { id }, data: { status } })
+  pgQuery(`UPDATE "RefundRecord" SET status=$2, "updatedAt"=now() WHERE id=$1 RETURNING *`, [id, status]).then((r) => r[0])
 
 export const reportTopProducts = async (limit = 20) => {
-  const rows = await prisma.orderItem.groupBy({
-    by: ["productId"],
-    _sum: { quantity: true, lineTotal: true },
-    orderBy: { _sum: { lineTotal: "desc" } },
-    take: limit,
-  })
-  const products = await prisma.product.findMany({
-    where: { id: { in: rows.map((r) => r.productId) } },
-    select: { id: true, name: true, slug: true },
-  })
+  const rows = await pgQuery<Array<{ productId: string; units: number; revenue: number }>>(
+    `
+      SELECT "productId" as "productId",
+             COALESCE(SUM(quantity),0)::int as units,
+             COALESCE(SUM("lineTotal"),0)::numeric as revenue
+      FROM "OrderItem"
+      GROUP BY "productId"
+      ORDER BY COALESCE(SUM("lineTotal"),0) DESC
+      LIMIT $1
+    `,
+    [limit],
+  )
+  const productIds = rows.map((r) => r.productId)
+  const products = productIds.length
+    ? await pgQuery<Array<{ id: string; name: string; slug: string }>>(`SELECT id, name, slug FROM "Product" WHERE id = ANY($1::text[])`, [
+        productIds,
+      ])
+    : []
   const byId = Object.fromEntries(products.map((p) => [p.id, p]))
   return rows.map((r) => ({
     productId: r.productId,
     name: byId[r.productId]?.name ?? "—",
     slug: byId[r.productId]?.slug ?? "",
-    units: r._sum.quantity ?? 0,
-    revenue: r._sum.lineTotal ?? 0,
+    units: Number(r.units ?? 0),
+    revenue: Number((r as any).revenue ?? 0),
   }))
 }
 
 export const reportPlatformPerformance = async () => {
-  const totals = await prisma.orderItem.aggregate({
-    _sum: { lineTotal: true },
-    _count: { _all: true },
-  })
+  const totals = await pgQuery<Array<{ revenue: number; lines: number }>>(
+    `SELECT COALESCE(SUM("lineTotal"),0)::numeric as revenue, COUNT(*)::int as lines FROM "OrderItem"`,
+  )
   return [
     {
       sellerId: "platform",
       name: "Platform",
       email: "",
-      revenue: Number(totals._sum.lineTotal ?? 0),
-      lines: totals._count._all ?? 0,
+      revenue: Number(totals[0]?.revenue ?? 0),
+      lines: Number(totals[0]?.lines ?? 0),
     },
   ]
 }
@@ -639,7 +673,7 @@ export const listUserAddresses = (userId: string) =>
     logger.warn("addresses.list.supabase_fallback_prisma", {
       error: error instanceof Error ? error.message : "unknown",
     })
-    return prisma.userAddress.findMany({ where: { userId }, orderBy: { createdAt: "desc" } })
+    return pgQuery(`SELECT * FROM "UserAddress" WHERE "userId" = $1 ORDER BY "createdAt" DESC`, [userId])
   })
 
 export const createUserAddress = (
@@ -663,7 +697,27 @@ export const createUserAddress = (
     logger.warn("addresses.create.supabase_fallback_prisma", {
       error: error instanceof Error ? error.message : "unknown",
     })
-    return prisma.userAddress.create({ data: { ...data, userId } })
+    return pgQuery(
+      `INSERT INTO "UserAddress" (id, "userId", label, "firstName", "lastName", email, line1, line2, city, state, "postalCode", country, phone, "isDefault", "createdAt", "updatedAt")
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,now(),now())
+       RETURNING *`,
+      [
+        randomUUID(),
+        userId,
+        data.label ?? null,
+        data.firstName ?? null,
+        data.lastName ?? null,
+        data.email ?? null,
+        data.line1,
+        data.line2 ?? null,
+        data.city,
+        data.state,
+        data.postalCode,
+        data.country ?? "IN",
+        data.phone ?? null,
+        data.isDefault ?? false,
+      ],
+    ).then((rows) => rows[0])
   })
 
 export const updateUserAddress = async (
@@ -692,9 +746,28 @@ export const updateUserAddress = async (
       error: error instanceof Error ? error.message : "unknown",
     })
   }
-  const found = await prisma.userAddress.findFirst({ where: { id, userId } })
-  if (!found) return { count: 0 }
-  await prisma.userAddress.update({ where: { id }, data })
+  const found = await pgQuery<Array<{ id: string }>>(`SELECT id FROM "UserAddress" WHERE id=$1 AND "userId"=$2 LIMIT 1`, [id, userId])
+  if (!found[0]) return { count: 0 }
+  const sets: string[] = []
+  const values: any[] = []
+  for (const [k, v] of Object.entries(data)) {
+    if (v === undefined) continue
+    values.push(v)
+    const col =
+      k === "postalCode"
+        ? `"postalCode"`
+        : k === "firstName"
+          ? `"firstName"`
+          : k === "lastName"
+            ? `"lastName"`
+            : k === "isDefault"
+              ? `"isDefault"`
+              : k
+    sets.push(`${col} = $${values.length}`)
+  }
+  sets.push(`"updatedAt" = now()`)
+  values.push(id, userId)
+  await pgQuery(`UPDATE "UserAddress" SET ${sets.join(", ")} WHERE id=$${values.length - 1} AND "userId"=$${values.length}`, values)
   return { count: 1 }
 }
 
@@ -703,19 +776,26 @@ export const deleteUserAddress = (id: string, userId: string) =>
     logger.warn("addresses.delete.supabase_fallback_prisma", {
       error: error instanceof Error ? error.message : "unknown",
     })
-    return prisma.userAddress.deleteMany({ where: { id, userId } })
+    return pgQuery(`DELETE FROM "UserAddress" WHERE id=$1 AND "userId"=$2`, [id, userId]).then(() => ({ count: 1 }))
   })
 
 export const listSavedPaymentMethods = (userId: string) =>
-  prisma.savedPaymentMethod.findMany({ where: { userId }, orderBy: { createdAt: "desc" } })
+  pgQuery(`SELECT * FROM "SavedPaymentMethod" WHERE "userId"=$1 ORDER BY "createdAt" DESC`, [userId])
 
 export const createSavedPaymentMethod = (
   userId: string,
   data: { provider: string; externalRef: string; last4?: string; brand?: string; isDefault?: boolean },
-) => prisma.savedPaymentMethod.create({ data: { ...data, userId } })
+) =>
+  pgQuery(
+    `
+      INSERT INTO "SavedPaymentMethod" (id, "userId", provider, "externalRef", last4, brand, "isDefault", "createdAt")
+      VALUES ($1,$2,$3,$4,$5,$6,$7,now())
+      RETURNING *
+    `,
+    [randomUUID(), userId, data.provider, data.externalRef, data.last4 ?? null, data.brand ?? null, data.isDefault ?? false],
+  ).then((rows) => rows[0])
 
 export async function deleteAbandonedCartBySession(sessionKey: string) {
-  return prisma.abandonedCart.deleteMany({
-    where: { sessionKey },
-  });
+  await pgQuery(`DELETE FROM "AbandonedCart" WHERE "sessionKey" = $1`, [sessionKey])
+  return { deleted: true }
 }
