@@ -3,12 +3,18 @@
 import BannerSection from "@/components/BannerSection";
 import { getCartItems, setCartItems, type CartItem } from "@/lib/cart"; // utils to manage cart items in localStorage
 import { getFavoriteSlugs, setFavoriteSlugs } from "@/lib/favorites";
-import { ArrowLeft, Minus, Plus, X } from "lucide-react";
+import { ArrowLeft, Heart, Minus, Plus, X } from "lucide-react";
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
  import {  toggleFavoriteSlug } from "@/lib/favorites"
 import { toast } from "@/lib/toast"
 import { useRouter } from "next/navigation";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip"
 const formatMoney = (amount: number) => amount.toFixed(2);
 
 
@@ -241,13 +247,25 @@ export default function CartPage() {
                             Rs.{formatMoney(item.price * item.quantity)}
                           </span>
                           <div className="flex items-center gap-2">
-                            <button
-                              className="rounded-full border border-[#D1D5DB] px-3 py-1 text-xs text-[#374151] hover:bg-[#F9FAFB]"
-                              onClick={(e) => handleToggleFavorite(e, item.slug,item.id)}
-                              aria-label={`Move ${item.name} to wishlist`}
-                            >
-                              Move to wishlist
-                            </button>
+                          <TooltipProvider>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <button
+                                  className="rounded-full border border-[#D1D5DB] h-8 w-8 flex items-center justify-center text-xs text-[#374151] cursor-pointer"
+                                  onClick={(e) =>
+                                    handleToggleFavorite(e, item.slug, item.id)
+                                  }
+                                  aria-label={`Move ${item.name} to wishlist`}
+                                >
+                                  <Heart size={16} />
+                                </button>
+                              </TooltipTrigger>
+
+                              <TooltipContent side="top">
+                                Move the product to wishlist
+                              </TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
                             <button
                               className="flex h-8 w-8 items-center justify-center rounded-full border border-red-400 text-red-500"
                               onClick={() => removeItem(item.id)}
