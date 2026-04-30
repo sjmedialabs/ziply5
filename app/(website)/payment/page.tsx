@@ -24,6 +24,7 @@ function PaymentPageInner() {
   const [retryMode, setRetryMode] = useState(false);
   const [couponAdjustedTotal, setCouponAdjustedTotal] = useState<number | null>(null);
   const autoRetryTriggeredRef = useRef(false);
+  const [items, setItemsState] = useState<ReturnType<typeof getCartItems>>([]);
   const [billingAddress, setBillingAddress] = useState({
     fullName: "",
     line1: "",
@@ -35,7 +36,11 @@ function PaymentPageInner() {
   });
   const [hasCheckoutBilling, setHasCheckoutBilling] = useState(false);
 
-  const items = useMemo(() => getCartItems(), []);
+  useEffect(() => {
+    // Avoid hydration mismatch: cart is client-only (localStorage)
+    setItemsState(getCartItems());
+  }, []);
+
   const subTotal = items.reduce((sum, item) => sum + item.price * item.quantity, 0);
   const shipping = items.length > 0 ? 20 : 0;
   const calculatedTotal = subTotal + shipping; // Renamed to avoid confusion with couponAdjustedTotal
@@ -46,6 +51,32 @@ function PaymentPageInner() {
     // If not in retry mode, use the coupon-adjusted total from localStorage if available, otherwise use the calculated total.
     return couponAdjustedTotal ?? calculatedTotal;
   }, [retryMode, retryAmount, couponAdjustedTotal, calculatedTotal]);
+
+  const postCartEvent = async (eventType: string, meta?: Record<string, unknown>) => {
+    try {
+      const sessionKey = window.localStorage.getItem("ziply5_session_key") || "";
+      if (!sessionKey) return;
+      await fetch("/api/cart/events", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sessionKey,
+          items,
+          total: payableAmount,
+          eventType,
+          meta,
+        }),
+      });
+    } catch {
+      // non-blocking
+    }
+  };
+
+  useEffect(() => {
+    if (!items.length) return;
+    void postCartEvent("payment_page_opened", { lastVisitedPage: "/payment" });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [items.length]);
 
   const createOrderMutation = useMutation({
     mutationFn: async ({ token, gateway }: { token: string; gateway: "cod" | "razorpay" }) => {
@@ -387,6 +418,7 @@ const handleOnlinePayment = async () => {
         } catch (error) {
           setProcessingGateway(null)
           setError(error instanceof Error ? error.message : "Payment verification failed")
+          void postCartEvent("payment_failed", { reason: error instanceof Error ? error.message : "verify_failed" })
         }
       },
       modal: {
@@ -394,56 +426,17 @@ const handleOnlinePayment = async () => {
           setStatusText("Payment interrupted. You can retry.");
           setError("Payment was not completed. Please retry.");
           setProcessingGateway(null);
+          void postCartEvent("payment_cancelled", { source: "razorpay_modal_dismiss" });
         },
       },
     });
     razorpay.open();
   };
 
-const handlePlaceOrder = async () => {
-  if (!loggedIn) {
-    setError("Please login to complete purchase.");
-    askLogin();
-    return;
-  }
-
-  if (!billingAddress.fullName.trim()) {
-    setError("Fill billing details.");
-    return;
-  }
-
-  try {
-    setProcessingGateway("ONLINE");
-    setError("");
-
-    const token = window.localStorage.getItem("ziply5_access_token"); // Ensure token is available
-    if (!token) throw new Error("Login required");
-
-    // ✅ ONLINE PAYMENT FLOW (Retry mode only triggers this)
-    if (!scriptReady || !window.Razorpay) {
-      throw new Error("Payment gateway not ready");
-    } else {
-      setStatusText("Creating order...");
-      const orderId =
-        createdOrderId ??
-        (await createOrderMutation.mutateAsync({ token, gateway: "razorpay" }));
-
-      setCreatedOrderId(orderId);
-      window.localStorage.setItem("ziply5_pending_order_id", orderId);
-
-      setStatusText("Redirecting to payment...");
-      await openRazorpay(token, orderId);
-    }
-  } catch (e) {
-    setError(e instanceof Error ? e.message : "Something failed");
-    setProcessingGateway(null);
-  }
-};
-
   useEffect(() => {
     if (!retryMode || !createdOrderId || !loggedIn || !scriptReady || autoRetryTriggeredRef.current) return;
     autoRetryTriggeredRef.current = true;
-    void handlePlaceOrder();
+    void handleOnlinePayment();
   }, [retryMode, createdOrderId, loggedIn, scriptReady]);
 
   const retryPayment = async () => {

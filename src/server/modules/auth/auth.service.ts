@@ -1,5 +1,4 @@
 import crypto from "node:crypto"
-import { prisma } from "@/src/server/db/prisma"
 import { env } from "@/src/server/core/config/env"
 import { hashPassword, verifyPassword } from "@/src/server/core/security/password"
 import {
@@ -11,6 +10,7 @@ import {
 import { ROLE_KEYS } from "@/src/server/core/rbac/permissions"
 import { smsService } from "@/src/server/integrations/sms/sms.service"
 import { enqueueEmail, emailTemplates } from "@/src/server/modules/notifications/email.service"
+import { pgQuery, pgTx } from "@/src/server/db/pg"
 
 type SignupInput = {
   name: string
@@ -34,30 +34,44 @@ const parseDurationMs = (value: string, fallbackMs: number) => {
 }
 
 export const signup = async (input: SignupInput) => {
-  const existing = await prisma.user.findUnique({ where: { email: input.email } })
-  if (existing) throw new Error("Email already in use")
-
+  const normalizedEmail = input.email.trim().toLowerCase()
   const passwordHash = await hashPassword(input.password)
   const roleKey = input.role ?? ROLE_KEYS.CUSTOMER
 
-  const role = await prisma.role.upsert({
-    where: { key: roleKey },
-    update: { name: roleKey.replace("_", " ") },
-    create: { key: roleKey, name: roleKey.replace("_", " ") },
-  })
+  const user = await pgTx(async (client) => {
+    const existing = await client.query(`SELECT id FROM "User" WHERE lower(email) = lower($1) LIMIT 1`, [
+      normalizedEmail,
+    ])
+    if (existing.rows[0]?.id) throw new Error("Email already in use")
 
-  const user = await prisma.user.create({
-    data: {
-      name: input.name,
-      email: input.email,
-      passwordHash,
-      roles: {
-        create: [{ roleId: role.id }],
-      },
-    },
-    include: {
-      roles: { include: { role: true } },
-    },
+    const roleId = crypto.randomUUID()
+    const roleRes = await client.query(
+      `
+        INSERT INTO "Role" (id, "key", name)
+        VALUES ($1, $2, $3)
+        ON CONFLICT ("key") DO UPDATE SET name = EXCLUDED.name
+        RETURNING id, "key"
+      `,
+      [roleId, roleKey, roleKey.replaceAll("_", " ")],
+    )
+    const ensuredRoleId = roleRes.rows[0].id as string
+
+    const userId = crypto.randomUUID()
+    const created = await client.query(
+      `
+        INSERT INTO "User" (id, email, "passwordHash", name, status, "createdAt", "updatedAt")
+        VALUES ($1, $2, $3, $4, 'active', now(), now())
+        RETURNING id, email, name, status, "passwordHash"
+      `,
+      [userId, normalizedEmail, passwordHash, input.name],
+    )
+
+    await client.query(`INSERT INTO "UserRole" ("userId", "roleId") VALUES ($1, $2) ON CONFLICT DO NOTHING`, [
+      userId,
+      ensuredRoleId,
+    ])
+
+    return created.rows[0] as { id: string; email: string; name: string; status: string; passwordHash: string }
   })
 
   try {
@@ -94,15 +108,15 @@ const issueAuthTokens = async (input: {
     role: input.role,
   })
 
-  await prisma.refreshToken.create({
-    data: {
-      userId: input.userId,
-      tokenHash: sha256(refreshToken),
-      expiresAt: new Date(
-        Date.now() + parseDurationMs(env.JWT_REFRESH_EXPIRES_IN, 7 * 24 * 60 * 60 * 1000),
-      ),
-    },
-  })
+  await pgQuery(
+    `INSERT INTO "RefreshToken" (id, "userId", "tokenHash", "expiresAt", "createdAt") VALUES ($1, $2, $3, $4, now())`,
+    [
+      crypto.randomUUID(),
+      input.userId,
+      sha256(refreshToken),
+      new Date(Date.now() + parseDurationMs(env.JWT_REFRESH_EXPIRES_IN, 7 * 24 * 60 * 60 * 1000)),
+    ],
+  )
 
   return {
     user: {
@@ -117,19 +131,36 @@ const issueAuthTokens = async (input: {
 }
 
 export const login = async (email: string, password: string) => {
-  const user = await prisma.user.findUnique({
-    where: { email },
-    include: { roles: { include: { role: true } } },
-  })
+  const rows = await pgQuery<{
+    id: string
+    email: string
+    name: string
+    status: string
+    passwordHash: string
+    role: string | null
+  }>(
+    `
+      SELECT u.id, u.email, u.name, u.status, u."passwordHash",
+             r."key" as role
+      FROM "User" u
+      LEFT JOIN "UserRole" ur ON ur."userId" = u.id
+      LEFT JOIN "Role" r ON r.id = ur."roleId"
+      WHERE lower(u.email) = lower($1)
+      ORDER BY u."updatedAt" DESC
+      LIMIT 1
+    `,
+    [email.trim().toLowerCase()],
+  )
+  const user = rows[0]
   if (!user) throw new Error("Invalid credentials")
 
   const valid = await verifyPassword(password, user.passwordHash)
   if (!valid) throw new Error("Invalid credentials")
   
-  const status=user.status
+  const status = user.status
   if(status==="suspended") throw new Error("Account is suspended. Please contact support.")
 
-  const role = user.roles[0]?.role.key ?? ROLE_KEYS.CUSTOMER
+  const role = user.role ?? ROLE_KEYS.CUSTOMER
   return issueAuthTokens({
     userId: user.id,
     email: user.email,
@@ -155,12 +186,19 @@ export const refresh = async (token: string) => {
   const decoded = verifyRefreshToken(token)
   const tokenHash = sha256(token)
 
-  const tokenRecord = await prisma.refreshToken.findUnique({ where: { tokenHash } })
-  if (!tokenRecord || tokenRecord.revokedAt || tokenRecord.expiresAt < new Date()) {
+  const tokenRows = await pgQuery<{ expiresAt: Date; revokedAt: Date | null }>(
+    `SELECT "expiresAt", "revokedAt" FROM "RefreshToken" WHERE "tokenHash" = $1 LIMIT 1`,
+    [tokenHash],
+  )
+  const tokenRecord = tokenRows[0]
+  if (!tokenRecord || tokenRecord.revokedAt || new Date(tokenRecord.expiresAt) < new Date()) {
     throw new Error("Refresh token expired or revoked")
   }
 
-  const user = await prisma.user.findUnique({ where: { id: decoded.sub } })
+  const userRows = await pgQuery<{ id: string; email: string }>(`SELECT id, email FROM "User" WHERE id = $1 LIMIT 1`, [
+    decoded.sub,
+  ])
+  const user = userRows[0]
   if (!user) throw new Error("User not found")
 
   const accessToken = signAccessToken({
@@ -173,27 +211,28 @@ export const refresh = async (token: string) => {
 }
 
 export const revokeRefresh = async (token: string) => {
-  await prisma.refreshToken.updateMany({
-    where: { tokenHash: sha256(token), revokedAt: null },
-    data: { revokedAt: new Date() },
-  })
+  await pgQuery(
+    `UPDATE "RefreshToken" SET "revokedAt" = now() WHERE "tokenHash" = $1 AND "revokedAt" IS NULL`,
+    [sha256(token)],
+  )
 }
 
 export const requestPasswordReset = async (email: string) => {
   const normalized = email.trim().toLowerCase()
-  const user = await prisma.user.findFirst({
-    where: { email: { equals: normalized, mode: "insensitive" } },
-  })
+  const userRows = await pgQuery<{ email: string }>(
+    `SELECT email FROM "User" WHERE lower(email) = lower($1) LIMIT 1`,
+    [normalized],
+  )
+  const user = userRows[0] ?? null
   const token = crypto.randomBytes(32).toString("hex")
   const tokenHash = sha256(token)
   if (user) {
-    await prisma.passwordReset.deleteMany({ where: { email: user.email, usedAt: null } })
-    await prisma.passwordReset.create({
-      data: {
-        email: user.email,
-        tokenHash,
-        expiresAt: new Date(Date.now() + 60 * 60 * 1000),
-      },
+    await pgTx(async (client) => {
+      await client.query(`DELETE FROM "PasswordReset" WHERE email = $1 AND "usedAt" IS NULL`, [user.email])
+      await client.query(
+        `INSERT INTO "PasswordReset" (id, email, "tokenHash", "expiresAt", "createdAt") VALUES ($1,$2,$3,$4, now())`,
+        [crypto.randomUUID(), user.email, tokenHash, new Date(Date.now() + 60 * 60 * 1000)],
+      )
     })
   }
   if (env.PASSWORD_RESET_RETURN_TOKEN && user) {
@@ -204,18 +243,21 @@ export const requestPasswordReset = async (email: string) => {
 
 export const resetPasswordWithToken = async (token: string, newPassword: string) => {
   const tokenHash = sha256(token.trim())
-  const row = await prisma.passwordReset.findUnique({ where: { tokenHash } })
-  if (!row || row.usedAt || row.expiresAt < new Date()) {
+  const rows = await pgQuery<{ email: string; expiresAt: Date; usedAt: Date | null }>(
+    `SELECT email, "expiresAt", "usedAt" FROM "PasswordReset" WHERE "tokenHash" = $1 LIMIT 1`,
+    [tokenHash],
+  )
+  const row = rows[0]
+  if (!row || row.usedAt || new Date(row.expiresAt) < new Date()) {
     throw new Error("Invalid or expired reset token")
   }
   const passwordHash = await hashPassword(newPassword)
-  await prisma.user.update({
-    where: { email: row.email },
-    data: { passwordHash },
-  })
-  await prisma.passwordReset.update({
-    where: { tokenHash },
-    data: { usedAt: new Date() },
+  await pgTx(async (client) => {
+    await client.query(`UPDATE "User" SET "passwordHash" = $1, "updatedAt" = now() WHERE lower(email) = lower($2)`, [
+      passwordHash,
+      row.email,
+    ])
+    await client.query(`UPDATE "PasswordReset" SET "usedAt" = now() WHERE "tokenHash" = $1`, [tokenHash])
   })
 }
 
@@ -238,13 +280,14 @@ export const requestLoginOtp = async (phoneRaw: string) => {
   const phone = normalizePhone(phoneRaw)
   const cfg = getOtpConfig()
 
-  const previous = await prisma.otpChallenge.findFirst({
-    where: { phone, purpose: "login", consumedAt: null },
-    orderBy: { createdAt: "desc" },
-  })
+  const prevRows = await pgQuery<{ createdAt: Date; resendCount: number }>(
+    `SELECT "createdAt", "resendCount" FROM "OtpChallenge" WHERE phone = $1 AND purpose = 'login' AND "consumedAt" IS NULL ORDER BY "createdAt" DESC LIMIT 1`,
+    [phone],
+  )
+  const previous = prevRows[0] ?? null
 
   if (previous) {
-    const ageMs = Date.now() - previous.createdAt.getTime()
+    const ageMs = Date.now() - new Date(previous.createdAt).getTime()
     const minAgeMs = cfg.resendCooldownSec * 1000
     if (ageMs < minAgeMs) {
       const waitSeconds = Math.ceil((minAgeMs - ageMs) / 1000)
@@ -254,16 +297,11 @@ export const requestLoginOtp = async (phoneRaw: string) => {
 
   const code = generateOtpCode()
   const expiresAt = new Date(Date.now() + cfg.ttlSec * 1000)
-  await prisma.otpChallenge.create({
-    data: {
-      phone,
-      purpose: "login",
-      codeHash: sha256(code),
-      expiresAt,
-      maxAttempts: cfg.maxAttempts,
-      resendCount: (previous?.resendCount ?? 0) + 1,
-    },
-  })
+  await pgQuery(
+    `INSERT INTO "OtpChallenge" (id, phone, purpose, "codeHash", "expiresAt", attempts, "maxAttempts", "resendCount", "createdAt")
+     VALUES ($1,$2,'login',$3,$4,0,$5,$6, now())`,
+    [crypto.randomUUID(), phone, sha256(code), expiresAt, cfg.maxAttempts, (previous?.resendCount ?? 0) + 1],
+  )
 
   await smsService.send({
     to: phone,
@@ -280,69 +318,92 @@ export const requestLoginOtp = async (phoneRaw: string) => {
 
 export const verifyLoginOtp = async (phoneRaw: string, code: string) => {
   const phone = normalizePhone(phoneRaw)
-  const challenge = await prisma.otpChallenge.findFirst({
-    where: { phone, purpose: "login", consumedAt: null },
-    orderBy: { createdAt: "desc" },
-  })
+  const rows = await pgQuery<{
+    id: string
+    expiresAt: Date
+    attempts: number
+    maxAttempts: number
+    codeHash: string
+  }>(
+    `SELECT id, "expiresAt", attempts, "maxAttempts", "codeHash" FROM "OtpChallenge"
+     WHERE phone = $1 AND purpose='login' AND "consumedAt" IS NULL
+     ORDER BY "createdAt" DESC
+     LIMIT 1`,
+    [phone],
+  )
+  const challenge = rows[0]
   if (!challenge) throw new Error("OTP not found")
-  if (challenge.expiresAt < new Date()) throw new Error("OTP expired")
+  if (new Date(challenge.expiresAt) < new Date()) throw new Error("OTP expired")
   if (challenge.attempts >= challenge.maxAttempts) throw new Error("OTP attempts exceeded")
 
   if (challenge.codeHash !== sha256(code.trim())) {
-    await prisma.otpChallenge.update({
-      where: { id: challenge.id },
-      data: { attempts: { increment: 1 } },
-    })
+    await pgQuery(`UPDATE "OtpChallenge" SET attempts = attempts + 1 WHERE id = $1`, [challenge.id])
     throw new Error("Invalid OTP")
   }
 
-  await prisma.otpChallenge.update({
-    where: { id: challenge.id },
-    data: { consumedAt: new Date() },
-  })
+  await pgQuery(`UPDATE "OtpChallenge" SET "consumedAt" = now() WHERE id = $1`, [challenge.id])
 
-  let profile = await prisma.userProfile.findFirst({
-    where: { phone },
-    include: { user: { include: { roles: { include: { role: true } } } } },
-  })
+  const profileRows = await pgQuery<{
+    userId: string
+    email: string
+    name: string
+    role: string | null
+  }>(
+    `
+      SELECT up."userId" as "userId",
+             u.email,
+             u.name,
+             r."key" as role
+      FROM "UserProfile" up
+      JOIN "User" u ON u.id = up."userId"
+      LEFT JOIN "UserRole" ur ON ur."userId" = u.id
+      LEFT JOIN "Role" r ON r.id = ur."roleId"
+      WHERE up.phone = $1
+      ORDER BY u."updatedAt" DESC
+      LIMIT 1
+    `,
+    [phone],
+  )
 
-  if (!profile) {
-    const role = await prisma.role.upsert({
-      where: { key: ROLE_KEYS.CUSTOMER },
-      update: { name: "customer" },
-      create: { key: ROLE_KEYS.CUSTOMER, name: "customer" },
+  let authUser = profileRows[0] ?? null
+  if (!authUser) {
+    authUser = await pgTx(async (client) => {
+      const roleId = crypto.randomUUID()
+      const roleRes = await client.query(
+        `
+          INSERT INTO "Role" (id, "key", name)
+          VALUES ($1, $2, $3)
+          ON CONFLICT ("key") DO UPDATE SET name = EXCLUDED.name
+          RETURNING id
+        `,
+        [roleId, ROLE_KEYS.CUSTOMER, "customer"],
+      )
+      const ensuredRoleId = roleRes.rows[0].id as string
+
+      const syntheticEmail = `phone_${phone.replace(/\D/g, "")}_${Date.now()}@ziply5.local`
+      const randomPasswordHash = await hashPassword(crypto.randomBytes(24).toString("hex"))
+      const userId = crypto.randomUUID()
+      await client.query(
+        `INSERT INTO "User" (id, email, "passwordHash", name, status, "createdAt", "updatedAt") VALUES ($1,$2,$3,$4,'active', now(), now())`,
+        [userId, syntheticEmail, randomPasswordHash, `User ${phone.slice(-4)}`],
+      )
+      await client.query(`INSERT INTO "UserRole" ("userId","roleId") VALUES ($1,$2) ON CONFLICT DO NOTHING`, [
+        userId,
+        ensuredRoleId,
+      ])
+      await client.query(
+        `INSERT INTO "UserProfile" (id, "userId", phone, "createdAt", "updatedAt") VALUES ($1,$2,$3, now(), now())`,
+        [crypto.randomUUID(), userId, phone],
+      )
+      return { userId, email: syntheticEmail, name: `User ${phone.slice(-4)}`, role: ROLE_KEYS.CUSTOMER }
     })
-    const syntheticEmail = `phone_${phone.replace(/\D/g, "")}_${Date.now()}@ziply5.local`
-    const randomPasswordHash = await hashPassword(crypto.randomBytes(24).toString("hex"))
-    const created = await prisma.user.create({
-      data: {
-        email: syntheticEmail,
-        name: `User ${phone.slice(-4)}`,
-        passwordHash: randomPasswordHash,
-        roles: { create: [{ roleId: role.id }] },
-        profile: { create: { phone } },
-      },
-      include: {
-        profile: true,
-        roles: { include: { role: true } },
-      },
-    })
-    profile = {
-      id: created.profile!.id,
-      userId: created.id,
-      phone: created.profile!.phone,
-      avatarUrl: created.profile!.avatarUrl,
-      createdAt: created.profile!.createdAt,
-      updatedAt: created.profile!.updatedAt,
-      user: created,
-    }
   }
 
-  const role = profile.user.roles[0]?.role.key ?? ROLE_KEYS.CUSTOMER
+  const role = authUser.role ?? ROLE_KEYS.CUSTOMER
   return issueAuthTokens({
-    userId: profile.user.id,
-    email: profile.user.email,
+    userId: authUser.userId,
+    email: authUser.email,
     role,
-    name: profile.user.name,
+    name: authUser.name,
   })
 }

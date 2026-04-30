@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react"
 import Image from "next/image"
+import { FadeIn } from "@/components/animations/FadeIn"
 
 export default function Hero({ cmsData }: { cmsData?: any }) {
   const [currentSlide, setCurrentSlide] = useState(0)
@@ -92,33 +93,35 @@ const handleTouchEnd = () => {
         <div className="absolute inset-0 flex items-start mt-15">
           <div className="w-full max-w-7xl mx-auto px-4">
             <div className="max-w-7xl">
-              <h1 className="font-heading text-3xl md:text-5xl lg:text-7xl font-extrabold text-primary leading-[1.05] mb-4">
-                {titleWords.length > 0 ? (
-                  <>
-                    {titleWords.slice(0, 2).join(" ")}
-                    {titleWords.length > 2 && <br />}
-                    {titleWords.slice(2, 4).join(" ")}
-                    {titleWords.length > 4 && <br />}
-                    {titleWords.slice(4).join(" ")}
-                  </>
-                ) : (
-                  currentTitle
-                )}
-              </h1>
-              <p
-              className="font-heading text-lg md:text-2xl lg:text-4xl font-extrabold text-primary leading-[1.05] mb-4 uppercase"
-                style={{ textShadow: "1px 1px 2px rgba(0,0,0,0.3)" }}
-              >
-                {subtitleWords.length > 0 ? (
-                  <>
-                    {subtitleWords.slice(0, 4).join(" ")}
-                    {subtitleWords.length > 4 && <br />}
-                    {subtitleWords.slice(4).join(" ")}
-                  </>
-                ) : (
-                  currentSubtitle
-                )}
-              </p>
+              <FadeIn key={`hero-${currentSlide}`} y={22} duration={0.55}>
+                <h1 className="font-heading text-3xl md:text-5xl lg:text-7xl font-extrabold text-primary leading-[1.05] mb-4">
+                  {titleWords.length > 0 ? (
+                    <>
+                      {titleWords.slice(0, 2).join(" ")}
+                      {titleWords.length > 2 && <br />}
+                      {titleWords.slice(2, 4).join(" ")}
+                      {titleWords.length > 4 && <br />}
+                      {titleWords.slice(4).join(" ")}
+                    </>
+                  ) : (
+                    currentTitle
+                  )}
+                </h1>
+                <p
+                  className="font-heading text-lg md:text-2xl lg:text-4xl font-extrabold text-primary leading-[1.05] mb-4 uppercase"
+                  style={{ textShadow: "1px 1px 2px rgba(0,0,0,0.3)" }}
+                >
+                  {subtitleWords.length > 0 ? (
+                    <>
+                      {subtitleWords.slice(0, 4).join(" ")}
+                      {subtitleWords.length > 4 && <br />}
+                      {subtitleWords.slice(4).join(" ")}
+                    </>
+                  ) : (
+                    currentSubtitle
+                  )}
+                </p>
+              </FadeIn>
             </div>
           </div>
         </div>

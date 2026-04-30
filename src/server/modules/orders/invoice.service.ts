@@ -1,4 +1,5 @@
-import { prisma } from "@/src/server/db/prisma"
+import { pgQuery } from "@/src/server/db/pg"
+import { randomUUID } from "crypto"
 import { enqueueOutboxEvent } from "@/src/server/modules/integrations/outbox.service"
 
 const makeInvoiceNo = () => {
@@ -11,9 +12,8 @@ const makeInvoiceNo = () => {
 }
 
 export const getOrderInvoice = async (orderId: string) => {
-  return prisma.invoice.findUnique({
-    where: { orderId },
-  })
+  const rows = await pgQuery(`SELECT * FROM "Invoice" WHERE "orderId" = $1 LIMIT 1`, [orderId])
+  return rows[0] ?? null
 }
 
 export const generateOrderInvoice = async (input: {
@@ -22,13 +22,15 @@ export const generateOrderInvoice = async (input: {
   gstin?: string
   taxRate?: number
 }) => {
-  const order = await prisma.order.findUnique({
-    where: { id: input.orderId },
-    include: { items: true },
-  })
+  const orderRows = await pgQuery<Array<{ id: string; subtotal: any; shipping: any }>>(
+    `SELECT id, subtotal, shipping FROM "Order" WHERE id = $1 LIMIT 1`,
+    [input.orderId],
+  )
+  const order = orderRows[0]
   if (!order) throw new Error("Order not found")
 
-  const existing = await prisma.invoice.findUnique({ where: { orderId: input.orderId } })
+  const existingRows = await pgQuery(`SELECT * FROM "Invoice" WHERE "orderId" = $1 LIMIT 1`, [input.orderId])
+  const existing = existingRows[0]
   if (existing) return existing
 
   const taxRate = input.taxRate ?? 0.18
@@ -36,17 +38,15 @@ export const generateOrderInvoice = async (input: {
   const taxAmount = Number((taxableAmount * taxRate).toFixed(2))
   const totalAmount = Number((taxableAmount + taxAmount + Number(order.shipping)).toFixed(2))
 
-  const invoice = await prisma.invoice.create({
-    data: {
-      orderId: input.orderId,
-      invoiceNo: makeInvoiceNo(),
-      gstin: input.gstin?.trim() || null,
-      taxableAmount,
-      taxAmount,
-      totalAmount,
-      createdById: input.actorId,
-    },
-  })
+  const invoiceRows = await pgQuery(
+    `
+      INSERT INTO "Invoice" (id, "orderId", "invoiceNo", gstin, "taxableAmount", "taxAmount", "totalAmount", "generatedAt", "createdById")
+      VALUES ($1,$2,$3,$4,$5::numeric,$6::numeric,$7::numeric, now(), $8)
+      RETURNING *
+    `,
+    [randomUUID(), input.orderId, makeInvoiceNo(), input.gstin?.trim() || null, taxableAmount, taxAmount, totalAmount, input.actorId],
+  )
+  const invoice = invoiceRows[0]
 
   await enqueueOutboxEvent({
     eventType: "invoice.generated",

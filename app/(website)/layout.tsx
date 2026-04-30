@@ -1,7 +1,7 @@
 import type React from "react"
 import Header from "@/components/Header"
 import Footer from "@/components/Footer"
-import { PageTransition } from "@/components/ui/PageTransition"
+import { PageTransition } from "@/components/animations/PageTransition"
 
 export default function WebsiteLayout({
   children,

@@ -95,12 +95,12 @@ export default function AdminSettingsPage() {
         >
           Location Management
         </button>
-        <button
+        {/* <button
           className={`pb-2 text-sm font-semibold cursor-pointer transition-colors ${activeTab === 'master_data' ? 'border-b-2 border-[#7B3010] text-[#7B3010]' : 'text-[#646464] hover:text-[#2A1810]'}`}
           onClick={() => setActiveTab('master_data')}
         >
           Dropdowns 
-        </button>
+        </button> */}
       </div>
 
       {error && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-800">{error}</p>}

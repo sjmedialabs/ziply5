@@ -6,7 +6,7 @@ import {
   createReturnRequest,
   listReturnRequests,
 } from "@/src/server/modules/extended/extended.service"
-import { getOrderByIdSupabaseBasic } from "@/src/lib/db/orders"
+import { pgQuery } from "@/src/server/db/pg"
 import { z } from "zod"
 
 const createSchema = z.object({
@@ -51,7 +51,11 @@ export async function POST(request: NextRequest) {
   const parsed = createSchema.safeParse(body)
   if (!parsed.success) return fail("Validation failed", 422, parsed.error.flatten())
 
-  const order = await getOrderByIdSupabaseBasic(parsed.data.orderId)
+  const orderRows = await pgQuery<Array<{ id: string; userId: string | null }>>(
+    `SELECT id, "userId" FROM "Order" WHERE id = $1 LIMIT 1`,
+    [parsed.data.orderId],
+  )
+  const order = orderRows[0]
   if (!order) return fail("Order not found", 404)
   if (order.userId && order.userId !== auth.user.sub) {
     return fail("Not your order", 403)

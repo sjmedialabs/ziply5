@@ -4,6 +4,7 @@ import type React from "react"
 import { useEffect, useMemo, useState } from "react"
 import { authedFetch } from "@/lib/dashboard-fetch"
 import { Package, ShoppingCart, Users, IndianRupee } from "lucide-react"
+import { FadeIn, ScaleHover } from "@/components/animations"
 import {
   Bar,
   BarChart,
@@ -49,15 +50,17 @@ const StatCard = ({
         ? { icon: "bg-[#FFFBF3] text-[#4A1D1F]" }
         : { icon: "bg-[#FFF3EA] text-[#7B3010]" }
   return (
-    <div className="flex items-center gap-3 rounded-2xl border border-[#E8DCC8] bg-white p-4 shadow-sm">
-      <div className={`flex h-10 w-10 items-center justify-center rounded-xl ${tone.icon}`}>
-        <Icon className="h-5 w-5" />
+    <ScaleHover className="h-full">
+      <div className="flex h-full items-center gap-3 rounded-2xl border border-[#E8DCC8] bg-white p-4 shadow-sm will-change-transform">
+        <div className={`flex h-10 w-10 items-center justify-center rounded-xl ${tone.icon}`}>
+          <Icon className="h-5 w-5" />
+        </div>
+        <div>
+          <p className="text-xs font-semibold text-[#7A7A7A]">{label}</p>
+          <p className="mt-0.5 font-melon text-xl font-bold text-[#4A1D1F]">{value}</p>
+        </div>
       </div>
-      <div>
-        <p className="text-xs font-semibold text-[#7A7A7A]">{label}</p>
-        <p className="mt-0.5 font-melon text-xl font-bold text-[#4A1D1F]">{value}</p>
-      </div>
-    </div>
+    </ScaleHover>
   )
 }
 
@@ -95,10 +98,7 @@ export default function AdminDashboardPage() {
   return (
     <section className="mx-auto max-w-7xl">
       <div className="rounded-3xl bg-transparent p-0 md:p-0">
-        <div className="mb-2 pt-[34px] pb-[34px]">
-          <h1 className="font-melon text-2xl font-bold tracking-wide text-[#4A1D1F] md:text-3xl">Dashboard</h1>
-          <p className="mt-1 text-sm text-[#6B6B6B]">Store overview with trends and recent activity.</p>
-        </div>
+        <div className="mb-2 pt-[34px] pb-[34px]" />
 
         {error ? (
           <div className="mb-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
@@ -108,12 +108,14 @@ export default function AdminDashboardPage() {
         ) : null}
 
         {summary ? (
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-            <StatCard iconTone="neutral" icon={Users} label="Total Customers" value={`${summary.totalCustomers}+`} />
-            <StatCard iconTone="primary" icon={Package} label="Total Products" value={`${summary.totalProducts}+`} />
-            <StatCard iconTone="accent" icon={ShoppingCart} label="Total Orders" value={`${summary.totalOrders}+`} />
-            <StatCard iconTone="primary" icon={IndianRupee} label="Total Sales" value={`${money(summary.totalSales)}+`} />
-          </div>
+          <FadeIn>
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+              <StatCard iconTone="neutral" icon={Users} label="Total Customers" value={`${summary.totalCustomers}+`} />
+              <StatCard iconTone="primary" icon={Package} label="Total Products" value={`${summary.totalProducts}+`} />
+              <StatCard iconTone="accent" icon={ShoppingCart} label="Total Orders" value={`${summary.totalOrders}+`} />
+              <StatCard iconTone="primary" icon={IndianRupee} label="Total Sales" value={`${money(summary.totalSales)}+`} />
+            </div>
+          </FadeIn>
         ) : loading ? (
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
             {Array.from({ length: 4 }).map((_, idx) => (

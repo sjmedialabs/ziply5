@@ -1,8 +1,7 @@
-import { Prisma } from "@prisma/client"
-import { prisma } from "@/src/server/db/prisma"
+import { pgQuery } from "@/src/server/db/pg"
 
 export const listProductDiscounts = async (productId?: string) => {
-  return prisma.$queryRaw<Array<{
+  return pgQuery<Array<{
     id: string
     product_id: string
     discount_type: string
@@ -11,12 +10,15 @@ export const listProductDiscounts = async (productId?: string) => {
     end_date: Date | null
     is_stackable: boolean
     created_at: Date
-  }>>(Prisma.sql`
-    SELECT *
-    FROM product_discounts_v2
-    WHERE (${productId ?? null}::text IS NULL OR product_id = ${productId ?? null})
-    ORDER BY created_at DESC
-  `)
+  }>>(
+    `
+      SELECT *
+      FROM product_discounts_v2
+      WHERE ($1::text IS NULL OR product_id = $1)
+      ORDER BY created_at DESC
+    `,
+    [productId ?? null],
+  )
 }
 
 export const createProductDiscount = async (input: {
@@ -27,18 +29,23 @@ export const createProductDiscount = async (input: {
   endDate?: string | null
   isStackable?: boolean
 }) => {
-  const rows = await prisma.$queryRaw<Array<{ id: string }>>(Prisma.sql`
-    INSERT INTO product_discounts_v2 (
-      product_id, discount_type, discount_value, start_date, end_date, is_stackable
-    )
-    VALUES (
-      ${input.productId}, ${input.discountType}, ${input.discountValue},
-      ${input.startDate ? new Date(input.startDate) : null},
-      ${input.endDate ? new Date(input.endDate) : null},
-      ${input.isStackable ?? false}
-    )
-    RETURNING id
-  `)
+  const rows = await pgQuery<Array<{ id: string }>>(
+    `
+      INSERT INTO product_discounts_v2 (
+        product_id, discount_type, discount_value, start_date, end_date, is_stackable
+      )
+      VALUES ($1, $2, $3, $4, $5, $6)
+      RETURNING id
+    `,
+    [
+      input.productId,
+      input.discountType,
+      input.discountValue,
+      input.startDate ? new Date(input.startDate) : null,
+      input.endDate ? new Date(input.endDate) : null,
+      input.isStackable ?? false,
+    ],
+  )
   return rows[0]?.id
 }
 
@@ -52,35 +59,56 @@ export const updateProductDiscount = async (
     isStackable: boolean
   }>,
 ) => {
-  const sets: Prisma.Sql[] = []
-  if (input.discountType !== undefined) sets.push(Prisma.sql`discount_type = ${input.discountType}`)
-  if (input.discountValue !== undefined) sets.push(Prisma.sql`discount_value = ${input.discountValue}`)
-  if (input.startDate !== undefined) sets.push(Prisma.sql`start_date = ${input.startDate ? new Date(input.startDate) : null}`)
-  if (input.endDate !== undefined) sets.push(Prisma.sql`end_date = ${input.endDate ? new Date(input.endDate) : null}`)
-  if (input.isStackable !== undefined) sets.push(Prisma.sql`is_stackable = ${input.isStackable}`)
-  sets.push(Prisma.sql`updated_at = now()`)
-  await prisma.$executeRaw(Prisma.sql`
-    UPDATE product_discounts_v2
-    SET ${Prisma.join(sets, Prisma.sql`, `)}
-    WHERE id = ${id}::uuid
-  `)
+  const sets: string[] = []
+  const values: any[] = []
+
+  if (input.discountType !== undefined) {
+    values.push(input.discountType)
+    sets.push(`discount_type = $${values.length}`)
+  }
+  if (input.discountValue !== undefined) {
+    values.push(input.discountValue)
+    sets.push(`discount_value = $${values.length}`)
+  }
+  if (input.startDate !== undefined) {
+    values.push(input.startDate ? new Date(input.startDate) : null)
+    sets.push(`start_date = $${values.length}`)
+  }
+  if (input.endDate !== undefined) {
+    values.push(input.endDate ? new Date(input.endDate) : null)
+    sets.push(`end_date = $${values.length}`)
+  }
+  if (input.isStackable !== undefined) {
+    values.push(input.isStackable)
+    sets.push(`is_stackable = $${values.length}`)
+  }
+  sets.push(`updated_at = now()`)
+
+  values.push(id)
+  await pgQuery(
+    `UPDATE product_discounts_v2 SET ${sets.join(", ")} WHERE id = $${values.length}::uuid`,
+    values,
+  )
 }
 
 export const getActiveProductDiscount = async (productId: string, now = new Date()) => {
-  const rows = await prisma.$queryRaw<Array<{
+  const rows = await pgQuery<Array<{
     id: string
     discount_type: "percentage" | "flat"
     discount_value: number
     is_stackable: boolean
-  }>>(Prisma.sql`
-    SELECT id, discount_type, discount_value, is_stackable
-    FROM product_discounts_v2
-    WHERE product_id = ${productId}
-      AND (start_date IS NULL OR start_date <= ${now})
-      AND (end_date IS NULL OR end_date >= ${now})
-    ORDER BY created_at DESC
-    LIMIT 1
-  `)
+  }>>(
+    `
+      SELECT id, discount_type, discount_value, is_stackable
+      FROM product_discounts_v2
+      WHERE product_id = $1
+        AND (start_date IS NULL OR start_date <= $2)
+        AND (end_date IS NULL OR end_date >= $2)
+      ORDER BY created_at DESC
+      LIMIT 1
+    `,
+    [productId, now],
+  )
   return rows[0] ?? null
 }
 

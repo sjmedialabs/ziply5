@@ -1,4 +1,5 @@
-import { prisma } from "@/src/server/db/prisma"
+import { pgQuery, pgTx } from "@/src/server/db/pg"
+import { randomUUID } from "crypto"
 
 export const listCoupons = async (role: string) => {
 
@@ -8,49 +9,23 @@ export const listCoupons = async (role: string) => {
 
   if (role === "customer") {
 
-    return prisma.coupon.findMany({
-
-      where: {
-
-        active: true,
-
-        /* Not expired */
-
-        OR: [
-          { endsAt: null },
-          { endsAt: { gte: now } },
-        ],
-
-        /* Already started */
-
-        AND: [
-          {
-            OR: [
-              { startsAt: null },
-              { startsAt: { lte: now } },
-            ],
-          },
-        ],
-
-      },
-
-      orderBy: {
-        createdAt: "desc",
-      },
-
-    })
+    return pgQuery(
+      `
+        SELECT *
+        FROM "Coupon"
+        WHERE active = true
+          AND ("endsAt" IS NULL OR "endsAt" >= $1)
+          AND ("startsAt" IS NULL OR "startsAt" <= $1)
+        ORDER BY "createdAt" DESC
+      `,
+      [now],
+    )
 
   }
 
   /* Admin → return all */
 
-  return prisma.coupon.findMany({
-
-    orderBy: {
-      createdAt: "desc",
-    },
-
-  })
+  return pgQuery(`SELECT * FROM "Coupon" ORDER BY "createdAt" DESC`)
 
 }
 
@@ -58,6 +33,7 @@ export const createCoupon = async (input: {
   code: string
   discountType: "percentage" | "flat"
   discountValue: number
+  description?: string | null
 
   active?: boolean
   startsAt?: string | null
@@ -73,57 +49,34 @@ export const createCoupon = async (input: {
   firstOrderOnly?: boolean
 }) => {
 
-  return prisma.coupon.create({
-
-    data: {
-
-      code: input.code.trim().toUpperCase(),
-
-      discountType: input.discountType,
-
-      discountValue: input.discountValue,
-
-      active: input.active ?? true,
-
-      /* Dates */
-
-      startsAt: input.startsAt
-        ? new Date(input.startsAt)
-        : undefined,
-
-      endsAt: input.endsAt
-        ? new Date(input.endsAt)
-        : undefined,
-
-      /*  REQUIRED FIELD MAPPINGS */
-
-      minOrderAmount:
-        input.minOrderAmount ?? null,
-
-      maxDiscountAmount:
-        input.maxDiscountAmount ?? null,
-
-      usageLimitTotal:
-        input.usageLimitTotal ?? null,
-
-      usageLimitPerUser:
-        input.usageLimitPerUser ?? null,
-
-      stackable:
-        input.stackable ?? false,
-
-      firstOrderOnly:
-        input.firstOrderOnly ?? false,
-
-      /* Always system-controlled */
-
-      usedCount: 0,
-
-      description:input.description?.trim() || null,
-
-    },
-
-  })
+  const rows = await pgQuery(
+    `
+      INSERT INTO "Coupon" (
+        id, code, "discountType", description, "discountValue", active, "startsAt", "endsAt",
+        "minOrderAmount", "maxDiscountAmount", "usageLimitTotal", "usageLimitPerUser",
+        stackable, "firstOrderOnly", "usedCount", "createdAt", "updatedAt"
+      )
+      VALUES ($1,$2,$3,$4,$5::numeric,$6,$7,$8,$9::numeric,$10::numeric,$11,$12,$13,$14,0,now(),now())
+      RETURNING *
+    `,
+    [
+      randomUUID(),
+      input.code.trim().toUpperCase(),
+      input.discountType === "percentage" ? "percent" : "fixed",
+      input.description?.trim() || null,
+      input.discountValue,
+      input.active ?? true,
+      input.startsAt ? new Date(input.startsAt) : null,
+      input.endsAt ? new Date(input.endsAt) : null,
+      input.minOrderAmount ?? null,
+      input.maxDiscountAmount ?? null,
+      input.usageLimitTotal ?? null,
+      input.usageLimitPerUser ?? null,
+      input.stackable ?? false,
+      input.firstOrderOnly ?? false,
+    ],
+  )
+  return rows[0]
 
 }
 
@@ -142,23 +95,32 @@ export const createCouponsBulk = async (input: {
   const codes = Array.from({ length: input.count }).map((_, idx) =>
     `${input.prefix.trim().toUpperCase()}-${now}-${String(idx + 1).padStart(4, "0")}`,
   )
-  await prisma.coupon.createMany({
-    data: codes.map((code) => ({
-      code,
-      discountType: input.discountType,
-      discountValue: input.discountValue,
-      active: input.active ?? true,
-      startsAt: input.startsAt ?? null,
-      endsAt: input.endsAt ?? null,
-      usageLimitTotal: input.usageLimitTotal ?? null,
-      usageLimitPerUser: input.usageLimitPerUser ?? null,
-    })),
-    skipDuplicates: true,
+  await pgTx(async (client) => {
+    for (const code of codes) {
+      await client.query(
+        `
+          INSERT INTO "Coupon" (
+            id, code, "discountType", "discountValue", active, "startsAt", "endsAt",
+            "usageLimitTotal", "usageLimitPerUser", "createdAt", "updatedAt"
+          )
+          VALUES ($1,$2,$3,$4::numeric,$5,$6,$7,$8,$9,now(),now())
+          ON CONFLICT (code) DO NOTHING
+        `,
+        [
+          randomUUID(),
+          code,
+          input.discountType,
+          input.discountValue,
+          input.active ?? true,
+          input.startsAt ?? null,
+          input.endsAt ?? null,
+          input.usageLimitTotal ?? null,
+          input.usageLimitPerUser ?? null,
+        ],
+      )
+    }
   })
-  return prisma.coupon.findMany({
-    where: { code: { in: codes } },
-    orderBy: { code: "asc" },
-  })
+  return pgQuery(`SELECT * FROM "Coupon" WHERE code = ANY($1::text[]) ORDER BY code ASC`, [codes])
 }
 
 export const updateCoupon = async (
@@ -197,69 +159,29 @@ export const updateCoupon = async (
   }>,
 ) => {
 
-  return prisma.coupon.update({
-
-    where: { id },
-
-    data: {
-
-      /* Existing fields */
-
-      code: input.code,
-      description: input.description,
-
-
-      active: input.active,
-
-      discountType: input.discountType,
-
-      discountValue: input.discountValue,
-
-     
-
-      /* Dates (safe conversion) */
-
-      startsAt:
-        input.startsAt === undefined
-          ? undefined
-          : input.startsAt
-            ? new Date(input.startsAt)
-            : null,
-
-      endsAt:
-        input.endsAt === undefined
-          ? undefined
-          : input.endsAt
-            ? new Date(input.endsAt)
-            : null,
-
-      /* New fields */
-
-      minOrderAmount:
-        input.minOrderAmount,
-
-      maxDiscountAmount:
-        input.maxDiscountAmount,
-
-      usageLimitTotal:
-        input.usageLimitTotal,
-
-      usageLimitPerUser:
-        input.usageLimitPerUser,
-
-      stackable:
-        input.stackable,
-
-      firstOrderOnly:
-        input.firstOrderOnly,
-
-      /* Never allow manual update */
-
-      usedCount: undefined,
-
-    },
-
-  })
+  const sets: string[] = []
+  const values: any[] = []
+  const push = (col: string, v: any) => {
+    values.push(v)
+    sets.push(`${col} = $${values.length}`)
+  }
+  if (input.code !== undefined) push(`code`, input.code)
+  if (input.description !== undefined) push(`description`, input.description)
+  if (input.active !== undefined) push(`active`, input.active)
+  if (input.discountType !== undefined) push(`"discountType"`, input.discountType)
+  if (input.discountValue !== undefined) push(`"discountValue"`, input.discountValue)
+  if (input.startsAt !== undefined) push(`"startsAt"`, input.startsAt ? new Date(input.startsAt as any) : null)
+  if (input.endsAt !== undefined) push(`"endsAt"`, input.endsAt ? new Date(input.endsAt as any) : null)
+  if (input.minOrderAmount !== undefined) push(`"minOrderAmount"`, input.minOrderAmount)
+  if (input.maxDiscountAmount !== undefined) push(`"maxDiscountAmount"`, input.maxDiscountAmount)
+  if (input.usageLimitTotal !== undefined) push(`"usageLimitTotal"`, input.usageLimitTotal)
+  if (input.usageLimitPerUser !== undefined) push(`"usageLimitPerUser"`, input.usageLimitPerUser)
+  if (input.stackable !== undefined) push(`stackable`, input.stackable)
+  if (input.firstOrderOnly !== undefined) push(`"firstOrderOnly"`, input.firstOrderOnly)
+  sets.push(`"updatedAt" = now()`)
+  values.push(id)
+  const rows = await pgQuery(`UPDATE "Coupon" SET ${sets.join(", ")} WHERE id = $${values.length} RETURNING *`, values)
+  return rows[0]
 
 }
 
@@ -269,11 +191,8 @@ export const computeCouponDiscount = async (
   subtotal: number
 ) => {
 
-  const c = await prisma.coupon.findUnique({
-    where: {
-      code: code.trim().toUpperCase(),
-    },
-  })
+  const rows = await pgQuery<Array<any>>(`SELECT * FROM "Coupon" WHERE code = $1 LIMIT 1`, [code.trim().toUpperCase()])
+  const c = rows[0]
 
   if (!c || !c.active)
     throw new Error("Invalid or inactive coupon")

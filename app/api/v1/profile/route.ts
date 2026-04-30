@@ -1,5 +1,6 @@
-import { NextRequest, NextResponse } from "next/server";
-import { getSupabaseAdmin } from "@/src/lib/supabase/admin";
+import { NextRequest, NextResponse } from "next/server"
+import { pgQuery, pgTx } from "@/src/server/db/pg"
+import { randomUUID } from "crypto"
 
 async function getAuthenticatedUserId(req: NextRequest) {
   const authHeader = req.headers.get("authorization");
@@ -9,37 +10,33 @@ async function getAuthenticatedUserId(req: NextRequest) {
 }
 
 export async function GET(request: NextRequest) {
-  const authUserId = await getAuthenticatedUserId(request);
-  if (!authUserId) return NextResponse.json({ success: false, message: "Unauthorized" }, { status: 401 });
-  const userId = request.nextUrl.searchParams.get("userId")?.trim() ?? "";
-  if (!userId) return NextResponse.json({ success: false, message: "userId is required" }, { status: 400 });
+  const userId = await getAuthenticatedUserId(request);
+  if (!userId) return NextResponse.json({ success: false, message: "Unauthorized" }, { status: 401 });
 
   try {
-    const client = getSupabaseAdmin();
-    const { data: user, error: userError } = await client
-      .from("User")
-      .select("id,name,email")
-      .eq("id", userId)
-      .maybeSingle();
-    if (userError) throw userError;
+    const userRows = await pgQuery<Array<{ id: string; email: string; name: string | null }>>(
+      `SELECT id, email, name FROM "User" WHERE id = $1 LIMIT 1`,
+      [userId],
+    )
+    const user = userRows[0]
 
     if (!user) return NextResponse.json({ success: false, message: "User not found" }, { status: 404 });
 
-    const { data: profile, error: profileError } = await client
-      .from("UserProfile")
-      .select("*")
-      .eq("userId", userId)
-      .maybeSingle();
-    if (profileError) throw profileError;
+    const [profileRows, addresses] = await Promise.all([
+      pgQuery<Array<Record<string, unknown>>>(`SELECT * FROM "UserProfile" WHERE "userId" = $1 LIMIT 1`, [userId]),
+      pgQuery<Array<Record<string, unknown>>>(`SELECT * FROM "UserAddress" WHERE "userId" = $1 ORDER BY "createdAt" DESC`, [userId]),
+    ])
+    let profile = profileRows[0] ?? null
+    if (!profile) {
+      profile = (
+        await pgQuery<Array<Record<string, unknown>>>(
+          `INSERT INTO "UserProfile" (id, "userId", "createdAt", "updatedAt") VALUES ($1, $2, now(), now()) RETURNING *`,
+          [randomUUID(), userId],
+        )
+      )[0]
+    }
 
-    const { data: addresses, error: addressesError } = await client
-      .from("UserAddress")
-      .select("*")
-      .eq("userId", userId)
-      .order("createdAt", { ascending: false });
-    if (addressesError) throw addressesError;
-
-    return NextResponse.json({ success: true, data: { ...user, profile: profile ?? null, addresses: addresses ?? [] } });
+    return NextResponse.json({ success: true, data: { ...user, profile, addresses } });
   } catch (error) {
     return NextResponse.json({ success: false, message: "Internal Server Error" }, { status: 500 });
   }
@@ -61,57 +58,34 @@ export async function PATCH(request: NextRequest) {
       avatarUrl?: string 
     };
 
-    const { data: user, error: userError } = await client
-      .from("User")
-      .select("id")
-      .eq("id", userId)
-      .maybeSingle();
-    if (userError) throw userError;
+    const userRows = await pgQuery<Array<{ id: string }>>(`SELECT id FROM "User" WHERE id = $1 LIMIT 1`, [userId])
+    const user = userRows[0]
 
     if (!user) {
       return NextResponse.json({ success: false, message: "User account not found" }, { status: 404 });
     }
 
-    if (name !== undefined) {
-      const { error } = await client.from("User").update({ name }).eq("id", userId);
-      if (error) throw error;
-    }
+    const updatedProfile = await pgTx(async (client) => {
+      if (name !== undefined) {
+        await client.query(`UPDATE "User" SET name = $2, "updatedAt" = now() WHERE id = $1`, [userId, name])
+      }
 
-    const { data: existingProfile, error: profileReadError } = await client
-      .from("UserProfile")
-      .select("id,userId")
-      .eq("userId", userId)
-      .maybeSingle();
-    if (profileReadError) throw profileReadError;
-
-    let updatedProfile: any = null;
-    if (existingProfile?.id) {
-      const { data, error } = await client
-        .from("UserProfile")
-        .update({
-          ...(bio !== undefined ? { bio } : {}),
-          ...(phone !== undefined ? { phone } : {}),
-          ...(avatarUrl !== undefined ? { avatarUrl } : {}),
-        })
-        .eq("id", existingProfile.id)
-        .select("*")
-        .single();
-      if (error) throw error;
-      updatedProfile = data;
-    } else {
-      const { data, error } = await client
-        .from("UserProfile")
-        .insert({
-          userId,
-          bio: bio ?? null,
-          phone: phone ?? null,
-          avatarUrl: avatarUrl ?? null,
-        })
-        .select("*")
-        .single();
-      if (error) throw error;
-      updatedProfile = data;
-    }
+      // Note: UserProfile schema does not include `bio` in this project; ignore if provided.
+      const insertRows = await client.query<Record<string, unknown>>(
+        `
+          INSERT INTO "UserProfile" (id, "userId", phone, "avatarUrl", "createdAt", "updatedAt")
+          VALUES ($1, $2, $3, $4, now(), now())
+          ON CONFLICT ("userId") DO UPDATE
+          SET
+            phone = COALESCE(EXCLUDED.phone, "UserProfile".phone),
+            "avatarUrl" = COALESCE(EXCLUDED."avatarUrl", "UserProfile"."avatarUrl"),
+            "updatedAt" = now()
+          RETURNING *
+        `,
+        [randomUUID(), userId, phone ?? null, avatarUrl ?? null],
+      )
+      return insertRows.rows[0]
+    })
 
     return NextResponse.json({ success: true, data: updatedProfile, message: "Profile updated successfully" });
   } catch (error) {
@@ -121,17 +95,15 @@ export async function PATCH(request: NextRequest) {
 }
 
 export async function DELETE(request: NextRequest) {
-  const authUserId = await getAuthenticatedUserId(request);
-  if (!authUserId) return NextResponse.json({ success: false, message: "Unauthorized" }, { status: 401 });
-  const userId = request.nextUrl.searchParams.get("userId")?.trim() ?? "";
-  if (!userId) return NextResponse.json({ success: false, message: "userId is required" }, { status: 400 });
+  const userId = await getAuthenticatedUserId(request);
+  if (!userId) return NextResponse.json({ success: false, message: "Unauthorized" }, { status: 401 });
 
   try {
-    const { error } = await getSupabaseAdmin()
-      .from("UserProfile")
-      .update({ bio: null, phone: null, avatarUrl: null })
-      .eq("userId", userId);
-    if (error) throw error;
+    // Clear specific profile fields rather than deleting the user account
+    await pgQuery(
+      `UPDATE "UserProfile" SET phone = NULL, "avatarUrl" = NULL, "updatedAt" = now() WHERE "userId" = $1`,
+      [userId],
+    )
     return NextResponse.json({ success: true, message: "Profile data cleared" });
   } catch (error) {
     return NextResponse.json({ success: false, message: "Delete failed" }, { status: 500 });

@@ -1,8 +1,15 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, useMemo } from "react";
 import { authedFetch, authedPatch } from "@/lib/dashboard-fetch";
 import { ConsoleTable, ConsoleTd } from "@/components/dashboard/ConsoleTable";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 type ReviewRow = {
   id: string;
@@ -25,6 +32,11 @@ export default function AdminReviewsPage() {
   const [loading, setLoading] = useState(true);
   const [draft, setDraft] = useState<Record<string, string>>({});
   const [updating, setUpdating] = useState<string | null>(null);
+
+  // Search & Filter State
+  const [searchTerm, setSearchTerm] = useState("");
+  const [ratingFilter, setRatingFilter] = useState("all");
+  const [statusFilter, setStatusFilter] = useState("all");
 
   const load = useCallback(() => {
     setLoading(true);
@@ -61,6 +73,21 @@ export default function AdminReviewsPage() {
     }
   };
 
+  const filteredRows = useMemo(() => {
+    return rows.filter((r) => {
+      const matchesSearch =
+        !searchTerm ||
+        (r.product?.name || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (r.user?.name || "Guest").toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (r.user?.email || "").toLowerCase().includes(searchTerm.toLowerCase());
+
+      const matchesRating = ratingFilter === "all" || r.rating === Number(ratingFilter);
+      const matchesStatus = statusFilter === "all" || r.status === statusFilter;
+
+      return matchesSearch && matchesRating && matchesStatus;
+    });
+  }, [rows, searchTerm, ratingFilter, statusFilter]);
+
   return (
     <section className="mx-auto max-w-7xl space-y-4">
       <div>
@@ -68,19 +95,52 @@ export default function AdminReviewsPage() {
         <p className="text-sm text-[#646464]">Manage published and archived product reviews.</p>
       </div>
 
+      <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+        <input
+          type="text"
+          placeholder="Search product, user, email..."
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+          className="w-full rounded-full border border-[#E3E3DA] bg-[#FAFBF9] px-4 py-2.5 text-sm placeholder-[#8A8A8A] focus:border-[#7B3010] focus:outline-none"
+        />
+        <Select value={ratingFilter} onValueChange={setRatingFilter}>
+          <SelectTrigger className="h-auto w-full rounded-full border border-[#E3E3DA] bg-white px-4 py-2.5 text-sm text-[#4A1D1F] shadow-none focus:border-[#7B3010] focus:outline-none focus:ring-0 focus-visible:ring-0">
+            <SelectValue placeholder="All ratings" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All ratings</SelectItem>
+            <SelectItem value="5">5 Stars</SelectItem>
+            <SelectItem value="4">4 Stars</SelectItem>
+            <SelectItem value="3">3 Stars</SelectItem>
+            <SelectItem value="2">2 Stars</SelectItem>
+            <SelectItem value="1">1 Star</SelectItem>
+          </SelectContent>
+        </Select>
+        <Select value={statusFilter} onValueChange={setStatusFilter}>
+          <SelectTrigger className="h-auto w-full rounded-full border border-[#E3E3DA] bg-white px-4 py-2.5 text-sm text-[#4A1D1F] shadow-none focus:border-[#7B3010] focus:outline-none focus:ring-0 focus-visible:ring-0">
+            <SelectValue placeholder="All statuses" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All statuses</SelectItem>
+            <SelectItem value="published">Published</SelectItem>
+            <SelectItem value="archived">Archived</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+
       {error && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-800">{error}</p>}
       {loading && <p className="text-sm text-[#646464]">Loading…</p>}
 
       {!loading && (
         <ConsoleTable headers={["Product", "User", "Rating", "Content", "Status", ""]}>
-          {rows.length === 0 ? (
+          {filteredRows.length === 0 ? (
             <tr>
               <ConsoleTd className="py-8 text-center text-[#646464]" colSpan={6}>
-                No reviews yet.
+                No reviews found.
               </ConsoleTd>
             </tr>
           ) : (
-            rows.map((r) => (
+            filteredRows.map((r) => (
               <tr key={r.id} className="hover:bg-[#FFFBF3]/80">
                 <ConsoleTd>
                   <div className="font-medium">{r.product.name}</div>

@@ -50,7 +50,7 @@ export default function ProductCategories({ cmsData }: { cmsData?: any }) {
             ? Array.from({ length: 7 }).map((_, i) => (
                 <SwiperSlide key={`cat-skeleton-${i}`}>
                   <div className="bg-white/50 animate-pulse rounded-full h-75 flex flex-col items-center px-2 shadow-sm border border-white/20">
-                    <div className="w-30 h-30 rounded-full bg-white/40 mt-4 mb-4" />
+                    <div className="w-[100px] h-[100px] md:w-[120px] md:h-[120px] shrink-0 rounded-full bg-white/40 mt-4 mb-4" />
                     <div className="h-4 w-24 bg-white/40 rounded mb-2" />
                     <div className="h-3 w-32 bg-white/40 rounded" />
                   </div>
@@ -63,13 +63,13 @@ export default function ProductCategories({ cmsData }: { cmsData?: any }) {
                   >
                     <div className="bg-white rounded-full h-75 flex flex-col justify-between pt-4 pb-8 items-center px-2 shadow-md transition hover:scale-105">
 
-                      <div className="w-30 h-30 rounded-full overflow-hidden mb-4">
+                      <div className="w-[100px] h-[100px] md:w-[120px] md:h-[120px] shrink-0 rounded-full shadow-md overflow-hidden mb-4">
                         <Image
                           src={product.image}
                           alt={product.name}
                           width={120}
                           height={120}
-                          className="object-cover w-full h-full"
+                          className="object-contain p-2 w-full h-full"
                         />
                       </div>
                       <div className="mb-4">

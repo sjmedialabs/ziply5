@@ -1,4 +1,5 @@
-import { getSupabaseAdmin } from "@/src/lib/supabase/admin"
+import { pgQuery, pgTx } from "@/src/server/db/pg"
+import { randomUUID } from "crypto"
 import { createBrandSupabase, listBrandsSupabase } from "@/src/lib/db/brands"
 import {
   createUserAddressSupabase,
@@ -13,60 +14,63 @@ const supabase = () => getSupabaseAdmin()
 const normalizeSlug = (slug: string) => slug.trim().toLowerCase().replace(/\s+/g, "-")
 
 export const listBrands = async () => {
-  return listBrandsSupabase()
+  try {
+    return await listBrandsSupabase()
+  } catch (error) {
+    logger.warn("brands.list.supabase_fallback_prisma", {
+      error: error instanceof Error ? error.message : "unknown",
+    })
+    return pgQuery(`SELECT * FROM "Brand" ORDER BY name ASC`)
+  }
 }
 
 export const createBrand = (name: string, slug: string) =>
-  createBrandSupabase({ name, slug })
+  createBrandSupabase({ name, slug }).catch((error) => {
+    logger.warn("brands.create.supabase_fallback_prisma", {
+      error: error instanceof Error ? error.message : "unknown",
+    })
+    return pgQuery(
+      `INSERT INTO "Brand" (id, name, slug, "createdAt", "updatedAt") VALUES ($1, $2, $3, now(), now()) RETURNING *`,
+      [randomUUID(), name, slug.trim().toLowerCase().replace(/\s+/g, "-")],
+    ).then((rows) => rows[0])
+  })
 
-export const listTags = async () => {
-  const { data, error } = await supabase().from("Tag").select("*").order("name", { ascending: true })
-  if (error) throw new Error(error.message)
-  return data ?? []
-}
+export const listTags = () => pgQuery(`SELECT * FROM "Tag" ORDER BY name ASC`)
 
 export const createTag = (name: string, slug: string) =>
-  supabase()
-    .from("Tag")
-    .insert({ name, slug: normalizeSlug(slug) })
-    .select("*")
-    .single()
-    .then(({ data, error }) => {
-      if (error) throw new Error(error.message)
-      return data
-    })
+  pgQuery(
+    `INSERT INTO "Tag" (id, name, slug, "createdAt", "updatedAt", "isActive") VALUES ($1, $2, $3, now(), now(), true) RETURNING *`,
+    [randomUUID(), name, slug.trim().toLowerCase().replace(/\s+/g, "-")],
+  ).then((rows) => rows[0])
 
 export const updateTag = async (id: string, name: string, slug: string, isActive: boolean) => {
-  const { data, error } = await supabase()
-    .from("Tag")
-    .update({
-      ...(name !== undefined ? { name } : {}),
-      ...(slug !== undefined ? { slug: normalizeSlug(slug) } : {}),
-      ...(isActive !== undefined ? { isActive } : {}),
-    })
-    .eq("id", id)
-    .select("*")
-    .single()
-  if (error) throw new Error(error.message)
-  return data
+  const sets: string[] = []
+  const values: any[] = []
+  if (name !== undefined) {
+    values.push(name)
+    sets.push(`name = $${values.length}`)
+  }
+  if (slug !== undefined) {
+    values.push(slug.trim().toLowerCase().replace(/\s+/g, "-"))
+    sets.push(`slug = $${values.length}`)
+  }
+  if (isActive !== undefined) {
+    values.push(isActive)
+    sets.push(`"isActive" = $${values.length}`)
+  }
+  sets.push(`"updatedAt" = now()`)
+  values.push(id)
+  const rows = await pgQuery(`UPDATE "Tag" SET ${sets.join(", ")} WHERE id = $${values.length} RETURNING *`, values)
+  return rows[0]
 }
 
-export const listAttributeDefs = async () => {
-  const { data, error } = await supabase().from("AttributeDef").select("*").order("name", { ascending: true })
-  if (error) throw new Error(error.message)
-  return data ?? []
-}
+export const listAttributeDefs = () => pgQuery(`SELECT * FROM "AttributeDef" ORDER BY name ASC`)
 
 export const createAttributeDef = (name: string, slug: string) =>
-  supabase()
-    .from("AttributeDef")
-    .insert({ name, slug: normalizeSlug(slug) })
-    .select("*")
-    .single()
-    .then(({ data, error }) => {
-      if (error) throw new Error(error.message)
-      return data
-    })
+  pgQuery(
+    `INSERT INTO "AttributeDef" (id, name, slug, "createdAt", "updatedAt", "isActive") VALUES ($1, $2, $3, now(), now(), true) RETURNING *`,
+    [randomUUID(), name, slug.trim().toLowerCase().replace(/\s+/g, "-")],
+  ).then((rows) => rows[0])
 
 export type InventoryRow =
   | {
@@ -90,84 +94,127 @@ export type InventoryRow =
   }
 
 export const listInventoryOverview = async (): Promise<InventoryRow[]> => {
-  const { data: rows, error: rowsError } = await supabase()
-    .from("InventoryItem")
-    .select("id,productId,warehouse,available,reserved,product:Product(name,slug)")
-    .order("available", { ascending: true })
-    .limit(200)
-  if (rowsError) throw new Error(rowsError.message)
+  const rows = await pgQuery<
+    Array<{
+      id: string
+      productId: string
+      warehouse: string | null
+      available: number
+      reserved: number
+      product_name: string
+      product_slug: string
+    }>
+  >(
+    `
+      SELECT ii.id, ii."productId" as "productId", ii.warehouse, ii.available, ii.reserved,
+             p.name as product_name, p.slug as product_slug
+      FROM "InventoryItem" ii
+      INNER JOIN "Product" p ON p.id = ii."productId"
+      ORDER BY ii.available ASC
+      LIMIT 200
+    `,
+  )
   const fromWarehouse: InventoryRow[] = rows.map((r) => ({
-    id: (r as any).id,
-    productId: (r as any).productId,
-    warehouse: (r as any).warehouse,
-    available: Number((r as any).available ?? 0),
-    reserved: Number((r as any).reserved ?? 0),
+    id: r.id,
+    productId: r.productId,
+    warehouse: r.warehouse,
+    available: Number(r.available ?? 0),
+    reserved: Number(r.reserved ?? 0),
     source: "warehouse" as const,
-    product: ((r as any).product?.[0] ?? (r as any).product ?? { name: "", slug: "" }) as any,
+    product: { name: r.product_name, slug: r.product_slug },
   }))
-  const { data: variants, error: variantsError } = await supabase()
-    .from("ProductVariant")
-    .select("id,productId,name,stock,product:Product(name,slug)")
-    .order("stock", { ascending: true })
-    .limit(200)
-  if (variantsError) throw new Error(variantsError.message)
+
+  const variants = await pgQuery<
+    Array<{ id: string; productId: string; name: string; stock: number; product_name: string; product_slug: string }>
+  >(
+    `
+      SELECT v.id, v."productId" as "productId", v.name, v.stock,
+             p.name as product_name, p.slug as product_slug
+      FROM "ProductVariant" v
+      INNER JOIN "Product" p ON p.id = v."productId"
+      ORDER BY v.stock ASC
+      LIMIT 200
+    `,
+  )
   const fromVariant: InventoryRow[] = variants.map((v) => ({
     id: (v as any).id,
     productId: (v as any).productId,
     warehouse: null,
-    available: Number((v as any).stock ?? 0),
+    available: Number(v.stock ?? 0),
     reserved: 0,
     source: "variant" as const,
-    variantName: (v as any).name,
-    product: ((v as any).product?.[0] ?? (v as any).product ?? { name: "", slug: "" }) as any,
+    variantName: v.name,
+    product: { name: v.product_name, slug: v.product_slug },
   }))
   if (fromWarehouse.length > 0) return fromWarehouse
   return fromVariant
 }
 
 export const updateInventoryItem = async (id: string, available: number, reserved?: number) => {
-  const { data, error } = await supabase()
-    .from("InventoryItem")
-    .update({ available, ...(reserved !== undefined ? { reserved } : {}) })
-    .eq("id", id)
-    .select("id,productId,warehouse,available,reserved,product:Product(name,slug)")
-    .single()
-  if (error) throw new Error(error.message)
-  return data
+  const rows = await pgQuery<
+    Array<{
+      id: string
+      productId: string
+      warehouse: string | null
+      available: number
+      reserved: number
+      product: { name: string; slug: string }
+    }>
+  >(
+    `
+      UPDATE "InventoryItem" ii
+      SET available = $2, reserved = COALESCE($3, ii.reserved), "updatedAt" = now()
+      WHERE ii.id = $1
+      RETURNING ii.id, ii."productId" as "productId", ii.warehouse, ii.available, ii.reserved,
+        (SELECT jsonb_build_object('name', p.name, 'slug', p.slug) FROM "Product" p WHERE p.id = ii."productId") as product
+    `,
+    [id, available, reserved ?? null],
+  )
+  return rows[0]
 }
 
 export const updateVariantStock = async (id: string, stock: number) => {
-  const { data, error } = await supabase()
-    .from("ProductVariant")
-    .update({ stock })
-    .eq("id", id)
-    .select("id,productId,name,stock,product:Product(name,slug)")
-    .single()
-  if (error) throw new Error(error.message)
-  return data
+  const rows = await pgQuery<
+    Array<{ id: string; productId: string; name: string; stock: number; product: { name: string; slug: string } }>
+  >(
+    `
+      UPDATE "ProductVariant" v
+      SET stock = $2, "updatedAt" = now()
+      WHERE v.id = $1
+      RETURNING v.id, v."productId" as "productId", v.name, v.stock,
+        (SELECT jsonb_build_object('name', p.name, 'slug', p.slug) FROM "Product" p WHERE p.id = v."productId") as product
+    `,
+    [id, stock],
+  )
+  return rows[0]
 }
 
-export const listReviews = (filters?: { status?: string; productId?: string; orderId?: string; userId?: string }) =>
-  (async () => {
-    let query = supabase()
-      .from("ProductReview")
-      .select("*,product:Product(name,slug),user:User(email,name)")
-      .order("createdAt", { ascending: false })
-      .limit(200)
-    if (filters?.status) query = query.eq("status", filters.status)
-    if (filters?.productId) query = query.eq("productId", filters.productId)
-    if (filters?.orderId) query = query.eq("orderId", filters.orderId)
-    if (filters?.userId) query = query.eq("userId", filters.userId)
-    const { data, error } = await query
-    if (error) throw new Error(error.message)
-    return data ?? []
-  })()
+export const listReviews = async (filters?: { status?: string; productId?: string; orderId?: string; userId?: string }) => {
+  const params: any[] = []
+  const where: string[] = []
+  if (filters?.status) (params.push(filters.status), where.push(`r.status = $${params.length}`))
+  if (filters?.productId) (params.push(filters.productId), where.push(`r."productId" = $${params.length}`))
+  if (filters?.orderId) (params.push(filters.orderId), where.push(`r."orderId" = $${params.length}`))
+  if (filters?.userId) (params.push(filters.userId), where.push(`r."userId" = $${params.length}`))
+  const sql = `
+    SELECT
+      r.*,
+      jsonb_build_object('name', p.name, 'slug', p.slug) as product,
+      CASE WHEN u.id IS NULL THEN NULL ELSE jsonb_build_object('email', u.email, 'name', u.name) END as "user"
+    FROM "ProductReview" r
+    INNER JOIN "Product" p ON p.id = r."productId"
+    LEFT JOIN "User" u ON u.id = r."userId"
+    ${where.length ? `WHERE ${where.join(" AND ")}` : ""}
+    ORDER BY r."createdAt" DESC
+    LIMIT 200
+  `
+  return pgQuery(sql, params)
+}
 
-export const updateReviewStatus = (id: string, status: string) =>
-  supabase().from("ProductReview").update({ status }).eq("id", id).select("*").single().then(({ data, error }) => {
-    if (error) throw new Error(error.message)
-    return data
-  })
+export const updateReviewStatus = async (id: string, status: string) => {
+  const rows = await pgQuery(`UPDATE "ProductReview" SET status=$2, "updatedAt"=now() WHERE id=$1 RETURNING *`, [id, status])
+  return rows[0]
+}
 
 export const createReview = async (input: {
   productId: string
@@ -181,95 +228,116 @@ export const createReview = async (input: {
   status?: string
 }) => {
   if (input.userId && input.orderId) {
-    const { data: existing, error: existingError } = await supabase()
-      .from("ProductReview")
-      .select("id")
-      .eq("productId", input.productId)
-      .eq("orderId", input.orderId)
-      .eq("userId", input.userId)
-      .limit(1)
-      .maybeSingle()
-    if (existingError) throw new Error(existingError.message)
-    if (existing?.id) throw new Error("Already reviewed")
+    const existing = await pgQuery<Array<{ id: string }>>(
+      `SELECT id FROM "ProductReview" WHERE "productId"=$1 AND "orderId"=$2 AND "userId"=$3 LIMIT 1`,
+      [input.productId, input.orderId, input.userId],
+    )
+    if (existing[0]) throw new Error("Already reviewed")
   }
-  const { data, error } = await supabase()
-    .from("ProductReview")
-    .insert({
-      productId: input.productId,
-      orderId: input.orderId ?? null,
-      userId: input.userId ?? null,
-      guestName: input.guestName ?? null,
-      guestEmail: input.guestEmail ?? null,
-      rating: input.rating,
-      title: input.title ?? null,
-      body: input.body ?? null,
-      status: input.status ?? "published",
-    })
-    .select("*")
-    .single()
-  if (error) throw new Error(error.message)
-  return data
+  const rows = await pgQuery(
+    `
+      INSERT INTO "ProductReview" (
+        id, "productId", "orderId", "userId", "guestName", "guestEmail", rating, title, body, status, "createdAt", "updatedAt"
+      )
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,now(),now())
+      RETURNING *
+    `,
+    [
+      randomUUID(),
+      input.productId,
+      input.orderId ?? null,
+      input.userId ?? null,
+      input.guestName ?? null,
+      input.guestEmail ?? null,
+      input.rating,
+      input.title ?? null,
+      input.body ?? null,
+      input.status ?? "published",
+    ],
+  )
+  return rows[0]
 }
 
 export const listReturnRequests = () =>
-  supabase()
-    .from("ReturnRequest")
-    .select(`
-      *,
-      order:Order(
-        id,
-        total,
-        status,
-        userId,
-        refunds:RefundRecord(
-          id,
-          amount,
-          status,
-          createdAt
-        )
-      ),
-      pickup:ReturnPickup(*)
-    `)
-    .order("createdAt", { ascending: false })
-    .limit(200)
-    .then(({ data, error }) => {
-      if (error) throw new Error(error.message)
-      return data ?? []
-    })
+  pgQuery<Array<Record<string, unknown>>>(
+    `
+      SELECT
+        rr.*,
+        (
+          SELECT jsonb_build_object(
+            'id', o.id,
+            'total', o.total,
+            'status', o.status,
+            'userId', o."userId",
+            'refunds', COALESCE((
+              SELECT jsonb_agg(jsonb_build_object('id', r.id, 'amount', r.amount, 'status', r.status, 'createdAt', r."createdAt") ORDER BY r."createdAt" DESC)
+              FROM "RefundRecord" r
+              WHERE r."orderId" = o.id
+            ), '[]'::jsonb)
+          )
+          FROM "Order" o
+          WHERE o.id = rr."orderId"
+        ) as "order",
+        (
+          SELECT to_jsonb(pu)
+          FROM "ReturnPickup" pu
+          WHERE pu."returnRequestId" = rr.id
+          LIMIT 1
+        ) as pickup,
+        COALESCE((
+          SELECT jsonb_agg(to_jsonb(it) ORDER BY it."createdAt" DESC)
+          FROM "ReturnRequestItem" it
+          WHERE it."returnRequestId" = rr.id
+        ), '[]'::jsonb) as items
+      FROM "ReturnRequest" rr
+      ORDER BY rr."createdAt" DESC
+      LIMIT 200
+    `,
+  )
 
 export const updateReturnStatus = (id: string, status: string) =>
-  supabase().from("ReturnRequest").update({ status }).eq("id", id).select("*").single().then(({ data, error }) => {
-    if (error) throw new Error(error.message)
-    return data
-  })
+  pgQuery(`UPDATE "ReturnRequest" SET status=$2, "updatedAt"=now() WHERE id=$1 RETURNING *`, [id, status]).then((r) => r[0])
 
-export const createReturnRequest = async (
-  orderId: string,
-  userId: string | null,
-  reason?: string,
-  items?: Array<{ orderItemId: string; productId: string; requestedQty: number; reasonCode?: string; notes?: string; imageUrl?: string }>
-) => {
-  try {
-    return await createReturnRequestSupabase(orderId, userId, reason, items)
-  } catch (error) {
-    logger.error("returns.create.supabase_failed", {
-      error: error instanceof Error ? error.message : "unknown",
-      orderId
-    })
-    throw error
-  }
+export const createReturnRequest = async (orderId: string, userId: string | null, reason?: string) => {
+  const orderRows = await pgQuery<Array<{ id: string; status: string }>>(`SELECT id, status FROM "Order" WHERE id=$1 LIMIT 1`, [orderId])
+  const order = orderRows[0]
+  if (!order) throw new Error("Order not found")
+  if (String(order.status) !== "delivered") throw new Error("Returns are allowed only for delivered orders")
+
+  const dup = await pgQuery<Array<{ id: string }>>(
+    `SELECT id FROM "ReturnRequest" WHERE "orderId"=$1 AND status <> 'rejected' LIMIT 1`,
+    [orderId],
+  )
+  if (dup[0]) throw new Error("Return request already exists for this order")
+
+  const created = await pgQuery<Array<Record<string, unknown>>>(
+    `
+      INSERT INTO "ReturnRequest" (id, "orderId", "userId", reason, status, "createdAt", "updatedAt")
+      VALUES ($1, $2, $3, $4, 'requested', now(), now())
+      RETURNING *
+    `,
+    [randomUUID(), orderId, userId ?? null, reason?.trim() || null],
+  )
+  return created[0]
 }
 
 export const listAbandonedCarts = () =>
-  supabase()
-    .from("AbandonedCart")
-    .select("*")
-    .order("updatedAt", { ascending: false })
-    .limit(100)
-    .then(({ data, error }) => {
-      if (error) throw new Error(error.message)
-      return data ?? []
-    })
+  pgQuery<
+    Array<{
+      id: string
+      sessionKey: string
+      email: string | null
+      itemsJson: unknown
+      total: number | null
+      updatedAt: Date
+      createdAt: Date
+    }>
+  >(
+    `SELECT id, "sessionKey", email, "itemsJson", total, "updatedAt", "createdAt"
+     FROM "AbandonedCart"
+     ORDER BY "updatedAt" DESC
+     LIMIT 100`,
+  )
 
 export const upsertAbandonedCart = async (input: {
   sessionKey: string
@@ -277,50 +345,73 @@ export const upsertAbandonedCart = async (input: {
   itemsJson: unknown
   total?: number | null
 }) => {
-  const { data: existing, error: existingError } = await supabase()
-    .from("AbandonedCart")
-    .select("id")
-    .eq("sessionKey", input.sessionKey)
-    .maybeSingle()
-  if (existingError) throw new Error(existingError.message)
-  if (existing?.id) {
-    const { data, error } = await supabase()
-      .from("AbandonedCart")
-      .update({
-        email: input.email ?? null,
-        itemsJson: input.itemsJson as any,
-        total: input.total ?? null,
-      })
-      .eq("id", existing.id)
-      .select("*")
-      .single()
-    if (error) throw new Error(error.message)
-    return data
-  }
-  const { data, error } = await supabase()
-    .from("AbandonedCart")
-    .insert({
-      sessionKey: input.sessionKey,
-      email: input.email ?? null,
-      itemsJson: input.itemsJson as any,
-      total: input.total ?? null,
-    })
-    .select("*")
-    .single()
-  if (error) throw new Error(error.message)
-  return data
+  const rows = await pgQuery<
+    Array<{
+      id: string
+      sessionKey: string
+      email: string | null
+      itemsJson: unknown
+      total: number | null
+      updatedAt: Date
+      createdAt: Date
+    }>
+  >(
+    `
+      INSERT INTO "AbandonedCart" (id, "sessionKey", email, "itemsJson", total, "createdAt", "updatedAt")
+      VALUES (gen_random_uuid()::text, $1, $2, $3::jsonb, $4, now(), now())
+      ON CONFLICT ("sessionKey") DO UPDATE
+      SET email = EXCLUDED.email,
+          "itemsJson" = EXCLUDED."itemsJson",
+          total = EXCLUDED.total,
+          "updatedAt" = now()
+      RETURNING id, "sessionKey", email, "itemsJson", total, "updatedAt", "createdAt"
+    `,
+    [input.sessionKey, input.email ?? null, JSON.stringify(input.itemsJson ?? []), input.total ?? null],
+  )
+  return rows[0]
 }
 
 export const listPromotions = () =>
-  supabase()
-    .from("Promotion")
-    .select("*,products:PromotionProduct(*,product:Product(*)),variants:PromotionVariant(*,variant:ProductVariant(*))")
-    .order("updatedAt", { ascending: false })
-    .limit(100)
-    .then(({ data, error }) => {
-      if (error) throw new Error(error.message)
-      return data ?? []
-    })
+  (async () => {
+    const promos = await pgQuery<Array<any>>(`SELECT * FROM "Promotion" ORDER BY "updatedAt" DESC LIMIT 100`)
+    const promoIds = promos.map((p) => p.id)
+    if (promoIds.length === 0) return promos
+    const products = await pgQuery<Array<any>>(
+      `
+        SELECT pp.*, to_jsonb(p) as product
+        FROM "PromotionProduct" pp
+        INNER JOIN "Product" p ON p.id = pp."productId"
+        WHERE pp."promotionId" = ANY($1::text[])
+      `,
+      [promoIds],
+    )
+    const variants = await pgQuery<Array<any>>(
+      `
+        SELECT pv.*, to_jsonb(v) as variant
+        FROM "PromotionVariant" pv
+        INNER JOIN "ProductVariant" v ON v.id = pv."variantId"
+        WHERE pv."promotionId" = ANY($1::text[])
+      `,
+      [promoIds],
+    )
+    const byPromoProducts = new Map<string, any[]>()
+    for (const row of products) {
+      const arr = byPromoProducts.get(row.promotionId) ?? []
+      arr.push(row)
+      byPromoProducts.set(row.promotionId, arr)
+    }
+    const byPromoVariants = new Map<string, any[]>()
+    for (const row of variants) {
+      const arr = byPromoVariants.get(row.promotionId) ?? []
+      arr.push(row)
+      byPromoVariants.set(row.promotionId, arr)
+    }
+    return promos.map((p) => ({
+      ...p,
+      products: byPromoProducts.get(p.id) ?? [],
+      variants: byPromoVariants.get(p.id) ?? [],
+    }))
+  })()
 
 export const createPromotion = async (input: {
   kind: string
@@ -341,44 +432,36 @@ export const createPromotion = async (input: {
 
   metadata?: unknown
 }) => {
-  const { data: promotion, error } = await supabase()
-    .from("Promotion")
-    .insert({
-      kind: input.kind,
-      name: input.name,
-      active: input.active ?? true,
-      startsAt: input.startsAt ?? null,
-      endsAt: input.endsAt ?? null,
-      metadata: {
-        products:
-          input.products?.map((p) => ({
-            productId: p.productId,
-            discountPercent: p.discountPercent ?? null,
-          })) ?? [],
-      },
-    })
-    .select("*")
-    .single()
-  if (error) throw new Error(error.message)
-  if (input.products?.length) {
-    const { error: ppError } = await supabase().from("PromotionProduct").insert(
-      input.products.map((p) => ({ promotionId: promotion.id, productId: p.productId })),
+  return pgTx(async (client) => {
+    const promoId = randomUUID()
+    const metadata =
+      input.products
+        ? { products: input.products.map((p) => ({ productId: p.productId, discountPercent: p.discountPercent ?? null })) }
+        : input.metadata ?? null
+    await client.query(
+      `INSERT INTO "Promotion" (id, name, active, "startsAt", "endsAt", metadata, kind, "createdAt", "updatedAt")
+       VALUES ($1,$2,$3,$4,$5,$6::jsonb,$7,now(),now())`,
+      [promoId, input.name, input.active ?? true, input.startsAt ?? null, input.endsAt ?? null, JSON.stringify(metadata), input.kind],
     )
-    if (ppError) throw new Error(ppError.message)
-    const variantRows = input.products.flatMap((p) =>
-      (p.variants ?? []).map((v) => ({
-        promotionId: promotion.id,
-        variantId: v.variantId,
-        metadata: { discountPercent: v.discountPercent },
-      })),
-    )
-    if (variantRows.length) {
-      const { error: pvError } = await supabase().from("PromotionVariant").insert(variantRows)
-      if (pvError) throw new Error(pvError.message)
+    if (input.products?.length) {
+      for (const p of input.products) {
+        await client.query(
+          `INSERT INTO "PromotionProduct" (id, "promotionId", "productId") VALUES ($1,$2,$3) ON CONFLICT ("promotionId","productId") DO NOTHING`,
+          [randomUUID(), promoId, p.productId],
+        )
+        for (const v of p.variants ?? []) {
+          await client.query(
+            `INSERT INTO "PromotionVariant" (id, "promotionId", "variantId", metadata)
+             VALUES ($1,$2,$3,$4::jsonb)
+             ON CONFLICT ("promotionId","variantId") DO UPDATE SET metadata = EXCLUDED.metadata`,
+            [randomUUID(), promoId, v.variantId, JSON.stringify({ discountPercent: v.discountPercent })],
+          )
+        }
+      }
     }
-  }
-  return promotion
-
+    const rows = await client.query(`SELECT * FROM "Promotion" WHERE id=$1 LIMIT 1`, [promoId])
+    return rows.rows[0]
+  })
 }
 
 export const updatePromotion = async (
@@ -403,162 +486,185 @@ export const updatePromotion = async (
     metadata: unknown
   }>
 ) => {
-  const { data: updated, error } = await supabase()
-    .from("Promotion")
-    .update({
-      ...(input.kind !== undefined ? { kind: input.kind } : {}),
-      ...(input.name !== undefined ? { name: input.name } : {}),
-      ...(input.active !== undefined ? { active: input.active } : {}),
-      ...(input.startsAt !== undefined ? { startsAt: input.startsAt } : {}),
-      ...(input.endsAt !== undefined ? { endsAt: input.endsAt } : {}),
-      ...(input.products
-        ? {
-          metadata: {
-            products: input.products.map((p) => ({
-              productId: p.productId,
-              discountPercent: p.discountPercent ?? null,
-            })),
-          },
+  return pgTx(async (client) => {
+    const sets: string[] = []
+    const params: any[] = []
+    const push = (col: string, v: any, castJson = false) => {
+      params.push(v)
+      sets.push(`${col} = $${params.length}${castJson ? "::jsonb" : ""}`)
+    }
+
+    if (input.kind !== undefined) push(`kind`, input.kind)
+    if (input.name !== undefined) push(`name`, input.name)
+    if (input.active !== undefined) push(`active`, input.active)
+    if (input.startsAt !== undefined) push(`"startsAt"`, input.startsAt)
+    if (input.endsAt !== undefined) push(`"endsAt"`, input.endsAt)
+
+    if (input.products !== undefined) {
+      push(
+        `metadata`,
+        JSON.stringify({ products: input.products.map((p) => ({ productId: p.productId, discountPercent: p.discountPercent ?? null })) }),
+        true,
+      )
+    } else if (input.metadata !== undefined) {
+      push(`metadata`, JSON.stringify(input.metadata ?? null), true)
+    }
+
+    sets.push(`"updatedAt" = now()`)
+    params.push(id)
+    await client.query(`UPDATE "Promotion" SET ${sets.join(", ")} WHERE id = $${params.length}`, params)
+
+    if (input.products !== undefined) {
+      await client.query(`DELETE FROM "PromotionProduct" WHERE "promotionId" = $1`, [id])
+      await client.query(`DELETE FROM "PromotionVariant" WHERE "promotionId" = $1`, [id])
+      for (const p of input.products) {
+        await client.query(
+          `INSERT INTO "PromotionProduct" (id, "promotionId", "productId") VALUES ($1,$2,$3) ON CONFLICT ("promotionId","productId") DO NOTHING`,
+          [randomUUID(), id, p.productId],
+        )
+        for (const v of p.variants ?? []) {
+          await client.query(
+            `INSERT INTO "PromotionVariant" (id, "promotionId", "variantId", metadata)
+             VALUES ($1,$2,$3,$4::jsonb)
+             ON CONFLICT ("promotionId","variantId") DO UPDATE SET metadata = EXCLUDED.metadata`,
+            [randomUUID(), id, v.variantId, JSON.stringify({ discountPercent: v.discountPercent })],
+          )
         }
-        : input.metadata === undefined
-          ? {}
-          : { metadata: input.metadata as any }),
-    })
-    .eq("id", id)
-    .select("*")
-    .single()
-  if (error) throw new Error(error.message)
-  if (input.products) {
-    const { error: delPpError } = await supabase().from("PromotionProduct").delete().eq("promotionId", id)
-    if (delPpError) throw new Error(delPpError.message)
-    const { error: delPvError } = await supabase().from("PromotionVariant").delete().eq("promotionId", id)
-    if (delPvError) throw new Error(delPvError.message)
-    if (input.products.length) {
-      const { error: ppError } = await supabase().from("PromotionProduct").insert(
-        input.products.map((p) => ({ promotionId: id, productId: p.productId })),
-      )
-      if (ppError) throw new Error(ppError.message)
-      const variantRows = input.products.flatMap((p) =>
-        (p.variants ?? []).map((v) => ({
-          promotionId: id,
-          variantId: v.variantId,
-          metadata: { discountPercent: v.discountPercent },
-        })),
-      )
-      if (variantRows.length) {
-        const { error: pvError } = await supabase().from("PromotionVariant").insert(variantRows)
-        if (pvError) throw new Error(pvError.message)
       }
     }
-  }
-  return updated
 
+    const rows = await client.query(`SELECT * FROM "Promotion" WHERE id=$1 LIMIT 1`, [id])
+    return rows.rows[0]
+  })
 }
 
 export const financeSummary = async () => {
-  const { data: orders, error: ordersError } = await supabase().from("Order").select("total")
-  if (ordersError) throw new Error(ordersError.message)
-  const { data: refunds, error: refundsError } = await supabase().from("RefundRecord").select("amount").eq("status", "completed")
-  if (refundsError) throw new Error(refundsError.message)
-  const grossSales = (orders ?? []).reduce((sum, row: any) => sum + Number(row.total ?? 0), 0)
-  const refundsTotal = (refunds ?? []).reduce((sum, row: any) => sum + Number(row.amount ?? 0), 0)
-  const netRevenue = grossSales - refundsTotal
-  return { grossSales, netRevenue, orderCount: (orders ?? []).length, refundsTotal }
-}
+
+  const salesRows = await pgQuery<Array<{ gross_sales: number; order_count: number }>>(
+    `SELECT COALESCE(SUM(total),0)::numeric as gross_sales, COUNT(*)::int as order_count FROM "Order"`,
+  )
+  const refundRows = await pgQuery<Array<{ refunds_total: number }>>(
+    `SELECT COALESCE(SUM(amount),0)::numeric as refunds_total FROM "RefundRecord" WHERE status='completed'`,
+  )
+  const grossSales = Number(salesRows[0]?.gross_sales ?? 0)
+  const refundsTotal = Number(refundRows[0]?.refunds_total ?? 0)
+
+  // ✅ Net Revenue Calculation
+  const netRevenue =
+    grossSales - refundsTotal;
+
+  return {
+
+    grossSales,
+
+    netRevenue, // ⭐ NEW (Important)
+
+    orderCount: Number(salesRows[0]?.order_count ?? 0),
+
+    refundsTotal,
+
+  };
+};
 export const listWithdrawals = () =>
-  supabase()
-    .from("WithdrawalRequest")
-    .select("*,createdBy:User!WithdrawalRequest_createdById_fkey(id,name,email),managedBy:User!WithdrawalRequest_managedById_fkey(id,name,email)")
-    .order("createdAt", { ascending: false })
-    .limit(100)
-    .then(({ data, error }) => {
-      if (error) throw new Error(error.message)
-      return data ?? []
-    })
+  pgQuery(
+    `
+      SELECT
+        wr.*,
+        CASE WHEN u1.id IS NULL THEN NULL ELSE jsonb_build_object('id', u1.id, 'name', u1.name, 'email', u1.email) END as "createdBy",
+        CASE WHEN u2.id IS NULL THEN NULL ELSE jsonb_build_object('id', u2.id, 'name', u2.name, 'email', u2.email) END as "managedBy"
+      FROM "WithdrawalRequest" wr
+      LEFT JOIN "User" u1 ON u1.id = wr."createdById"
+      LEFT JOIN "User" u2 ON u2.id = wr."managedById"
+      ORDER BY wr."createdAt" DESC
+      LIMIT 100
+    `,
+  )
 
 export const updateWithdrawalStatus = (id: string, status: string) =>
-  supabase().from("WithdrawalRequest").update({ status }).eq("id", id).select("*").single().then(({ data, error }) => {
-    if (error) throw new Error(error.message)
-    return data
-  })
+  pgQuery(`UPDATE "WithdrawalRequest" SET status=$2, "updatedAt"=now() WHERE id=$1 RETURNING *`, [id, status]).then((r) => r[0])
 
 export const listRefunds = (page = 1, limit = 20) =>
-  supabase()
-    .from("RefundRecord")
-    .select("*,order:Order(id,total)")
-    .order("createdAt", { ascending: false })
-    .range((Math.max(page, 1) - 1) * Math.min(Math.max(limit, 1), 100), Math.max(page, 1) * Math.min(Math.max(limit, 1), 100) - 1)
-    .then(({ data, error }) => {
-      if (error) throw new Error(error.message)
-      return data ?? []
-    })
+  pgQuery(
+    `
+      SELECT
+        r.*,
+        (SELECT jsonb_build_object('id', o.id, 'total', o.total) FROM "Order" o WHERE o.id = r."orderId") as "order"
+      FROM "RefundRecord" r
+      ORDER BY r."createdAt" DESC
+      OFFSET $1
+      LIMIT $2
+    `,
+    [
+      (Math.max(page, 1) - 1) * Math.min(Math.max(limit, 1), 100),
+      Math.min(Math.max(limit, 1), 100),
+    ],
+  )
 
-export const createRefund = async (orderId: string, amount: number, reason?: string) => {
-  const { data: order, error: orderError } = await supabase().from("Order").select("id,total").eq("id", orderId).maybeSingle()
-  if (orderError) throw new Error(orderError.message)
-  if (!order) throw new Error("Order not found")
-  const { data: refunds, error: refundsError } = await supabase().from("RefundRecord").select("amount,status").eq("orderId", orderId)
-  if (refundsError) throw new Error(refundsError.message)
-  const alreadyRefunded = (refunds ?? [])
-    .filter((row: any) => !["rejected", "failed"].includes(String(row.status ?? "")))
-    .reduce((sum: number, row: any) => sum + Number(row.amount ?? 0), 0)
-  const refundable = Number((order as any).total ?? 0) - alreadyRefunded
-  if (refundable <= 0) throw new Error("Order already fully refunded")
-  if (amount > refundable) throw new Error(`Amount exceeds refundable balance (${refundable.toFixed(2)})`)
-  const { data: created, error: createError } = await supabase()
-    .from("RefundRecord")
-    .insert({ orderId, amount, reason: reason ?? null, status: "pending" })
-    .select("*")
-    .single()
-  if (createError) throw new Error(createError.message)
-  const { error: orderUpdateError } = await supabase().from("Order").update({ refundStatus: "PENDING" }).eq("id", orderId)
-  if (orderUpdateError) throw new Error(orderUpdateError.message)
-  return created
-}
-
-export const updateRefundStatus = (id: string, status: string) =>
-  supabase().from("RefundRecord").update({ status }).eq("id", id).select("*").single().then(({ data, error }) => {
-    if (error) throw new Error(error.message)
-    return data
+export const createRefund = (orderId: string, amount: number, reason?: string) =>
+  pgTx(async (client) => {
+    const orderRows = await client.query<{ total: any }>(`SELECT total FROM "Order" WHERE id=$1 LIMIT 1`, [orderId])
+    const order = orderRows.rows[0]
+    if (!order) throw new Error("Order not found")
+    const refundAgg = await client.query<{ already: any }>(
+      `SELECT COALESCE(SUM(amount),0)::numeric as already FROM "RefundRecord" WHERE "orderId"=$1 AND status NOT IN ('rejected','failed')`,
+      [orderId],
+    )
+    const refundable = Number(order.total) - Number(refundAgg.rows[0]?.already ?? 0)
+    if (refundable <= 0) throw new Error("Order already fully refunded")
+    if (amount > refundable) throw new Error(`Amount exceeds refundable balance (${refundable.toFixed(2)})`)
+    const created = await client.query(
+      `INSERT INTO "RefundRecord" (id, "orderId", amount, reason, status, "createdAt", "updatedAt")
+       VALUES ($1,$2,$3::numeric,$4,'pending',now(),now())
+       RETURNING *`,
+      [randomUUID(), orderId, amount, reason ?? null],
+    )
+    await client.query(`UPDATE "Order" SET "refundStatus" = 'PENDING', "updatedAt" = now() WHERE id = $1`, [orderId]).catch(() => null)
+    return created.rows[0]
   })
 
+export const updateRefundStatus = (id: string, status: string) =>
+  pgQuery(`UPDATE "RefundRecord" SET status=$2, "updatedAt"=now() WHERE id=$1 RETURNING *`, [id, status]).then((r) => r[0])
+
 export const reportTopProducts = async (limit = 20) => {
-  const { data: items, error: itemsError } = await supabase().from("OrderItem").select("productId,quantity,lineTotal")
-  if (itemsError) throw new Error(itemsError.message)
-  const grouped = new Map<string, { units: number; revenue: number }>()
-  for (const row of items ?? []) {
-    const productId = String((row as any).productId ?? "")
-    if (!productId) continue
-    const curr = grouped.get(productId) ?? { units: 0, revenue: 0 }
-    curr.units += Number((row as any).quantity ?? 0)
-    curr.revenue += Number((row as any).lineTotal ?? 0)
-    grouped.set(productId, curr)
-  }
-  const sorted = [...grouped.entries()].sort((a, b) => b[1].revenue - a[1].revenue).slice(0, limit)
-  const ids = sorted.map(([id]) => id)
-  const { data: products, error: productsError } = await supabase().from("Product").select("id,name,slug").in("id", ids)
-  if (productsError) throw new Error(productsError.message)
-  const byId = Object.fromEntries((products ?? []).map((p: any) => [p.id, p]))
-  return sorted.map(([productId, agg]) => ({
-    productId,
-    name: byId[productId]?.name ?? "—",
-    slug: byId[productId]?.slug ?? "",
-    units: agg.units,
-    revenue: agg.revenue,
+  const rows = await pgQuery<Array<{ productId: string; units: number; revenue: number }>>(
+    `
+      SELECT "productId" as "productId",
+             COALESCE(SUM(quantity),0)::int as units,
+             COALESCE(SUM("lineTotal"),0)::numeric as revenue
+      FROM "OrderItem"
+      GROUP BY "productId"
+      ORDER BY COALESCE(SUM("lineTotal"),0) DESC
+      LIMIT $1
+    `,
+    [limit],
+  )
+  const productIds = rows.map((r) => r.productId)
+  const products = productIds.length
+    ? await pgQuery<Array<{ id: string; name: string; slug: string }>>(`SELECT id, name, slug FROM "Product" WHERE id = ANY($1::text[])`, [
+        productIds,
+      ])
+    : []
+  const byId = Object.fromEntries(products.map((p) => [p.id, p]))
+  return rows.map((r) => ({
+    productId: r.productId,
+    name: byId[r.productId]?.name ?? "—",
+    slug: byId[r.productId]?.slug ?? "",
+    units: Number(r.units ?? 0),
+    revenue: Number((r as any).revenue ?? 0),
   }))
 }
 
 export const reportPlatformPerformance = async () => {
-  const { data: rows, error } = await supabase().from("OrderItem").select("lineTotal")
-  if (error) throw new Error(error.message)
-  const revenue = (rows ?? []).reduce((sum, row: any) => sum + Number(row.lineTotal ?? 0), 0)
+  const totals = await pgQuery<Array<{ revenue: number; lines: number }>>(
+    `SELECT COALESCE(SUM("lineTotal"),0)::numeric as revenue, COUNT(*)::int as lines FROM "OrderItem"`,
+  )
   return [
     {
       sellerId: "platform",
       name: "Platform",
       email: "",
-      revenue,
-      lines: (rows ?? []).length,
+      revenue: Number(totals[0]?.revenue ?? 0),
+      lines: Number(totals[0]?.lines ?? 0),
     },
   ]
 }
@@ -567,7 +673,12 @@ export const reportPlatformPerformance = async () => {
 export const reportSellerPerformance = reportPlatformPerformance
 
 export const listUserAddresses = (userId: string) =>
-  listUserAddressesSupabase(userId)
+  listUserAddressesSupabase(userId).catch((error) => {
+    logger.warn("addresses.list.supabase_fallback_prisma", {
+      error: error instanceof Error ? error.message : "unknown",
+    })
+    return pgQuery(`SELECT * FROM "UserAddress" WHERE "userId" = $1 ORDER BY "createdAt" DESC`, [userId])
+  })
 
 export const createUserAddress = (
   userId: string,
@@ -586,7 +697,32 @@ export const createUserAddress = (
     isDefault?: boolean
   },
 ) =>
-  createUserAddressSupabase(userId, data)
+  createUserAddressSupabase(userId, data).catch((error) => {
+    logger.warn("addresses.create.supabase_fallback_prisma", {
+      error: error instanceof Error ? error.message : "unknown",
+    })
+    return pgQuery(
+      `INSERT INTO "UserAddress" (id, "userId", label, "firstName", "lastName", email, line1, line2, city, state, "postalCode", country, phone, "isDefault", "createdAt", "updatedAt")
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,now(),now())
+       RETURNING *`,
+      [
+        randomUUID(),
+        userId,
+        data.label ?? null,
+        data.firstName ?? null,
+        data.lastName ?? null,
+        data.email ?? null,
+        data.line1,
+        data.line2 ?? null,
+        data.city,
+        data.state,
+        data.postalCode,
+        data.country ?? "IN",
+        data.phone ?? null,
+        data.isDefault ?? false,
+      ],
+    ).then((rows) => rows[0])
+  })
 
 export const updateUserAddress = async (
   id: string,
@@ -606,39 +742,64 @@ export const updateUserAddress = async (
     isDefault?: boolean
   }>,
 ) => {
-  return updateUserAddressSupabase(id, userId, data)
+  try {
+    const result = await updateUserAddressSupabase(id, userId, data)
+    if (result.count > 0) return result
+  } catch (error) {
+    logger.warn("addresses.update.supabase_fallback_prisma", {
+      error: error instanceof Error ? error.message : "unknown",
+    })
+  }
+  const found = await pgQuery<Array<{ id: string }>>(`SELECT id FROM "UserAddress" WHERE id=$1 AND "userId"=$2 LIMIT 1`, [id, userId])
+  if (!found[0]) return { count: 0 }
+  const sets: string[] = []
+  const values: any[] = []
+  for (const [k, v] of Object.entries(data)) {
+    if (v === undefined) continue
+    values.push(v)
+    const col =
+      k === "postalCode"
+        ? `"postalCode"`
+        : k === "firstName"
+          ? `"firstName"`
+          : k === "lastName"
+            ? `"lastName"`
+            : k === "isDefault"
+              ? `"isDefault"`
+              : k
+    sets.push(`${col} = $${values.length}`)
+  }
+  sets.push(`"updatedAt" = now()`)
+  values.push(id, userId)
+  await pgQuery(`UPDATE "UserAddress" SET ${sets.join(", ")} WHERE id=$${values.length - 1} AND "userId"=$${values.length}`, values)
+  return { count: 1 }
 }
 
 export const deleteUserAddress = (id: string, userId: string) =>
-  deleteUserAddressSupabase(id, userId)
+  deleteUserAddressSupabase(id, userId).catch((error) => {
+    logger.warn("addresses.delete.supabase_fallback_prisma", {
+      error: error instanceof Error ? error.message : "unknown",
+    })
+    return pgQuery(`DELETE FROM "UserAddress" WHERE id=$1 AND "userId"=$2`, [id, userId]).then(() => ({ count: 1 }))
+  })
 
 export const listSavedPaymentMethods = (userId: string) =>
-  supabase()
-    .from("SavedPaymentMethod")
-    .select("*")
-    .eq("userId", userId)
-    .order("createdAt", { ascending: false })
-    .then(({ data, error }) => {
-      if (error) throw new Error(error.message)
-      return data ?? []
-    })
+  pgQuery(`SELECT * FROM "SavedPaymentMethod" WHERE "userId"=$1 ORDER BY "createdAt" DESC`, [userId])
 
 export const createSavedPaymentMethod = (
   userId: string,
   data: { provider: string; externalRef: string; last4?: string; brand?: string; isDefault?: boolean },
 ) =>
-  supabase()
-    .from("SavedPaymentMethod")
-    .insert({ ...data, userId })
-    .select("*")
-    .single()
-    .then(({ data, error }) => {
-      if (error) throw new Error(error.message)
-      return data
-    })
+  pgQuery(
+    `
+      INSERT INTO "SavedPaymentMethod" (id, "userId", provider, "externalRef", last4, brand, "isDefault", "createdAt")
+      VALUES ($1,$2,$3,$4,$5,$6,$7,now())
+      RETURNING *
+    `,
+    [randomUUID(), userId, data.provider, data.externalRef, data.last4 ?? null, data.brand ?? null, data.isDefault ?? false],
+  ).then((rows) => rows[0])
 
 export async function deleteAbandonedCartBySession(sessionKey: string) {
-  const { data, error } = await supabase().from("AbandonedCart").delete().eq("sessionKey", sessionKey).select("id")
-  if (error) throw new Error(error.message)
-  return { count: (data ?? []).length }
+  await pgQuery(`DELETE FROM "AbandonedCart" WHERE "sessionKey" = $1`, [sessionKey])
+  return { deleted: true }
 }
