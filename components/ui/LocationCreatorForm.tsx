@@ -10,6 +10,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Checkbox } from "@/components/ui/checkbox";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { ChevronDown } from "lucide-react";
 
 export default function LocationCreatorForm({
   type,
@@ -23,6 +27,7 @@ export default function LocationCreatorForm({
   const [parentState, setParentState] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [selectedCities, setSelectedCities] = useState<string[]>([]);
 
   // Free API data
   const [apiStates, setApiStates] = useState<{ name: string; state_code: string }[]>([]);
@@ -32,6 +37,7 @@ export default function LocationCreatorForm({
 
   // Only fetch states if we are creating a city (to populate the dropdown)
   const { data: states } = useLocations("state");
+  const { data: existingCities } = useLocations("city");
 
   // Fetch local Indian locations JSON on mount
   useEffect(() => {
@@ -53,35 +59,68 @@ export default function LocationCreatorForm({
     if (type === "city" && parentState) {
       const selectedStateObj = states?.find((s) => s.value === parentState);
       if (selectedStateObj?.label && cityMap[selectedStateObj.label]) {
-        setApiCities(cityMap[selectedStateObj.label]);
+        const allCitiesForState = cityMap[selectedStateObj.label];
+        const citiesInDbForState = new Set(
+          (existingCities || [])
+            .filter((c: any) => c.parentState === parentState)
+            .map((c: any) => c.label)
+        );
+        const availableCities = allCitiesForState.filter(
+          (cityName) => !citiesInDbForState.has(cityName)
+        );
+        setApiCities(availableCities);
       } else {
         setApiCities([]);
       }
     } else {
       setApiCities([]);
     }
-  }, [type, parentState, states, cityMap]);
+    setSelectedCities([]);
+  }, [type, parentState, states, cityMap, existingCities]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (type === "city" && apiCities.length > 0 && selectedCities.length === 0) {
+      setError("Please select at least one city.");
+      return;
+    }
     setLoading(true);
     setError("");
 
     try {
-      await authedFetch("/api/admin/locations", {
-        method: "POST",
-        body: JSON.stringify({
-          type,
-          label,
-          value: value || label.toLowerCase().replace(/\s+/g, "-"),
-          ...(type === "city" ? { parentState } : {}),
-        }),
-      });
+      if (type === "city" && apiCities.length > 0 && selectedCities.length > 0) {
+        // Bulk insert multiple cities at once
+        await Promise.all(
+          selectedCities.map((city) =>
+            authedFetch("/api/admin/locations", {
+              method: "POST",
+              body: JSON.stringify({
+                type,
+                label: city,
+                value: city.toLowerCase().replace(/\s+/g, "-"),
+                parentState,
+              }),
+            })
+          )
+        );
+      } else {
+        // Single generic insert
+        await authedFetch("/api/admin/locations", {
+          method: "POST",
+          body: JSON.stringify({
+            type,
+            label,
+            value: value || label.toLowerCase().replace(/\s+/g, "-"),
+            ...(type === "city" ? { parentState } : {}),
+          }),
+        });
+      }
       
       // authedFetch handles success validation automatically
       setLabel("");
       setValue("");
       setParentState("");
+      setSelectedCities([]);
       if (onSuccess) onSuccess();
     } catch (err: any) {
       setError(err.message || "Something went wrong");
@@ -128,23 +167,52 @@ export default function LocationCreatorForm({
             </SelectContent>
           </Select>
         ) : type === "city" && parentState && (apiCities.length > 0 || apiLoading) ? (
-          <Select required disabled={apiLoading} value={label} onValueChange={setLabel}>
-            <SelectTrigger className="!h-auto w-full rounded-lg border-[#D9D9D1] bg-white text-sm shadow-none focus:border-[#7B3010] focus:ring-0 focus-visible:ring-0">
-              <SelectValue placeholder={apiLoading ? "Loading Cities..." : "Select a City..."} />
-            </SelectTrigger>
-            <SelectContent>
-              {apiCities.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}
-            </SelectContent>
-          </Select>
+          <Popover>
+            <PopoverTrigger asChild>
+              <button type="button" disabled={apiLoading} className="flex w-full items-center justify-between rounded-lg border border-[#D9D9D1] bg-white px-3 py-2.5 text-sm shadow-none outline-none focus:border-[#7B3010] disabled:opacity-50">
+                <span className="truncate">
+                  {apiLoading ? "Loading Cities..." : selectedCities.length > 0 ? `${selectedCities.length} cities selected` : "Select Cities..."}
+                </span>
+                <ChevronDown className="h-4 w-4 opacity-50" />
+              </button>
+            </PopoverTrigger>
+            <PopoverContent className="w-[300px] p-0" align="start">
+              <div className="flex items-center justify-between border-b border-[#D9D9D1] p-3">
+                <label className="flex cursor-pointer items-center gap-2 text-sm font-medium text-[#4A1D1F]">
+                  <Checkbox
+                    checked={selectedCities.length > 0 && selectedCities.length === apiCities.length}
+                    onCheckedChange={(checked) => {
+                      if (checked) setSelectedCities([...apiCities]);
+                      else setSelectedCities([]);
+                    }}
+                  />
+                  Select All
+                </label>
+                <span className="text-xs text-muted-foreground">{selectedCities.length} selected</span>
+              </div>
+              <ScrollArea className="h-[250px]">
+                <div className="flex flex-col gap-1 p-2">
+                  {apiCities.map((c) => (
+                    <label key={c} className="flex cursor-pointer items-center gap-2 rounded p-2 text-sm hover:bg-[#FFFBF3]">
+                      <Checkbox checked={selectedCities.includes(c)} onCheckedChange={(checked) => setSelectedCities((prev) => checked ? [...prev, c] : prev.filter((city) => city !== c))} />
+                      {c}
+                    </label>
+                  ))}
+                </div>
+              </ScrollArea>
+            </PopoverContent>
+          </Popover>
         ) : (
           <input type="text" required placeholder={`e.g. ${type === 'state' ? 'Maharashtra' : type === 'city' ? 'Mumbai' : 'Main Hub'}`} value={label} onChange={(e) => setLabel(e.target.value)} className="w-full px-3 py-2 text-sm border border-[#D9D9D1] rounded-lg outline-none focus:border-[#7B3010]" />
         )}
       </div>
 
-      <div className="space-y-1">
-        <label className="text-[11px] font-bold uppercase text-[#646464]">Value / ID (Optional)</label>
-        <input type="text" placeholder="Auto-generated if empty" value={value} onChange={(e) => setValue(e.target.value)} className="w-full px-3 py-2 text-sm border border-[#D9D9D1] rounded-lg outline-none focus:border-[#7B3010]" />
-      </div>
+      {!(type === "city" && parentState && (apiCities.length > 0 || apiLoading)) && (
+        <div className="space-y-1">
+          <label className="text-[11px] font-bold uppercase text-[#646464]">Value / ID (Optional)</label>
+          <input type="text" placeholder="Auto-generated if empty" value={value} onChange={(e) => setValue(e.target.value)} className="w-full px-3 py-2 text-sm border border-[#D9D9D1] rounded-lg outline-none focus:border-[#7B3010]" />
+        </div>
+      )}
 
       <button type="submit" disabled={loading} className="w-full cursor-pointer py-2.5 mt-2 text-[11px] font-semibold text-white uppercase tracking-wide bg-[#7B3010] hover:bg-[#5c2410] rounded-full disabled:opacity-50 transition-colors">
         {loading ? "Saving..." : `Create ${type}`}
