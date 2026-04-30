@@ -7,7 +7,11 @@ import {
   listUserAddressesSupabase,
   updateUserAddressSupabase,
 } from "@/src/lib/db/users"
+import { createReturnRequestSupabase } from "@/src/lib/db/returns"
 import { logger } from "@/lib/logger"
+
+const supabase = () => getSupabaseAdmin()
+const normalizeSlug = (slug: string) => slug.trim().toLowerCase().replace(/\s+/g, "-")
 
 export const listBrands = async () => {
   try {
@@ -70,24 +74,24 @@ export const createAttributeDef = (name: string, slug: string) =>
 
 export type InventoryRow =
   | {
-      id: string
-      productId: string
-      warehouse: string | null
-      available: number
-      reserved: number
-      source: "warehouse"
-      product: { name: string; slug: string }
-    }
+    id: string
+    productId: string
+    warehouse: string | null
+    available: number
+    reserved: number
+    source: "warehouse"
+    product: { name: string; slug: string }
+  }
   | {
-      id: string
-      productId: string
-      warehouse: null
-      available: number
-      reserved: number
-      source: "variant"
-      variantName: string
-      product: { name: string; slug: string }
-    }
+    id: string
+    productId: string
+    warehouse: null
+    available: number
+    reserved: number
+    source: "variant"
+    variantName: string
+    product: { name: string; slug: string }
+  }
 
 export const listInventoryOverview = async (): Promise<InventoryRow[]> => {
   const rows = await pgQuery<
@@ -133,8 +137,8 @@ export const listInventoryOverview = async (): Promise<InventoryRow[]> => {
     `,
   )
   const fromVariant: InventoryRow[] = variants.map((v) => ({
-    id: v.id,
-    productId: v.productId,
+    id: (v as any).id,
+    productId: (v as any).productId,
     warehouse: null,
     available: Number(v.stock ?? 0),
     reserved: 0,

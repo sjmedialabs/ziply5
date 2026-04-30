@@ -57,7 +57,7 @@ const StatCard = ({
         </div>
         <div>
           <p className="text-xs font-semibold text-[#7A7A7A]">{label}</p>
-          <p className="mt-0.5 font-melon text-xl font-bold text-[#4A1D1F]">{value}</p>
+          <p className="mt-0.5 font-melon text-xl font-medium text-[#4A1D1F]">{value}</p>
         </div>
       </div>
     </ScaleHover>
@@ -98,8 +98,6 @@ export default function AdminDashboardPage() {
   return (
     <section className="mx-auto max-w-7xl">
       <div className="rounded-3xl bg-transparent p-0 md:p-0">
-        <div className="mb-2 pt-[34px] pb-[34px]" />
-
         {error ? (
           <div className="mb-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
             <p className="font-semibold">Could not load dashboard</p>
@@ -128,7 +126,7 @@ export default function AdminDashboardPage() {
           <div className="mt-3 grid gap-4 lg:grid-cols-3">
             <div className="rounded-2xl border border-[#E8DCC8] bg-white p-4 shadow-sm lg:col-span-2">
               <div className="mb-3 flex items-center justify-between">
-                <p className="font-melon text-sm font-semibold text-[#4A1D1F]">Sales Trend</p>
+                <p className="font-melon text-sm font-medium text-[#4A1D1F]">Sales Trend</p>
                 <div className="flex items-center gap-3 text-xs text-[#6B6B6B]">
                   <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-[#7B3010]" />Current year</span>
                   <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-[#C03621]" />Last year</span>
@@ -150,7 +148,7 @@ export default function AdminDashboardPage() {
 
             <div className="rounded-2xl border border-[#E8DCC8] bg-white p-4 shadow-sm">
               <div className="mb-3 flex items-center justify-between">
-                <p className="font-melon text-sm font-semibold text-[#4A1D1F]">Product Views</p>
+                <p className="font-melon text-sm font-medium text-[#4A1D1F]">Product Views</p>
                 <div className="flex items-center gap-3 text-xs text-[#6B6B6B]">
                   <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-[#7B3010]" />This Week</span>
                   <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-[#C03621]" />Last Week</span>
@@ -181,7 +179,7 @@ export default function AdminDashboardPage() {
           <div className="mt-3 grid gap-4 lg:grid-cols-3">
             <div className="rounded-2xl border border-[#E8DCC8] bg-white p-4 shadow-sm lg:col-span-2">
               <div className="mb-3 flex items-center justify-between">
-                <p className="font-melon text-sm font-semibold text-[#4A1D1F]">All Orders</p>
+                <p className="font-melon text-sm font-medium text-[#4A1D1F]">All Orders</p>
                 <p className="text-xs text-[#6B6B6B]">Latest {recentRows.length}</p>
               </div>
               <div className="overflow-x-auto">
@@ -231,7 +229,7 @@ export default function AdminDashboardPage() {
             </div>
 
             <div className="rounded-2xl border border-[#E8DCC8] bg-white p-4 shadow-sm">
-              <p className="font-melon text-sm font-semibold text-[#4A1D1F]">Top Sold Items</p>
+              <p className="font-melon text-sm font-medium text-[#4A1D1F]">Top Sold Items</p>
               <div className="mt-4 space-y-3">
                 {summary.topSoldItems.map((row) => (
                   <div key={row.productId}>

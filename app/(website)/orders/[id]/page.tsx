@@ -2,9 +2,11 @@
 
 import { FormEvent, useEffect, useMemo, useState } from "react"
 import { useParams, useRouter } from "next/navigation"
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query"
 import { useRealtimeTables } from "@/hooks/useRealtimeTables"
 import { useMasterValues } from "@/hooks/useMasterData"
+import { Camera, X } from "lucide-react"
+import { toast } from "@/lib/toast"
 
 type OrderDetail = {
   id: string
@@ -61,16 +63,127 @@ export default function OrderDetailPage() {
   const router = useRouter()
   const queryClient = useQueryClient()
   const statusMasterQuery = useMasterValues("ORDER_STATUS")
-  const returnReasonMasterQuery = useMasterValues("RETURN_REASON")
+  const returnReasonMasterQuery = useMasterValues("RETURN_REASONS")
   const timeline = statusMasterQuery.data?.map((item) => item.value) ?? FALLBACK_TIMELINE
-  const returnReasons = (returnReasonMasterQuery.data?.map((item) => item.label) ?? [...FALLBACK_RETURN_REASONS]) as string[]
-  const [reason, setReason] = useState<string>((returnReasons[0] as string) ?? "Other")
-  const [description, setDescription] = useState("")
-  const [showReturnForm, setShowReturnForm] = useState(false)
+  const returnReasons = returnReasonMasterQuery.data ?? []
+
+  const [isReturnModalOpen, setIsReturnModalOpen] = useState(false)
+  const [selectedItemsForReturn, setSelectedItemsForReturn] = useState<Record<string, {
+    selected: boolean;
+    productId: string;
+    reasonCode: string;
+    notes: string;
+    imageUrl: string;
+    quantity: number;
+    uploading: boolean;
+  }>>({})
+
   const [actionBusy, setActionBusy] = useState<string | null>(null)
   const [reviewDrafts, setReviewDrafts] = useState<Record<string, { rating: number; content: string }>>({})
   const [existingReviewedProducts, setExistingReviewedProducts] = useState<Set<string>>(new Set())
   const [reviewBusyByProduct, setReviewBusyByProduct] = useState<Record<string, boolean>>({})
+
+  const openReturnModal = () => {
+    if (!order) return
+    const initialItems: typeof selectedItemsForReturn = {}
+    const autoSelect = order.items.length === 1
+    order.items.forEach(item => {
+      initialItems[item.id] = {
+        selected: autoSelect,
+        productId: item.productId || "",
+        reasonCode: "",
+        notes: "",
+        imageUrl: "",
+        quantity: item.quantity,
+        uploading: false,
+      }
+    })
+    setSelectedItemsForReturn(initialItems)
+    setIsReturnModalOpen(true)
+  }
+
+  const handleImageUpload = async (orderItemId: string, file: File) => {
+    setSelectedItemsForReturn(prev => ({
+      ...prev,
+      [orderItemId]: { ...prev[orderItemId], uploading: true }
+    }))
+    try {
+      const formData = new FormData()
+      formData.append("file", file)
+      const token = window.localStorage.getItem("ziply5_access_token")
+      const res = await fetch("/api/v1/uploads", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+        body: formData
+      })
+      const payload = await res.json()
+      if (!res.ok || !payload.success) throw new Error(payload.message || "Upload failed")
+
+      setSelectedItemsForReturn(prev => ({
+        ...prev,
+        [orderItemId]: { ...prev[orderItemId], imageUrl: payload.data.url, uploading: false }
+      }))
+    } catch (error) {
+      toast.error("Upload Failed", error instanceof Error ? error.message : "Failed to upload image")
+      setSelectedItemsForReturn(prev => ({
+        ...prev,
+        [orderItemId]: { ...prev[orderItemId], uploading: false }
+      }))
+    }
+  }
+
+  const submitReturnRequest = async () => {
+    if (!order) return
+    const itemsToReturn = Object.entries(selectedItemsForReturn)
+      .filter(([_, data]) => data.selected)
+      .map(([id, data]) => ({
+        orderItemId: id,
+        productId: data.productId,
+        quantity: data.quantity,
+        reasonCode: data.reasonCode,
+        notes: data.notes,
+        imageUrl: data.imageUrl
+      }))
+
+    if (itemsToReturn.length === 0) {
+      toast.error("Validation Error", "Please select at least one item to return.")
+      return
+    }
+
+    for (const item of itemsToReturn) {
+      if (!item.reasonCode) {
+        toast.error("Validation Error", "Please select a reason for all selected items.")
+        return
+      }
+    }
+
+    const token = window.localStorage.getItem("ziply5_access_token")
+    if (!token) return
+    setActionBusy("return_request")
+    try {
+      const res = await fetch(`/api/v1/returns`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          orderId: order.id,
+          items: itemsToReturn
+        }),
+      })
+      const payload = await res.json()
+      if (!res.ok || !payload.success) throw new Error(payload.message || "Failed to submit return request")
+
+      toast.success("Return Requested", "Your return request has been submitted successfully.")
+      setIsReturnModalOpen(false)
+      void queryClient.invalidateQueries({ queryKey: ["order-detail", params.id] })
+    } catch (error) {
+      toast.error("Error", error instanceof Error ? error.message : "Failed to submit return request")
+    } finally {
+      setActionBusy(null)
+    }
+  }
 
   const orderQuery = useQuery({
     queryKey: ["order-detail", params.id],
@@ -87,30 +200,8 @@ export default function OrderDetailPage() {
     },
   })
 
-  const returnMutation = useMutation({
-    mutationFn: async () => {
-      if (!params.id) throw new Error("Order missing")
-      const token = window.localStorage.getItem("ziply5_access_token")
-      if (!token) throw new Error("Please login to request a return.")
-      const res = await fetch("/api/returns/request", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ orderId: params.id, reason, description }),
-      })
-      const payload = (await res.json()) as { success?: boolean; message?: string }
-      if (!res.ok || payload.success === false) throw new Error(payload.message ?? "Unable to request return.")
-    },
-    onSuccess: async () => {
-      setShowReturnForm(false)
-      await queryClient.invalidateQueries({ queryKey: ["order-detail", params.id] })
-    },
-  })
-
   const statusActionMutation = useMutation({
-    mutationFn: async (action: "cancel_request" | "return_request") => {
+    mutationFn: async (action: "cancel_request") => {
       if (!params.id) throw new Error("Order missing")
       const token = window.localStorage.getItem("ziply5_access_token")
       if (!token) throw new Error("Please login to continue.")
@@ -142,32 +233,22 @@ export default function OrderDetailPage() {
   const order = orderQuery.data
   const historySet = useMemo(() => new Set(order?.statusHistory.map((entry) => entry.toStatus.toLowerCase())), [order?.statusHistory])
   const returnExists = Boolean(order?.returnRequests?.length)
+  const activeReturnRequest = order?.returnRequests?.find(r => r.status.toLowerCase() !== "rejected")
   const cancelRequested = historySet.has("cancel_requested")
   const returnRequested = historySet.has("return_requested")
   const paymentStatus =
     order?.paymentStatus ??
     (order?.transactions.some((tx) => tx.status === "paid") ? "paid" : "pending")
 
-  const submitReturn = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
-    void returnMutation.mutateAsync()
-  }
-
-  const runStatusAction = async (action: "cancel_request" | "return_request") => {
+  const runStatusAction = async (action: "cancel_request") => {
     setActionBusy(action)
     try {
       await statusActionMutation.mutateAsync(action)
+      toast.success("Request Sent", "Your request has been processed successfully.")
     } finally {
       setActionBusy(null)
     }
   }
-
-  useEffect(() => {
-    if (!returnReasons.length) return
-    if (!returnReasons.includes(reason)) {
-      setReason(returnReasons[0] as string)
-    }
-  }, [reason, returnReasons])
 
   useEffect(() => {
     if (!order || order.status.toLowerCase() !== "delivered") return
@@ -286,7 +367,7 @@ export default function OrderDetailPage() {
 
       {order && (
         <>
-        {/* payment details div */}
+          {/* payment details div */}
           <div className="rounded-2xl border border-[#E8DCC8] bg-white p-4 shadow-sm">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
@@ -319,7 +400,7 @@ export default function OrderDetailPage() {
               </button>
             )}
           </div>
-            {/* order timelines */}
+          {/* order timelines */}
           <div className="rounded-2xl border border-[#E8DCC8] bg-white p-4 shadow-sm">
             <h2 className="mb-3 text-sm font-semibold uppercase tracking-[0.15em] text-[#4A1D1F]">Order timeline</h2>
             <div className="grid gap-2 md:grid-cols-3">
@@ -333,7 +414,7 @@ export default function OrderDetailPage() {
               })}
             </div>
           </div>
-              {/* order status  */}
+          {/* order status  */}
           {order.status.toLowerCase() !== "delivered" ? (
             <div className="rounded-2xl border border-[#E8DCC8] bg-white p-4 shadow-sm">
               <h2 className="mb-3 text-sm font-semibold uppercase tracking-[0.15em] text-[#4A1D1F]">Shipment Details</h2>
@@ -360,16 +441,22 @@ export default function OrderDetailPage() {
               </p>
             </div>
           )}
-      
-          {(order?.returnRequests?.length > 0 || order?.refunds?.length > 0) && (
+
+          {(order.returnRequests?.length > 0 || order?.refunds?.length > 0) && (
             <div className="rounded-2xl border border-[#E8DCC8] bg-white p-4 shadow-sm">
               <h2 className="mb-3 text-sm font-semibold uppercase tracking-[0.15em] text-[#4A1D1F]">Return / Refund Status</h2>
-              {order.returnRequests[0] && (
-                <p className="text-sm text-[#646464]">Return: <span className="font-semibold uppercase">{order.returnRequests[0].status}</span></p>
-              )}
-              {order.refunds[0] && (
-                <p className="text-sm text-[#646464]">Refund: <span className="font-semibold uppercase">{order.refunds[0].status}</span></p>
-              )}
+              <div className="space-y-2">
+                {order.returnRequests.map((req) => (
+                  <p key={req.id} className="text-sm text-[#646464]">
+                    Return Request: <span className="font-semibold uppercase">{req.status}</span> {req.reason ? `— ${req.reason}` : ""}
+                  </p>
+                ))}
+                {order.refunds?.map((ref) => (
+                  <p key={ref.id} className="text-sm text-[#646464]">
+                    Refund: <span className="font-semibold uppercase">{ref.status}</span> — {order.currency} {Number(ref.amount).toFixed(2)}
+                  </p>
+                ))}
+              </div>
             </div>
           )}
 
@@ -458,63 +545,141 @@ export default function OrderDetailPage() {
 
           {order.status.toLowerCase() === "delivered" && (
             <div className="rounded-2xl border border-[#E8DCC8] bg-white p-4 shadow-sm">
-              {!returnExists && !returnRequested ? (
-                <>
-                  <button
-                    type="button"
-                    onClick={() => setShowReturnForm((value) => !value)}
-                    className="rounded-full bg-[#7B3010] px-4 py-2 text-xs font-semibold uppercase text-white"
-                  >
-                    Request Return
-                  </button>
-                  {showReturnForm && (
-                    <form onSubmit={submitReturn} className="mt-3 space-y-3">
-                      <select
-                        value={reason}
-                        onChange={(event) => setReason(event.target.value)}
-                        className="w-full rounded-lg border border-[#D9D9D1] bg-white px-3 py-2 text-sm"
-                      >
-                        {returnReasons.map((option) => (
-                          <option key={option} value={option}>
-                            {option}
-                          </option>
-                        ))}
-                      </select>
-                      <textarea
-                        value={description}
-                        onChange={(event) => setDescription(event.target.value)}
-                        placeholder="Describe the issue"
-                        className="w-full rounded-lg border border-[#D9D9D1] bg-white px-3 py-2 text-sm"
-                        rows={3}
-                      />
-                      <div className="flex gap-2">
-                        <button
-                          type="submit"
-                          disabled={returnMutation.isPending}
-                          className="rounded-full bg-[#7B3010] px-4 py-2 text-xs font-semibold uppercase text-white disabled:opacity-50"
-                        >
-                          {returnMutation.isPending ? "Submitting..." : "Submit return request"}
-                        </button>
-                        <button
-                          type="button"
-                          disabled={actionBusy === "return_request"}
-                          onClick={() => void runStatusAction("return_request")}
-                          className="rounded-full border border-[#E8DCC8] bg-white px-4 py-2 text-xs font-semibold uppercase text-[#4A1D1F] disabled:opacity-40"
-                        >
-                          {actionBusy === "return_request" ? "Submitting..." : "Quick return request"}
-                        </button>
-                      </div>
-                      {returnMutation.error && (
-                        <p className="text-sm text-red-600">
-                          {returnMutation.error instanceof Error ? returnMutation.error.message : "Could not submit return request."}
-                        </p>
-                      )}
-                    </form>
-                  )}
-                </>
+              {!activeReturnRequest ? (
+                <button
+                  type="button"
+                  onClick={openReturnModal}
+                  className="rounded-full bg-[#7B3010] px-4 py-2 text-xs font-semibold uppercase text-white hover:opacity-90 transition-all"
+                >
+                  Request Return
+                </button>
               ) : (
-                <p className="text-sm font-semibold text-[#4A1D1F]">RETURN_REQUESTED</p>
+                <div className="space-y-1">
+                  <p className="text-sm font-semibold text-[#4A1D1F] uppercase">Return Processing</p>
+                  <p className="text-xs text-[#646464]">An active return request is already in progress.</p>
+                </div>
               )}
+            </div>
+          )}
+
+          {isReturnModalOpen && (
+            <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm" onClick={() => setIsReturnModalOpen(false)}>
+              <div className="w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-3xl bg-white shadow-2xl" onClick={(e) => e.stopPropagation()}>
+                <div className="flex items-center justify-between bg-[#7B3010] p-5 text-white sticky top-0 z-10">
+                  <h3 className="font-melon text-lg font-bold uppercase tracking-wider">Return Request</h3>
+                  <button onClick={() => setIsReturnModalOpen(false)} className="rounded-full bg-white/20 p-1 hover:bg-white/30 transition-colors">
+                    <X size={20} />
+                  </button>
+                </div>
+
+                <div className="p-6 space-y-6">
+                  <p className="text-sm text-gray-600">Select the items you wish to return and provide a reason and photo for each.</p>
+
+                  <div className="space-y-4">
+                    {order.items.map((item) => {
+                      const itemState = selectedItemsForReturn[item.id]
+                      if (!itemState) return null
+
+                      return (
+                        <div key={item.id} className="border border-gray-200 rounded-xl p-4 space-y-4">
+                          <div className="flex items-start gap-3">
+                            <input
+                              type="checkbox"
+                              className="mt-1 w-4 h-4 text-[#7B3010]"
+                              checked={itemState.selected}
+                              onChange={(e) => setSelectedItemsForReturn(prev => ({
+                                ...prev,
+                                [item.id]: { ...prev[item.id], selected: e.target.checked }
+                              }))}
+                            />
+                            <div>
+                              <p className="text-sm font-semibold text-gray-900">{item.product?.name ?? "Product"}</p>
+                              <p className="text-xs text-gray-500">Qty: {item.quantity}</p>
+                            </div>
+                          </div>
+
+                          {itemState.selected && (
+                            <div className="pl-7 space-y-3">
+                              <div>
+                                <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Reason</label>
+                                <select
+                                  value={itemState.reasonCode}
+                                  onChange={(e) => setSelectedItemsForReturn(prev => ({
+                                    ...prev,
+                                    [item.id]: { ...prev[item.id], reasonCode: e.target.value }
+                                  }))}
+                                  className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm focus:border-orange-500 focus:ring-1 outline-none"
+                                >
+                                  <option value="">Select a reason</option>
+                                  {returnReasons.map(r => (
+                                    <option key={r.id} value={r.value}>{r.label ?? r.value}</option>
+                                  ))}
+                                </select>
+                              </div>
+
+                              <div>
+                                <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Details / Issue</label>
+                                <textarea
+                                  rows={2}
+                                  value={itemState.notes}
+                                  onChange={(e) => setSelectedItemsForReturn(prev => ({
+                                    ...prev,
+                                    [item.id]: { ...prev[item.id], notes: e.target.value }
+                                  }))}
+                                  placeholder="Describe the issue..."
+                                  className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm focus:border-orange-500 focus:ring-1 outline-none resize-none"
+                                />
+                              </div>
+
+                              <div>
+                                <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Photo Evidence</label>
+                                <div className="flex items-center gap-3">
+                                  <label className="cursor-pointer flex items-center gap-2 rounded-lg border border-gray-300 px-3 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50">
+                                    <Camera size={14} />
+                                    <span>{itemState.uploading ? "Uploading..." : "Upload Photo"}</span>
+                                    <input
+                                      type="file"
+                                      accept="image/*"
+                                      className="hidden"
+                                      disabled={itemState.uploading}
+                                      onChange={(e) => {
+                                        if (e.target.files && e.target.files[0]) {
+                                          void handleImageUpload(item.id, e.target.files[0])
+                                        }
+                                      }}
+                                    />
+                                  </label>
+                                  {itemState.imageUrl && (
+                                    <span className="text-xs text-green-600 font-medium">Image attached ✓</span>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
+
+                  <div className="flex gap-3 pt-4 border-t border-gray-100">
+                    <button
+                      type="button"
+                      onClick={() => setIsReturnModalOpen(false)}
+                      className="flex-1 rounded-xl border border-gray-200 py-3 text-xs font-bold uppercase tracking-widest text-gray-600 hover:bg-gray-50 transition-all"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void submitReturnRequest()}
+                      disabled={actionBusy === "return_request"}
+                      className="flex-1 rounded-xl bg-[#7B3010] py-3 text-xs font-bold uppercase tracking-widest text-white shadow-md hover:opacity-90 disabled:opacity-50 transition-all"
+                    >
+                      {actionBusy === "return_request" ? "Submitting..." : "Submit Return Request"}
+                    </button>
+                  </div>
+                </div>
+              </div>
             </div>
           )}
         </>

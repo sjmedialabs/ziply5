@@ -23,6 +23,8 @@ import { FadeIn, SlideUp, ScaleHover, ModalAnimation } from "@/components/animat
 type CategoryFilter = "all" | string
 type SortType = "popular" | "name-asc" | "name-desc" | "newest" | "price-low-high" | "price-high-low"
 type CategoryApi = { id: string; name: string; slug: string }
+type PreparationFilter = "all" | "ready_to_eat" | "ready_to_cook"
+type SpiceFilter = "all" | "mild" | "medium" | "hot" | "extra_hot"
 
 function mulberry32(seed: number) {
   let t = seed >>> 0
@@ -56,6 +58,8 @@ function ProductsPageContent() {
   const [availabilityFilter, setAvailabilityFilter] = useState<any>("all")
   const [bestSellerFilter, setBestSellerFilter] = useState<string>("all")
   const [featuredFilter, setFeaturedFilter] = useState<string>("all")
+  const [preparationTypeFilter, setPreparationTypeFilter] = useState<PreparationFilter>("all")
+  const [spiceLevelFilter, setSpiceLevelFilter] = useState<SpiceFilter>("all")
   const [sortBy, setSortBy] = useState<SortType>("popular")
   const [favoriteSlugs, setFavoriteSlugs] = useState<string[]>([])
   const [cartQtyBySlug, setCartQtyBySlug] = useState<Record<string, number>>({})
@@ -74,6 +78,10 @@ function ProductsPageContent() {
   const typeParam = (searchParams.get("type") || "").trim().toLowerCase()
   const comboParam = (searchParams.get("combo") || "").trim().toLowerCase()
   const productTypeParam = (searchParams.get("productType") || "").trim().toLowerCase()
+  const categoryParam = (searchParams.get("category") || "").trim().toLowerCase()
+  const tagParam = (searchParams.get("tag") || "").trim().toLowerCase()
+  const preparationTypeParam = (searchParams.get("preparationType") || "").trim().toLowerCase()
+  const spiceLevelParam = (searchParams.get("spiceLevel") || "").trim().toLowerCase()
   useEffect(() => {
     let cancelled = false
     fetch("/api/v1/categories")
@@ -113,6 +121,58 @@ function ProductsPageContent() {
     // else do not override user selection
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [packParam, typeParam, comboParam, productTypeParam])
+
+  useEffect(() => {
+    const normalizeMappedTag = (value: string) => {
+      if (value === "nonveg") return "non-veg"
+      return value
+    }
+
+    const queryFilterConfig = [
+      {
+        key: "category",
+        value: categoryParam,
+        apply: (value: string) => setCategoryFilter(value || "all"),
+      },
+      {
+        key: "preparationType",
+        value: preparationTypeParam,
+        apply: (value: string) => {
+          if (value === "ready-to-eat") return setPreparationTypeFilter("ready_to_eat")
+          if (value === "ready-to-cook") return setPreparationTypeFilter("ready_to_cook")
+          if (value === "ready_to_eat" || value === "ready_to_cook") return setPreparationTypeFilter(value as PreparationFilter)
+          setPreparationTypeFilter("all")
+        },
+      },
+      {
+        key: "spiceLevel",
+        value: spiceLevelParam,
+        apply: (value: string) => {
+          const normalized = value.replace(/-/g, "_")
+          if (["mild", "medium", "hot", "extra_hot"].includes(normalized)) {
+            setSpiceLevelFilter(normalized as SpiceFilter)
+            return
+          }
+          setSpiceLevelFilter("all")
+        },
+      },
+      {
+        key: "tag",
+        value: tagParam,
+        apply: (value: string) => {
+          if (!value) {
+            setSelectedTagIds([])
+            return
+          }
+          const wanted = normalizeMappedTag(value)
+          const match = tagOptions.find((t) => t.slug === wanted || t.name.toLowerCase() === wanted)
+          setSelectedTagIds(match ? [match.id] : [])
+        },
+      },
+    ] as const
+
+    queryFilterConfig.forEach((filter) => filter.apply(filter.value))
+  }, [categoryParam, preparationTypeParam, spiceLevelParam, tagParam, tagOptions])
   console.log("ProductsPageContent", { products, selectedTagIds})
   useEffect(() => {
     const syncFavorites = () => setFavoriteSlugs(getFavoriteSlugs())
@@ -219,6 +279,10 @@ function ProductsPageContent() {
         bestSellerFilter === "all" || (item as any).isBestSeller === true
       const featuredMatch =
         featuredFilter === "all" || (item as any).isFeatured === true
+      const preparationTypeMatch =
+        preparationTypeFilter === "all" || String((item as any).preparationType ?? "") === preparationTypeFilter
+      const spiceLevelMatch =
+        spiceLevelFilter === "all" || String((item as any).spiceLevel ?? "") === spiceLevelFilter
 
 const tagMatch =
   selectedTagIds.length === 0 ||
@@ -226,7 +290,7 @@ const tagMatch =
     (item as any).tags?.some((t: any) => t.tag.id === selectedId)
   );
       return categoryMatch && packMatch && mealTimeMatch && availabilityMatch && 
-             bestSellerMatch && featuredMatch && tagMatch
+             bestSellerMatch && featuredMatch && preparationTypeMatch && spiceLevelMatch && tagMatch
     })
 
     if (searchTerm) {
@@ -249,7 +313,7 @@ const tagMatch =
     }
 
     return items
-  }, [products, categoryFilter, packFilter, mealTimeFilter, availabilityFilter, bestSellerFilter, featuredFilter, selectedTagIds, sortBy, searchTerm])
+  }, [products, categoryFilter, packFilter, mealTimeFilter, availabilityFilter, bestSellerFilter, featuredFilter, preparationTypeFilter, spiceLevelFilter, selectedTagIds, sortBy, searchTerm])
 
   const productBgBySlug = useMemo(() => {
     const rng = mulberry32(pageSeedRef)
@@ -329,6 +393,8 @@ const toggleTag = (tagId: string) => {
                     setAvailabilityFilter("all")
                     setBestSellerFilter("all")
                     setFeaturedFilter("all")
+                    setPreparationTypeFilter("all")
+                    setSpiceLevelFilter("all")
                     setSelectedTagIds([])
                     setSortBy("popular")
                   }}
@@ -400,6 +466,28 @@ const toggleTag = (tagId: string) => {
                     <SelectItem value="name-desc">Z to A</SelectItem>
                   </SelectContent>
                 </Select>
+                <Select value={preparationTypeFilter} onValueChange={(value) => setPreparationTypeFilter(value as PreparationFilter)}>
+                  <SelectTrigger className="rounded-full border-[#D9D9D1] bg-white px-4 text-xs font-medium h-9">
+                    <SelectValue placeholder="Preparation Type" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Preparation Types</SelectItem>
+                    <SelectItem value="ready_to_eat">Ready to Eat</SelectItem>
+                    <SelectItem value="ready_to_cook">Ready to Cook</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Select value={spiceLevelFilter} onValueChange={(value) => setSpiceLevelFilter(value as SpiceFilter)}>
+                  <SelectTrigger className="rounded-full border-[#D9D9D1] bg-white px-4 text-xs font-medium h-9">
+                    <SelectValue placeholder="Spice Level" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Spice Levels</SelectItem>
+                    <SelectItem value="mild">Mild</SelectItem>
+                    <SelectItem value="medium">Medium</SelectItem>
+                    <SelectItem value="hot">Hot</SelectItem>
+                    <SelectItem value="extra_hot">Extra Hot</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
               {/* Tag Selector */}
               <div className="pt-2">
@@ -463,7 +551,7 @@ const toggleTag = (tagId: string) => {
             <h3 className="font-melon text-xl text-[#5A272A] font-bold uppercase">No Products Found</h3>
             <p className="text-sm text-gray-500 mt-2">Try adjusting your filters or search term to find what you're looking for.</p>
             <button 
-              onClick={() => { setCategoryFilter("all"); setPackFilter("all"); setMealTimeFilter("all"); setSelectedTagIds([]); }}
+              onClick={() => { setCategoryFilter("all"); setPackFilter("all"); setMealTimeFilter("all"); setPreparationTypeFilter("all"); setSpiceLevelFilter("all"); setSelectedTagIds([]); }}
               className="mt-6 rounded-full bg-primary px-6 py-2 text-xs font-bold text-white uppercase tracking-widest"
             >
               Clear All Filters

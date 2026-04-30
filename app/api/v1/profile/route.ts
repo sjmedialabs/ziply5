@@ -43,10 +43,13 @@ export async function GET(request: NextRequest) {
 }
 
 export async function PATCH(request: NextRequest) {
-  const userId = await getAuthenticatedUserId(request);
-  if (!userId) return NextResponse.json({ success: false, message: "Unauthorized" }, { status: 401 });
+  const authUserId = await getAuthenticatedUserId(request);
+  if (!authUserId) return NextResponse.json({ success: false, message: "Unauthorized" }, { status: 401 });
+  const userId = request.nextUrl.searchParams.get("userId")?.trim() ?? "";
+  if (!userId) return NextResponse.json({ success: false, message: "userId is required" }, { status: 400 });
 
   try {
+    const client = getSupabaseAdmin();
     const body = await request.json();
     const { name, bio, phone, avatarUrl } = body as { 
       name?: string; 
