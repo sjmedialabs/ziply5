@@ -48,6 +48,64 @@ const parseBool = (v: unknown): boolean | undefined => {
   return undefined
 }
 
+const splitMulti = (raw: unknown) =>
+  String(raw ?? "")
+    .split("|")
+    .map((x) => x.trim())
+    .filter(Boolean)
+
+const toSafeSkuFragment = (raw: string) =>
+  raw
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "")
+
+const parseDetailsCell = (raw: unknown): Array<{ title: string; content: string; sortOrder?: number }> => {
+  const items = splitMulti(raw)
+  return items
+    .map((entry, idx) => {
+      const [title, content, sort] = entry.split("::").map((x) => x.trim())
+      const sortOrder = sort ? Number(sort) : idx
+      if (!title || !content) return null
+      return {
+        title,
+        content,
+        sortOrder: Number.isFinite(sortOrder) ? sortOrder : idx,
+      }
+    })
+    .filter((x): x is { title: string; content: string; sortOrder?: number } => Boolean(x))
+}
+
+const parseFeaturesCell = (raw: unknown): Array<{ title: string; icon?: string | null }> => {
+  const items = splitMulti(raw)
+  return items
+    .map((entry) => {
+      const [title, icon] = entry.split("::").map((x) => x.trim())
+      if (!title) return null
+      return { title, icon: icon || null }
+    })
+    .filter((x): x is { title: string; icon?: string | null } => Boolean(x))
+}
+
+const parseSectionsCell = (raw: unknown): Array<{ title: string; description: string; sortOrder?: number; isActive?: boolean }> => {
+  const items = splitMulti(raw)
+  return items
+    .map((entry, idx) => {
+      const [title, description, sort, isActiveRaw] = entry.split("::").map((x) => x.trim())
+      if (!title || !description) return null
+      const sortOrder = sort ? Number(sort) : idx
+      return {
+        title,
+        description,
+        sortOrder: Number.isFinite(sortOrder) ? sortOrder : idx,
+        isActive: parseBool(isActiveRaw) ?? true,
+      }
+    })
+    .filter((x): x is { title: string; description: string; sortOrder?: number; isActive?: boolean } => Boolean(x))
+}
+
 type CategoryLite = { id: string; name: string; slug: string }
 type TagLite = { id: string; name: string; slug: string }
 
@@ -115,6 +173,7 @@ type VariantPrepared = {
 type VariantLinePrepared = {
   excelRow: number
   parentSku: string
+  parentProductSlug: string
   variantSku: string
   raw: Record<string, unknown>
   errors: string[]
@@ -185,14 +244,19 @@ const collectVariantLines = (
     i++
     const errors: string[] = []
     const parentSku = str(getCell(raw, "parentSku"))
-    const variantSku = str(getCell(raw, "variantSku"))
+    const parentProductSlug = str(getCell(raw, "parentProductSlug"))
+    const weight = str(getCell(raw, "weight"))
+    const variantName = str(getCell(raw, "variantName"))
+    const linkKey = parentSku || parentProductSlug
+    const variantSku =
+      str(getCell(raw, "variantSku")) ||
+      `${toSafeSkuFragment(linkKey)}-${toSafeSkuFragment(weight || variantName || `VAR${excelRow}`)}`
     const price = parseNum(getCell(raw, "price"))
     const stock = parseInt0(getCell(raw, "stock"))
-    if (!parentSku) errors.push("parentSku is required")
-    if (!variantSku) errors.push("variantSku is required")
+    if (!parentSku && !parentProductSlug) errors.push("parentSku or parentProductSlug is required")
     if (price === null || price <= 0) errors.push("Variant price must be a positive number")
     if (stock === null || stock < 0) errors.push("Invalid stock")
-    out.push({ excelRow, parentSku, variantSku, raw, errors })
+    out.push({ excelRow, parentSku, parentProductSlug, variantSku, raw, errors })
   }
   return out
 }
@@ -282,7 +346,7 @@ export const runBulkValidate = async (input: {
         if (list.length > 1) rowErrors.push("Duplicate SKU in file")
         if (dbSkus.has(p.sku.toLowerCase())) rowErrors.push("SKU already exists in database")
       }
-      const catRef = str(getCell(p.raw, "category"))
+      const catRef = str(getCell(p.raw, "categories", "category"))
       if (catRef && !resolveCategoryId(cats, catRef)) rowErrors.push(`category not found: ${catRef}`)
       const tagsRaw = str(getCell(p.raw, "tags"))
       if (tagsRaw) {
@@ -321,6 +385,7 @@ export const runBulkValidate = async (input: {
   const parents = collectVariantParents(wb.parentRows, HEADER_ROW)
   const variants = collectVariantLines(wb.variantRows, HEADER_ROW)
   const parentSkuSet = new Set(parents.map((p) => p.parentSku.toLowerCase()).filter(Boolean))
+  const parentSlugSet = new Set(parents.map((p) => p.slug.toLowerCase()).filter(Boolean))
   const variantByParent = new Map<string, VariantLinePrepared[]>()
   const variantSkuRows = new Map<string, number[]>()
 
@@ -330,9 +395,10 @@ export const runBulkValidate = async (input: {
     const list = variantSkuRows.get(k) ?? []
     list.push(v.excelRow)
     variantSkuRows.set(k, list)
-    const listP = variantByParent.get(v.parentSku.toLowerCase()) ?? []
+    const parentKey = (v.parentSku || v.parentProductSlug).toLowerCase()
+    const listP = variantByParent.get(parentKey) ?? []
     listP.push(v)
-    variantByParent.set(v.parentSku.toLowerCase(), listP)
+    variantByParent.set(parentKey, listP)
   }
 
   for (const p of parents) {
@@ -342,7 +408,7 @@ export const runBulkValidate = async (input: {
     }
     const kids = variantByParent.get(p.parentSku.toLowerCase()) ?? []
     if (p.parentSku && kids.length === 0) rowErrors.push("No variants for this parent")
-    const catRef = str(getCell(p.raw, "category"))
+    const catRef = str(getCell(p.raw, "categories", "category"))
     if (catRef && !resolveCategoryId(cats, catRef)) rowErrors.push(`category not found: ${catRef}`)
     const tagsRaw = str(getCell(p.raw, "tags"))
     if (tagsRaw) {
@@ -370,8 +436,10 @@ export const runBulkValidate = async (input: {
 
   for (const v of variants) {
     const rowErrors: string[] = [...v.errors]
-    if (v.parentSku && !parentSkuSet.has(v.parentSku.toLowerCase())) {
-      rowErrors.push("parentSku not found in VariantProducts sheet")
+    const hasParentBySku = v.parentSku ? parentSkuSet.has(v.parentSku.toLowerCase()) : false
+    const hasParentBySlug = v.parentProductSlug ? parentSlugSet.has(v.parentProductSlug.toLowerCase()) : false
+    if (!hasParentBySku && !hasParentBySlug) {
+      rowErrors.push("parentSku/parentProductSlug not found in parent sheet")
     }
     if (v.variantSku) {
       const list = variantSkuRows.get(v.variantSku.toLowerCase()) ?? []
@@ -463,6 +531,9 @@ const buildSimpleCreateInput = async (opts: {
   const statusRaw = str(getCell(raw, "status")).toLowerCase()
   const status =
     statusRaw === "published" || statusRaw === "archived" || statusRaw === "draft" ? statusRaw : "draft"
+  const details = parseDetailsCell(getCell(raw, "details"))
+  const features = parseFeaturesCell(getCell(raw, "features"))
+  const sections = parseSectionsCell(getCell(raw, "sections"))
 
   return {
     name: str(getCell(raw, "name")),
@@ -472,6 +543,10 @@ const buildSimpleCreateInput = async (opts: {
     description: str(getCell(raw, "description")) || undefined,
     price,
     basePrice: basePrice != null && basePrice > 0 ? basePrice : null,
+    salePrice: (() => {
+      const s = parseNum(getCell(raw, "salePrice"))
+      return s != null && s >= 0 ? s : null
+    })(),
     discountPercent: discountPercent != null && discountPercent >= 0 ? discountPercent : null,
     weight: str(getCell(raw, "weight")) || null,
     stockStatus,
@@ -486,12 +561,15 @@ const buildSimpleCreateInput = async (opts: {
     allowReturn: parseBool(getCell(raw, "allowReturn")) ?? true,
     thumbnail: thumbUrl,
     metaTitle: str(getCell(raw, "metaTitle")) || null,
-    metaDescription: str(getCell(raw, "metaDescription")) || null,
+    metaDescription: str(getCell(raw, "metaDescription", "metaDesciption")) || null,
     amazonLink: str(getCell(raw, "amazonLink")) || null,
     status,
     categoryId,
     tagIds,
     images,
+    details,
+    sections,
+    features,
   }
 }
 
@@ -545,10 +623,10 @@ const buildVariantCreateInput = async (opts: {
     return {
       name: nm,
       weight: str(getCell(line.raw, "weight")) || null,
-      sku: str(getCell(line.raw, "variantSku")),
+      sku: line.variantSku,
       price: parseNum(getCell(line.raw, "price")) ?? 0,
       mrp: (() => {
-        const m = parseNum(getCell(line.raw, "basePrice"))
+        const m = parseNum(getCell(line.raw, "mrp", "basePrice"))
         return m != null && m > 0 ? m : null
       })(),
       discountPercent: (() => {
@@ -592,6 +670,19 @@ const buildVariantCreateInput = async (opts: {
   const statusRaw = str(getCell(parentRaw, "status")).toLowerCase()
   const status =
     statusRaw === "published" || statusRaw === "archived" || statusRaw === "draft" ? statusRaw : "draft"
+  const stockStatusRaw = str(getCell(parentRaw, "stockStatus")).toLowerCase()
+  const stockStatus = stockStatusRaw === "out_of_stock" ? "out_of_stock" : "in_stock"
+  const details = parseDetailsCell(getCell(parentRaw, "details"))
+  const features = parseFeaturesCell(getCell(parentRaw, "features"))
+  const sections = parseSectionsCell(getCell(parentRaw, "sections"))
+  const totalStockFromSheet = parseInt0(getCell(parentRaw, "totalStock"))
+  const shelfLife = str(getCell(parentRaw, "shelfLife")) || null
+  const preparationRaw = str(getCell(parentRaw, "preparationType")).toLowerCase()
+  const preparationType =
+    preparationRaw === "ready_to_cook" || preparationRaw === "ready_to_eat" ? preparationRaw : null
+  const spiceRaw = str(getCell(parentRaw, "spiceLevel")).toLowerCase()
+  const spiceLevel =
+    spiceRaw === "mild" || spiceRaw === "medium" || spiceRaw === "hot" || spiceRaw === "extra_hot" ? spiceRaw : null
 
   return {
     name: str(getCell(parentRaw, "name")),
@@ -601,13 +692,17 @@ const buildVariantCreateInput = async (opts: {
     description: str(getCell(parentRaw, "description")) || undefined,
     price: defaultVariant.price,
     basePrice: defaultVariant.mrp,
+    salePrice: (() => {
+      const s = parseNum(getCell(parentRaw, "salePrice"))
+      return s != null && s >= 0 ? s : null
+    })(),
     discountPercent: defaultVariant.discountPercent,
     weight: null,
-    stockStatus: "in_stock" as const,
-    totalStock: normalizedVariants.reduce((s, v) => s + v.stock, 0),
-    shelfLife: null,
-    preparationType: null,
-    spiceLevel: null,
+    stockStatus,
+    totalStock: totalStockFromSheet ?? normalizedVariants.reduce((s, v) => s + v.stock, 0),
+    shelfLife,
+    preparationType,
+    spiceLevel,
     taxIncluded: parseBool(getCell(parentRaw, "taxIncluded")) ?? true,
     isActive: parseBool(getCell(parentRaw, "isActive")) ?? true,
     isFeatured: parseBool(getCell(parentRaw, "isFeatured")) ?? false,
@@ -615,11 +710,15 @@ const buildVariantCreateInput = async (opts: {
     allowReturn: parseBool(getCell(parentRaw, "allowReturn")) ?? true,
     thumbnail: thumbUrl,
     metaTitle: str(getCell(parentRaw, "metaTitle")) || null,
-    metaDescription: str(getCell(parentRaw, "metaDescription")) || null,
+    metaDescription: str(getCell(parentRaw, "metaDescription", "metaDesciption")) || null,
+    amazonLink: str(getCell(parentRaw, "amazonLink")) || null,
     status,
     categoryId,
     tagIds,
     images,
+    details,
+    sections,
+    features,
     variants: normalizedVariants.map((v) => ({
       name: v.name,
       weight: v.weight,
@@ -674,7 +773,7 @@ export const runBulkImport = async (input: {
       }
       try {
         if (dbSkus.has(p.sku.toLowerCase())) throw new Error("SKU already exists")
-        const catRef = str(getCell(p.raw, "category"))
+        const catRef = str(getCell(p.raw, "categories", "category"))
         const categoryId = catRef ? resolveCategoryId(cats, catRef) : null
         const tagsRaw = str(getCell(p.raw, "tags"))
         const tagIds = tagsRaw ? resolveTagIds(tags, tagsRaw).ids : []
@@ -709,7 +808,7 @@ export const runBulkImport = async (input: {
     const variants = collectVariantLines(wb.variantRows, HEADER_ROW)
     const variantByParent = new Map<string, VariantLinePrepared[]>()
     for (const v of variants) {
-      const k = v.parentSku.toLowerCase()
+      const k = (v.parentSku || v.parentProductSlug).toLowerCase()
       const list = variantByParent.get(k) ?? []
       list.push(v)
       variantByParent.set(k, list)
@@ -722,7 +821,7 @@ export const runBulkImport = async (input: {
         failedRowsForCsv.push({ parentSku: p.parentSku, slug: p.slug, error: msg })
         return
       }
-      const lines = variantByParent.get(p.parentSku.toLowerCase()) ?? []
+      const lines = variantByParent.get(p.parentSku.toLowerCase()) ?? variantByParent.get(p.slug.toLowerCase()) ?? []
       if (!lines.length) {
         const msg = "No variants for this parent"
         errors.push({ row: p.excelRow, sku: p.parentSku, message: msg })
@@ -735,7 +834,7 @@ export const runBulkImport = async (input: {
         for (const line of lines) {
           if (dbSkus.has(line.variantSku.toLowerCase())) throw new Error(`Variant SKU exists: ${line.variantSku}`)
         }
-        const catRef = str(getCell(p.raw, "category"))
+        const catRef = str(getCell(p.raw, "categories", "category"))
         const categoryId = catRef ? resolveCategoryId(cats, catRef) : null
         const tagsRaw = str(getCell(p.raw, "tags"))
         const tagIds = tagsRaw ? resolveTagIds(tags, tagsRaw).ids : []

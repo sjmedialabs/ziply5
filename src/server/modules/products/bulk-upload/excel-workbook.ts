@@ -6,6 +6,8 @@ import {
   VARIANT_PARENT_SHEET,
 } from "@/src/server/modules/products/bulk-upload/bulk-upload.constants"
 
+const VARIANT_PARENT_SHEET_ALIASES = [VARIANT_PARENT_SHEET, "Products"]
+
 const normHeader = (value: unknown) =>
   String(value ?? "")
     .trim()
@@ -65,7 +67,7 @@ export const readWorkbookBuffer = (buffer: Buffer, uploadType: BulkUploadType) =
     return { sheetUsed: name, simpleRows: rows, parentRows: [] as Record<string, unknown>[], variantRows: [] as Record<string, unknown>[] }
   }
   const parentName =
-    sheetNames.find((n) => n.trim().toLowerCase() === VARIANT_PARENT_SHEET.toLowerCase()) ?? ""
+    sheetNames.find((n) => VARIANT_PARENT_SHEET_ALIASES.some((alias) => n.trim().toLowerCase() === alias.toLowerCase())) ?? ""
   const variantName =
     sheetNames.find((n) => n.trim().toLowerCase() === VARIANT_CHILD_SHEET.toLowerCase()) ?? ""
   if (!parentName || !variantName) {
