@@ -99,6 +99,7 @@ function ProductsPageContent() {
       .then((r) => r.json())
       .then((tagRes: { success?: boolean; data?: any }) => {
         if (cancelled) return
+        console.log("tagRes:::::::::",tagRes)
         const tags = ((tagRes.data as any[] | undefined) ?? [])
           .map((t) => ({ slug: t.slug, name: t.name, id: t.id,   }))
         setTagOptions(tags)
@@ -106,9 +107,10 @@ function ProductsPageContent() {
       .catch(() => null)
 
     return () => {
-      cancelled = true
+      cancelled = true 
     }
   }, [])
+  console.log("products:::::", products)
 
   useEffect(() => {
     const wantsCombo =
@@ -567,12 +569,13 @@ const toggleTag = (tagId: string) => {
                 )
               : Number(product.price || 0);
             const cardBg = productBgBySlug[String(product.slug || product.id || idx)] || "#3EA6CF"
+            console.log("Rendering product", product.tags[0]?.tag?.name)
 
             return (
-              <SlideUp key={`${product.id || product.slug || "product"}-${idx}`} delay={Math.min(0.18, idx * 0.03)}>
-                <ScaleHover>
+              <SlideUp key={`${product.id || product.slug || "product"}-${idx}`} delay={Math.min(0.18, idx * 0.03)} className="h-full">
+                <ScaleHover className="h-full">
                   <article
-                    className="group relative rounded-2xl border-2 border-transparent p-4 transition-all duration-300 hover:ring-4 hover:ring-[#F36E21] hover:shadow-xl will-change-transform"
+                    className="group relative flex h-full flex-col rounded-2xl border-2 border-transparent p-4 transition-all duration-300 hover:ring-4 hover:ring-[#F36E21] hover:shadow-xl will-change-transform"
                     style={{ backgroundColor: cardBg }}
                   >
               <button
@@ -583,18 +586,25 @@ const toggleTag = (tagId: string) => {
                 {favoriteSlugs.includes(product.slug) ? "♥" : "♡"}
               </button>
 
-                <Link href={`/product/${product.slug}`} className="block">
-                  <div className="absolute right-3 top-3">
-                    <span
-                      className={`inline-flex h-5 w-5 items-center justify-center rounded-sm border ${product.type === "veg" ? "border-[#148B2E]" : "border-[#A32424]"
-                        }`}
-                    >
-                      <span
-                        className={`h-2.5 w-2.5 rounded-full ${product.type === "veg" ? "bg-[#148B2E]" : "bg-[#A32424]"
-                          }`}
-                      />
-                    </span>
-                  </div>
+                <Link href={`/product/${product.slug}`} className="block flex-1">
+                {
+                  product.tags[0]?.tag?.name && (
+                           <div className="absolute right-3 top-3">
+                  <span
+                    className={`inline-flex h-6 min-w-[70px] items-center justify-center rounded-md px-2 text-xs font-semibold text-white shadow-sm ${
+                      product.tags[0]?.tag?.name === "veg"
+                        ? "bg-[#148B2E]"   // Green Veg
+                        : "bg-[#C0392B]"   // Red Non-Veg
+                    }`}
+                  >
+                    {product?.tags[0]?.tag?.name === "veg"
+                      ? "Veg"
+                      : "Non-Veg"}
+                  </span>
+                </div>
+                  )
+                }
+              
 
                   <div className="relative mx-auto h-[280px] w-full max-w-[190px] transition-transform duration-300 hover:scale-90">
                     <Image src={product.image} alt={product.name} fill className="object-contain" />
