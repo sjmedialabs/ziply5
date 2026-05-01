@@ -1,203 +1,391 @@
 import crypto from "node:crypto"
 import { pgQuery, pgTx } from "@/src/server/db/pg"
 
+type BundlePricingMode = "fixed" | "dynamic"
+type BundleProductLite = {
+  productId: string
+  name: string
+  slug: string
+  price: number
+  basePrice: number | null
+  thumbnail: string | null
+}
+
+type BundleRow = {
+  id: string
+  name: string
+  slug: string
+  pricingMode: string
+  comboPrice: number | null
+  description: string | null
+  image: string | null
+  isActive: boolean
+  createdAt: Date
+  updatedAt: Date
+}
+
+const MAX_BUNDLE_PRODUCTS = 3
+const slugPattern = /^[a-z0-9_-]+$/
+
 const slugify = (value: string) =>
   value
     .trim()
     .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
+    .replace(/\s+/g, "-")
+    .replace(/[^a-z0-9_-]/g, "")
 
-export const listBundles = async () => {
-  const selectWithPrice = `
-    SELECT
-      b.id, b.name, b.slug, b."productId" as "productId", b."pricingMode" as "pricingMode",
-      b."isCombo" as "isCombo", b."isActive" as "isActive", b."comboPrice" as "comboPrice",
-      b."createdAt" as "createdAt", b."updatedAt" as "updatedAt",
-      p.name as product_name, p.slug as product_slug
-    FROM "Bundle" b
-    LEFT JOIN "Product" p ON p.id = b."productId"
-    ORDER BY b."updatedAt" DESC
-  `
-  const selectWithoutPrice = `
-    SELECT
-      b.id, b.name, b.slug, b."productId" as "productId", b."pricingMode" as "pricingMode",
-      b."isCombo" as "isCombo", b."isActive" as "isActive", NULL::numeric as "comboPrice",
-      b."createdAt" as "createdAt", b."updatedAt" as "updatedAt",
-      p.name as product_name, p.slug as product_slug
-    FROM "Bundle" b
-    LEFT JOIN "Product" p ON p.id = b."productId"
-    ORDER BY b."updatedAt" DESC
-  `
+const computeDynamicPrice = (products: BundleProductLite[]) =>
+  products.reduce((sum, p) => sum + Number(p.price || 0), 0)
 
-  const bundles = await pgQuery<
-    Array<{
-      id: string
-      name: string
-      slug: string
-      productId: string | null
-      pricingMode: string
-      isCombo: boolean
-      isActive: boolean
-      comboPrice: number | null
-      createdAt: Date
-      updatedAt: Date
-      product_name: string | null
-      product_slug: string | null
-    }>
-  >(selectWithPrice).catch(async (e: any) => {
-    // Backward compatibility if combos-foundation.sql hasn't been applied yet.
-    if (e?.code === "42703" && String(e?.message ?? "").includes("comboprice")) {
-      return pgQuery(selectWithoutPrice)
-    }
-    throw e
-  })
-
-  const items = await pgQuery<
-    Array<{
-      id: string
-      bundleId: string
-      productId: string
-      variantId: string | null
-      quantity: number
-      isOptional: boolean
-      minSelect: number
-      maxSelect: number | null
-      sortOrder: number
-      product_name: string | null
-      product_slug: string | null
-      variant_name: string | null
-      variant_sku: string | null
-    }>
-  >(
-    `
-      SELECT
-        bi.id, bi."bundleId" as "bundleId", bi."productId" as "productId", bi."variantId" as "variantId",
-        bi.quantity, bi."isOptional" as "isOptional", bi."minSelect" as "minSelect", bi."maxSelect" as "maxSelect",
-        bi."sortOrder" as "sortOrder",
-        p.name as product_name, p.slug as product_slug,
-        v.name as variant_name, v.sku as variant_sku
-      FROM "BundleItem" bi
-      LEFT JOIN "Product" p ON p.id = bi."productId"
-      LEFT JOIN "ProductVariant" v ON v.id = bi."variantId"
-      ORDER BY bi."bundleId" ASC, bi."sortOrder" ASC
-    `,
-  )
-
-  const byBundle = new Map<string, any[]>()
-  for (const it of items) {
-    const arr = byBundle.get(it.bundleId) ?? []
-    arr.push({
-      id: it.id,
-      bundleId: it.bundleId,
-      productId: it.productId,
-      variantId: it.variantId,
-      quantity: it.quantity,
-      isOptional: it.isOptional,
-      minSelect: it.minSelect,
-      maxSelect: it.maxSelect,
-      sortOrder: it.sortOrder,
-      product: it.product_name ? { id: it.productId, name: it.product_name, slug: it.product_slug } : null,
-      variant: it.variant_name ? { id: it.variantId, name: it.variant_name, sku: it.variant_sku } : null,
-    })
-    byBundle.set(it.bundleId, arr)
-  }
-
-  return bundles.map((b) => ({
-    id: b.id,
-    name: b.name,
-    slug: b.slug,
-    productId: b.productId,
-    pricingMode: b.pricingMode,
-    isCombo: b.isCombo,
-    isActive: b.isActive,
-    comboPrice: b.comboPrice == null ? null : Number(b.comboPrice),
-    createdAt: b.createdAt,
-    updatedAt: b.updatedAt,
-    product: b.product_name ? { id: b.productId, name: b.product_name, slug: b.product_slug } : null,
-    items: byBundle.get(b.id) ?? [],
-  }))
+const computeSavings = (products: BundleProductLite[], effectivePrice: number) => {
+  const listPrice = products.reduce((sum, p) => sum + Number(p.basePrice ?? p.price), 0)
+  return Math.max(0, Number((listPrice - effectivePrice).toFixed(2)))
 }
 
+async function hydrateBundles(baseRows: BundleRow[]) {
+  const ids = baseRows.map((x) => x.id)
+  const products = ids.length
+    ? await pgQuery<{
+        bundleId: string
+        productId: string
+        name: string
+        slug: string
+        price: number
+        basePrice: number | null
+        thumbnail: string | null
+      }>(
+        `
+          SELECT
+            bp."bundleId" as "bundleId",
+            p.id as "productId",
+            p.name,
+            p.slug,
+            p.price,
+            p."basePrice" as "basePrice",
+            p.thumbnail
+          FROM "BundleProduct" bp
+          JOIN "Product" p ON p.id = bp."productId"
+          WHERE bp."bundleId" = ANY($1::text[])
+          ORDER BY bp."createdAt" ASC
+        `,
+        [ids],
+      )
+    : []
+
+  const byBundle = new Map<string, BundleProductLite[]>()
+  for (const p of products) {
+    const arr = byBundle.get(p.bundleId) ?? []
+    arr.push({
+      productId: p.productId,
+      name: p.name,
+      slug: p.slug,
+      price: Number(p.price),
+      basePrice: p.basePrice == null ? null : Number(p.basePrice),
+      thumbnail: p.thumbnail,
+    })
+    byBundle.set(p.bundleId, arr)
+  }
+
+  return baseRows.map((b) => {
+    const bundleProducts = byBundle.get(b.id) ?? []
+    const dynamicPrice = computeDynamicPrice(bundleProducts)
+    const effectivePrice = b.pricingMode === "fixed" ? Number(b.comboPrice ?? dynamicPrice) : dynamicPrice
+    return {
+      ...b,
+      products: bundleProducts,
+      includedProductsCount: bundleProducts.length,
+      dynamicPrice,
+      effectivePrice,
+      savings: computeSavings(bundleProducts, effectivePrice),
+    }
+  })
+}
+
+async function loadEligibleProducts(productIds: string[]) {
+  const unique = [...new Set(productIds.map((x) => x.trim()).filter(Boolean))]
+  if (unique.length < 1 || unique.length > MAX_BUNDLE_PRODUCTS) {
+    throw new Error(`Select 1 to ${MAX_BUNDLE_PRODUCTS} products`)
+  }
+
+  const rows = await pgQuery<{ id: string; name: string; status: string; isActive: boolean }>(
+    `SELECT id, name, status, "isActive" as "isActive" FROM "Product" WHERE id = ANY($1::text[])`,
+    [unique],
+  )
+
+  const byId = new Map(rows.map((r) => [r.id, r]))
+  for (const id of unique) {
+    const row = byId.get(id)
+    if (!row) throw new Error(`Product not found: ${id}`)
+    if (row.status !== "published" || !row.isActive) {
+      throw new Error(`Only active/published products allowed: ${row.name}`)
+    }
+  }
+
+  return unique
+}
+
+function validateInput(input: {
+  name: string
+  slug?: string
+  pricingMode: BundlePricingMode
+  comboPrice?: number | null
+}) {
+  const name = input.name.trim()
+  const slug = slugify(input.slug ?? input.name)
+  if (name.length < 2) throw new Error("Bundle name is too short")
+  if (!slugPattern.test(slug)) throw new Error("Invalid slug format")
+  if (input.pricingMode === "fixed") {
+    const comboPrice = Number(input.comboPrice)
+    if (!Number.isFinite(comboPrice) || comboPrice <= 0) {
+      throw new Error("Fixed pricing requires comboPrice")
+    }
+  }
+  return { name, slug }
+}
+
+export const listBundlesAdmin = async (input?: {
+  page?: number
+  limit?: number
+  q?: string
+  isActive?: boolean
+  sort?: "created_desc" | "created_asc"
+}) => {
+  const page = Math.max(1, Number(input?.page ?? 1))
+  const limit = Math.min(100, Math.max(1, Number(input?.limit ?? 20)))
+  const offset = (page - 1) * limit
+  const values: unknown[] = []
+  const where: string[] = []
+
+  if (input?.q?.trim()) {
+    values.push(`%${input.q.trim()}%`)
+    where.push(`(name ILIKE $${values.length} OR slug ILIKE $${values.length})`)
+  }
+  if (typeof input?.isActive === "boolean") {
+    values.push(input.isActive)
+    where.push(`"isActive" = $${values.length}`)
+  }
+
+  const whereSql = where.length ? `WHERE ${where.join(" AND ")}` : ""
+  const countRows = await pgQuery<{ total: string }>(
+    `SELECT count(*)::text as total FROM "Bundle" ${whereSql}`,
+    values as any[],
+  )
+
+  values.push(limit, offset)
+  const sortDir = input?.sort === "created_asc" ? "ASC" : "DESC"
+  const baseRows = await pgQuery<BundleRow>(
+    `
+      SELECT
+        id,
+        name,
+        slug,
+        "pricingMode" as "pricingMode",
+        "comboPrice" as "comboPrice",
+        description,
+        image,
+        "isActive" as "isActive",
+        "createdAt" as "createdAt",
+        "updatedAt" as "updatedAt"
+      FROM "Bundle"
+      ${whereSql}
+      ORDER BY "createdAt" ${sortDir}
+      LIMIT $${values.length - 1}
+      OFFSET $${values.length}
+    `,
+    values as any[],
+  )
+
+  return {
+    items: await hydrateBundles(baseRows),
+    total: Number(countRows[0]?.total ?? 0),
+    page,
+    limit,
+  }
+}
+
+export const getBundleAdminById = async (id: string) => {
+  const rows = await pgQuery<BundleRow>(
+    `
+      SELECT
+        id,
+        name,
+        slug,
+        "pricingMode" as "pricingMode",
+        "comboPrice" as "comboPrice",
+        description,
+        image,
+        "isActive" as "isActive",
+        "createdAt" as "createdAt",
+        "updatedAt" as "updatedAt"
+      FROM "Bundle"
+      WHERE id = $1
+      LIMIT 1
+    `,
+    [id],
+  )
+  if (!rows[0]) return null
+  return (await hydrateBundles(rows))[0]
+}
+
+export const createBundleV2 = async (input: {
+  name: string
+  slug?: string
+  pricingMode: BundlePricingMode
+  comboPrice?: number | null
+  description?: string | null
+  image?: string | null
+  isActive?: boolean
+  productIds: string[]
+}) => {
+  const { name, slug } = validateInput(input)
+  const productIds = await loadEligibleProducts(input.productIds)
+  const existing = await pgQuery<{ id: string }>(
+    `SELECT id FROM "Bundle" WHERE slug = $1 LIMIT 1`,
+    [slug],
+  )
+  if (existing[0]) throw new Error("Bundle slug already exists")
+
+  const id = crypto.randomUUID()
+  await pgTx(async (client) => {
+    await client.query(
+      `
+        INSERT INTO "Bundle" (
+          id, name, slug, "pricingMode", "comboPrice", description, image, "isActive", "createdAt", "updatedAt"
+        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,now(),now())
+      `,
+      [
+        id,
+        name,
+        slug,
+        input.pricingMode,
+        input.pricingMode === "fixed" ? Number(input.comboPrice) : null,
+        input.description?.trim() || null,
+        input.image?.trim() || null,
+        input.isActive ?? true,
+      ],
+    )
+    for (const productId of productIds) {
+      await client.query(
+        `INSERT INTO "BundleProduct" (id, "bundleId", "productId", "createdAt", "updatedAt") VALUES ($1,$2,$3,now(),now())`,
+        [crypto.randomUUID(), id, productId],
+      )
+    }
+  })
+  return (await getBundleAdminById(id))!
+}
+
+export const updateBundleV2 = async (
+  id: string,
+  input: {
+    name: string
+    slug?: string
+    pricingMode: BundlePricingMode
+    comboPrice?: number | null
+    description?: string | null
+    image?: string | null
+    isActive?: boolean
+    productIds: string[]
+  },
+) => {
+  const { name, slug } = validateInput(input)
+  const current = await getBundleAdminById(id)
+  if (!current) throw new Error("Bundle not found")
+  const productIds = await loadEligibleProducts(input.productIds)
+  const existing = await pgQuery<{ id: string }>(
+    `SELECT id FROM "Bundle" WHERE slug = $1 AND id <> $2 LIMIT 1`,
+    [slug, id],
+  )
+  if (existing[0]) throw new Error("Bundle slug already exists")
+
+  await pgTx(async (client) => {
+    await client.query(
+      `
+        UPDATE "Bundle"
+        SET
+          name = $2,
+          slug = $3,
+          "pricingMode" = $4,
+          "comboPrice" = $5,
+          description = $6,
+          image = $7,
+          "isActive" = $8,
+          "updatedAt" = now()
+        WHERE id = $1
+      `,
+      [
+        id,
+        name,
+        slug,
+        input.pricingMode,
+        input.pricingMode === "fixed" ? Number(input.comboPrice) : null,
+        input.description?.trim() || null,
+        input.image?.trim() || null,
+        input.isActive ?? true,
+      ],
+    )
+    await client.query(`DELETE FROM "BundleProduct" WHERE "bundleId" = $1`, [id])
+    for (const productId of productIds) {
+      await client.query(
+        `INSERT INTO "BundleProduct" (id, "bundleId", "productId", "createdAt", "updatedAt") VALUES ($1,$2,$3,now(),now())`,
+        [crypto.randomUUID(), id, productId],
+      )
+    }
+  })
+  return (await getBundleAdminById(id))!
+}
+
+export const toggleBundleActive = async (id: string, isActive: boolean) => {
+  const rows = await pgQuery<{ id: string }>(
+    `UPDATE "Bundle" SET "isActive" = $2, "updatedAt" = now() WHERE id = $1 RETURNING id`,
+    [id, isActive],
+  )
+  if (!rows[0]) throw new Error("Bundle not found")
+  return (await getBundleAdminById(id))!
+}
+
+export const deleteBundleSoft = async (id: string) => {
+  const rows = await pgQuery<{ id: string }>(
+    `UPDATE "Bundle" SET "isActive" = false, "updatedAt" = now() WHERE id = $1 RETURNING id`,
+    [id],
+  )
+  if (!rows[0]) throw new Error("Bundle not found")
+  return { id, isActive: false }
+}
+
+export const listBundlesPublic = async (input?: { q?: string; page?: number; limit?: number }) => {
+  return listBundlesAdmin({
+    page: input?.page,
+    limit: input?.limit,
+    q: input?.q,
+    isActive: true,
+    sort: "created_desc",
+  })
+}
+
+export const getBundlePublicBySlug = async (slug: string) => {
+  const rows = await pgQuery<{ id: string }>(
+    `SELECT id FROM "Bundle" WHERE slug = $1 AND "isActive" = true LIMIT 1`,
+    [slug],
+  )
+  if (!rows[0]) return null
+  return getBundleAdminById(rows[0].id)
+}
+
+// Backward-compatible exports for existing callers.
+export const listBundles = listBundlesPublic
 export const createBundle = async (input: {
   name: string
   slug?: string
-  productId?: string | null
   pricingMode?: "fixed" | "dynamic"
-  isCombo?: boolean
   isActive?: boolean
   comboPrice?: number | null
-  items: Array<{
-    productId: string
-    variantId?: string | null
-    quantity: number
-    isOptional?: boolean
-    minSelect?: number
-    maxSelect?: number | null
-    sortOrder?: number
-  }>
-}) => {
-  const slug = slugify(input.slug ?? input.name)
-  const bundleId = crypto.randomUUID()
-  await pgTx(async (client) => {
-    const valuesBase = [
-      bundleId,
-      input.name.trim(),
-      slug,
-      input.productId ?? null,
-      input.pricingMode ?? "fixed",
-      input.isCombo ?? true,
-      input.isActive ?? true,
-    ]
-
-    // Prefer inserting comboPrice when the column exists; fall back safely if not migrated.
-    await client
-      .query(
-        `
-          INSERT INTO "Bundle" (id, name, slug, "productId", "pricingMode", "isCombo", "isActive", "comboPrice", "createdAt", "updatedAt")
-          VALUES ($1,$2,$3,$4,$5,$6,$7,$8, now(), now())
-        `,
-        [...valuesBase, input.comboPrice ?? null],
-      )
-      .catch(async (e: any) => {
-        if (e?.code === "42703" && String(e?.message ?? "").includes("comboprice")) {
-          await client.query(
-            `
-              INSERT INTO "Bundle" (id, name, slug, "productId", "pricingMode", "isCombo", "isActive", "createdAt", "updatedAt")
-              VALUES ($1,$2,$3,$4,$5,$6,$7, now(), now())
-            `,
-            valuesBase,
-          )
-          return
-        }
-        throw e
-      })
-    for (const [idx, item] of input.items.entries()) {
-      await client.query(
-        `
-          INSERT INTO "BundleItem"
-            (id, "bundleId", "productId", "variantId", quantity, "isOptional", "minSelect", "maxSelect", "sortOrder")
-          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
-        `,
-        [
-          crypto.randomUUID(),
-          bundleId,
-          item.productId,
-          item.variantId ?? null,
-          item.quantity,
-          item.isOptional ?? false,
-          item.minSelect ?? 0,
-          item.maxSelect ?? null,
-          item.sortOrder ?? idx,
-        ],
-      )
-    }
+  items: Array<{ productId: string }>
+}) =>
+  createBundleV2({
+    name: input.name,
+    slug: input.slug,
+    pricingMode: input.pricingMode ?? "fixed",
+    comboPrice: input.comboPrice ?? null,
+    isActive: input.isActive ?? true,
+    productIds: [...new Set(input.items.map((x) => x.productId))],
   })
-
-  const created = (await listBundles()).find((b: any) => b.id === bundleId)
-  if (!created) {
-    // fallback minimal response
-    return { id: bundleId, name: input.name.trim(), slug, items: input.items }
-  }
-  return created
-}

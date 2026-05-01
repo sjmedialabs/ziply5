@@ -1119,7 +1119,7 @@ export function ProductConsolePage({
           </div>
           <div className="flex gap-2">
             <Link
-              href={`${basePath}?catalog=combos`}
+              href={`${basePath}/combos`}
               className="rounded-full border border-[#E8DCC8] bg-white px-4 py-2 text-xs font-semibold uppercase tracking-wide text-[#4A1D1F] hover:bg-[#FFFBF3]"
             >
               View combos

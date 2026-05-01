@@ -1,15 +1,17 @@
 "use client"
 
 import Link from "next/link"
+import { use } from "react"
 import { ComboForm } from "@/components/dashboard/ComboForm"
 
-export default function AdminCreateComboPage() {
+export default function AdminEditComboPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = use(params)
   return (
     <section className="mx-auto w-full max-w-7xl space-y-4">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="font-melon text-2xl font-bold text-[#4A1D1F]">Create Combo</h1>
-          <p className="text-sm text-[#646464]">Create a combo product from existing products.</p>
+          <h1 className="font-melon text-2xl font-bold text-[#4A1D1F]">Edit Combo</h1>
+          <p className="text-sm text-[#646464]">Update combo products, pricing, and active status.</p>
         </div>
         <div className="flex gap-2">
           <Link
@@ -20,8 +22,7 @@ export default function AdminCreateComboPage() {
           </Link>
         </div>
       </div>
-      <ComboForm onSaved={() => (window.location.href = "/admin/products/combos")} />
+      <ComboForm bundleId={id} onSaved={() => (window.location.href = "/admin/products/combos")} />
     </section>
   )
 }
-

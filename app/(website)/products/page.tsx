@@ -99,7 +99,6 @@ function ProductsPageContent() {
       .then((r) => r.json())
       .then((tagRes: { success?: boolean; data?: any }) => {
         if (cancelled) return
-        console.log("tagRes:::::::::",tagRes)
         const tags = ((tagRes.data as any[] | undefined) ?? [])
           .map((t) => ({ slug: t.slug, name: t.name, id: t.id,   }))
         setTagOptions(tags)
@@ -107,10 +106,9 @@ function ProductsPageContent() {
       .catch(() => null)
 
     return () => {
-      cancelled = true 
+      cancelled = true
     }
   }, [])
-  console.log("products:::::", products)
 
   useEffect(() => {
     const wantsCombo =
@@ -569,13 +567,21 @@ const toggleTag = (tagId: string) => {
                 )
               : Number(product.price || 0);
             const cardBg = productBgBySlug[String(product.slug || product.id || idx)] || "#3EA6CF"
-            console.log("Rendering product", product.tags[0]?.tag?.name)
+            const comboProducts = ((product as any).bundleProducts ?? []) as Array<{ thumbnail?: string | null; name?: string }>
+            const comboThumbs = comboProducts
+              .map((x) => (x?.thumbnail ?? "").trim())
+              .filter(Boolean)
+              .slice(0, 3)
+            const showComboThumbStrip =
+              Boolean((product as any).isCombo) &&
+              (product.image === "/placeholder.jpg" || !String(product.image ?? "").trim()) &&
+              comboThumbs.length > 0
 
             return (
-              <SlideUp key={`${product.id || product.slug || "product"}-${idx}`} delay={Math.min(0.18, idx * 0.03)} className="h-full">
-                <ScaleHover className="h-full">
+              <SlideUp key={`${product.id || product.slug || "product"}-${idx}`} delay={Math.min(0.18, idx * 0.03)}>
+                <ScaleHover>
                   <article
-                    className="group relative flex h-full flex-col rounded-2xl border-2 border-transparent p-4 transition-all duration-300 hover:ring-4 hover:ring-[#F36E21] hover:shadow-xl will-change-transform"
+                    className="group relative rounded-2xl border-2 border-transparent p-4 transition-all duration-300 hover:ring-4 hover:ring-[#F36E21] hover:shadow-xl will-change-transform"
                     style={{ backgroundColor: cardBg }}
                   >
               <button
@@ -586,9 +592,9 @@ const toggleTag = (tagId: string) => {
                 {favoriteSlugs.includes(product.slug) ? "♥" : "♡"}
               </button>
 
-                <Link href={`/product/${product.slug}`} className="block flex-1">
-                {
-                  product.tags[0]?.tag?.name && (
+                <Link href={(product as any).isCombo ? `/combo/${product.slug}` : `/product/${product.slug}`} className="block">
+                  {product.tags &&
+                  product?.tags[0]?.tag?.name && (
                            <div className="absolute top-3  z-20 right-0 w-20 h-5 rounded-sm flex items-center justify-center">
                                     {
                                         product.tags[0].tag.name === "veg"?(<span className="absolute top-4 right-0 bg-[#10B981] text-white text-[11px] font-medium px-3 py-1 border border-white rounded-l-sm z-10">
@@ -600,10 +606,29 @@ const toggleTag = (tagId: string) => {
                             </div>
                   )
                 }
-              
 
                   <div className="relative mx-auto h-[280px] w-full max-w-[190px] transition-transform duration-300 hover:scale-90">
-                    <Image src={product.image} alt={product.name} fill className="object-contain" />
+                    {showComboThumbStrip ? (
+                      <div className="flex h-full w-full items-center justify-center gap-2 px-1">
+                        {comboThumbs.map((thumb, imageIdx) => (
+                          <div key={`${product.slug}-combo-thumb-${imageIdx}`} className="flex items-center gap-2">
+                            <div className="relative h-30 w-28">
+                              <Image
+                                src={thumb}
+                                alt={`${product.name} item ${imageIdx + 1}`}
+                                fill
+                                className=""
+                              />
+                            </div>
+                            {imageIdx < comboThumbs.length - 1 ? (
+                              <span className="text-xl font-bold text-white/95 ">+</span>
+                            ) : null}
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <Image src={product.image} alt={product.name} fill className="object-contain" />
+                    )}
                   </div>
 
                 <div className="mt-2 text-center tracking-wide font-light font-melon">
@@ -629,7 +654,7 @@ const toggleTag = (tagId: string) => {
                         type="button"
                         onClick={(e) => {
                           e.stopPropagation();
-                          setCartItemQuantity(product, Math.max(0, (cartQtyBySlug[product.slug] ?? 0) - 1));
+                          setCartItemQuantity(product as any, Math.max(0, (cartQtyBySlug[product.slug] ?? 0) - 1));
                         }}
                         className="h-6 w-6 rounded text-sm  text-[#5A272A] hover:bg-[#f4efec]"
                       >
@@ -642,7 +667,7 @@ const toggleTag = (tagId: string) => {
                         type="button"
                         onClick={(e) => {
                           e.stopPropagation();
-                          setCartItemQuantity(product, (cartQtyBySlug[product.slug] ?? 0) + 1);
+                          setCartItemQuantity(product as any, (cartQtyBySlug[product.slug] ?? 0) + 1);
                         }}
                         className="h-6 w-6 rounded text-sm text-[#5A272A] hover:bg-[#f4efec]"
                       >
@@ -654,15 +679,17 @@ const toggleTag = (tagId: string) => {
                       type="button"
                       onClick={(e) => {
                         e.stopPropagation();
-                        if (product.productKind === "variant") {
+                        if ((product as any).isCombo) {
+                          window.location.href = `/combo/${product.slug}`
+                        } else if (product.productKind === "variant") {
                           setSelectedProduct(product);
                         } else {
-                          setCartItemQuantity(product, 1);
+                          setCartItemQuantity(product as any, 1);
                         }
                       }}
                       className="rounded-lg border border-white tracking-wide px-4 py-1.5 text-[12px] font-light text-white hover:bg-primary hover:text-white transition-all "
                     >
-                      Add to Cart
+                      {(product as any).isCombo ? "View Combo" : "Add to Cart"}
                     </button>
                   )}
                   <button
@@ -672,7 +699,7 @@ const toggleTag = (tagId: string) => {
                         setSelectedProduct(product);
                       } else {
                         if ((cartQtyBySlug[product.slug] ?? 0) === 0) {
-                          setCartItemQuantity(product, 1);
+                          setCartItemQuantity(product as any, 1);
                         }
                         router.push("/checkout");
                       }
