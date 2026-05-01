@@ -65,7 +65,7 @@ type ApiProduct = {
   categories?: Array<{ category: { slug: string } }>
 }
 
-const DEFAULT_IMAGE = "/assets/product listing/Ziply5 - Pouch - Butter Chk Rice 3.png"
+const DEFAULT_IMAGE = "/placeholder.jpg"
 
 const toLocalUploadsPath = (value: string) => {
   const clean = value.replace(/^\/+/, "")
