@@ -7,6 +7,22 @@ const isMissingTableError = (error: unknown) => {
   return code === "42P01"
 }
 
+const isTransientDbError = (error: unknown) => {
+  if (!error) return false
+  const anyErr = error as any
+  const code = typeof anyErr?.code === "string" ? anyErr.code : undefined
+  const message = typeof anyErr?.message === "string" ? anyErr.message : ""
+
+  // Query canceled / statement timeout in Postgres
+  if (code === "57014") return true
+
+  // Network / pooler hiccups (common with hosted DBs)
+  if (message.includes("Connection terminated")) return true
+  if (message.includes("timeout")) return true
+  if (code === "ETIMEDOUT" || code === "ECONNRESET" || code === "EPIPE") return true
+  return false
+}
+
 export const getCmsPageSafe = async (slug: string) => {
   try {
     const pages = await pgQuery<{ id: string; slug: string; title: string; status: string; createdAt: Date; updatedAt: Date }>(
@@ -23,6 +39,10 @@ export const getCmsPageSafe = async (slug: string) => {
   } catch (error) {
     if (isMissingTableError(error)) {
       console.warn(`CMS table missing while loading slug "${slug}". Returning fallback content.`)
+      return null
+    }
+    if (isTransientDbError(error)) {
+      console.warn(`CMS DB temporarily unavailable while loading slug "${slug}". Returning fallback content.`)
       return null
     }
     throw error
