@@ -165,7 +165,7 @@ export default function AdminUsersPage() {
             Users
           </h1>
           <p className="text-sm text-[#646464]">
-            {total} accounts (paginated API).
+            Accounts - {total} 
           </p>
         </div>
 

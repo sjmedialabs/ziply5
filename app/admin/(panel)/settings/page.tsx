@@ -107,27 +107,10 @@ export default function AdminSettingsPage() {
       {loading && <p className="text-sm text-[#646464]">Loading…</p>}
 
       {!loading && activeTab === 'generic' && (
-        <ConsoleTable headers={["Group", "Key", "Value (JSON)"]}>
-          {rows.length === 0 ? (
-            <tr>
-              <ConsoleTd colSpan={3} className="py-8 text-center text-[#646464]">
-                No settings rows. Upsert via POST /api/v1/settings with {"{"} group, key, valueJson {"}"}.
-              </ConsoleTd>
-            </tr>
-          ) : (
-            rows.map((s) => (
-              <tr key={s.id} className="hover:bg-[#FFFBF3]/80">
-                <ConsoleTd>
-                  <code className="text-[12px]">{s.group}</code>
-                </ConsoleTd>
-                <ConsoleTd>
-                  <code className="text-[12px]">{s.key}</code>
-                </ConsoleTd>
-                <ConsoleTd className="max-w-md break-all font-mono text-[11px] text-[#646464]">{preview(s.valueJson)}</ConsoleTd>
-              </tr>
-            ))
-          )}
-        </ConsoleTable>
+        <div className="py-16 text-center rounded-2xl border border-[#E8DCC8] bg-white shadow-sm">
+          <h2 className="font-melon text-xl font-bold text-[#4A1D1F]">Coming Soon</h2>
+          <p className="mt-2 text-sm text-[#646464]">Generic settings configuration will be available in a future update.</p>
+        </div>
       )}
 
       {!loading && activeTab === 'locations' && (

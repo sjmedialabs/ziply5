@@ -165,7 +165,7 @@ export default function AdminReturnsPage() {
     <section className="mx-auto max-w-7xl space-y-4">
       <div>
         <h1 className="font-melon text-2xl font-bold text-[#4A1D1F]">Returns</h1>
-        <p className="text-sm text-[#646464]">Return requests tied to orders.</p>
+        {/* <p className="text-sm text-[#646464]">Return requests tied to orders.</p> */}
         <div className="mt-3">
           <Select value={filter} onValueChange={setFilter}>
             <SelectTrigger className="w-[180px] border-[#D9D9D1] text-xs text-[#4A1D1F]">

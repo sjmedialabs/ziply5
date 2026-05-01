@@ -593,29 +593,31 @@ const toggleTag = (tagId: string) => {
               </button>
 
                 <Link href={(product as any).isCombo ? `/combo/${product.slug}` : `/product/${product.slug}`} className="block">
-                  <div className="absolute right-3 top-3">
-                    <span
-                      className={`inline-flex h-5 w-5 items-center justify-center rounded-sm border ${product.type === "veg" ? "border-[#148B2E]" : "border-[#A32424]"
-                        }`}
-                    >
-                      <span
-                        className={`h-2.5 w-2.5 rounded-full ${product.type === "veg" ? "bg-[#148B2E]" : "bg-[#A32424]"
-                          }`}
-                      />
-                    </span>
-                  </div>
+                  {product.tags &&
+                  product?.tags[0]?.tag?.name && (
+                           <div className="absolute top-3  z-20 right-0 w-20 h-5 rounded-sm flex items-center justify-center">
+                                    {
+                                        product.tags[0].tag.name === "veg"?(<span className="absolute top-4 right-0 bg-[#10B981] text-white text-[11px] font-medium px-3 py-1 border border-white rounded-l-sm z-10">
+                                      {product.tags[0].tag.name?.charAt(0).toUpperCase() + product.tags[0].tag.name.slice(1)}
+                                    </span>):(<span className="absolute top-4 right-0 bg-[#F97316] text-white text-[11px] font-medium px-3 py-1 rounded-l-sm border border-white z-10">
+                                      {product.tags[0].tag.name?.charAt(0).toUpperCase() + product.tags[0].tag.name.slice(1)}
+                                    </span>)
+                                      }
+                            </div>
+                  )
+                }
 
                   <div className="relative mx-auto h-[280px] w-full max-w-[190px] transition-transform duration-300 hover:scale-90">
                     {showComboThumbStrip ? (
                       <div className="flex h-full w-full items-center justify-center gap-2 px-1">
                         {comboThumbs.map((thumb, imageIdx) => (
                           <div key={`${product.slug}-combo-thumb-${imageIdx}`} className="flex items-center gap-2">
-                            <div className="relative h-36 w-24">
+                            <div className="relative h-30 w-28">
                               <Image
                                 src={thumb}
                                 alt={`${product.name} item ${imageIdx + 1}`}
                                 fill
-                                className="object-cover"
+                                className=""
                               />
                             </div>
                             {imageIdx < comboThumbs.length - 1 ? (
