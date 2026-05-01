@@ -32,6 +32,7 @@ import { logger } from "@/lib/logger"
 import { enqueueOutboxEvent } from "@/src/server/modules/integrations/outbox.service"
 import { assertMasterValueExists } from "@/src/server/modules/master/master.service"
 import { syncOrderStatusFromShiprocket } from "@/src/server/modules/integrations/shiprocket.service"
+import { getBundlePublicBySlug } from "@/src/server/modules/bundles/bundles.service"
 
 export type OrderLifecycleStatus =
   | "pending"
@@ -283,6 +284,29 @@ export const createOrderFromCheckout = async (input: {
   paymentStatus?: string
   paymentId?: string
 }) => {
+  const expandedItems: { productId?: string; variantId?: string | null; slug?: string; quantity: number }[] = []
+  for (const item of input.items) {
+    if (item.productId || !item.slug) {
+      expandedItems.push(item)
+      continue
+    }
+    const combo = await getBundlePublicBySlug(item.slug)
+    if (!combo || !(combo as any).products?.length) {
+      expandedItems.push(item)
+      continue
+    }
+    const comboProducts = (combo as any).products as Array<{ productId: string; price: number }>
+    for (const cp of comboProducts) {
+      expandedItems.push({
+        productId: cp.productId,
+        quantity: Math.max(1, Number(item.quantity || 1)),
+        variantId: null,
+        slug: undefined,
+      })
+    }
+  }
+  input.items = expandedItems
+
   if (input.paymentId?.trim()) {
     // For COD, paymentId is not provided initially, so this check should only apply to online payments
     // or if a paymentId is explicitly passed for a retry.

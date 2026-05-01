@@ -50,11 +50,59 @@ export function useStorefrontProducts(limit = 200) {
     setError("")
 
     const fetchProducts = (async (): Promise<StorefrontProduct[]> => {
-      const res = await fetch(`/api/v1/products?page=1&limit=${limit}`)
-      const json = await res.json()
-      if (!res.ok) throw new Error(json.message || "Failed")
-      const rows = json.data?.items ?? []
-      return rows.map((x: unknown) => toStorefrontProduct(x as never))
+      const [productsRes, bundlesRes] = await Promise.all([
+        fetch(`/api/v1/products?page=1&limit=${limit}`),
+        fetch(`/api/v1/bundles?page=1&limit=${Math.max(20, Math.min(100, limit))}`),
+      ])
+      const productsJson = await productsRes.json()
+      if (!productsRes.ok) throw new Error(productsJson.message || "Failed")
+      const bundlesJson = await bundlesRes.json().catch(() => ({ data: { items: [] } }))
+      const rows = productsJson.data?.items?.filter(
+        (item:any) => item.status === "published"
+      ) ?? []
+      const base = rows.map((x: unknown) => toStorefrontProduct(x as never))
+      const bundles = bundlesJson?.data?.items ?? []
+      const mappedBundles = (Array.isArray(bundles) ? bundles : []).map((b: any) => {
+        const effectivePrice = Number(b?.effectivePrice ?? b?.comboPrice ?? 0)
+        const image = String(b?.image ?? "/placeholder.jpg")
+        return {
+          id: String(b.id),
+          name: String(b.name),
+          slug: String(b.slug),
+          sku: `BUNDLE-${String(b.id).slice(0, 8).toUpperCase()}`,
+          productKind: "simple",
+          price: effectivePrice,
+          oldPrice: Number(b?.dynamicPrice ?? effectivePrice),
+          stockStatus: "in_stock",
+          stock: 9999,
+          description: String(b?.description ?? "Combo bundle"),
+          image,
+          gallery: [image],
+          amazonLink: null,
+          videoUrl: null,
+          weight: `${Number(b?.includedProductsCount ?? 0)} items`,
+          type: "veg",
+          category: "all",
+          labels: [],
+          features: [],
+          details: [],
+          sections: [],
+          variants: [],
+          tags: [],
+          isBestSeller: false,
+          isFeatured: false,
+          spiceLevel: null,
+          preparationType: null,
+          discountPercent: null,
+          finalPrice: effectivePrice,
+          promotion: null,
+          isCombo: true,
+          bundleProducts: b?.products ?? [],
+          bundleSavings: Number(b?.savings ?? 0),
+          comboSlug: String(b.slug),
+        } as StorefrontProduct
+      })
+      return [...mappedBundles, ...base]
     })()
 
     inFlightFetches.set(limit, fetchProducts)
