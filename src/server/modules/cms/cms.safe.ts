@@ -7,8 +7,13 @@ const isMissingTableError = (error: unknown) => {
   return code === "42P01"
 }
 
-const isTransientDbError = (error: unknown) => {
+const isTransientDbError = (error: unknown): boolean => {
   if (!error) return false
+
+  if (error instanceof AggregateError && Array.isArray(error.errors)) {
+    return error.errors.some(e => isTransientDbError(e))
+  }
+
   const anyErr = error as any
   const code = typeof anyErr?.code === "string" ? anyErr.code : undefined
   const message = typeof anyErr?.message === "string" ? anyErr.message : ""
@@ -19,7 +24,15 @@ const isTransientDbError = (error: unknown) => {
   // Network / pooler hiccups (common with hosted DBs)
   if (message.includes("Connection terminated")) return true
   if (message.includes("timeout")) return true
-  if (code === "ETIMEDOUT" || code === "ECONNRESET" || code === "EPIPE") return true
+  if (message.includes("ECONNREFUSED")) return true
+  if (
+    code === "ETIMEDOUT" ||
+    code === "ECONNRESET" ||
+    code === "EPIPE" ||
+    code === "ECONNREFUSED"
+  ) {
+    return true
+  }
   return false
 }
 
