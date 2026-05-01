@@ -16,7 +16,7 @@ export default function BestSellers({ cmsData }: { cmsData?: any }) {
   const best = products.filter((p) => p.isBestSeller === true)
   const bestSellers = useMemo(() => best.slice(0, 6), [best])
   const router = useRouter()
-  const sectionTitle = cmsData?.title || "BEST SELLERS"
+  const sectionTitle = cmsData?.title || "BEST SELLERS" 
   const buttonText = cmsData?.buttonText || "view all"
   const buttonUrl = cmsData?.url || "/#best-sellers"
   useEffect(() => {
@@ -113,6 +113,7 @@ export default function BestSellers({ cmsData }: { cmsData?: any }) {
     }, nextQty)
   }
   if (bestSellers.length === 0) return null;
+  console.log("Best Sellers data:", bestSellers) // Debug log to check the data structure
   return (
     <section id="best-sellers" className="bg-[#FFF5C5] py-12 md:py-16 lg:py-20">
       <div className="max-w-7xl mx-auto px-4">
@@ -127,7 +128,20 @@ export default function BestSellers({ cmsData }: { cmsData?: any }) {
                 className="rounded-2xl px-8 relative overflow-hidden transition-all duration-300 group-hover:ring-4 group-hover:ring-[#F36E21] group-hover:shadow-xl h-full flex flex-col"
                 style={{ backgroundColor: "#3EA6CF" }}
               >
-                {product.type === "non-veg" && (
+                {
+                  product.tags[0]?.tag?.name &&(
+                    <>
+                    {
+                      product.tags[0].tag.name === "veg"?(<span className="absolute top-4 right-0 bg-[#10B981] text-white text-[11px] font-medium px-3 py-1 border border-white rounded-l-sm z-10">
+                    {product.tags[0].tag.name?.charAt(0).toUpperCase() + product.tags[0].tag.name.slice(1)}
+                  </span>):(<span className="absolute top-4 right-0 bg-[#F97316] text-white text-[11px] font-medium px-3 py-1 rounded-l-sm border border-white z-10">
+                    {product.tags[0].tag.name?.charAt(0).toUpperCase() + product.tags[0].tag.name.slice(1)}
+                  </span>)
+                    }
+                    </>
+                  )
+                }
+                {/* {product.type === "non-veg" && (
                   <span className="absolute top-4 right-0 bg-[#F97316] text-white text-[11px] font-medium px-3 py-1 rounded-l-sm border border-white z-10">
                     Non-veg
                   </span>
@@ -136,7 +150,7 @@ export default function BestSellers({ cmsData }: { cmsData?: any }) {
                   <span className="absolute top-4 right-0 bg-[#10B981] text-white text-[11px] font-medium px-3 py-1 border border-white rounded-l-sm z-10">
                     Pure-Veg
                   </span>
-                )}
+                )} */}
 
                 <button
                   type="button"

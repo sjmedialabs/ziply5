@@ -589,19 +589,15 @@ const toggleTag = (tagId: string) => {
                 <Link href={`/product/${product.slug}`} className="block flex-1">
                 {
                   product.tags[0]?.tag?.name && (
-                           <div className="absolute right-3 top-3">
-                  <span
-                    className={`inline-flex h-6 min-w-[70px] items-center justify-center rounded-md px-2 text-xs font-semibold text-white shadow-sm ${
-                      product.tags[0]?.tag?.name === "veg"
-                        ? "bg-[#148B2E]"   // Green Veg
-                        : "bg-[#C0392B]"   // Red Non-Veg
-                    }`}
-                  >
-                    {product?.tags[0]?.tag?.name === "veg"
-                      ? "Veg"
-                      : "Non-Veg"}
-                  </span>
-                </div>
+                           <div className="absolute top-3  z-20 right-0 w-20 h-5 rounded-sm flex items-center justify-center">
+                                    {
+                                        product.tags[0].tag.name === "veg"?(<span className="absolute top-4 right-0 bg-[#10B981] text-white text-[11px] font-medium px-3 py-1 border border-white rounded-l-sm z-10">
+                                      {product.tags[0].tag.name?.charAt(0).toUpperCase() + product.tags[0].tag.name.slice(1)}
+                                    </span>):(<span className="absolute top-4 right-0 bg-[#F97316] text-white text-[11px] font-medium px-3 py-1 rounded-l-sm border border-white z-10">
+                                      {product.tags[0].tag.name?.charAt(0).toUpperCase() + product.tags[0].tag.name.slice(1)}
+                                    </span>)
+                                      }
+                            </div>
                   )
                 }
               
