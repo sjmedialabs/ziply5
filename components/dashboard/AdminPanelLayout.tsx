@@ -24,6 +24,7 @@ import {
   ShoppingBasket,
   Truck,
   Gift,
+  Upload,
 } from "lucide-react"
 import { DashboardChrome, type DashboardNavItem } from "./DashboardChrome"
 import { useEffect, useMemo, useState } from "react"
@@ -38,6 +39,7 @@ const adminNav: DashboardNavItem[] = [
     subItems: [
       { href: "/admin/products", label: "All Products", icon: Package },
       { href: "/admin/products/add", label: "Add Product", icon: Package },
+      { href: "/admin/products/bulk-upload", label: "Bulk upload", icon: Upload },
       { href: "/admin/products?catalog=combos", label: "Combos", icon: Gift },
     ],
   },

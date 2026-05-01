@@ -16,6 +16,64 @@ const PRODUCT_TAG_TABLES = ["ProductTag", "product_tags"]
 const TAG_TABLES = ["Tag", "tags"]
 const CATEGORY_TABLES = ["Category", "categories"]
 const USER_TABLES = ["User", "users"]
+const PRODUCT_BASE_COLUMNS = [
+  "id",
+  "sellerId",
+  "seller_id",
+  "brandId",
+  "brand_id",
+  "name",
+  "slug",
+  "description",
+  "status",
+  "sku",
+  "price",
+  "createdAt",
+  "created_at",
+  "updatedAt",
+  "updated_at",
+  "basePrice",
+  "base_price",
+  "discountPercent",
+  "discount_percent",
+  "isActive",
+  "is_active",
+  "isBestSeller",
+  "is_best_seller",
+  "isFeatured",
+  "is_featured",
+  "allowReturn",
+  "allow_return",
+  "metaDescription",
+  "meta_description",
+  "metaTitle",
+  "meta_title",
+  "salePrice",
+  "sale_price",
+  "shelfLife",
+  "shelf_life",
+  "stockStatus",
+  "stock_status",
+  "taxIncluded",
+  "tax_included",
+  "thumbnail",
+  "totalStock",
+  "total_stock",
+  "type",
+  "createdById",
+  "created_by_id",
+  "managedById",
+  "managed_by_id",
+  "preparationType",
+  "preparation_type",
+  "foodType",
+  "food_type",
+  "spiceLevel",
+  "spice_level",
+  "weight",
+  "amazonLink",
+  "amazon_link",
+].join(",")
 
 const existsById = async (tables: string[], id: string): Promise<boolean> => {
   const client = getSupabaseAdmin()
@@ -58,9 +116,9 @@ export const listProductsSupabaseBasic = async (input: {
 
   for (const table of PRODUCT_TABLES) {
     const attempts = [
-      () => client.from(table).select("*", { count: "exact" }).order("createdAt", { ascending: false }).range(offset, offset + limit - 1),
-      () => client.from(table).select("*", { count: "exact" }).order("created_at", { ascending: false }).range(offset, offset + limit - 1),
-      () => client.from(table).select("*", { count: "exact" }).range(offset, offset + limit - 1),
+      () => client.from(table).select(PRODUCT_BASE_COLUMNS, { count: "exact" }).order("createdAt", { ascending: false }).range(offset, offset + limit - 1),
+      () => client.from(table).select(PRODUCT_BASE_COLUMNS, { count: "exact" }).order("created_at", { ascending: false }).range(offset, offset + limit - 1),
+      () => client.from(table).select(PRODUCT_BASE_COLUMNS, { count: "exact" }).range(offset, offset + limit - 1),
     ]
     for (const run of attempts) {
       let query = run()
@@ -82,7 +140,7 @@ export const getProductBySlugSupabaseBasic = async (slug: string) => {
   for (const table of PRODUCT_TABLES) {
     const { data, error } = await client
       .from(table)
-      .select("*")
+      .select(PRODUCT_BASE_COLUMNS)
       .eq("slug", slug)
       .maybeSingle()
     if (error) continue
@@ -216,8 +274,8 @@ export const getProductByIdSupabaseBasic = async (id: string) => {
   const client = getSupabaseAdmin()
   for (const table of PRODUCT_TABLES) {
     const attempts = [
-      () => client.from(table).select("*").eq("id", id).maybeSingle(),
-      () => client.from(table).select("*").eq("id", id).maybeSingle(),
+      () => client.from(table).select(PRODUCT_BASE_COLUMNS).eq("id", id).maybeSingle(),
+      () => client.from(table).select(PRODUCT_BASE_COLUMNS).eq("id", id).maybeSingle(),
     ]
     for (const run of attempts) {
       const { data, error } = await run()
