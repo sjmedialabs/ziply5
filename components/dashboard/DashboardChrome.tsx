@@ -243,7 +243,7 @@ export function DashboardChrome({
             </button>
             <div className="hidden min-w-0 sm:block">
               {/* <p className="truncate font-melon text-sm font-bold text-[#4A1D1F]">{portalLabel}</p> */}
-              <h1 className="truncate text-lg text-[#646464]">Welcome Back {me?.role?.replaceAll("_", " ") ?? ""}</h1>
+              <h1 className="truncate text-lg text-[#646464]">Welcome back {me?.role?.replaceAll("_", " ") ?? ""}</h1>
             </div>
           </div>
 
