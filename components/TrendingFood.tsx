@@ -164,13 +164,20 @@ if (trendingProducts.length === 0) return null;
                   h-[280px] group-hover:-mt-10`}
                 >
                   {/* veg icon */}
-                  <div className="absolute top-3 z-20 right-3 w-5 h-5 bg-white rounded-sm flex items-center justify-center">
-                    <div
-                      className={`w-3 h-3 rounded-sm flex items-center justify-center border-2 ${product.type === "veg" ? "border-green-600" : "border-red-600"
-                        }`}
-                    >
-                      <div className={`w-1.5 h-1.5 rounded-full ${product.type === "veg" ? "bg-green-600" : "bg-red-600"}`}></div>
-                    </div>
+                  <div className="absolute top-2 z-20 right-0 w-20 h-5 rounded-sm flex items-center justify-center">
+                     {
+                  product.tags[0]?.tag?.name &&(
+                    <>
+                    {
+                      product.tags[0].tag.name === "veg"?(<span className="absolute top-4 right-0 bg-[#10B981] text-white text-[11px] font-medium px-3 py-1 border border-white rounded-l-sm z-10">
+                    {product.tags[0].tag.name?.charAt(0).toUpperCase() + product.tags[0].tag.name.slice(1)}
+                  </span>):(<span className="absolute top-4 right-0 bg-[#F97316] text-white text-[11px] font-medium px-3 py-1 rounded-l-sm border border-white z-10">
+                    {product.tags[0].tag.name?.charAt(0).toUpperCase() + product.tags[0].tag.name.slice(1)}
+                  </span>)
+                    }
+                    </>
+                  )
+                }
                   </div>
                   <div className="relative h-full w-full">
                     <Image
