@@ -13,6 +13,9 @@ const instructionsSimple = [
   ["Category: match an existing category name or slug (case-insensitive)."],
   ["Tags: comma-separated tag names or slugs (must already exist)."],
   ["Status values: draft | published | archived. Leave draft for incomplete catalog data."],
+  ["details format: title::content::sortOrder | title2::content2::sortOrder2"],
+  ["sections format: title::description::sortOrder::isActive | title2::description2::sortOrder2::isActive2"],
+  ["features format: title::iconUrl | title2::iconUrl2 (icon optional)"],
 ]
 
 const instructionsVariant = [
@@ -22,6 +25,9 @@ const instructionsVariant = [
   ["Sheet", VARIANT_CHILD_SHEET, "defines variants; parentSku must match a row in", VARIANT_PARENT_SHEET],
   ["Each parent needs at least one variant. Exactly one variant should have isDefault = true (or the first variant is used)."],
   ["Variant SKU must be globally unique and different from the parent SKU."],
+  ["details format: title::content::sortOrder | title2::content2::sortOrder2"],
+  ["sections format: title::description::sortOrder::isActive | title2::description2::sortOrder2::isActive2"],
+  ["features format: title::iconUrl | title2::iconUrl2 (icon optional)"],
 ]
 
 export const buildSimpleTemplateBuffer = (): Buffer => {
@@ -46,8 +52,12 @@ export const buildSimpleTemplateBuffer = (): Buffer => {
     "galleryImages",
     "metaTitle",
     "metaDescription",
+    "metaDesciption",
     "amazonLink",
     "description",
+    "details",
+    "sections",
+    "features",
     "taxIncluded",
     "isActive",
     "isFeatured",
@@ -77,6 +87,9 @@ export const buildSimpleTemplateBuffer = (): Buffer => {
     "Heat and eat sample product.",
     "",
     "<p>Short description HTML optional.</p>",
+    "Nutrients::<p>Protein rich</p>::0|How to cook::<p>2 min microwave</p>::1",
+    "Overview::<p>Great taste</p>::0::true|Serving::<p>Serve hot</p>::1::true",
+    "Fresh ingredients::/api/v1/uploads/products/icon/fresh.png|No preservatives::/api/v1/uploads/products/icon/nopres.png",
     "true",
     "true",
     "false",
@@ -104,7 +117,17 @@ export const buildVariantTemplateBuffer = (): Buffer => {
     "galleryImages",
     "metaTitle",
     "metaDescription",
+    "metaDesciption",
     "description",
+    "stockStatus",
+    "totalStock",
+    "shelfLife",
+    "preparationType",
+    "spiceLevel",
+    "amazonLink",
+    "details",
+    "sections",
+    "features",
     "taxIncluded",
     "isActive",
     "isFeatured",
@@ -124,6 +147,15 @@ export const buildVariantTemplateBuffer = (): Buffer => {
     "Sample Tee",
     "Cotton tee with size options.",
     "<p>Parent description</p>",
+    "in_stock",
+    "135",
+    "12 months",
+    "ready_to_cook",
+    "medium",
+    "",
+    "Material::<p>100% cotton</p>::0|Fit::<p>Regular fit</p>::1",
+    "Overview::<p>Premium quality</p>::0::true|Care::<p>Machine wash</p>::1::true",
+    "Breathable fabric::/api/v1/uploads/products/icon/fabric.png|Light weight::/api/v1/uploads/products/icon/light.png",
     "true",
     "true",
     "false",
@@ -136,7 +168,7 @@ export const buildVariantTemplateBuffer = (): Buffer => {
     "variantName",
     "weight",
     "price",
-    "basePrice",
+    "mrp",
     "discountPercent",
     "stock",
     "isDefault",
@@ -149,7 +181,7 @@ export const buildVariantTemplateBuffer = (): Buffer => {
   ]
   const wb = XLSX.utils.book_new()
   const wsP = XLSX.utils.aoa_to_sheet([parentHeaders, parentExample])
-  XLSX.utils.book_append_sheet(wb, wsP, VARIANT_PARENT_SHEET)
+  XLSX.utils.book_append_sheet(wb, wsP, "Products")
   const wsV = XLSX.utils.aoa_to_sheet([variantHeaders, ...variantExamples])
   XLSX.utils.book_append_sheet(wb, wsV, VARIANT_CHILD_SHEET)
   const ins = XLSX.utils.aoa_to_sheet(instructionsVariant)
