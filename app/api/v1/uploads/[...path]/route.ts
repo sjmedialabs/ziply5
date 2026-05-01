@@ -32,8 +32,10 @@ export async function GET(
   if (!relativePath || relativePath.includes("..")) {
     return NextResponse.json({ success: false, message: "Invalid path" }, { status: 400 })
   }
-  const absolutePath = path.join(env.STORAGE_LOCAL_PATH, relativePath)
-  if (!absolutePath.startsWith(path.resolve(env.STORAGE_LOCAL_PATH))) {
+  const rootPath = path.resolve(env.STORAGE_LOCAL_PATH)
+  const absolutePath = path.resolve(rootPath, relativePath)
+  const safeRoot = rootPath.endsWith(path.sep) ? rootPath : `${rootPath}${path.sep}`
+  if (!(absolutePath === rootPath || absolutePath.startsWith(safeRoot))) {
     return NextResponse.json({ success: false, message: "Forbidden path" }, { status: 403 })
   }
 
