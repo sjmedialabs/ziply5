@@ -940,9 +940,9 @@ export function ProductConsolePage({
           <div className="flex flex-wrap items-end justify-between gap-3">
             <div>
               <h1 className="font-melon text-2xl font-bold text-[#4A1D1F]">Products</h1>
-              <p className="text-sm text-[#646464]">
-                <span className="font-semibold">Combos</span> selected — {filteredCombos.length} combos.
-              </p>
+              {/* <p className="text-sm text-[#646464]">
+                <span className="font-semibold">Combos</span>{filteredCombos.length} combos.
+              </p> */}
             </div>
             <div className="flex gap-2">
               <Link

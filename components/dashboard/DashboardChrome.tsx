@@ -2,7 +2,7 @@
 
 import Image from "next/image"
 import Link from "next/link"
-import { usePathname } from "next/navigation"
+import { usePathname, useSearchParams } from "next/navigation"
 import { useEffect, useState, type ReactNode } from "react"
 import type { LucideIcon } from "lucide-react"
 import { Menu, X } from "lucide-react"
@@ -41,6 +41,7 @@ export function DashboardChrome({
   children: ReactNode
 }) {
   const pathname = usePathname()
+  const searchParams = useSearchParams()
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [me, setMe] = useState<MePayload | null>(null)
   const reduce = useReducedMotion()
@@ -97,15 +98,25 @@ export function DashboardChrome({
     window.location.href = loginPath
   }
 
-  const currentPathWithSearch =
-    typeof window !== "undefined" ? `${window.location.pathname}${window.location.search}` : pathname
+  const currentPathWithSearch = searchParams?.toString() ? `${pathname}?${searchParams.toString()}` : pathname;
 
   const isActive = (href: string) => {
-    // Support query-based nav items like "/admin/products?catalog=combos"
-    if (href.includes("?")) {
-      return currentPathWithSearch === href
-    }
-    return pathname === href || (href !== "/" && pathname.startsWith(`${href}/`))
+    // 1. Exact match (handles both exact paths and exact query strings)
+    if (currentPathWithSearch === href) return true;
+
+    const [hrefPath, hrefQuery] = href.split("?");
+    const [currentPath, currentQuery] = currentPathWithSearch.split("?");
+
+    // 2. Path mismatch
+    if (hrefPath !== currentPath) return false;
+
+    // 3. Path matches. Does the nav item dictate a specific query? (e.g. ?catalog=combos)
+    if (hrefQuery) return currentQuery?.includes(hrefQuery) ?? false;
+
+    // 4. Base path matches. Prevent highlighting the base menu item if we are on a pseudo-page (like Combos).
+    if (currentQuery && currentQuery.includes("catalog=")) return false;
+
+    return true;
   }
 
   const NavList = ({ onNavigate }: { onNavigate?: () => void }) => (
@@ -206,9 +217,9 @@ export function DashboardChrome({
             <X className="h-5 w-5" />
           </button>
         </div>
-        <p className="px-4 pt-3 font-melon text-xs font-bold uppercase tracking-[0.2em] text-[#7B3010]">
+        {/* <p className="px-4 pt-3 font-melon text-xs font-bold uppercase tracking-[0.2em] text-[#7B3010]">
           {portalLabel}
-        </p>
+        </p> */}
         <div className="flex-1 overflow-y-auto">
           <NavList onNavigate={() => setSidebarOpen(false)} />
         </div>
@@ -220,7 +231,7 @@ export function DashboardChrome({
       </m.aside>
 
       <div className="flex min-h-screen min-w-0 flex-1 flex-col">
-        <header className="sticky top-0 z-30 flex shrink-0 items-center justify-between gap-3 border-b border-[#E0D5C8] bg-white/95 px-3 py-[34px] backdrop-blur md:px-5">
+        <header className="sticky top-0 z-30 flex shrink-0 items-center justify-between gap-3 border-b border-[#E0D5C8] bg-white/95 px-3 py-[18px] backdrop-blur md:px-5">
           <div className="flex items-center gap-2">
             <button
               type="button"
@@ -231,16 +242,14 @@ export function DashboardChrome({
               <Menu className="h-5 w-5" />
             </button>
             <div className="hidden min-w-0 sm:block">
-              <p className="truncate font-melon text-sm font-bold text-[#4A1D1F]">{portalLabel}</p>
-              <p className="truncate text-xs text-[#646464]">Operations console (not the customer storefront)</p>
+              {/* <p className="truncate font-melon text-sm font-bold text-[#4A1D1F]">{portalLabel}</p> */}
+              <h1 className="truncate text-lg text-[#646464]">Welcome Back {me?.role?.replaceAll("_", " ") ?? ""}</h1>
             </div>
           </div>
 
           <div className="flex items-center gap-2 sm:gap-3">
             <div className="hidden text-right text-xs sm:block">
-              <p className="font-semibold text-[#4A1D1F]">{me?.email ?? "…"}</p>
-              <p className="text-[#646464] capitalize">{me?.role?.replaceAll("_", " ") ?? ""}</p>
-            </div>
+              <p className="font-semibold text-[#4A1D1F]">{me?.email ?? "…"}</p>            </div>
             <button
               type="button"
               onClick={() => logout()}
