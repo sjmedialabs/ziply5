@@ -1,0 +1,190 @@
+import * as XLSX from "xlsx"
+import {
+  SIMPLE_SHEET,
+  VARIANT_CHILD_SHEET,
+  VARIANT_PARENT_SHEET,
+} from "@/src/server/modules/products/bulk-upload/bulk-upload.constants"
+
+const instructionsSimple = [
+  ["Bulk import — Simple products"],
+  [""],
+  ["Required columns: sku, name, slug, type (= simple), price, thumbnail."],
+  ["Thumbnail / gallery: use filenames that appear in your images ZIP, or rely on {sku}-thumb.jpg and {sku}-1.jpg style names."],
+  ["Category: match an existing category name or slug (case-insensitive)."],
+  ["Tags: comma-separated tag names or slugs (must already exist)."],
+  ["Status values: draft | published | archived. Leave draft for incomplete catalog data."],
+  ["details format: title::content::sortOrder | title2::content2::sortOrder2"],
+  ["sections format: title::description::sortOrder::isActive | title2::description2::sortOrder2::isActive2"],
+  ["features format: title::iconUrl | title2::iconUrl2 (icon optional)"],
+]
+
+const instructionsVariant = [
+  ["Bulk import — Variant products"],
+  [""],
+  ["Sheet", VARIANT_PARENT_SHEET, "defines one row per parent product."],
+  ["Sheet", VARIANT_CHILD_SHEET, "defines variants; parentSku must match a row in", VARIANT_PARENT_SHEET],
+  ["Each parent needs at least one variant. Exactly one variant should have isDefault = true (or the first variant is used)."],
+  ["Variant SKU must be globally unique and different from the parent SKU."],
+  ["details format: title::content::sortOrder | title2::content2::sortOrder2"],
+  ["sections format: title::description::sortOrder::isActive | title2::description2::sortOrder2::isActive2"],
+  ["features format: title::iconUrl | title2::iconUrl2 (icon optional)"],
+]
+
+export const buildSimpleTemplateBuffer = (): Buffer => {
+  const headers = [
+    "sku",
+    "name",
+    "slug",
+    "type",
+    "price",
+    "basePrice",
+    "discountPercent",
+    "weight",
+    "status",
+    "stockStatus",
+    "totalStock",
+    "category",
+    "tags",
+    "shelfLife",
+    "preparationType",
+    "spiceLevel",
+    "thumbnail",
+    "galleryImages",
+    "metaTitle",
+    "metaDescription",
+    "metaDesciption",
+    "amazonLink",
+    "description",
+    "details",
+    "sections",
+    "features",
+    "taxIncluded",
+    "isActive",
+    "isFeatured",
+    "isBestSeller",
+    "allowReturn",
+  ]
+  const example = [
+    "APP001",
+    "Sample Ready Meal",
+    "sample-ready-meal",
+    "simple",
+    "299",
+    "349",
+    "10",
+    "500g",
+    "draft",
+    "in_stock",
+    "120",
+    "Meals",
+    "bestseller, spicy",
+    "6 months",
+    "ready_to_eat",
+    "medium",
+    "APP001-thumb.jpg",
+    "APP001-1.jpg,APP001-2.jpg",
+    "Sample Ready Meal | Ziply5",
+    "Heat and eat sample product.",
+    "",
+    "<p>Short description HTML optional.</p>",
+    "Nutrients::<p>Protein rich</p>::0|How to cook::<p>2 min microwave</p>::1",
+    "Overview::<p>Great taste</p>::0::true|Serving::<p>Serve hot</p>::1::true",
+    "Fresh ingredients::/api/v1/uploads/products/icon/fresh.png|No preservatives::/api/v1/uploads/products/icon/nopres.png",
+    "true",
+    "true",
+    "false",
+    "false",
+    "true",
+  ]
+  const wb = XLSX.utils.book_new()
+  const ws = XLSX.utils.aoa_to_sheet([headers, example])
+  XLSX.utils.book_append_sheet(wb, ws, SIMPLE_SHEET)
+  const ins = XLSX.utils.aoa_to_sheet(instructionsSimple)
+  XLSX.utils.book_append_sheet(wb, ins, "Instructions")
+  return XLSX.write(wb, { type: "buffer", bookType: "xlsx" }) as Buffer
+}
+
+export const buildVariantTemplateBuffer = (): Buffer => {
+  const parentHeaders = [
+    "parentSku",
+    "name",
+    "slug",
+    "type",
+    "status",
+    "category",
+    "tags",
+    "thumbnail",
+    "galleryImages",
+    "metaTitle",
+    "metaDescription",
+    "metaDesciption",
+    "description",
+    "stockStatus",
+    "totalStock",
+    "shelfLife",
+    "preparationType",
+    "spiceLevel",
+    "amazonLink",
+    "details",
+    "sections",
+    "features",
+    "taxIncluded",
+    "isActive",
+    "isFeatured",
+    "isBestSeller",
+    "allowReturn",
+  ]
+  const parentExample = [
+    "TSHIRT001",
+    "Sample Variant Tee",
+    "sample-variant-tee",
+    "variant",
+    "draft",
+    "Apparel",
+    "new",
+    "TSHIRT001-thumb.jpg",
+    "TSHIRT001-1.jpg,TSHIRT001-2.jpg",
+    "Sample Tee",
+    "Cotton tee with size options.",
+    "<p>Parent description</p>",
+    "in_stock",
+    "135",
+    "12 months",
+    "ready_to_cook",
+    "medium",
+    "",
+    "Material::<p>100% cotton</p>::0|Fit::<p>Regular fit</p>::1",
+    "Overview::<p>Premium quality</p>::0::true|Care::<p>Machine wash</p>::1::true",
+    "Breathable fabric::/api/v1/uploads/products/icon/fabric.png|Light weight::/api/v1/uploads/products/icon/light.png",
+    "true",
+    "true",
+    "false",
+    "false",
+    "true",
+  ]
+  const variantHeaders = [
+    "parentSku",
+    "variantSku",
+    "variantName",
+    "weight",
+    "price",
+    "mrp",
+    "discountPercent",
+    "stock",
+    "isDefault",
+    "status",
+  ]
+  const variantExamples = [
+    ["TSHIRT001", "TSHIRT001-S", "Small", "200g", "599", "699", "5", "40", "false", "published"],
+    ["TSHIRT001", "TSHIRT001-M", "Medium", "220g", "599", "699", "5", "60", "true", "published"],
+    ["TSHIRT001", "TSHIRT001-L", "Large", "240g", "649", "749", "5", "35", "false", "published"],
+  ]
+  const wb = XLSX.utils.book_new()
+  const wsP = XLSX.utils.aoa_to_sheet([parentHeaders, parentExample])
+  XLSX.utils.book_append_sheet(wb, wsP, "Products")
+  const wsV = XLSX.utils.aoa_to_sheet([variantHeaders, ...variantExamples])
+  XLSX.utils.book_append_sheet(wb, wsV, VARIANT_CHILD_SHEET)
+  const ins = XLSX.utils.aoa_to_sheet(instructionsVariant)
+  XLSX.utils.book_append_sheet(wb, ins, "Instructions")
+  return XLSX.write(wb, { type: "buffer", bookType: "xlsx" }) as Buffer
+}

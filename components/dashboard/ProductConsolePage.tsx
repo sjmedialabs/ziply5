@@ -406,16 +406,16 @@ export function ProductConsolePage({
       setVariants(
         p.variants?.length
           ? p.variants.map((item, idx) => ({
-              id: item.id,
-              name: item.weight ?? item.name ?? `Variant ${idx + 1}`,
-              weight: item.weight ?? item.name ?? "",
-              sku: item.sku ?? "",
-              price: String(Number(item.price ?? 0)),
-              mrp: item.mrp != null ? String(Number(item.mrp)) : "",
-              discountPercent: item.discountPercent != null ? String(Number(item.discountPercent)) : "",
-              stock: String(item.stock ?? 0),
-              isDefault: Boolean(item.isDefault) || idx === 0,
-            }))
+            id: item.id,
+            name: item.weight ?? item.name ?? `Variant ${idx + 1}`,
+            weight: item.weight ?? item.name ?? "",
+            sku: item.sku ?? "",
+            price: String(Number(item.price ?? 0)),
+            mrp: item.mrp != null ? String(Number(item.mrp)) : "",
+            discountPercent: item.discountPercent != null ? String(Number(item.discountPercent)) : "",
+            stock: String(item.stock ?? 0),
+            isDefault: Boolean(item.isDefault) || idx === 0,
+          }))
           : [{ name: "250g", weight: "250g", sku: "", price: "", mrp: "", discountPercent: "", stock: "0", isDefault: true }],
       )
       const nextSections =
@@ -842,7 +842,7 @@ export function ProductConsolePage({
         message?: string
         data?: { files?: Array<{ url: string }> }
       }
-      console.log("after upload api response ",json)
+      console.log("after upload api response ", json)
       if (!res.ok || json.success === false) {
         setError(json.message ?? "Upload failed")
         return
@@ -1133,81 +1133,81 @@ export function ProductConsolePage({
           </div>
         </div>
         <div className="flex gap-2 w-full flex-wrap lg:flex-nowrap">
-        <div className="flex gap-2 w-full">
-          <Input
-            type="text"
-            placeholder="Search products..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="max-w-sm bg-white rounded-lg"
-          />
-        </div>
-        <div className="flex flex-wrap lg:flex-nowrap gap-2 w-full">
-          <Select value={filterStatus} onValueChange={(value) => setFilterStatus(value as "all" | "draft" | "published" | "archived")}>
-            <SelectTrigger className="w-40 rounded-lg border border-[#D9D9D1] bg-white px-3 py-2 text-sm">
-              <SelectValue placeholder="Filter by Status" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Status</SelectItem>
-              {statuses.map((s) => (
-                <SelectItem key={s} value={s}>
-                  {s}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <div className="flex gap-2 w-full">
+            <Input
+              type="text"
+              placeholder="Search products..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="max-w-sm bg-white rounded-lg"
+            />
+          </div>
+          <div className="flex flex-wrap lg:flex-nowrap gap-2 w-full">
+            <Select value={filterStatus} onValueChange={(value) => setFilterStatus(value as "all" | "draft" | "published" | "archived")}>
+              <SelectTrigger className="w-40 rounded-lg border border-[#D9D9D1] bg-white px-3 py-2 text-sm">
+                <SelectValue placeholder="Filter by Status" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Status</SelectItem>
+                {statuses.map((s) => (
+                  <SelectItem key={s} value={s}>
+                    {s}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
 
-          <Select value={filterType} onValueChange={(value) => setFilterType(value as "all" | "simple" | "variant")}>
-            <SelectTrigger className="w-40 rounded-lg border border-[#D9D9D1] bg-white px-3 py-2 text-sm">
-              <SelectValue placeholder="Product Type" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Types</SelectItem>
-              <SelectItem value="simple">Simple</SelectItem>
-              <SelectItem value="variant">Variant</SelectItem>
-            </SelectContent>
-          </Select>
+            <Select value={filterType} onValueChange={(value) => setFilterType(value as "all" | "simple" | "variant")}>
+              <SelectTrigger className="w-40 rounded-lg border border-[#D9D9D1] bg-white px-3 py-2 text-sm">
+                <SelectValue placeholder="Product Type" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Types</SelectItem>
+                <SelectItem value="simple">Simple</SelectItem>
+                <SelectItem value="variant">Variant</SelectItem>
+              </SelectContent>
+            </Select>
 
-          <Select value={filterCategory} onValueChange={(value) => setFilterCategory(value)}>
-            <SelectTrigger className="w-40 rounded-lg border border-[#D9D9D1] bg-white px-3 py-2 text-sm">
-              <SelectValue placeholder="Filter by Category" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Categories</SelectItem>
-              {categories.map((c) => (
-                <SelectItem key={c.id} value={c.id}>
-                  {c.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+            <Select value={filterCategory} onValueChange={(value) => setFilterCategory(value)}>
+              <SelectTrigger className="w-40 rounded-lg border border-[#D9D9D1] bg-white px-3 py-2 text-sm">
+                <SelectValue placeholder="Filter by Category" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Categories</SelectItem>
+                {categories.map((c) => (
+                  <SelectItem key={c.id} value={c.id}>
+                    {c.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
 
-          <Select value={filterPreparationType} onValueChange={(value) => setFilterPreparationType(value as "all" | "ready_to_eat" | "ready_to_cook")}>
-            <SelectTrigger className="w-40 rounded-lg border border-[#D9D9D1] bg-white px-3 py-2 text-sm">
-              <SelectValue placeholder="Filter by Prep Type" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Prep Types</SelectItem>
-              {preparationTypes.map((t) => (
-                <SelectItem key={t} value={t}>
-                  {t.replace(/_/g, " ")}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+            <Select value={filterPreparationType} onValueChange={(value) => setFilterPreparationType(value as "all" | "ready_to_eat" | "ready_to_cook")}>
+              <SelectTrigger className="w-40 rounded-lg border border-[#D9D9D1] bg-white px-3 py-2 text-sm">
+                <SelectValue placeholder="Filter by Prep Type" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Prep Types</SelectItem>
+                {preparationTypes.map((t) => (
+                  <SelectItem key={t} value={t}>
+                    {t.replace(/_/g, " ")}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
 
-          <Select value={filterStockStatus} onValueChange={(value) => setFilterStockStatus(value as "all" | "in_stock" | "out_of_stock")}>
-            <SelectTrigger className="w-40 rounded-lg border border-[#D9D9D1] bg-white px-3 py-2 text-sm">
-              <SelectValue placeholder="Filter by Stock Status" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Stock</SelectItem>
-              <SelectItem value="in_stock">In Stock</SelectItem>
-              <SelectItem value="out_of_stock">Out of Stock</SelectItem>
-            </SelectContent>
-          </Select>
+            <Select value={filterStockStatus} onValueChange={(value) => setFilterStockStatus(value as "all" | "in_stock" | "out_of_stock")}>
+              <SelectTrigger className="w-40 rounded-lg border border-[#D9D9D1] bg-white px-3 py-2 text-sm">
+                <SelectValue placeholder="Filter by Stock Status" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Stock</SelectItem>
+                <SelectItem value="in_stock">In Stock</SelectItem>
+                <SelectItem value="out_of_stock">Out of Stock</SelectItem>
+              </SelectContent>
+            </Select>
 
-          {/* <Select value={filterFoodType} onValueChange={(value) => setFilterFoodType(value as "all" | "veg" | "non-veg")}>
+            {/* <Select value={filterFoodType} onValueChange={(value) => setFilterFoodType(value as "all" | "veg" | "non-veg")}>
             <SelectTrigger className="w-40 rounded-lg border border-[#D9D9D1] bg-white px-3 py-2 text-sm">
               <SelectValue placeholder="Filter by Food Type" />
             </SelectTrigger>
@@ -1220,7 +1220,7 @@ export function ProductConsolePage({
               ))}
             </SelectContent>
           </Select> */}
-        </div>
+          </div>
         </div>
         <div className="flex justify-end">
           <button
@@ -1276,7 +1276,7 @@ export function ProductConsolePage({
                   <ConsoleTd className="align-middle font-semibold text-[11px]">
                     {p.type === "variant"
                       ? p.variants?.map(v => `Rs.${Number(v.price).toFixed(2)}`).join(", ") || "—"
-                      : p.price 
+                      : p.price
                         ? `Rs.${Number(p.price).toFixed(2)}`
                         : "—"}
                   </ConsoleTd>
@@ -1334,319 +1334,354 @@ export function ProductConsolePage({
 
       {error && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-800">{error}</p>}
       {loading && (mode === "edit" || mode === "view") && <p className="text-sm text-[#646464]">Loading product...</p>}
-      
+
       <form onSubmit={onSubmit} className="grid bg-white gap-3 rounded-2xl border border-[#E8DCC8] p-4 shadow-sm md:grid-cols-3">
         {/* Product info, images and description and seo meta data */}
-        {mode === "view" ? 
-        // product info for view mode
-        (
-          <div className="space-y-6 w-full md:col-span-3">
+        {mode === "view" ?
+          // product info for view mode
+          (
+            <div className="space-y-6 w-full md:col-span-3">
 
-            {/* 🔥 TOP SECTION */}
-            <div className="grid md:grid-cols-2 gap-6">
-              {/* Basic Info */}
-              <div className="bg-white rounded-2xl p-4 border border-[#E5E5DC] space-y-3 shadow-sm">
-                <div className="flex justify-between items-center ">
-                  <h2 className="text-xl font-bold text-[#4A1D1F]">{name}</h2>
+              {/* 🔥 TOP SECTION */}
+              <div className="grid md:grid-cols-2 gap-6">
+                {/* Basic Info */}
+                <div className="bg-white rounded-2xl p-4 border border-[#E5E5DC] space-y-3 shadow-sm">
+                  <div className="flex justify-between items-center ">
+                    <h2 className="text-xl font-bold text-[#4A1D1F]">{name}</h2>
 
+                    {type === "simple" && (
+                      <div className="flex items-center gap-3">
+                        {simpleProductWeight && <span className="text-sm text-gray-600">Weight: {simpleProductWeight}</span>}
+                        <span className="text-lg font-semibold text-green-600">
+                          ₹{price}
+                        </span>
+                        {basePrice && (
+                          <span className="line-through text-gray-400">
+                            ₹{basePrice}
+                          </span>
+                        )}
+                        {discountPercent && (
+                          <span className="text-sm bg-green-100 text-green-700 px-2 py-1 rounded">
+                            {discountPercent}% OFF
+                          </span>
+                        )}
+                      </div>
+                    )}
+                  </div>
                   {type === "simple" && (
-                    <div className="flex items-center gap-3">
-                      {simpleProductWeight && <span className="text-sm text-gray-600">Weight: {simpleProductWeight}</span>}
-                      <span className="text-lg font-semibold text-green-600">
-                        ₹{price}
-                      </span>
-                      {basePrice && (
-                        <span className="line-through text-gray-400">
-                          ₹{basePrice}
-                        </span>
-                      )}
-                      {discountPercent && (
-                        <span className="text-sm bg-green-100 text-green-700 px-2 py-1 rounded">
-                          {discountPercent}% OFF
-                        </span>
-                      )}
+                    <div className="text-sm text-gray-600">
+                      SKU: {sku}
                     </div>
                   )}
-                </div>
-                {type === "simple" && (
-                  <div className="text-sm text-gray-600">
-                    SKU: {sku}
+
+                  <div className="flex gap-2 flex-wrap">
+                    <Badge label={foodType} />
+                    <Badge label={status} />
+                    <Badge label={type} />
+                    {preparationType ? <Badge label={preparationType.replace(/_/g, " ")} /> : null}
+                    {spiceLevel ? <Badge label={`Spice Level: ${spiceLevel.replace(/_/g, " ")}`} /> : null}
                   </div>
+
+                  <p className="text-sm text-gray-600">
+                    Category: {categories.find((c) => c.id === categoryId)?.name || "—"}
+                  </p>
+                </div>
+
+                {/* 💰 PRICING (Only for Simple) */}
+                {type === "simple" && (
+                  <Card title="Pricing">
+                    <Info label="Sale Price" value={`₹${price}`} />
+                    <Info label="MRP" value={basePrice ? `₹${basePrice}` : "—"} />
+                    <Info label="Discount" value={discountPercent ? `${discountPercent}%` : "—"} />
+                  </Card>
                 )}
 
-                <div className="flex gap-2 flex-wrap">
-                  <Badge label={foodType} />
-                  <Badge label={status} />
-                  <Badge label={type} />
-                  {preparationType ? <Badge label={preparationType.replace(/_/g, " ")} /> : null}
-                  {spiceLevel ? <Badge label={`Spice Level: ${spiceLevel.replace(/_/g, " ")}`} /> : null}
-                </div>
+                <Card title="Inventory">
+                  <Info label={type === "variant" ? "Total Stock" : "Stock"} value={totalStock} />
+                  <Info label="Stock Status" value={stockStatus} />
+                  <Info label="Shelf Life" value={shelfLife ? `${shelfLife} months` : "—"} />
+                </Card>
 
-                <p className="text-sm text-gray-600">
-                  Category: {categories.find((c) => c.id === categoryId)?.name || "—"}
-                </p>
+                {/* 🧾 META */}
+                <Card title="SEO & Metadata">
+                  <Info label="Slug" value={slug} />
+                  <Info label="Meta Title" value={metaTitle} />
+                  <Info label="Meta Description" value={metaDescription} />
+                </Card>
               </div>
 
-              {/* 💰 PRICING (Only for Simple) */}
-              {type === "simple" && (
-                <Card title="Pricing">
-                  <Info label="Sale Price" value={`₹${price}`} />
-                  <Info label="MRP" value={basePrice ? `₹${basePrice}` : "—"} />
-                  <Info label="Discount" value={discountPercent ? `${discountPercent}%` : "—"} />
-                </Card>
+              {/* 📋 VARIANTS SECTION */}
+              {type === "variant" && (
+                <div className="bg-white rounded-2xl p-4 border border-[#E5E5DC] shadow-sm">
+                  <p className="font-semibold mb-3 text-[#4A1D1F]">Product Variants</p>
+                  <ConsoleTable headers={["Weight", "SKU", "Sale Price", "MRP", "Discount", "Stock", "Default"]}>
+                    {variants.map((v, idx) => (
+                      <tr key={`${v.id}-${idx}`} className="hover:bg-[#FFFBF3]/50">
+                        <ConsoleTd>{v.weight || v.name}</ConsoleTd>
+                        <ConsoleTd><code className="text-[11px]">{v.sku}</code></ConsoleTd>
+                        <ConsoleTd className="font-semibold text-green-600">₹{Number(v.price).toFixed(2)}</ConsoleTd>
+                        <ConsoleTd className="text-gray-400 line-through">
+                          {v.mrp ? `₹${Number(v.mrp).toFixed(2)}` : "—"}
+                        </ConsoleTd>
+                        <ConsoleTd>
+                          {v.discountPercent ? (
+                            <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded">
+                              {v.discountPercent}%
+                            </span>
+                          ) : "—"}
+                        </ConsoleTd>
+                        <ConsoleTd>{v.stock}</ConsoleTd>
+                        <ConsoleTd>
+                          {v.isDefault ? (
+                            <span className="text-[10px] bg-[#FFC222] text-[#4A1D1F] px-2 py-0.5 rounded-full font-bold uppercase">Default</span>
+                          ) : "—"}
+                        </ConsoleTd>
+                      </tr>
+                    ))}
+                  </ConsoleTable>
+                </div>
               )}
 
-              <Card title="Inventory">
-                <Info label={type === "variant" ? "Total Stock" : "Stock"} value={totalStock} />
-                <Info label="Stock Status" value={stockStatus} />
-                <Info label="Shelf Life" value={shelfLife ? `${shelfLife} months` : "—"} />
+              {/* 📝 DESCRIPTION */}
+              <Card title="Description">
+                <p className="text-sm text-gray-700 whitespace-pre-line">
+                  {description}
+                </p>
               </Card>
 
-              {/* 🧾 META */}
-              <Card title="SEO & Metadata">
-                <Info label="Slug" value={slug} />
-                <Info label="Meta Title" value={metaTitle} />
-                <Info label="Meta Description" value={metaDescription} />
-              </Card>
             </div>
-
-            {/* 📋 VARIANTS SECTION */}
-            {type === "variant" && (
-              <div className="bg-white rounded-2xl p-4 border border-[#E5E5DC] shadow-sm">
-                <p className="font-semibold mb-3 text-[#4A1D1F]">Product Variants</p>
-                <ConsoleTable headers={["Weight", "SKU", "Sale Price", "MRP", "Discount", "Stock", "Default"]}>
-                  {variants.map((v, idx) => (
-                    <tr key={`${v.id}-${idx}`} className="hover:bg-[#FFFBF3]/50">
-                      <ConsoleTd>{v.weight || v.name}</ConsoleTd>
-                      <ConsoleTd><code className="text-[11px]">{v.sku}</code></ConsoleTd>
-                      <ConsoleTd className="font-semibold text-green-600">₹{Number(v.price).toFixed(2)}</ConsoleTd>
-                      <ConsoleTd className="text-gray-400 line-through">
-                        {v.mrp ? `₹${Number(v.mrp).toFixed(2)}` : "—"}
-                      </ConsoleTd>
-                      <ConsoleTd>
-                        {v.discountPercent ? (
-                          <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded">
-                            {v.discountPercent}%
-                          </span>
-                        ) : "—"}
-                      </ConsoleTd>
-                      <ConsoleTd>{v.stock}</ConsoleTd>
-                      <ConsoleTd>
-                        {v.isDefault ? (
-                          <span className="text-[10px] bg-[#FFC222] text-[#4A1D1F] px-2 py-0.5 rounded-full font-bold uppercase">Default</span>
-                        ) : "—"}
-                      </ConsoleTd>
-                    </tr>
-                  ))}
-                </ConsoleTable>
-              </div>
-            )}
-
-            {/* 📝 DESCRIPTION */}
-            <Card title="Description">
-              <p className="text-sm text-gray-700 whitespace-pre-line">
-                {description}
-              </p>
-            </Card>
-
-          </div>
-        )
-         : 
-        //  product info for edit and add mode
-         (
-          <>
-            {/* product name */}
-            <Field label="Name" required>
-              <Input
-                placeholder="Name"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                required
-                className="rounded-lg border border-[#D9D9D1] px-3 py-2 text-sm"
-              />
-            </Field>
-            {/* Slug for product to search and verify on readable mode */}
-            <Field label="Slug" required>
-              <Input
-                placeholder="Slug"
-                value={slug}
-                onChange={(e) => setSlug(e.target.value)}
-                required
-                className="rounded-lg border border-[#D9D9D1] px-3 py-2 text-sm"
-              />
-            </Field>
-            {/* sku for simple type of product */}
-            <Field label="SKU" required>
-              {type === "simple" ? (
+          )
+          :
+          //  product info for edit and add mode
+          (
+            <>
+              {/* product name */}
+              <Field label="Name" required>
                 <Input
-                  placeholder="SKU"
-                  value={sku}
-                  onChange={(e) => setSku(e.target.value)}
+                  placeholder="Name"
+                  value={name}
+                onChange={(e) => {
+                  const newName = e.target.value
+                  setName(newName)
+                  // Automatically generate slug from name only in Add mode
+                  if (mode === "add") {
+                    const autoSlug = newName
+                      .toLowerCase()
+                      .replace(/\s+/g, "-") // Replace spaces with hyphens
+                      .replace(/[^a-z0-9-_]/g, "") // Remove invalid characters
+                      .replace(/[-_]{2,}/g, "-") // Prevent multiple consecutive separators
+                      .replace(/^[-_]+|[-_]+$/g, "") // Trim separators from start/end
+                    setSlug(autoSlug)
+                  }
+                }}
                   required
                   className="rounded-lg border border-[#D9D9D1] px-3 py-2 text-sm"
                 />
-              ) : (
-                <p className="rounded-lg border border-[#D9D9D1] bg-[#FFFBF3] px-3 py-2 text-xs text-[#646464]">
-                  Derived from default variant SKU.
-                </p>
-              )}
-            </Field>
-            {/* prdouct price and weight details for simple type */}
-        
-            {/* Product status published, draft and archived */}
-            <Field label="Status" required>
-              <Select value={status} onValueChange={(value) => setStatus(value as (typeof statuses)[number])}>
-                <SelectTrigger className="rounded-lg border border-[#D9D9D1] px-3 py-2 text-sm">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {statuses.map((s) => (
-                    <SelectItem key={s} value={s}>
-                      {s}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </Field>
-            {status === "draft" ? (
-              <p className="text-xs text-yellow-700 bg-yellow-50 rounded-lg border border-yellow-200 px-3 py-2">
-                Draft products are not visible on the website until published.
-              </p>
-            ) : null}
-            {/* Type simple and variant */}
-            <Field label="Type" required={status !== "draft"}>
-              <Select value={type} onValueChange={(value) => setType(value as "simple" | "variant")}> 
-                <SelectTrigger className="rounded-lg border border-[#D9D9D1] px-3 py-2 text-sm" disabled={mode === "edit"}>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="variant">variant</SelectItem>
-                <SelectItem value="simple">simple</SelectItem>
-              </SelectContent>
-            </Select>
-            </Field>
-            {mode === "edit" ? (
-              <p className="text-xs text-[#646464]">Type cannot be changed after product creation.</p>
-            ) : null}
-            {/* Food Type */}
-            {type === "simple" ? (
-              <>
-                {/* mrp/baseprice for simple product  */}
-                <Field label="Base / MRP" required={status !== "draft"}>
-                  <Input
-                    placeholder="Base/MRP"
-                    type="number"
-                    step="0.01"
-                    value={basePrice}
-                    onChange={(e) => setBasePrice(e.target.value)}
-                    className="rounded-lg border border-[#D9D9D1] px-3 py-2 text-sm"
-                  />
-                </Field>
-                {/* discount percent for simple product */}
-                <Field label="Discount %" required={status !== "draft"}>
-                  <Input
-                    placeholder="Discount %"
-                    type="number"
-                    step="0.01"
-                    value={discountPercent}
-                    onChange={(e) => setDiscountPercent(e.target.value)}
-                    className="rounded-lg border border-[#D9D9D1] px-3 py-2 text-sm"
-                  />
-                </Field>
-                                {/* sale price for simple product */}
-                <Field label="Sale Price" required={status !== "draft"}>
-                  <Input
-                    placeholder="Sale Price"
-                    type="number"
-                    step="0.01"
-                    value={price}
-                    onChange={(e) => setPrice(e.target.value)}
-                    className="rounded-lg border border-[#D9D9D1] px-3 py-2 text-sm"
-                  />
-                </Field>
-                {/* New Weight field for simple products */}
-                <Field label="Weight" required={status !== "draft"}>
-                  <Select value={simpleProductWeight} onValueChange={setSimpleProductWeight}>
-                    <SelectTrigger className="rounded-lg border border-[#D9D9D1] px-3 py-2 text-sm">
-                      <SelectValue placeholder="Select weight" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="100g">
-                        100g
-                      </SelectItem>
-                      <SelectItem value="250g">
-                        250g
-                      </SelectItem>
-                      <SelectItem value="500g">
-                        500g
-                      </SelectItem>
-                      <SelectItem value="1kg">
-                        1kg
-                      </SelectItem>
-                    </SelectContent>
-                  </Select>
-                </Field>
-              </>
-            ) : null}
-            {/* No. of stock for simple  */}
-            {type === "simple" ? (
-              <Field label="Total Stock">
-                <Input placeholder="Total Stock" type="number" value={totalStock} onChange={(e) => setTotalStock(e.target.value)} className="rounded-lg border border-[#D9D9D1] px-3 py-2 text-sm" />
               </Field>
-            ) : (
-              <Field label="Total Stock">
-                <p className="rounded-lg border border-[#D9D9D1] bg-[#FFFBF3] px-3 py-2 text-xs text-[#646464]">
-                  Automatically calculated from variants.
-                </p>
-              </Field>
-            )}
-                        {/* Stock Status  */}
-            <Field label="Stock Status" required={status !== "draft"}>
-              <Select value={stockStatus} onValueChange={(value) => setStockStatus(value as "in_stock" | "out_of_stock")}>
-                <SelectTrigger className="rounded-lg border border-[#D9D9D1] px-3 py-2 text-sm">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="in_stock">in_stock</SelectItem>
-                  <SelectItem value="out_of_stock">out_of_stock</SelectItem>
-                </SelectContent>
-              </Select>
-            </Field>
-            {/* Food Type */}
-            <Field label="Food Type" required={status !== "draft"}>
-              <Select value={foodType} onValueChange={(value) => setFoodType(value as "" | "veg" | "non-veg")}>
-                <SelectTrigger className="rounded-lg border border-[#D9D9D1] px-3 py-2 text-sm">
-                  <SelectValue placeholder="Select veg/non-veg" />
-                </SelectTrigger>
-                <SelectContent>
-                  {foodTypes.map((item) => (
-                    <SelectItem key={item} value={item}>
-                      {item}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </Field>
-            {/* Category breakfast, lunch and other */}
-            <Field label="Category">
-              <Select value={categoryId || "none"} onValueChange={(value) => setCategoryId(value === "none" ? "" : value)}>
-                <SelectTrigger className="rounded-lg border border-[#D9D9D1] px-3 py-2 text-sm">
-                  <SelectValue placeholder="No category" />
-                </SelectTrigger>
-                <SelectContent>
+              {/* Slug for product to search and verify on readable mode */}
+              <Field label="Slug" required>
+                <Input
+                  placeholder="Slug"
+                  value={slug}
+                  onChange={(e) => {
+                    let value = e.target.value
 
-                  <SelectItem value="none">
-                    {categories.length === 0 ? "No categories" : "None"}
-                  </SelectItem>
-                  {categories.map((c) => (
-                    <SelectItem key={c.id} value={c.id}>
-                      {c.name}
+                    // convert to lowercase
+                    value = value.toLowerCase()
+
+                    // replace spaces with -
+                    value = value.replace(/\s+/g, "-")
+
+                    // allow only a-z, 0-9, - and _
+                    value = value.replace(/[^a-z0-9-_]/g, "")
+
+                    // prevent multiple separators together
+                    value = value.replace(/[-_]{2,}/g, "-")
+
+                    setSlug(value)
+                  }}
+                  required
+                  pattern="^[a-z0-9]+(?:[-_][a-z0-9]+)*$"
+                  title="Only lowercase letters, numbers, hyphens (-), and underscores (_) are allowed. No spaces."
+                  className="rounded-lg border border-[#D9D9D1] px-3 py-2 text-sm"
+                />
+
+                <p className="mt-1 text-xs text-[#7A7A72]">
+                  Use lowercase letters, numbers, hyphens (-), or underscores (_). No spaces allowed.
+                </p>
+              </Field>
+              {/* sku for simple type of product */}
+              <Field label="SKU" required>
+                {type === "simple" ? (
+                  <Input
+                    placeholder="SKU"
+                    value={sku}
+                    onChange={(e) => setSku(e.target.value)}
+                    required
+                    className="rounded-lg border border-[#D9D9D1] px-3 py-2 text-sm"
+                  />
+                ) : (
+                  <p className="rounded-lg border border-[#D9D9D1] bg-[#FFFBF3] px-3 py-2 text-xs text-[#646464]">
+                    Derived from default variant SKU.
+                  </p>
+                )}
+              </Field>
+              {/* prdouct price and weight details for simple type */}
+
+              {/* Product status published, draft and archived */}
+              <Field label="Status" required>
+                <Select value={status} onValueChange={(value) => setStatus(value as (typeof statuses)[number])}>
+                  <SelectTrigger className="rounded-lg border border-[#D9D9D1] px-3 py-2 text-sm">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {statuses.map((s) => (
+                      <SelectItem key={s} value={s}>
+                        {s}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </Field>
+              {status === "draft" ? (
+                <p className="text-xs text-yellow-700 bg-yellow-50 rounded-lg border border-yellow-200 px-3 py-2">
+                  Draft products are not visible on the website until published.
+                </p>
+              ) : null}
+              {/* Type simple and variant */}
+              <Field label="Type" required={status !== "draft"}>
+                <Select value={type} onValueChange={(value) => setType(value as "simple" | "variant")}>
+                  <SelectTrigger className="rounded-lg border border-[#D9D9D1] px-3 py-2 text-sm" disabled={mode === "edit"}>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="variant">variant</SelectItem>
+                    <SelectItem value="simple">simple</SelectItem>
+                  </SelectContent>
+                </Select>
+              </Field>
+              {mode === "edit" ? (
+                <p className="text-xs text-[#646464]">Type cannot be changed after product creation.</p>
+              ) : null}
+              {/* Food Type */}
+              {type === "simple" ? (
+                <>
+                  {/* mrp/baseprice for simple product  */}
+                  <Field label="Base / MRP" required={status !== "draft"}>
+                    <Input
+                      placeholder="Base/MRP"
+                      type="number"
+                      step="0.01"
+                      value={basePrice}
+                      onChange={(e) => setBasePrice(e.target.value)}
+                      className="rounded-lg border border-[#D9D9D1] px-3 py-2 text-sm"
+                    />
+                  </Field>
+                  {/* discount percent for simple product */}
+                  <Field label="Discount %" required={status !== "draft"}>
+                    <Input
+                      placeholder="Discount %"
+                      type="number"
+                      step="0.01"
+                      value={discountPercent}
+                      onChange={(e) => setDiscountPercent(e.target.value)}
+                      className="rounded-lg border border-[#D9D9D1] px-3 py-2 text-sm"
+                    />
+                  </Field>
+                  {/* sale price for simple product */}
+                  <Field label="Sale Price" required={status !== "draft"}>
+                    <Input
+                      placeholder="Sale Price"
+                      type="number"
+                      step="0.01"
+                      value={price}
+                      onChange={(e) => setPrice(e.target.value)}
+                      className="rounded-lg border border-[#D9D9D1] px-3 py-2 text-sm"
+                    />
+                  </Field>
+                  {/* New Weight field for simple products */}
+                  <Field label="Weight" required={status !== "draft"}>
+                    <Select value={simpleProductWeight} onValueChange={setSimpleProductWeight}>
+                      <SelectTrigger className="rounded-lg border border-[#D9D9D1] px-3 py-2 text-sm">
+                        <SelectValue placeholder="Select weight" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="100g">
+                          100g
+                        </SelectItem>
+                        <SelectItem value="250g">
+                          250g
+                        </SelectItem>
+                        <SelectItem value="500g">
+                          500g
+                        </SelectItem>
+                        <SelectItem value="1kg">
+                          1kg
+                        </SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </Field>
+                </>
+              ) : null}
+              {/* No. of stock for simple  */}
+              {type === "simple" ? (
+                <Field label="Total Stock">
+                  <Input placeholder="Total Stock" type="number" value={totalStock} onChange={(e) => setTotalStock(e.target.value)} className="rounded-lg border border-[#D9D9D1] px-3 py-2 text-sm" />
+                </Field>
+              ) : (
+                <Field label="Total Stock">
+                  <p className="rounded-lg border border-[#D9D9D1] bg-[#FFFBF3] px-3 py-2 text-xs text-[#646464]">
+                    Automatically calculated from variants.
+                  </p>
+                </Field>
+              )}
+              {/* Stock Status  */}
+              <Field label="Stock Status" required={status !== "draft"}>
+                <Select value={stockStatus} onValueChange={(value) => setStockStatus(value as "in_stock" | "out_of_stock")}>
+                  <SelectTrigger className="rounded-lg border border-[#D9D9D1] px-3 py-2 text-sm">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="in_stock">in_stock</SelectItem>
+                    <SelectItem value="out_of_stock">out_of_stock</SelectItem>
+                  </SelectContent>
+                </Select>
+              </Field>
+              {/* Food Type */}
+              <Field label="Food Type" required={status !== "draft"}>
+                <Select value={foodType} onValueChange={(value) => setFoodType(value as "" | "veg" | "non-veg")}>
+                  <SelectTrigger className="rounded-lg border border-[#D9D9D1] px-3 py-2 text-sm">
+                    <SelectValue placeholder="Select veg/non-veg" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {foodTypes.map((item) => (
+                      <SelectItem key={item} value={item}>
+                        {item}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </Field>
+              {/* Category breakfast, lunch and other */}
+              <Field label="Category">
+                <Select value={categoryId || "none"} onValueChange={(value) => setCategoryId(value === "none" ? "" : value)}>
+                  <SelectTrigger className="rounded-lg border border-[#D9D9D1] px-3 py-2 text-sm">
+                    <SelectValue placeholder="No category" />
+                  </SelectTrigger>
+                  <SelectContent>
+
+                    <SelectItem value="none">
+                      {categories.length === 0 ? "No categories" : "None"}
                     </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </Field>
-            <Field label="Tags">
+                    {categories.map((c) => (
+                      <SelectItem key={c.id} value={c.id}>
+                        {c.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </Field>
+              {/* <Field label="Tags">
               <div className="space-y-2">
                 <select
                   multiple
@@ -1675,221 +1710,290 @@ export function ProductConsolePage({
                   })}
                 </div>
               </div>
-            </Field>
-            {/* shelf life in months */}
-            <Field label="Shelf Life" required={status !== "draft"}>
-              <Input
-                placeholder="Shelf Life in Months"
-                type="number"
-                value={shelfLife}
-                onChange={(e) => setShelfLife(e.target.value)}
-                className="rounded-lg border border-[#D9D9D1] px-3 py-2 text-sm"
-                title="Shelf life in months"
-              />
-            </Field>
-            {/* Preparation type ready-to-eat, reasdy-to-cook */}
-            <Field label="Preparation Type" required={status !== "draft"}>
-              <Select value={preparationType} onValueChange={(value) => setPreparationType(value as "" | "ready_to_eat" | "ready_to_cook")}>
-                <SelectTrigger className="rounded-lg border border-[#D9D9D1] px-3 py-2 text-sm">
-                  <SelectValue placeholder="Select preparation type" />
-                </SelectTrigger>
-                <SelectContent>
-                  {preparationTypes.map((item) => (
-                    <SelectItem key={item} value={item}>
-                      {item.replace(/_/g, " ")}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </Field>
-            {/* spice level */}
-            <Field label="Spice Level" required={status !== "draft"}>
-              <Select value={spiceLevel} onValueChange={(value) => setSpiceLevel(value as "" | "mild" | "medium" | "hot" | "extra_hot")}>
-                <SelectTrigger className="rounded-lg border border-[#D9D9D1] px-3 py-2 text-sm">
-                  <SelectValue placeholder="Select spice level" />
-                </SelectTrigger>
-                <SelectContent>
-                  {spiceLevels.map((item) => (
-                    <SelectItem key={item} value={item}>
-                      {item.replace(/_/g, " ")}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </Field>
-            {/* thumbnail upload */}
-            <Field label="Upload thumbnails (multiple)" required={status !== "draft"}>
-              <div className="rounded-lg border border-[#D9D9D1] px-3 py-3 text-sm">
-              <input type="file" multiple accept="image/*" onChange={(e) => void uploadMany(e.target.files, "thumbnail")} />
-              {thumbnailUrls.length > 0 && (
-                <div className="mt-2 flex flex-wrap gap-1">
-                  {thumbnailUrls.map((url, idx) => (
+            </Field> */}
+              <Field label="Tags">
+                <div className="relative">
+                  <details className="group">
+                    <summary className="flex min-h-[44px] cursor-pointer list-none items-center justify-between rounded-lg border border-[#D9D9D1] bg-white px-3 py-2 text-sm text-[#1F1F1F]">
+                      <div className="flex flex-wrap gap-1">
+                        {selectedTagIds.length > 0 ? (
+                          selectedTagIds.map((selectedId) => {
+                            const tag = tags.find((t) => t.id === selectedId)
+                            if (!tag) return null
+
+                            return (
+                              <span
+                                key={tag.id}
+                                className="rounded-full border border-[#D9D9D1] bg-[#F7F7F5] px-2 py-1 text-[11px]"
+                              >
+                                {tag.name}
+                              </span>
+                            )
+                          })
+                        ) : (
+                          <span className="text-[#7A7A72]">Select tags</span>
+                        )}
+                      </div>
+
+                      <svg
+                        className="ml-2 h-4 w-4 shrink-0 transition-transform group-open:rotate-180"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        viewBox="0 0 24 24"
+                      >
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+                      </svg>
+                    </summary>
+
+                    <div className="absolute z-20 mt-2 max-h-64 w-full overflow-y-auto rounded-xl border border-[#D9D9D1] bg-white p-2 shadow-lg">
+                      <div className="space-y-1">
+                        {tags.map((tag) => {
+                          const checked = selectedTagIds.includes(tag.id)
+
+                          return (
+                            <label
+                              key={tag.id}
+                              className="flex cursor-pointer items-center gap-3 rounded-lg px-3 py-2 transition hover:bg-[#F7F7F5]"
+                            >
+                              <input
+                                type="checkbox"
+                                checked={checked}
+                                onChange={(e) => {
+                                  if (e.target.checked) {
+                                    setSelectedTagIds([...selectedTagIds, tag.id])
+                                  } else {
+                                    setSelectedTagIds(
+                                      selectedTagIds.filter((id) => id !== tag.id)
+                                    )
+                                  }
+                                }}
+                                className="h-4 w-4 rounded border-[#D9D9D1]"
+                              />
+
+                              <span className="text-sm text-[#1F1F1F]">{tag.name}</span>
+                            </label>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  </details>
+                </div>
+              </Field>
+              {/* shelf life in months */}
+              <Field label="Shelf Life" required={status !== "draft"}>
+                <Input
+                  placeholder="Shelf Life in Months"
+                  type="number"
+                  value={shelfLife}
+                  onChange={(e) => setShelfLife(e.target.value)}
+                  className="rounded-lg border border-[#D9D9D1] px-3 py-2 text-sm"
+                  title="Shelf life in months"
+                />
+              </Field>
+              {/* Preparation type ready-to-eat, reasdy-to-cook */}
+              <Field label="Preparation Type" required={status !== "draft"}>
+                <Select value={preparationType} onValueChange={(value) => setPreparationType(value as "" | "ready_to_eat" | "ready_to_cook")}>
+                  <SelectTrigger className="rounded-lg border border-[#D9D9D1] px-3 py-2 text-sm">
+                    <SelectValue placeholder="Select preparation type" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {preparationTypes.map((item) => (
+                      <SelectItem key={item} value={item}>
+                        {item.replace(/_/g, " ")}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </Field>
+              {/* spice level */}
+              <Field label="Spice Level" required={status !== "draft"}>
+                <Select value={spiceLevel} onValueChange={(value) => setSpiceLevel(value as "" | "mild" | "medium" | "hot" | "extra_hot")}>
+                  <SelectTrigger className="rounded-lg border border-[#D9D9D1] px-3 py-2 text-sm">
+                    <SelectValue placeholder="Select spice level" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {spiceLevels.map((item) => (
+                      <SelectItem key={item} value={item}>
+                        {item.replace(/_/g, " ")}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </Field>
+              {/* thumbnail upload */}
+              <Field label="Upload thumbnails (multiple)" required={status !== "draft"}>
+                <div className="rounded-lg border border-[#D9D9D1] px-3 py-3 text-sm">
+                  <input type="file" multiple accept="image/*" onChange={(e) => void uploadMany(e.target.files, "thumbnail")} />
+                  {thumbnailUrls.length > 0 && (
+                    <div className="mt-2 flex flex-wrap gap-1">
+                      {thumbnailUrls.map((url, idx) => (
+                        <button
+                          key={`${url}-${idx}`}
+                          type="button"
+                          onClick={() => setThumbnailUrls((prev) => prev.filter((x) => x !== url))}
+                          className="rounded-full border border-[#D9D9D1] bg-white px-2 py-1 text-[10px]"
+                        >
+                          Thumb {idx + 1} x
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </Field>
+              {/* gallery images */}
+              <Field label="Upload images (multiple)">
+                <div className="rounded-lg border border-[#D9D9D1] px-3 py-3 text-sm">
+                  <input type="file" multiple accept="image/*" onChange={(e) => void uploadMany(e.target.files, "image")} />
+                  {imageUrls.length > 0 && (
+                    <div className="mt-2 flex flex-wrap gap-1">
+                      {imageUrls.map((url, idx) => (
+                        <button
+                          key={`${url}-${idx}`}
+                          type="button"
+                          onClick={() => setImageUrls((prev) => prev.filter((x) => x !== url))}
+                          className="rounded-full border border-[#D9D9D1] bg-white px-2 py-1 text-[10px]"
+                        >
+                          Image {idx + 1} x
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </Field>
+              {/* meta details */}
+              <Field label="Meta Title">
+                <Input placeholder="Meta Title" value={metaTitle} onChange={(e) => setMetaTitle(e.target.value)} className="rounded-lg border border-[#D9D9D1] px-3 py-2 text-sm" />
+              </Field>
+              <Field label="Meta Description">
+                <Input placeholder="Meta Description" value={metaDescription} onChange={(e) => setMetaDescription(e.target.value)} className="rounded-lg border border-[#D9D9D1] px-3 py-2 text-sm md:col-span-2" />
+              </Field>
+              <Field label="Amazon Link">
+                <Input placeholder="Amazon Link" value={amazonLink} onChange={(e) => setAmazonLink(e.target.value)} className="rounded-lg border border-[#D9D9D1] px-3 py-2 text-sm md:col-span-2" />
+              </Field>
+
+              {/* for product type as varient then specify the variant */}
+              {type === "variant" && (
+                <div className="md:col-span-3 space-y-2 rounded-lg border border-[#E8DCC8] p-3">
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-[#4A1D1F]">Variants</p>
                     <button
-                      key={`${url}-${idx}`}
                       type="button"
-                      onClick={() => setThumbnailUrls((prev) => prev.filter((x) => x !== url))}
-                      className="rounded-full border border-[#D9D9D1] bg-white px-2 py-1 text-[10px]"
+                      onClick={() =>
+                        setVariants((prev) => [...prev, { name: "", weight: "", sku: "", price: "", mrp: "", discountPercent: "", stock: "0", isDefault: prev.length === 0 }])
+                      }
+                      className="rounded-full border border-[#7B3010] px-3 py-1 text-[11px] font-semibold uppercase text-[#7B3010]"
                     >
-                      Thumb {idx + 1} x
+                      Add Variant
                     </button>
+                  </div>
+                  {variants.map((variant, idx) => (
+                    <div key={`${variant.id ?? "new"}-${idx}`} className="space-y-4 rounded-lg border border-[#E8DCC8] bg-[#FFFBF3]/20 p-4">
+                      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6">
+                        <div className="space-y-1.5">
+                          <Label className="text-[10px] font-bold uppercase text-[#646464]">Weight</Label>
+                          <Select
+                            value={variant.weight}
+                            onValueChange={(val) =>
+                              setVariants((prev) =>
+                                prev.map((x, i) => i === idx ? { ...x, weight: val, name: val } : x),
+                              )
+                            }
+                          >
+                            <SelectTrigger className="rounded border border-[#D9D9D1] bg-white px-3 py-2 text-sm h-9">
+                              <SelectValue placeholder="Weight" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="100g">100g</SelectItem>
+                              <SelectItem value="250g">250g</SelectItem>
+                              <SelectItem value="500g">500g</SelectItem>
+                              <SelectItem value="1kg">1kg</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+
+                        <div className="space-y-1.5">
+                          <Label className="text-[10px] font-bold uppercase text-[#646464]">Sale Price</Label>
+                          <Input
+                            placeholder="Sale Price"
+                            type="number"
+                            value={variant.price}
+                            onChange={(e) => setVariants((prev) => prev.map((x, i) => i === idx ? { ...x, price: e.target.value } : x))}
+                            className="bg-white h-9"
+                          />
+                        </div>
+
+                        <div className="space-y-1.5">
+                          <Label className="text-[10px] font-bold uppercase text-[#646464]">MRP / Base</Label>
+                          <Input
+                            placeholder="MRP"
+                            type="number"
+                            value={variant.mrp}
+                            onChange={(e) => setVariants((prev) => prev.map((x, i) => i === idx ? { ...x, mrp: e.target.value } : x))}
+                            className="bg-white h-9"
+                          />
+                        </div>
+
+                        <div className="space-y-1.5">
+                          <Label className="text-[10px] font-bold uppercase text-[#646464]">Discount %</Label>
+                          <Input
+                            placeholder="%"
+                            type="number"
+                            value={variant.discountPercent}
+                            onChange={(e) => setVariants((prev) => prev.map((x, i) => i === idx ? { ...x, discountPercent: e.target.value } : x))}
+                            className="bg-white h-9"
+                          />
+                        </div>
+
+                        <div className="space-y-1.5">
+                          <Label className="text-[10px] font-bold uppercase text-[#646464]">Stock</Label>
+                          <Input
+                            placeholder="Stock"
+                            type="number"
+                            value={variant.stock}
+                            onChange={(e) => setVariants((prev) => prev.map((x, i) => i === idx ? { ...x, stock: e.target.value } : x))}
+                            className="bg-white h-9"
+                          />
+                        </div>
+
+                        <div className="space-y-1.5">
+                          <Label className="text-[10px] font-bold uppercase text-[#646464]">SKU</Label>
+                          <Input
+                            placeholder="SKU"
+                            value={variant.sku}
+                            onChange={(e) => setVariants((prev) => prev.map((x, i) => i === idx ? { ...x, sku: e.target.value } : x))}
+                            className="bg-white h-9"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="flex items-center justify-between pt-2 border-t border-[#E8DCC8]/50">
+                        <label className="flex items-center gap-2 text-[11px] font-semibold uppercase text-[#4A1D1F] cursor-pointer">
+                          <Checkbox
+                            checked={variant.isDefault}
+                            onCheckedChange={() => setVariants((prev) => prev.map((x, i) => ({ ...x, isDefault: i === idx })))}
+                          />
+                          Default Variant
+                        </label>
+                        <button
+                          type="button"
+                          onClick={() => setVariants((prev) => prev.filter((_, i) => i !== idx))}
+                          className="rounded-full border border-red-200 px-3 py-1 text-[10px] font-semibold uppercase text-red-700 hover:bg-red-50 transition-colors"
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    </div>
                   ))}
                 </div>
               )}
-            </div>
-            </Field>
-            {/* gallery images */}
-            <Field label="Upload images (multiple)">
-              <div className="rounded-lg border border-[#D9D9D1] px-3 py-3 text-sm">
-                <input type="file" multiple accept="image/*" onChange={(e) => void uploadMany(e.target.files, "image")} />
-                {imageUrls.length > 0 && (
-                  <div className="mt-2 flex flex-wrap gap-1">
-                    {imageUrls.map((url, idx) => (
-                      <button
-                        key={`${url}-${idx}`}
-                        type="button"
-                        onClick={() => setImageUrls((prev) => prev.filter((x) => x !== url))}
-                        className="rounded-full border border-[#D9D9D1] bg-white px-2 py-1 text-[10px]"
-                      >
-                        Image {idx + 1} x
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </Field>
-            {/* meta details */}
-            <Field label="Meta Title">
-              <Input placeholder="Meta Title" value={metaTitle} onChange={(e) => setMetaTitle(e.target.value)} className="rounded-lg border border-[#D9D9D1] px-3 py-2 text-sm" />
-            </Field>
-            <Field label="Meta Description">
-              <Input placeholder="Meta Description" value={metaDescription} onChange={(e) => setMetaDescription(e.target.value)} className="rounded-lg border border-[#D9D9D1] px-3 py-2 text-sm md:col-span-2" />
-            </Field>
-             <Field label="Amazon Link">
-              <Input placeholder="Amazon Link" value={amazonLink} onChange={(e) => setAmazonLink(e.target.value)} className="rounded-lg border border-[#D9D9D1] px-3 py-2 text-sm md:col-span-2" />
-            </Field>
-
-                {/* for product type as varient then specify the variant */}
-            {type === "variant" && (
-              <div className="md:col-span-3 space-y-2 rounded-lg border border-[#E8DCC8] p-3">
-                <div className="flex items-center justify-between">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-[#4A1D1F]">Variants</p>
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setVariants((prev) => [...prev, { name: "", weight: "", sku: "", price: "", mrp: "", discountPercent: "", stock: "0", isDefault: prev.length === 0 }])
-                    }
-                    className="rounded-full border border-[#7B3010] px-3 py-1 text-[11px] font-semibold uppercase text-[#7B3010]"
-                  >
-                    Add Variant
-                  </button>
-                </div>
-                {variants.map((variant, idx) => (
-                   <div key={`${variant.id ?? "new"}-${idx}`} className="space-y-4 rounded-lg border border-[#E8DCC8] bg-[#FFFBF3]/20 p-4">
-                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6">
-                      <div className="space-y-1.5">
-                        <Label className="text-[10px] font-bold uppercase text-[#646464]">Weight</Label>
-                        <Select
-                          value={variant.weight}
-                          onValueChange={(val) =>
-                            setVariants((prev) =>
-                              prev.map((x, i) => i === idx ? { ...x, weight: val, name: val } : x),
-                            )
-                          }
-                        >
-                          <SelectTrigger className="rounded border border-[#D9D9D1] bg-white px-3 py-2 text-sm h-9">
-                            <SelectValue placeholder="Weight" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="100g">100g</SelectItem>
-                            <SelectItem value="250g">250g</SelectItem>
-                            <SelectItem value="500g">500g</SelectItem>
-                            <SelectItem value="1kg">1kg</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-
-                      <div className="space-y-1.5">
-                        <Label className="text-[10px] font-bold uppercase text-[#646464]">Sale Price</Label>
-                        <Input
-                          placeholder="Sale Price"
-                          type="number"
-                          value={variant.price}
-                          onChange={(e) => setVariants((prev) => prev.map((x, i) => i === idx ? { ...x, price: e.target.value } : x))}
-                          className="bg-white h-9"
-                        />
-                      </div>
-
-                      <div className="space-y-1.5">
-                        <Label className="text-[10px] font-bold uppercase text-[#646464]">MRP / Base</Label>
-                        <Input
-                          placeholder="MRP"
-                          type="number"
-                          value={variant.mrp}
-                          onChange={(e) => setVariants((prev) => prev.map((x, i) => i === idx ? { ...x, mrp: e.target.value } : x))}
-                          className="bg-white h-9"
-                        />
-                      </div>
-
-                      <div className="space-y-1.5">
-                        <Label className="text-[10px] font-bold uppercase text-[#646464]">Discount %</Label>
-                        <Input
-                          placeholder="%"
-                          type="number"
-                          value={variant.discountPercent}
-                          onChange={(e) => setVariants((prev) => prev.map((x, i) => i === idx ? { ...x, discountPercent: e.target.value } : x))}
-                          className="bg-white h-9"
-                        />
-                      </div>
-
-                      <div className="space-y-1.5">
-                        <Label className="text-[10px] font-bold uppercase text-[#646464]">Stock</Label>
-                        <Input
-                          placeholder="Stock"
-                          type="number"
-                          value={variant.stock}
-                          onChange={(e) => setVariants((prev) => prev.map((x, i) => i === idx ? { ...x, stock: e.target.value } : x))}
-                          className="bg-white h-9"
-                        />
-                      </div>
-
-                      <div className="space-y-1.5">
-                        <Label className="text-[10px] font-bold uppercase text-[#646464]">SKU</Label>
-                        <Input
-                          placeholder="SKU"
-                          value={variant.sku}
-                          onChange={(e) => setVariants((prev) => prev.map((x, i) => i === idx ? { ...x, sku: e.target.value } : x))}
-                          className="bg-white h-9"
-                        />
-                      </div>
-                    </div>
-
-                    <div className="flex items-center justify-between pt-2 border-t border-[#E8DCC8]/50">
-                      <label className="flex items-center gap-2 text-[11px] font-semibold uppercase text-[#4A1D1F] cursor-pointer">
-                        <Checkbox
-                          checked={variant.isDefault}
-                          onCheckedChange={() => setVariants((prev) => prev.map((x, i) => ({ ...x, isDefault: i === idx })))}
-                        />
-                        Default Variant
-                      </label>
-                      <button
-                        type="button"
-                        onClick={() => setVariants((prev) => prev.filter((_, i) => i !== idx))}
-                        className="rounded-full border border-red-200 px-3 py-1 text-[10px] font-semibold uppercase text-red-700 hover:bg-red-50 transition-colors"
-                      >
-                        Remove
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-            <Field label="Description" required={status !== "draft"}>
-              <Textarea placeholder="Description" value={description} onChange={(e) => setDescription(e.target.value)} rows={2} className="rounded-lg border border-[#D9D9D1] px-3 py-2 text-sm md:col-span-3" />
-            </Field>
-                        <Field label="Pricing & Discounts">
-              <div className="space-y-3 rounded-lg border border-[#E8DCC8] bg-[#FFFBF3] p-3">
-                {/* <p className="text-[11px] font-semibold uppercase tracking-wide text-[#646464]">Pricing</p> */}
-                {/* <div className="grid gap-2 md:grid-cols-4">
+              <Field label="Description" required={status !== "draft"}>
+                <Textarea placeholder="Description" value={description} onChange={(e) => setDescription(e.target.value)} rows={2} className="rounded-lg border border-[#D9D9D1] px-3 py-2 text-sm md:col-span-3" />
+              </Field>
+              <Field label="Pricing & Discounts">
+                <div className="space-y-3 rounded-lg border border-[#E8DCC8] bg-[#FFFBF3] p-3">
+                  {/* <p className="text-[11px] font-semibold uppercase tracking-wide text-[#646464]">Pricing</p> */}
+                  {/* <div className="grid gap-2 md:grid-cols-4">
                   <Input
                     placeholder="Base Price"
                     type="number"
@@ -1924,68 +2028,68 @@ export function ProductConsolePage({
                   />
                 </div> */}
 
-                <div className="grid gap-2 md:grid-cols-2">
-                  <label className="flex items-center gap-2 text-xs font-semibold uppercase text-[#4A1D1F]">
-                    <Checkbox checked={discountEnabled} onCheckedChange={(checked) => setDiscountEnabled(Boolean(checked))} />
-                    Enable discount
-                  </label>
-                  <label className="flex items-center gap-2 text-xs font-semibold uppercase text-[#4A1D1F]">
-                    <Checkbox checked={discountStackable} onCheckedChange={(checked) => setDiscountStackable(Boolean(checked))} />
-                    Stackable with offers
-                  </label>
-                </div>
-
-                {discountEnabled && (
-                  <div className="grid gap-2 md:grid-cols-4">
-                    <Select value={discountType} onValueChange={(value) => setDiscountType(value as "percentage" | "flat")}>
-                      <SelectTrigger className="rounded-lg border border-[#D9D9D1] bg-white px-3 py-2 text-sm">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="percentage">Percentage</SelectItem>
-                        <SelectItem value="flat">Flat Amount</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    <Input
-                      placeholder="Discount Value"
-                      type="number"
-                      step="0.01"
-                      value={discountValue}
-                      onChange={(e) => setDiscountValue(e.target.value)}
-                      className="rounded-lg border border-[#D9D9D1] bg-white px-3 py-2 text-sm"
-                    />
-                    <Input
-                      type="datetime-local"
-                      value={discountStartDate}
-                      onChange={(e) => setDiscountStartDate(e.target.value)}
-                      className="rounded-lg border border-[#D9D9D1] bg-white px-3 py-2 text-sm"
-                    />
-                    <Input
-                      type="datetime-local"
-                      value={discountEndDate}
-                      onChange={(e) => setDiscountEndDate(e.target.value)}
-                      className="rounded-lg border border-[#D9D9D1] bg-white px-3 py-2 text-sm"
-                    />
+                  <div className="grid gap-2 md:grid-cols-2">
+                    <label className="flex items-center gap-2 text-xs font-semibold uppercase text-[#4A1D1F]">
+                      <Checkbox checked={discountEnabled} onCheckedChange={(checked) => setDiscountEnabled(Boolean(checked))} />
+                      Enable discount
+                    </label>
+                    <label className="flex items-center gap-2 text-xs font-semibold uppercase text-[#4A1D1F]">
+                      <Checkbox checked={discountStackable} onCheckedChange={(checked) => setDiscountStackable(Boolean(checked))} />
+                      Stackable with offers
+                    </label>
                   </div>
-                )}
 
-                <div className="grid gap-2 md:grid-cols-2">
-                  <label className="flex items-center gap-2 text-xs font-semibold uppercase text-[#4A1D1F]">
-                    <Checkbox checked={autoExpireDiscount} onCheckedChange={(checked) => setAutoExpireDiscount(Boolean(checked))} />
-                    Auto-expire after date
-                  </label>
-                  <label className="flex items-center gap-2 text-xs font-semibold uppercase text-[#4A1D1F]">
-                    <Checkbox checked={showStrikeThroughPrice} onCheckedChange={(checked) => setShowStrikeThroughPrice(Boolean(checked))} />
-                    Show strike-through price on storefront
-                  </label>
+                  {discountEnabled && (
+                    <div className="grid gap-2 md:grid-cols-4">
+                      <Select value={discountType} onValueChange={(value) => setDiscountType(value as "percentage" | "flat")}>
+                        <SelectTrigger className="rounded-lg border border-[#D9D9D1] bg-white px-3 py-2 text-sm">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="percentage">Percentage</SelectItem>
+                          <SelectItem value="flat">Flat Amount</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <Input
+                        placeholder="Discount Value"
+                        type="number"
+                        step="0.01"
+                        value={discountValue}
+                        onChange={(e) => setDiscountValue(e.target.value)}
+                        className="rounded-lg border border-[#D9D9D1] bg-white px-3 py-2 text-sm"
+                      />
+                      <Input
+                        type="datetime-local"
+                        value={discountStartDate}
+                        onChange={(e) => setDiscountStartDate(e.target.value)}
+                        className="rounded-lg border border-[#D9D9D1] bg-white px-3 py-2 text-sm"
+                      />
+                      <Input
+                        type="datetime-local"
+                        value={discountEndDate}
+                        onChange={(e) => setDiscountEndDate(e.target.value)}
+                        className="rounded-lg border border-[#D9D9D1] bg-white px-3 py-2 text-sm"
+                      />
+                    </div>
+                  )}
+
+                  <div className="grid gap-2 md:grid-cols-2">
+                    <label className="flex items-center gap-2 text-xs font-semibold uppercase text-[#4A1D1F]">
+                      <Checkbox checked={autoExpireDiscount} onCheckedChange={(checked) => setAutoExpireDiscount(Boolean(checked))} />
+                      Auto-expire after date
+                    </label>
+                    <label className="flex items-center gap-2 text-xs font-semibold uppercase text-[#4A1D1F]">
+                      <Checkbox checked={showStrikeThroughPrice} onCheckedChange={(checked) => setShowStrikeThroughPrice(Boolean(checked))} />
+                      Show strike-through price on storefront
+                    </label>
+                  </div>
+                  <p className="text-[11px] text-[#646464]">
+                    Variant-level discount is supported via each variant row&apos;s discount %. Product-level discount is used as fallback.
+                  </p>
                 </div>
-                <p className="text-[11px] text-[#646464]">
-                  Variant-level discount is supported via each variant row&apos;s discount %. Product-level discount is used as fallback.
-                </p>
-              </div>
-            </Field>
-          </>
-        )}
+              </Field>
+            </>
+          )}
         {/* Product Specifications and Details */}
         <div className="md:col-span-3 space-y-3 shadow-sm rounded-xl border border-[#E8DCC8] p-3">
           <div className="flex items-center justify-between">

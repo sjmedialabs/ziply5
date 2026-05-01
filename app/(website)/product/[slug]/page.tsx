@@ -544,8 +544,8 @@ export default function ProductPage() {
               )))}
             </div>
         <div className="mt-10 border-t border-[#DFDFDF]">
-          {(product.details.length
-            ? product.details
+          {(product.details.length || product.sections.length
+            ? (product.details || product.sections)
             : [{ title: "Description", content: product.description }]).map((section, idx) => {
             const sectionId = section.title.toLowerCase().replace(/[^a-z0-9]+/g, "-") || `section-${idx}`
             const isOpen = openSection === sectionId
