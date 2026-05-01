@@ -305,7 +305,7 @@ export default function ProductPage() {
             <div className="rounded-xl border border-[#E2E2E2] bg-[#ECECEC]">
               <div className="relative bg-white/70 mx-auto rounded-xl h-100 w-full stretch ">
                 {displayImage ? (
-                  <Image src={displayImage} alt={product.name} fill className="object-contain" />
+                  <Image src={displayImage || "/placeholder.jpg"} alt={product.name} fill className="object-contain" />
                 ) : (
                   <div className="flex h-full items-center justify-center text-xs text-[#666]">No image</div>
                 )}
@@ -331,7 +331,7 @@ export default function ProductPage() {
                     selectedImage === thumb ? "border-[#50272A]" : "border-[#E0E0E0]"
                   }`}
                 >
-                  <Image src={thumb} alt={`${product.name} preview`} fill className="object-cover" />
+                  <Image src={thumb || "/placeholder.jpg"} alt={`${product.name} preview`} fill className="object-cover" />
                 </button>
               ))}
               </div>
