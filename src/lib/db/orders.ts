@@ -19,8 +19,8 @@ const RETURN_REQUEST_TABLES = ["ReturnRequest", "return_requests"]
 const RETURN_REQUEST_ITEM_TABLES = ["ReturnRequestItem", "return_request_items"]
 const ORDER_ITEM_TABLES = ["OrderItem", "order_items"]
 const SHIPMENT_ITEM_TABLES = ["ShipmentItem", "shipment_items"]
-const CHECKOUT_PRODUCT_COLUMNS = "id,slug,type,price,status,totalStock,total_stock"
-const CHECKOUT_VARIANT_COLUMNS = "id,productId,product_id,price,stock,isDefault,is_default,weight,name,sku"
+const CHECKOUT_PRODUCT_COLUMNS = "*"
+const CHECKOUT_VARIANT_COLUMNS = "*"
 
 type IdRow = { id: string }
 export type SupabaseOrderRecord = {

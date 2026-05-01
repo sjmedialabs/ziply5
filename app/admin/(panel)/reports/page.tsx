@@ -138,7 +138,7 @@ const [tagId, setTagId] = useState("");
     <section className="mx-auto max-w-7xl space-y-6">
       <div>
         <h1 className="font-melon text-2xl font-bold text-[#4A1D1F]">Sales report</h1>
-        <p className="text-sm text-[#646464]">Aggregated orders in a date range (admin only).</p>
+        <p className="text-sm text-[#646464]">Aggregated orders in a date range.</p>
       </div>
 
       <div className="flex flex-wrap items-end gap-4 rounded-2xl border border-[#E8DCC8] bg-white p-4 shadow-sm">
