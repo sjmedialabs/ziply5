@@ -27,17 +27,26 @@ export async function GET(
     return NextResponse.json({ success: false, message: "Not found" }, { status: 404 })
   }
 
-  const cleaned = parts.map((part) => part.replace(/\.\./g, ""))
-  const relativePath = path.posix.join(...cleaned)
+  const cleaned = parts.map((part) => part.replace(/\.\./g, "").replace(/^\/+|\/+$/g, ""))
+  const relativePath = path.posix.normalize(path.posix.join(...cleaned)).replace(/^(\.\.(\/|\\|$))+/, "")
+  if (!relativePath || relativePath.includes("..")) {
+    return NextResponse.json({ success: false, message: "Invalid path" }, { status: 400 })
+  }
   const absolutePath = path.join(env.STORAGE_LOCAL_PATH, relativePath)
+  if (!absolutePath.startsWith(path.resolve(env.STORAGE_LOCAL_PATH))) {
+    return NextResponse.json({ success: false, message: "Forbidden path" }, { status: 403 })
+  }
 
   try {
     const data = await fs.readFile(absolutePath)
     const ext = path.extname(absolutePath)
+    const immutable = /-(thumb|medium|original)\.(webp|png|jpg|jpeg|gif)$/i.test(relativePath)
     return new NextResponse(new Uint8Array(data), {
       headers: {
         "Content-Type": contentTypeForExt(ext),
-        "Cache-Control": "public, max-age=31536000, immutable",
+        "Cache-Control": immutable
+          ? "public, max-age=31536000, immutable"
+          : "public, max-age=86400, stale-while-revalidate=604800",
       },
     })
   } catch {

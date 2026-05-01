@@ -19,6 +19,8 @@ const RETURN_REQUEST_TABLES = ["ReturnRequest", "return_requests"]
 const RETURN_REQUEST_ITEM_TABLES = ["ReturnRequestItem", "return_request_items"]
 const ORDER_ITEM_TABLES = ["OrderItem", "order_items"]
 const SHIPMENT_ITEM_TABLES = ["ShipmentItem", "shipment_items"]
+const CHECKOUT_PRODUCT_COLUMNS = "id,slug,type,price,status,totalStock,total_stock"
+const CHECKOUT_VARIANT_COLUMNS = "id,productId,product_id,price,stock,isDefault,is_default,weight,name,sku"
 
 type IdRow = { id: string }
 export type SupabaseOrderRecord = {
@@ -77,10 +79,10 @@ export const getCheckoutProductsSupabase = async (input: {
   const rows: CheckoutProductRecord[] = []
   for (const table of PRODUCT_TABLES) {
     const attempts = [
-      () => client.from(table).select("*").in("id", input.productIds.length ? input.productIds : ["__none__"]).eq("status", "published"),
-      () => client.from(table).select("*").in("slug", input.slugs.length ? input.slugs : ["__none__"]).eq("status", "published"),
-      () => client.from(table).select("*").in("id", input.productIds.length ? input.productIds : ["__none__"]).eq("status", "published"),
-      () => client.from(table).select("*").in("slug", input.slugs.length ? input.slugs : ["__none__"]).eq("status", "published"),
+      () => client.from(table).select(CHECKOUT_PRODUCT_COLUMNS).in("id", input.productIds.length ? input.productIds : ["__none__"]).eq("status", "published"),
+      () => client.from(table).select(CHECKOUT_PRODUCT_COLUMNS).in("slug", input.slugs.length ? input.slugs : ["__none__"]).eq("status", "published"),
+      () => client.from(table).select(CHECKOUT_PRODUCT_COLUMNS).in("id", input.productIds.length ? input.productIds : ["__none__"]).eq("status", "published"),
+      () => client.from(table).select(CHECKOUT_PRODUCT_COLUMNS).in("slug", input.slugs.length ? input.slugs : ["__none__"]).eq("status", "published"),
     ]
     const productRows: Array<Record<string, unknown>> = []
     for (const run of attempts) {
@@ -106,8 +108,8 @@ export const getCheckoutProductsSupabase = async (input: {
     }
     for (const variantTable of PRODUCT_VARIANT_TABLES) {
       const variantAttempts = [
-        () => client.from(variantTable).select("*").in("productId", Array.from(dedup.keys())),
-        () => client.from(variantTable).select("*").in("product_id", Array.from(dedup.keys())),
+        () => client.from(variantTable).select(CHECKOUT_VARIANT_COLUMNS).in("productId", Array.from(dedup.keys())),
+        () => client.from(variantTable).select(CHECKOUT_VARIANT_COLUMNS).in("product_id", Array.from(dedup.keys())),
       ]
       for (const runVariants of variantAttempts) {
         const { data, error } = await runVariants()

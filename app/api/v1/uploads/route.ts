@@ -2,20 +2,30 @@ import { NextRequest } from "next/server"
 import { fail, ok } from "@/src/server/core/http/response"
 import { requireAuth } from "@/src/server/middleware/auth"
 import { storageService } from "@/src/server/integrations/storage/storage.service"
-
-const safeName = (value: string) =>
-  value
-    .replace(/[^a-zA-Z0-9._-]+/g, "-")
-    .replace(/-+/g, "-")
-    .replace(/^-|-$/g, "")
+import { logger } from "@/lib/logger"
+import { rateLimit, resolveClientIp } from "@/src/server/security/rate-limit"
+import { isTrustedOrigin } from "@/src/server/security/csrf"
 
 export async function POST(request: NextRequest) {
   const auth = requireAuth(request)
   if ("status" in auth) return auth
+  if (!isTrustedOrigin(request)) return fail("Invalid origin", 403)
+
+  const ip = resolveClientIp(request.headers)
+  const rl = await rateLimit({
+    key: `rl:upload:${ip}`,
+    limit: Number(process.env.UPLOAD_RATE_LIMIT_PER_MIN ?? 120),
+    windowSec: 60,
+  })
+  if (!rl.ok) return fail("Too many uploads. Please try again shortly.", 429)
 
   const form = await request.formData()
   const folderRaw = String(form.get("folder") ?? "misc").trim()
   const folder = folderRaw.replace(/\.\./g, "").replace(/^\/+/, "").replace(/\/+$/, "") || "misc"
+  const replaceRaw = String(form.get("replace") ?? "").trim()
+  const replaceRelativePaths = replaceRaw
+    ? replaceRaw.split(",").map((s) => s.trim()).filter(Boolean)
+    : []
 
   const allFiles = [
     ...form.getAll("files"),
@@ -23,24 +33,48 @@ export async function POST(request: NextRequest) {
   ].filter((entry): entry is File => entry instanceof File)
 
   if (allFiles.length === 0) return fail("No files uploaded", 400)
-
-  const uploaded = []
-  for (const file of allFiles) {
-    if (!file.name) continue
-    const bytes = new Uint8Array(await file.arrayBuffer())
-    const stampedName = `${Date.now()}-${safeName(file.name)}`
-    const saved = await storageService.saveFile({
-      folder,
-      fileName: stampedName,
-      buffer: bytes,
-    })
-    uploaded.push({
-      name: file.name,
-      size: file.size,
-      type: file.type,
-      ...saved,
-    })
+  if (allFiles.length > Number(process.env.UPLOAD_MAX_FILES_PER_REQUEST ?? 20)) {
+    return fail("Too many files in one request", 422)
   }
 
+  const uploaded: Array<Record<string, unknown>> = []
+  const createdRelative: string[] = []
+  try {
+    for (let i = 0; i < allFiles.length; i++) {
+      const file = allFiles[i]
+      if (!file.name) continue
+      const bytes = new Uint8Array(await file.arrayBuffer())
+      const saved = await storageService.saveProductImageSet({
+        folder,
+        originalName: file.name,
+        buffer: bytes,
+        replaceRelativePaths: i === 0 ? replaceRelativePaths : undefined,
+      })
+      createdRelative.push(String(saved.relativePath))
+      uploaded.push({
+        name: file.name,
+        size: file.size,
+        type: file.type,
+        ...saved,
+      })
+    }
+  } catch (error) {
+    await Promise.all(createdRelative.map((relativePath) => storageService.deleteFile(relativePath)))
+    logger.warn("uploads.api.failed", {
+      folder,
+      files: allFiles.length,
+      ip,
+      actorId: auth.user.sub,
+      error: error instanceof Error ? error.message : "unknown",
+    })
+    return fail(error instanceof Error ? error.message : "Upload failed", 400)
+  }
+
+  logger.info("uploads.api.success", {
+    folder,
+    files: uploaded.length,
+    ip,
+    actorId: auth.user.sub,
+  })
   return ok({ files: uploaded }, "Uploaded")
 }

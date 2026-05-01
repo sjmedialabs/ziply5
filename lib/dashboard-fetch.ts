@@ -54,3 +54,40 @@ export async function authedPatch<T>(path: string, body: unknown): Promise<T> {
 export async function authedDelete<T>(path: string): Promise<T> {
   return authedFetch<T>(path, { method: "DELETE" })
 }
+
+/** Multipart POST (do not set Content-Type; browser sets boundary). */
+export async function authedFormDataPost<T>(path: string, formData: FormData): Promise<T> {
+  const { getValidAccessToken } = await import("@/lib/auth-session")
+  const token = await getValidAccessToken()
+  const res = await fetch(path, {
+    method: "POST",
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    body: formData,
+  })
+
+  if (typeof window !== "undefined" && res.status === 401) {
+    const { clearSession } = await import("@/lib/auth-session")
+    const isAdmin = window.location.pathname.startsWith("/admin")
+    clearSession({ silent: true })
+    window.location.href = isAdmin ? "/admin/login" : "/login"
+    throw new Error("Unauthorized")
+  }
+
+  let json: ApiEnvelope<T> = { success: false, message: "Invalid response" }
+  try {
+    json = (await res.json()) as ApiEnvelope<T>
+  } catch {
+    json = { success: false, message: `HTTP ${res.status} (non-JSON)` }
+  }
+
+  if (!res.ok || json.success === false) {
+    const msg = json.message ?? `Request failed (${res.status})`
+    const extra =
+      json.details != null && typeof json.details === "object"
+        ? ` — ${JSON.stringify(json.details).slice(0, 2000)}`
+        : ""
+    throw new Error(msg + extra)
+  }
+  if (json.data === undefined) throw new Error("Empty data in response")
+  return json.data
+}
