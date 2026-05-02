@@ -107,7 +107,8 @@ export default function FaqSectionEditor({ value = { items: [] }, onChange }: Fa
           </div>
           <div>
             <Label className="text-xs font-semibold text-[#646464] mb-1 block">Banner Image</Label>
-            <ImageUploader 
+            <ImageUploader
+              folder="cms/faq" 
               value={normalizedValue.bgImage || ''} 
               onChange={(image) => updateField('bgImage', image)} 
             />

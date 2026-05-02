@@ -1,4 +1,5 @@
 import { NextRequest } from "next/server"
+import { revalidatePath } from "next/cache"
 import { fail, ok } from "@/src/server/core/http/response"
 import { requireAuth } from "@/src/server/middleware/auth"
 import { requirePermission } from "@/src/server/middleware/rbac"
@@ -35,5 +36,13 @@ export async function POST(request: NextRequest) {
     key: parsed.data.key,
     valueJson: parsed.data.valueJson,
   })
+
+  if (
+    (parsed.data.group === "site" && parsed.data.key === "favicons") ||
+    (parsed.data.group === "seo" && parsed.data.key === "storefront")
+  ) {
+    revalidatePath("/", "layout")
+  }
+
   return ok(row, "Setting saved")
 }

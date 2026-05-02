@@ -57,7 +57,8 @@ export default function AboutStatsEditor({ value, onChange }: { value: any, onCh
                 </div>
                 <div>
                   <Label className="text-xs text-[#646464] block mb-1">Icon Upload</Label>
-                  <ImageUploader 
+                  <ImageUploader
+                    folder="cms/about-stats" 
                     value={stat.iconUrl || ''} 
                     onChange={(image) => {
                       const newS = [...stats];

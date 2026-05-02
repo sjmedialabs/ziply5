@@ -17,7 +17,7 @@ export const listBrands = async () => {
   try {
     return await listBrandsSupabase()
   } catch (error) {
-    logger.warn("brands.list.supabase_fallback_prisma", {
+    logger.warn("brands.list.supabase_pg_fallback", {
       error: error instanceof Error ? error.message : "unknown",
     })
     return pgQuery(`SELECT * FROM "Brand" ORDER BY name ASC`)
@@ -26,7 +26,7 @@ export const listBrands = async () => {
 
 export const createBrand = (name: string, slug: string) =>
   createBrandSupabase({ name, slug }).catch((error) => {
-    logger.warn("brands.create.supabase_fallback_prisma", {
+    logger.warn("brands.create.supabase_pg_fallback", {
       error: error instanceof Error ? error.message : "unknown",
     })
     return pgQuery(
@@ -717,7 +717,7 @@ export const reportSellerPerformance = reportPlatformPerformance
 
 export const listUserAddresses = (userId: string) =>
   listUserAddressesSupabase(userId).catch((error) => {
-    logger.warn("addresses.list.supabase_fallback_prisma", {
+    logger.warn("addresses.list.supabase_pg_fallback", {
       error: error instanceof Error ? error.message : "unknown",
     })
     return pgQuery(`SELECT * FROM "UserAddress" WHERE "userId" = $1 ORDER BY "createdAt" DESC`, [userId])
@@ -741,7 +741,7 @@ export const createUserAddress = (
   },
 ) =>
   createUserAddressSupabase(userId, data).catch((error) => {
-    logger.warn("addresses.create.supabase_fallback_prisma", {
+    logger.warn("addresses.create.supabase_pg_fallback", {
       error: error instanceof Error ? error.message : "unknown",
     })
     return pgQuery(
@@ -789,7 +789,7 @@ export const updateUserAddress = async (
     const result = await updateUserAddressSupabase(id, userId, data)
     if (result.count > 0) return result
   } catch (error) {
-    logger.warn("addresses.update.supabase_fallback_prisma", {
+    logger.warn("addresses.update.supabase_pg_fallback", {
       error: error instanceof Error ? error.message : "unknown",
     })
   }
@@ -820,7 +820,7 @@ export const updateUserAddress = async (
 
 export const deleteUserAddress = (id: string, userId: string) =>
   deleteUserAddressSupabase(id, userId).catch((error) => {
-    logger.warn("addresses.delete.supabase_fallback_prisma", {
+    logger.warn("addresses.delete.supabase_pg_fallback", {
       error: error instanceof Error ? error.message : "unknown",
     })
     return pgQuery(`DELETE FROM "UserAddress" WHERE id=$1 AND "userId"=$2`, [id, userId]).then(() => ({ count: 1 }))

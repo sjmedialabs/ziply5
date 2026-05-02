@@ -58,9 +58,10 @@ export default function ContactUsSectionEditor({ value = {}, onChange }: Contact
           </div>
           <div>
             <Label className="text-xs font-semibold text-[#646464] mb-1 block">Banner Image</Label>
-            <ImageUploader 
-              value={value.bgImage || ''} 
-              onChange={(image) => updateField('bgImage', image)} 
+            <ImageUploader
+              folder="cms/contact"
+              value={value.bgImage || ''}
+              onChange={(image) => updateField('bgImage', image)}
             />
           </div>
         </div>
@@ -92,7 +93,7 @@ export default function ContactUsSectionEditor({ value = {}, onChange }: Contact
             <Label className="font-semibold text-sm text-[#4A1D1F]">Location Details</Label>
             <div>
               <Label className="text-xs text-[#646464] block mb-1">Icon</Label>
-              <ImageUploader value={value.addressIcon || ''} onChange={(img) => updateField('addressIcon', img)} />
+              <ImageUploader folder="cms/contact" value={value.addressIcon || ''} onChange={(img) => updateField('addressIcon', img)} />
             </div>
             <div>
               <Label className="text-xs text-[#646464] block mb-1">Address</Label>
@@ -109,7 +110,7 @@ export default function ContactUsSectionEditor({ value = {}, onChange }: Contact
             <Label className="font-semibold text-sm text-[#4A1D1F]">Phone Details</Label>
             <div>
               <Label className="text-xs text-[#646464] block mb-1">Icon</Label>
-              <ImageUploader value={value.phoneIcon || ''} onChange={(img) => updateField('phoneIcon', img)} />
+              <ImageUploader folder="cms/contact" value={value.phoneIcon || ''} onChange={(img) => updateField('phoneIcon', img)} />
             </div>
             <div>
               <Label className="text-xs text-[#646464] block mb-1">Contact Number</Label>
@@ -126,7 +127,7 @@ export default function ContactUsSectionEditor({ value = {}, onChange }: Contact
             <Label className="font-semibold text-sm text-[#4A1D1F]">Email Details</Label>
             <div>
               <Label className="text-xs text-[#646464] block mb-1">Icon</Label>
-              <ImageUploader value={value.emailIcon || ''} onChange={(img) => updateField('emailIcon', img)} />
+              <ImageUploader folder="cms/contact" value={value.emailIcon || ''} onChange={(img) => updateField('emailIcon', img)} />
             </div>
             <div>
               <Label className="text-xs text-[#646464] block mb-1">Email Address</Label>

@@ -22,11 +22,11 @@ Phase 4 focuses on enterprise order operations, integration dispatch, and analyt
 
 ### SQL scripts added
 
-- `prisma/enterprise-admin-phase4-orders.sql`
+- `supabase/sql/enterprise-admin-phase4-orders.sql`
   - additive enum updates for `OrderStatus`
-- `prisma/enterprise-admin-phase4-foundation.sql`
+- `supabase/sql/enterprise-admin-phase4-foundation.sql`
   - additive creation of missing phase-4 tables and constraints
-- `prisma/enterprise-admin-phase4-shipping-cod.sql`
+- `supabase/sql/enterprise-admin-phase4-shipping-cod.sql`
   - additive COD settlement table and shipment/COD indexes
 
 ## API structure added

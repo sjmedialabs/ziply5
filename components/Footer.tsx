@@ -3,16 +3,21 @@
 import Image from "next/image";
 import Link from "next/link";
 import { Button } from "./ui/button";
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { validateEmail } from "@/hooks/validations";
 import { toast } from "@/lib/toast";
 
-export default function Footer() {
+type FooterProps = {
+  /** Loaded in `app/(website)/layout.tsx` via DB — avoids client fetch misses & stale caches */
+  cmsPayload?: Record<string, unknown>;
+};
+
+export default function Footer({ cmsPayload = {} }: FooterProps) {
+  const cmsData = cmsPayload;
 
   const [email, setEmail] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const [cmsData, setCmsData] = useState<any>(null);
 
   const handleSubscribe = () => {
     if (!email) {
@@ -27,30 +32,34 @@ export default function Footer() {
 
   }
 
-  useEffect(() => {
-    const fetchCmsData = async () => {
-      try {
-        const res = await fetch("/api/v1/cms/pages?slug=footer");
-        const json = await res.json();
-        if (json.data) {
-          const footerContent = json.data.sections?.find((s: any) => s.sectionType === 'footer')?.contentJson || {};
-          setCmsData(footerContent);
-        }
-      } catch (err) {
-        console.error("Failed to load footer CMS data", err);
-      }
-    };
-    fetchCmsData();
-  }, []);
+  const mapFooterLinks = (section: unknown) => {
+    const s = section as { links?: unknown } | null | undefined;
+    if (!Array.isArray(s?.links)) return [];
+    return s.links.map((l: { label?: unknown; url?: unknown; href?: unknown }) => {
+      const hrefRaw = l.url ?? l.href ?? "";
+      const href = String(hrefRaw).trim() || "#";
+      return { label: String(l.label ?? "").trim(), href };
+    });
+  };
 
-  const col1Title = cmsData?.section1?.title;
-  const col1Links = Array.isArray(cmsData?.section1?.links) ? cmsData.section1.links.map((l: any) => ({ label: l.label || '', href: l.url || '#' })) : [];
+  const filterRenderableLinks = (links: { label: string; href: string }[]) =>
+    links.filter((l) => l.label.length > 0 || (l.href && l.href !== "#"));
 
-  const col2Title = cmsData?.section2?.title;
-  const col2Links = Array.isArray(cmsData?.section2?.links) ? cmsData.section2.links.map((l: any) => ({ label: l.label || '', href: l.url || '#' })) : [];
+  const sec1 = cmsData.section1 as { title?: unknown; links?: unknown } | undefined;
+  const sec2 = cmsData.section2 as { title?: unknown; links?: unknown } | undefined;
+  const sec3 = cmsData.section3 as { title?: unknown; links?: unknown } | undefined;
 
-  const col3Title = cmsData?.section3?.title;
-  const col3Links = Array.isArray(cmsData?.section3?.links) ? cmsData.section3.links.map((l: any) => ({ label: l.label || '', href: l.url || '#' })) : [];
+  const col1Title = String(sec1?.title ?? "").trim();
+  const col1Links = filterRenderableLinks(mapFooterLinks(sec1));
+  const showCol1 = col1Title.length > 0 || col1Links.length > 0;
+
+  const col2Title = String(sec2?.title ?? "").trim();
+  const col2Links = filterRenderableLinks(mapFooterLinks(sec2));
+  const showCol2 = col2Title.length > 0 || col2Links.length > 0;
+
+  const col3Title = String(sec3?.title ?? "").trim();
+  const col3Links = filterRenderableLinks(mapFooterLinks(sec3));
+  const showCol3 = col3Title.length > 0 || col3Links.length > 0;
 
   return (
     <footer className="relative overflow-hidden">
@@ -81,7 +90,7 @@ export default function Footer() {
 
                 {/* Logo as styled text */}
                 <Image
-                  src={cmsData?.logo || "/footerLogo.png"}
+                  src={typeof cmsData.logo === "string" && cmsData.logo.trim() ? cmsData.logo : "/footerLogo.png"}
                   alt="Ziply5 Logo"
                   width={140}
                   height={60}
@@ -89,31 +98,31 @@ export default function Footer() {
                 />
 
                 {/* Timings */}
-                {cmsData?.fromDay && cmsData?.toDay && (
+                {cmsData.fromDay && cmsData.toDay && (
                   <p className="text-sm font-medium font-melon leading-snug mb-4 text-[#4A1D1F]">
-                    {cmsData.fromDay} – {cmsData.toDay}:<br />
-                    {cmsData.fromTime} – {cmsData.toTime}
+                    {String(cmsData.fromDay)} – {String(cmsData.toDay)}:<br />
+                    {String(cmsData.fromTime ?? "")} – {String(cmsData.toTime ?? "")}
                   </p>
                 )}
 
                 {/* Phone */}
-                {cmsData?.phone && (
+                {cmsData.phone && (
                   <p className="font-medium font-melon text-sm text-[#4A1D1F] leading-snug">
-                    {cmsData.phone}
+                    {String(cmsData.phone)}
                   </p>
                 )}
 
                 {/* Email */}
-                {cmsData?.email && (
+                {cmsData.email && (
                   <p className="font-medium font-melon text-sm text-[#4A1D1F] leading-snug mb-5">
-                    {cmsData.email}
+                    {String(cmsData.email)}
                   </p>
                 )}
 
                 {/* Social Icons — white circle buttons with real SVGs */}
                 <div className="flex gap-2.5">
                   {/* LinkedIn */}
-                  {cmsData?.social1 && (
+                  {typeof cmsData.social1 === "string" && cmsData.social1.trim() && (
                     <a href={cmsData.social1} aria-label="LinkedIn"
                       className="w-9 h-9 bg-white rounded-full flex items-center justify-center  transition-colors">
                       <svg className="w-4 h-4 text-[#4A1D1F]" fill="currentColor" viewBox="0 0 24 24">
@@ -122,7 +131,7 @@ export default function Footer() {
                     </a>
                   )}
                   {/* Twitter / X */}
-                  {cmsData?.social2 && (
+                  {typeof cmsData.social2 === "string" && cmsData.social2.trim() && (
                     <a href={cmsData.social2} aria-label="Twitter"
                       className="w-9 h-9 bg-white rounded-full flex items-center justify-center  transition-colors">
                       <svg className="w-4 h-4 text-[#4A1D1F]" fill="currentColor" viewBox="0 0 24 24">
@@ -131,7 +140,7 @@ export default function Footer() {
                     </a>
                   )}
                   {/* Facebook */}
-                  {cmsData?.social3 && (
+                  {typeof cmsData.social3 === "string" && cmsData.social3.trim() && (
                     <a href={cmsData.social3} aria-label="Facebook"
                       className="w-9 h-9 bg-white rounded-full flex items-center justify-center  transition-colors">
                       <svg className="w-4 h-4 text-[#4A1D1F]" fill="currentColor" viewBox="0 0 24 24">
@@ -140,7 +149,7 @@ export default function Footer() {
                     </a>
                   )}
                   {/* YouTube */}
-                  {cmsData?.social4 && (
+                  {typeof cmsData.social4 === "string" && cmsData.social4.trim() && (
                     <a href={cmsData.social4} aria-label="YouTube"
                       className="w-9 h-9 bg-white rounded-full flex items-center justify-center  transition-colors">
                       <svg className="w-4 h-4 text-[#4A1D1F]" fill="currentColor" viewBox="0 0 24 24">
@@ -154,26 +163,11 @@ export default function Footer() {
             </div>
 
 
-            {col1Title && (
-              <FooterColumn
-                title={col1Title}
-                links={col1Links}
-              />
-            )}
+            {showCol1 ? <FooterColumn title={col1Title} links={col1Links} /> : null}
 
-            {col2Title && (
-              <FooterColumn
-                title={col2Title}
-                links={col2Links}
-              />
-            )}
+            {showCol2 ? <FooterColumn title={col2Title} links={col2Links} /> : null}
 
-            {col3Title && (
-              <FooterColumn
-                title={col3Title}
-                links={col3Links}
-              />
-            )}
+            {showCol3 ? <FooterColumn title={col3Title} links={col3Links} /> : null}
 
             {/* Newsletter */}
             <div>
@@ -215,9 +209,9 @@ export default function Footer() {
             {/* Yellow Line */}
             <div className="h-[2px] bg-yellow-400 w-full max-w-5xl mx-auto" />
 
-            {cmsData?.copyrightMsg && (
+            {cmsData.copyrightMsg && (
               <p className="text-center text-sm text-white font-semibold my-2">
-                © {cmsData.copyrightMsg}
+                © {String(cmsData.copyrightMsg)}
               </p>
             )}
 
@@ -245,7 +239,7 @@ function FooterColumn({
   return (
     <div>
 
-      <SectionTitle title={title} />
+      {title ? <SectionTitle title={title} /> : links.length > 0 ? <div className="mb-3" aria-hidden /> : null}
 
       <ul className="space-y-3">
 
@@ -263,7 +257,7 @@ function FooterColumn({
                 ›
               </span>
 
-              {link.label}
+              {link.label || link.href}
 
             </Link>
 

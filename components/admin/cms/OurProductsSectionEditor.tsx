@@ -43,7 +43,8 @@ export default function OurProductsSectionEditor({ value = { title: '', items: [
       <div className="grid grid-cols-2 gap-4 items-start">
         <div>
           <Label className="text-xs font-semibold text-[#646464] mb-1 block">Product Image</Label>
-          <ImageUploader 
+          <ImageUploader
+            folder="cms/our-products" 
             value={item.image}
             onChange={(image) => {
               const newItems = [...localValue.items];

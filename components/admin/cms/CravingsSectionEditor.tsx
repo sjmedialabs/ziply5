@@ -42,7 +42,8 @@ export default function CravingsSectionEditor({ value = { title: '', buttonText:
     <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-start">
       <div>
         <Label className="text-xs font-semibold text-[#646464] mb-1 block">Cravings Image</Label>
-        <ImageUploader 
+        <ImageUploader
+          folder="cms/cravings" 
           value={item.image}
           onChange={(image) => {
             const newItems = [...localValue.items];

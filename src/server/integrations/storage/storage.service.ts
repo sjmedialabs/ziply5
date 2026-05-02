@@ -72,6 +72,19 @@ const buildFileKey = (name: string) => {
   return `${Date.now()}-${base || "media"}-${hash}`
 }
 
+const RAW_UPLOAD_MAX_BYTES = Number(process.env.UPLOAD_RAW_MAX_BYTES ?? 512 * 1024)
+
+const rawAllowedExt = new Set([".png", ".jpg", ".jpeg", ".webp", ".gif", ".svg", ".ico"])
+
+const looksLikeIco = (buf: Uint8Array) =>
+  buf.length >= 4 && buf[0] === 0 && buf[1] === 0 && buf[2] === 1 && buf[3] === 0
+
+const looksLikeSvg = (buf: Uint8Array) => {
+  const sample = new TextDecoder("utf-8", { fatal: false }).decode(buf.slice(0, Math.min(buf.length, 600)))
+  const t = sample.trimStart().toLowerCase()
+  return t.startsWith("<svg") || t.startsWith("<?xml")
+}
+
 const trySharp = async () => {
   try {
     const mod = await import("sharp")
@@ -104,6 +117,27 @@ export const storageService = {
     if (!safe) return
     const absolutePath = path.join(env.STORAGE_LOCAL_PATH, safe)
     await fs.rm(absolutePath, { force: true }).catch(() => null)
+  },
+
+  /** Favicon / icon assets: stores bytes as-is (PNG, JPG, WebP, GIF, SVG, ICO). */
+  async saveRawUpload(input: { folder: string; originalName: string; buffer: Uint8Array }) {
+    const safeFolder = sanitizeSegment(input.folder)
+    if (!safeFolder) throw new Error("Invalid folder")
+    if (!input.buffer?.byteLength) throw new Error("Empty upload")
+    if (input.buffer.byteLength > RAW_UPLOAD_MAX_BYTES) {
+      throw new Error(`File exceeds ${RAW_UPLOAD_MAX_BYTES} bytes`)
+    }
+    let ext = path.extname(input.originalName).toLowerCase()
+    const sniff = detectMime(input.buffer)
+    if (!rawAllowedExt.has(ext)) {
+      if (looksLikeIco(input.buffer)) ext = ".ico"
+      else if (looksLikeSvg(input.buffer)) ext = ".svg"
+      else if (sniff) ext = extForMime(sniff)
+      else throw new Error("Unsupported file type for raw upload")
+    }
+    if (ext === ".svg" && !looksLikeSvg(input.buffer)) throw new Error("Invalid SVG")
+    const key = `${buildFileKey(input.originalName)}${ext}`
+    return this.saveFile({ folder: safeFolder, fileName: key, buffer: input.buffer })
   },
 
   async saveProductImageSet(input: {

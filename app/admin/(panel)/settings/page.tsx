@@ -1,12 +1,17 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { authedFetch } from "@/lib/dashboard-fetch";
+import { authedFetch, authedPost } from "@/lib/dashboard-fetch";
+import { uploadAdminImage } from "@/lib/admin-upload";
 import { ConsoleTable, ConsoleTd } from "@/components/dashboard/ConsoleTable";
 import LocationCreatorForm from "../../../../components/ui/LocationCreatorForm";
 import { useLocations } from "../../../../hooks/useLocations";
 import MasterDataCreatorForm from "../../../../components/ui/MasterDataCreatorForm";
-import { Trash2 } from "lucide-react";
+import { Trash2, Loader2, Save } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 
 type SettingRow = {
   id: string;
@@ -15,11 +20,36 @@ type SettingRow = {
   valueJson: unknown;
 };
 
+type StorefrontSeoForm = {
+  storeName: string;
+  tagline: string;
+  defaultMetaTitle: string;
+  defaultMetaDescription: string;
+  canonicalBaseUrl: string;
+  defaultOgImageUrl: string;
+  twitterSite: string;
+};
+
+const emptySeoForm = (): StorefrontSeoForm => ({
+  storeName: "",
+  tagline: "",
+  defaultMetaTitle: "",
+  defaultMetaDescription: "",
+  canonicalBaseUrl: "",
+  defaultOgImageUrl: "",
+  twitterSite: "",
+});
+
 export default function AdminSettingsPage() {
   const [rows, setRows] = useState<SettingRow[]>([]);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<"generic" | "locations" | "master_data">("generic");
+  const [activeTab, setActiveTab] = useState<"generic" | "locations" | "master_data" | "seo">("generic");
+  const [seoForm, setSeoForm] = useState<StorefrontSeoForm>(emptySeoForm);
+  const [seoLoading, setSeoLoading] = useState(false);
+  const [seoSaving, setSeoSaving] = useState(false);
+  const [seoError, setSeoError] = useState("");
+  const [ogImageUploading, setOgImageUploading] = useState(false);
 
   const { data: warehouses, refetch: refetchWarehouses, loading: loadingWarehouses } = useLocations("warehouse", undefined);
   const { data: states, refetch: refetchStates, loading: loadingStates } = useLocations("state", undefined);
@@ -38,6 +68,70 @@ export default function AdminSettingsPage() {
   useEffect(() => {
     load();
   }, [load]);
+
+  useEffect(() => {
+    if (activeTab !== "seo") return;
+    let cancelled = false;
+    setSeoLoading(true);
+    setSeoError("");
+    authedFetch<SettingRow[]>("/api/v1/settings?group=seo")
+      .then((list) => {
+        if (cancelled) return;
+        const row = list.find((r) => r.key === "storefront");
+        const raw = row?.valueJson;
+        const o =
+          raw != null && typeof raw === "object" && !Array.isArray(raw)
+            ? (raw as Record<string, unknown>)
+            : {};
+        const s = (k: string) => (typeof o[k] === "string" ? (o[k] as string) : "");
+        setSeoForm({
+          storeName: s("storeName"),
+          tagline: s("tagline"),
+          defaultMetaTitle: s("defaultMetaTitle"),
+          defaultMetaDescription: s("defaultMetaDescription"),
+          canonicalBaseUrl: s("canonicalBaseUrl"),
+          defaultOgImageUrl: s("defaultOgImageUrl"),
+          twitterSite: s("twitterSite"),
+        });
+      })
+      .catch((e: Error) => {
+        if (!cancelled) setSeoError(e.message);
+      })
+      .finally(() => {
+        if (!cancelled) setSeoLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [activeTab]);
+
+  const saveStorefrontSeo = async () => {
+    setSeoSaving(true);
+    setSeoError("");
+    const trim = (x: string) => {
+      const t = x.trim();
+      return t.length ? t : null;
+    };
+    try {
+      await authedPost("/api/v1/settings", {
+        group: "seo",
+        key: "storefront",
+        valueJson: {
+          storeName: trim(seoForm.storeName),
+          tagline: trim(seoForm.tagline),
+          defaultMetaTitle: trim(seoForm.defaultMetaTitle),
+          defaultMetaDescription: trim(seoForm.defaultMetaDescription),
+          canonicalBaseUrl: trim(seoForm.canonicalBaseUrl),
+          defaultOgImageUrl: trim(seoForm.defaultOgImageUrl),
+          twitterSite: trim(seoForm.twitterSite),
+        },
+      });
+    } catch (e: unknown) {
+      setSeoError(e instanceof Error ? e.message : "Save failed");
+    } finally {
+      setSeoSaving(false);
+    }
+  };
 
   const preview = (v: unknown) => {
     try {
@@ -95,6 +189,12 @@ export default function AdminSettingsPage() {
         >
           Location Management
         </button>
+        <button
+          className={`pb-2 text-sm font-semibold cursor-pointer transition-colors ${activeTab === 'seo' ? 'border-b-2 border-[#7B3010] text-[#7B3010]' : 'text-[#646464] hover:text-[#2A1810]'}`}
+          onClick={() => setActiveTab('seo')}
+        >
+          SEO & storefront
+        </button>
         {/* <button
           className={`pb-2 text-sm font-semibold cursor-pointer transition-colors ${activeTab === 'master_data' ? 'border-b-2 border-[#7B3010] text-[#7B3010]' : 'text-[#646464] hover:text-[#2A1810]'}`}
           onClick={() => setActiveTab('master_data')}
@@ -110,6 +210,137 @@ export default function AdminSettingsPage() {
         <div className="py-16 text-center rounded-2xl border border-[#E8DCC8] bg-white shadow-sm">
           <h2 className="font-melon text-xl font-bold text-[#4A1D1F]">Coming Soon</h2>
           <p className="mt-2 text-sm text-[#646464]">Generic settings configuration will be available in a future update.</p>
+        </div>
+      )}
+
+      {!loading && activeTab === "seo" && (
+        <div className="rounded-2xl border border-[#E8DCC8] bg-white p-6 shadow-sm space-y-6">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h2 className="font-melon text-xl font-bold text-[#4A1D1F]">SEO & storefront identity</h2>
+              <p className="mt-1 max-w-2xl text-sm text-[#646464]">
+                Defaults for the public shop: site title, descriptions, canonical URL, and sharing images. Product and CMS pages can override where supported.
+              </p>
+            </div>
+            <Button
+              type="button"
+              onClick={() => void saveStorefrontSeo()}
+              disabled={seoSaving || seoLoading}
+              className="gap-2 rounded-full bg-[#7B3010] hover:bg-[#5c240c]"
+            >
+              {seoSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+              {seoSaving ? "Saving…" : "Save"}
+            </Button>
+          </div>
+          {seoError ? <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-800">{seoError}</p> : null}
+          {seoLoading ? (
+            <p className="text-sm text-[#646464]">Loading SEO settings…</p>
+          ) : (
+            <div className="grid gap-5 md:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="seo-store-name">Store name</Label>
+                <Input
+                  id="seo-store-name"
+                  value={seoForm.storeName}
+                  onChange={(e) => setSeoForm((p) => ({ ...p, storeName: e.target.value }))}
+                  placeholder="ZIPLY5"
+                  className="border-[#E8DCC8]"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="seo-tagline">Tagline</Label>
+                <Input
+                  id="seo-tagline"
+                  value={seoForm.tagline}
+                  onChange={(e) => setSeoForm((p) => ({ ...p, tagline: e.target.value }))}
+                  placeholder="Nothing artificial. Everything delicious."
+                  className="border-[#E8DCC8]"
+                />
+              </div>
+              <div className="space-y-2 md:col-span-2">
+                <Label htmlFor="seo-default-title">Default meta title</Label>
+                <Input
+                  id="seo-default-title"
+                  value={seoForm.defaultMetaTitle}
+                  onChange={(e) => setSeoForm((p) => ({ ...p, defaultMetaTitle: e.target.value }))}
+                  placeholder="Leave empty to use “Store name — Tagline”"
+                  className="border-[#E8DCC8]"
+                />
+              </div>
+              <div className="space-y-2 md:col-span-2">
+                <Label htmlFor="seo-default-desc">Default meta description</Label>
+                <Textarea
+                  id="seo-default-desc"
+                  value={seoForm.defaultMetaDescription}
+                  onChange={(e) => setSeoForm((p) => ({ ...p, defaultMetaDescription: e.target.value }))}
+                  placeholder="Store-wide default for search snippets when a page does not define its own description."
+                  rows={4}
+                  className="border-[#E8DCC8]"
+                />
+              </div>
+              <div className="space-y-2 md:col-span-2">
+                <Label htmlFor="seo-canonical">Canonical site URL</Label>
+                <Input
+                  id="seo-canonical"
+                  value={seoForm.canonicalBaseUrl}
+                  onChange={(e) => setSeoForm((p) => ({ ...p, canonicalBaseUrl: e.target.value }))}
+                  placeholder="https://your-store.example.com"
+                  className="border-[#E8DCC8]"
+                />
+                <p className="text-xs text-[#646464]">Used as metadataBase for absolute URLs in metadata.</p>
+              </div>
+              <div className="space-y-2 md:col-span-2">
+                <Label htmlFor="seo-og">Default Open Graph image</Label>
+                <div className="flex flex-wrap items-center gap-3 rounded-lg border border-[#E8DCC8] bg-[#FFFBF3]/40 p-3">
+                  {seoForm.defaultOgImageUrl ? (
+                    <img
+                      src={seoForm.defaultOgImageUrl}
+                      alt=""
+                      className="h-20 max-w-[200px] rounded-md border border-[#E8DCC8] object-contain bg-white"
+                    />
+                  ) : null}
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Input
+                      id="seo-og"
+                      type="file"
+                      accept="image/*"
+                      disabled={ogImageUploading}
+                      className="max-w-xs cursor-pointer border-[#E8DCC8] text-sm file:cursor-pointer"
+                      onChange={(e) => {
+                        const f = e.target.files?.[0];
+                        e.target.value = "";
+                        if (!f || !f.type.startsWith("image/")) return;
+                        setOgImageUploading(true);
+                        void uploadAdminImage(f, "site/seo")
+                          .then((url) => {
+                            if (url) setSeoForm((p) => ({ ...p, defaultOgImageUrl: url }));
+                          })
+                          .catch(() => setSeoError("OG image upload failed"))
+                          .finally(() => setOgImageUploading(false));
+                      }}
+                    />
+                    {ogImageUploading ? <Loader2 className="h-4 w-4 animate-spin text-[#7B3010]" /> : null}
+                    {seoForm.defaultOgImageUrl ? (
+                      <Button type="button" variant="outline" size="sm" className="h-9" onClick={() => setSeoForm((p) => ({ ...p, defaultOgImageUrl: "" }))}>
+                        Clear image
+                      </Button>
+                    ) : null}
+                  </div>
+                </div>
+                <p className="text-xs text-[#646464]">Upload an image file; no manual URL entry.</p>
+              </div>
+              <div className="space-y-2 md:col-span-2">
+                <Label htmlFor="seo-twitter">Twitter / X handle (optional)</Label>
+                <Input
+                  id="seo-twitter"
+                  value={seoForm.twitterSite}
+                  onChange={(e) => setSeoForm((p) => ({ ...p, twitterSite: e.target.value }))}
+                  placeholder="@yourbrand"
+                  className="border-[#E8DCC8]"
+                />
+              </div>
+            </div>
+          )}
         </div>
       )}
 

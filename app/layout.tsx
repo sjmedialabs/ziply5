@@ -3,6 +3,7 @@ import type { Metadata } from "next"
 import { Inter, Baloo_2 } from "next/font/google"
 import "./globals.css"
 import { AppProvider } from "@/components/providers/app-provider"
+import { getRootLayoutMetadata } from "@/src/server/modules/site/site-settings"
 
 const inter = Inter({
   subsets: ["latin"],
@@ -17,28 +18,12 @@ const baloo = Baloo_2({
   preload: false,
 })
 
-export const metadata: Metadata = {
-  title: "ZIPLY5 - Nothing Artificial. Everything Delicious.",
-  description:
-    "Taste the authentic flavors of home-cooked meals. Ready-to-eat Indian food made with love and zero artificial ingredients.",
-  generator: "v0.app",
-  icons: {
-    icon: [
-      {
-        url: "/icon-light-32x32.png",
-        media: "(prefers-color-scheme: light)",
-      },
-      {
-        url: "/icon-dark-32x32.png",
-        media: "(prefers-color-scheme: dark)",
-      },
-      {
-        url: "/icon.svg",
-        type: "image/svg+xml",
-      },
-    ],
-    apple: "/apple-icon.png",
-  },
+export async function generateMetadata(): Promise<Metadata> {
+  const base = await getRootLayoutMetadata()
+  return {
+    ...base,
+    generator: "v0.app",
+  }
 }
 
 export default function RootLayout({

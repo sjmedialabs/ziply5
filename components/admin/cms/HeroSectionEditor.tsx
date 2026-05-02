@@ -48,7 +48,8 @@ export default function HeroSectionEditor({ value = { slides: [] }, onChange }: 
     <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-start">
       <div>
         <Label className="text-xs font-semibold text-[#646464] mb-1 block">Slide Image</Label>
-        <ImageUploader 
+        <ImageUploader
+          folder="cms/hero"
           value={slide.image}
           onChange={(image) => {
             const newSlides = [...localValue.slides];

@@ -1861,13 +1861,37 @@ export function ProductConsolePage({
                   )}
                 </div>
               </Field>
-              {/* meta details */}
-              <Field label="Meta Title">
-                <Input placeholder="Meta Title" value={metaTitle} onChange={(e) => setMetaTitle(e.target.value)} className="rounded-lg border border-[#D9D9D1] px-3 py-2 text-sm" />
-              </Field>
-              <Field label="Meta Description">
-                <Input placeholder="Meta Description" value={metaDescription} onChange={(e) => setMetaDescription(e.target.value)} className="rounded-lg border border-[#D9D9D1] px-3 py-2 text-sm md:col-span-2" />
-              </Field>
+              <div className="md:col-span-3 space-y-4 rounded-lg border border-[#E8DCC8] bg-[#FFFBF3]/30 p-4">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-[#4A1D1F]">Page SEO</p>
+                  <p className="mt-1 text-xs text-[#646464]">
+                    Override how this product appears in search and link previews. Leave blank to fall back to the product name and description.
+                  </p>
+                </div>
+                <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+                  <div className="md:col-span-1">
+                    <Field label="Meta title">
+                      <Input
+                        placeholder="e.g. Jar Honey — Buy online"
+                        value={metaTitle}
+                        onChange={(e) => setMetaTitle(e.target.value)}
+                        className="rounded-lg border border-[#D9D9D1] px-3 py-2 text-sm"
+                      />
+                    </Field>
+                  </div>
+                  <div className="md:col-span-2">
+                    <Field label="Meta description">
+                      <Textarea
+                        placeholder="Short compelling summary for SERPs and social cards (~155 characters)."
+                        value={metaDescription}
+                        onChange={(e) => setMetaDescription(e.target.value)}
+                        rows={3}
+                        className="rounded-lg border border-[#D9D9D1] px-3 py-2 text-sm"
+                      />
+                    </Field>
+                  </div>
+                </div>
+              </div>
               <Field label="Amazon Link">
                 <Input placeholder="Amazon Link" value={amazonLink} onChange={(e) => setAmazonLink(e.target.value)} className="rounded-lg border border-[#D9D9D1] px-3 py-2 text-sm md:col-span-2" />
               </Field>

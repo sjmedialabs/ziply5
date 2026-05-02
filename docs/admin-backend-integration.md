@@ -14,11 +14,9 @@ This scaffold adds backend APIs without changing existing UI design.
 ## 1) Setup
 
 1. Copy `.env.example` to `.env`.
-2. Start PostgreSQL and Redis.
-3. Run:
-   - `npm run prisma:generate`
-   - `npm run prisma:push`
-4. Start app: `npm run dev`.
+2. Start PostgreSQL and Redis (or use hosted Supabase + Redis).
+3. Apply SQL from `supabase/sql/` and `supabase/migrations/` to your database (see `docs/database-setup.md`).
+4. Start app: `pnpm dev` or `npm run dev`.
 
 ## 2) API Base
 

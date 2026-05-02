@@ -4,7 +4,7 @@ This phase removes runtime seller dependency while preserving route/API compatib
 
 ## Updated DB Schema
 
-`prisma/schema.prisma` now includes non-destructive ownership fields:
+Schema changes are applied via SQL under `supabase/` (non-destructive ownership fields):
 
 - `Product.createdById`, `Product.managedById`
 - `Order.createdById`, `Order.managedById`
@@ -17,7 +17,7 @@ This phase removes runtime seller dependency while preserving route/API compatib
 
 Run:
 
-- `prisma/admin-only-phase1.sql`
+- `supabase/sql/admin-only-phase1.sql`
 
 What it does:
 

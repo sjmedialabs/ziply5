@@ -85,7 +85,8 @@ export default function FooterSectionEditor({ value = {}, onChange }: FooterProp
         <div className="space-y-6">
           <div>
             <Label className="text-xs font-semibold text-[#646464] mb-1 block">Footer Logo</Label>
-            <ImageUploader 
+            <ImageUploader
+              folder="cms/footer" 
               value={value.logo || ''} 
               onChange={(image) => updateField('logo', image)} 
             />

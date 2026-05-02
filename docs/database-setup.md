@@ -1,32 +1,23 @@
-# Database setup (Prisma + Supabase)
+# Database setup (Supabase Postgres)
+
+Runtime access uses **`pg`** (`DATABASE_URL`) and **`@supabase/supabase-js`** where applicable—not Prisma.
 
 ## Symptom
 
-Errors like `P2021` / `The table public.Product does not exist` mean the Postgres database you connect to with `DATABASE_URL` does not yet have the tables from `prisma/schema.prisma`.
+If `/api/v1/products` fails or login reports missing tables, the Postgres database behind **`DATABASE_URL`** does not yet match this repo’s schema.
 
-## Standard workflow
+## Apply schema
 
 1. Set **`DATABASE_URL`** to your Supabase **transaction pooler** URL (often port **6543** with `pgbouncer=true`).
-2. Set **`DIRECT_URL`** to a connection Prisma can use for **DDL** (creating tables). If `db.<project>.supabase.co:5432` is unreachable from your network, use the Supabase **session pooler** on port **5432** (same host as the 6543 pooler, different port).
-3. Apply schema changes via migrations (never `db push` on shared environments):
+2. Set **`DIRECT_URL`** (if you use scripts that need DDL or session mode) to a suitable Postgres URL (often port **5432**).
 
-```bash
-npx prisma migrate dev --name <migration_name>
-npx prisma generate
-```
+In the **Supabase SQL Editor** (or `psql` against `DIRECT_URL`), apply:
 
-For staging/production deploys:
+- **`supabase/sql/init.sql`** — baseline tables (and related bundled scripts in `supabase/sql/` as your deployment needs).
+- **`supabase/migrations/*.sql`** — ordered incremental changes (filenames are timestamp-prefixed; run in chronological order).
 
-```bash
-npx prisma migrate deploy
-npx prisma generate
-```
+Optional: **`supabase/sql/supabase-rest-grants.sql`** — fixes PostgREST “permission denied for schema public” when using the Data API.
 
-If your local DB drifted and you need a clean rebuild:
+After tables exist, seed/auth helpers (e.g. `pnpm seed:auth`) and the app APIs should work against the database.
 
-```bash
-npx prisma migrate reset
-npx prisma generate
-```
-
-After this, `/api/v1/products` and admin product management should work against the database.
+See **`docs/supabase-migrations.md`** for how we maintain SQL in this repo.

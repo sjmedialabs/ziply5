@@ -783,7 +783,7 @@ export const createOrderShipment = async (input: {
         })),
       }
     } catch (error) {
-      logger.warn("orders.shipment.supabase_fallback_prisma", {
+      logger.warn("orders.shipment.supabase_pg_fallback", {
         orderId: input.orderId,
         error: error instanceof Error ? error.message : "unknown",
       })
@@ -915,7 +915,7 @@ export const confirmOrderDelivery = async (input: {
       if (!fulfillmentApplied) throw new Error("supabase_fulfillment_write_failed")
       persisted = true
     } catch (error) {
-      logger.warn("orders.delivery.supabase_fallback_prisma", {
+      logger.warn("orders.delivery.supabase_pg_fallback", {
         orderId: input.orderId,
         shipmentId: shipmentToUpdate ?? null,
         error: error instanceof Error ? error.message : "unknown",

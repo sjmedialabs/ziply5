@@ -20,7 +20,7 @@ export async function POST(request: Request) {
     const message = error instanceof Error ? error.message : "Unexpected error"
     if (message.includes("public.User") && message.includes("does not exist")) {
       return fail(
-        "Database schema is not initialized. Run prisma/init.sql in Supabase SQL Editor, then retry.",
+        'Database schema is not initialized. Run supabase/sql/init.sql (and supabase/migrations/*.sql as needed) in the Supabase SQL Editor, then retry.',
         503,
       )
     }

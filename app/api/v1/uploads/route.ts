@@ -39,11 +39,30 @@ export async function POST(request: NextRequest) {
 
   const uploaded: Array<Record<string, unknown>> = []
   const createdRelative: string[] = []
+  const useRawFaviconUpload = folder.toLowerCase().startsWith("site/favicons")
   try {
     for (let i = 0; i < allFiles.length; i++) {
       const file = allFiles[i]
       if (!file.name) continue
       const bytes = new Uint8Array(await file.arrayBuffer())
+      if (useRawFaviconUpload) {
+        const saved = await storageService.saveRawUpload({
+          folder,
+          originalName: file.name,
+          buffer: bytes,
+        })
+        createdRelative.push(String(saved.relativePath))
+        const url = String(saved.url)
+        uploaded.push({
+          name: file.name,
+          size: file.size,
+          type: file.type,
+          relativePath: saved.relativePath,
+          url,
+          variants: { original: url, medium: url, thumbnail: url },
+        })
+        continue
+      }
       const saved = await storageService.saveProductImageSet({
         folder,
         originalName: file.name,

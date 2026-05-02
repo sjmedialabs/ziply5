@@ -13,8 +13,17 @@ export const listCmsPages = async () => {
 }
 
 export const getCmsPageBySlug = async (slug: string) => {
-  const pages = await pgQuery<{ id: string; slug: string; title: string; status: string; createdAt: Date; updatedAt: Date }>(
-    `SELECT id, slug, title, status, "createdAt", "updatedAt" FROM "CmsPage" WHERE slug = $1 LIMIT 1`,
+  const pages = await pgQuery<{
+    id: string
+    slug: string
+    title: string
+    status: string
+    metaTitle: string | null
+    metaDescription: string | null
+    createdAt: Date
+    updatedAt: Date
+  }>(
+    `SELECT id, slug, title, status, "metaTitle", "metaDescription", "createdAt", "updatedAt" FROM "CmsPage" WHERE slug = $1 LIMIT 1`,
     [slug],
   )
   const page = pages[0]
@@ -30,19 +39,33 @@ export const upsertCmsPage = async (input: {
   slug: string
   title: string
   status?: string
+  metaTitle?: string | null
+  metaDescription?: string | null
   sections?: Array<{ sectionType: string; position: number; contentJson: unknown }>
 }) => {
   await pgTx(async (client) => {
     const pageId = crypto.randomUUID()
     const upsert = await client.query(
       `
-        INSERT INTO "CmsPage" (id, slug, title, status, "createdAt", "updatedAt")
-        VALUES ($1,$2,$3,$4, now(), now())
+        INSERT INTO "CmsPage" (id, slug, title, status, "metaTitle", "metaDescription", "createdAt", "updatedAt")
+        VALUES ($1,$2,$3,$4,$5,$6, now(), now())
         ON CONFLICT (slug)
-        DO UPDATE SET title = EXCLUDED.title, status = EXCLUDED.status, "updatedAt" = now()
+        DO UPDATE SET
+          title = EXCLUDED.title,
+          status = EXCLUDED.status,
+          "metaTitle" = EXCLUDED."metaTitle",
+          "metaDescription" = EXCLUDED."metaDescription",
+          "updatedAt" = now()
         RETURNING id
       `,
-      [pageId, input.slug, input.title, input.status ?? "draft"],
+      [
+        pageId,
+        input.slug,
+        input.title,
+        input.status ?? "draft",
+        input.metaTitle ?? null,
+        input.metaDescription ?? null,
+      ],
     )
     const id = upsert.rows[0].id as string
 

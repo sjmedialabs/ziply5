@@ -35,14 +35,16 @@ export default function CollectionBannerSectionEditor({ value = {}, onChange }: 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
           <div>
             <Label className="text-xs text-[#646464] block mb-1">Main Image</Label>
-            <ImageUploader 
+            <ImageUploader
+              folder="cms/collection-banner" 
               value={slide.mainImage || ''}
               onChange={(image) => onChange({ ...value, slides: [{ ...slide, mainImage: image }] })}
             />
           </div>
           <div>
             <Label className="text-xs text-[#646464] block mb-1">Secondary Image (New Icon)</Label>
-            <ImageUploader 
+            <ImageUploader
+              folder="cms/collection-banner" 
               value={slide.secondaryImage || ''}
               onChange={(image) => onChange({ ...value, slides: [{ ...slide, secondaryImage: image }] })}
             />

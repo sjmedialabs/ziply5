@@ -2,6 +2,8 @@
 
 import { useEffect, useMemo, useState } from "react"
 import { authedFetch, authedPost, authedPut } from "@/lib/dashboard-fetch"
+import { uploadAdminImage } from "@/lib/admin-upload"
+import { Loader2 } from "lucide-react"
 
 type ProductLite = { id: string; name: string; slug: string; thumbnail?: string | null }
 
@@ -35,6 +37,7 @@ export function ComboForm({ bundleId, onSaved }: ComboFormProps) {
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState("")
+  const [imageUploading, setImageUploading] = useState(false)
 
   useEffect(() => {
     let cancelled = false
@@ -167,8 +170,39 @@ export function ComboForm({ bundleId, onSaved }: ComboFormProps) {
       </div>
       <div className="grid gap-3 md:grid-cols-2">
         <label className="block text-sm">
-          <span className="text-xs font-semibold uppercase tracking-wide text-[#7A7A7A]">Image URL</span>
-          <input className="mt-1 w-full rounded border px-3 py-2 text-sm" value={image} onChange={(e) => setImage(e.target.value)} placeholder="Optional" />
+          <span className="text-xs font-semibold uppercase tracking-wide text-[#7A7A7A]">Combo image</span>
+          <div className="mt-1 flex flex-wrap items-center gap-3 rounded border border-[#E8DCC8] bg-[#FFFBF3]/30 px-3 py-2">
+            {image ? (
+              <img src={image} alt="" className="h-16 w-16 rounded object-cover border border-[#E8DCC8]" />
+            ) : null}
+            <span className="relative inline-flex items-center gap-2">
+              <input
+                type="file"
+                accept="image/*"
+                disabled={imageUploading}
+                className="max-w-[200px] cursor-pointer text-xs file:cursor-pointer"
+                onChange={(e) => {
+                  const f = e.target.files?.[0]
+                  e.target.value = ""
+                  if (!f || !f.type.startsWith("image/")) return
+                  setImageUploading(true)
+                  void uploadAdminImage(f, "bundles/cover")
+                    .then((url) => {
+                      if (url) setImage(url)
+                    })
+                    .catch(() => setError("Image upload failed"))
+                    .finally(() => setImageUploading(false))
+                }}
+              />
+              {imageUploading ? <Loader2 className="h-4 w-4 animate-spin text-[#7B3010]" /> : null}
+            </span>
+            {image ? (
+              <button type="button" className="text-xs font-semibold uppercase text-red-700 hover:underline" onClick={() => setImage("")}>
+                Clear
+              </button>
+            ) : null}
+          </div>
+          <span className="mt-1 block text-[10px] text-[#9A9A92]">Upload only — stored on server.</span>
         </label>
         <label className="block text-sm">
           <span className="text-xs font-semibold uppercase tracking-wide text-[#7A7A7A]">Description</span>

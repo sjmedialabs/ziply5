@@ -29,7 +29,8 @@ export default function HeaderSectionEditor({ value = {}, onChange }: HeaderProp
         <div className="space-y-4">
           <div>
             <Label className="text-xs font-semibold text-[#646464] mb-1 block">Header Logo</Label>
-            <ImageUploader 
+            <ImageUploader
+              folder="cms/header" 
               value={value.logo || ''} 
               onChange={(image) => updateField('logo', image)} 
             />

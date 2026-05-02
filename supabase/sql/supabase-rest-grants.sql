@@ -3,7 +3,7 @@
 --   { "code": "42501", "message": "permission denied for schema public" }
 --
 -- Run via psql:
---   psql "$DIRECT_URL" -f prisma/supabase-rest-grants.sql
+--   psql "$DIRECT_URL" -f supabase/sql/supabase-rest-grants.sql
 -- Or via the bundled Node script:
 --   node --env-file=.env scripts/fix-supabase-grants.mjs
 

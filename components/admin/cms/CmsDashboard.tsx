@@ -6,9 +6,10 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Badge } from '@/components/ui/badge';
+import { Textarea } from '@/components/ui/textarea';
 import { Loader2, Save, AlertCircle } from 'lucide-react';
 import { authedFetch, authedPost } from '@/lib/dashboard-fetch';
+import { uploadAdminImage } from '@/lib/admin-upload';
 import HeroSectionEditor from './HeroSectionEditor';
 import OurProductsSectionEditor from './OurProductsSectionEditor';
 import TrendingSectionEditor from './TrendingSectionEditor';
@@ -51,8 +52,20 @@ export default function CmsDashboard() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
-  const [tab, setTab] = useState<'home' | 'about' | 'privacy' | 'terms' | 'returns' | 'shipping' | 'contact' | 'faq' | 'promos' | 'header' | 'footer'>('home');
+  const [tab, setTab] = useState<
+    'home' | 'about' | 'privacy' | 'terms' | 'returns' | 'shipping' | 'contact' | 'faq' | 'promos' | 'header' | 'footer' | 'favicons'
+  >('home');
   const [seo, setSeo] = useState({ metaTitle: '', metaDescription: '' });
+  const [faviconForm, setFaviconForm] = useState({
+    faviconIco: '',
+    favicon16: '',
+    favicon32: '',
+    appleTouch: '',
+    svg: '',
+  });
+  const [faviconLoading, setFaviconLoading] = useState(false);
+  const [faviconSaving, setFaviconSaving] = useState(false);
+  const [faviconUploadKey, setFaviconUploadKey] = useState<keyof typeof faviconForm | null>(null);
 
   // Section types for Home
   const homeSections = [
@@ -125,6 +138,8 @@ export default function CmsDashboard() {
           title: slug === 'home' ? 'Home Page' : slug === 'about' ? 'About Page' : slug === 'privacy' ? 'Privacy Policy' : slug === 'terms' ? 'Terms & Conditions' : slug === 'returns' ? 'Return & Refund' : slug === 'shipping' ? 'Shipping Info' : slug === 'contact' ? 'Contact Us' : slug === 'promos' ? 'Promos' : slug === 'header' ? 'Header Settings' : slug === 'footer' ? 'Footer Settings' : 'FAQ',
           status: 'draft' as const,
           sections: [],
+          metaTitle: '',
+          metaDescription: '',
         };
         setPage(stub);
       }
@@ -161,9 +176,82 @@ export default function CmsDashboard() {
     }
   };
 
+  const uploadFaviconSlot = useCallback(async (key: keyof typeof faviconForm, file: File | undefined) => {
+    if (!file || faviconLoading) return;
+    setFaviconUploadKey(key);
+    setError('');
+    try {
+      const url = await uploadAdminImage(file, 'site/favicons');
+      setFaviconForm((p) => ({ ...p, [key]: url }));
+    } catch {
+      setError('Favicon upload failed');
+    } finally {
+      setFaviconUploadKey(null);
+    }
+  }, [faviconLoading]);
+
+  const saveFavicons = async () => {
+    setFaviconSaving(true);
+    setError('');
+    const trim = (s: string) => {
+      const t = s.trim();
+      return t.length ? t : null;
+    };
+    try {
+      await authedPost('/api/v1/settings', {
+        group: 'site',
+        key: 'favicons',
+        valueJson: {
+          faviconIco: trim(faviconForm.faviconIco),
+          favicon16: trim(faviconForm.favicon16),
+          favicon32: trim(faviconForm.favicon32),
+          appleTouch: trim(faviconForm.appleTouch),
+          svg: trim(faviconForm.svg),
+        },
+      });
+    } catch {
+      setError('Failed to save favicon settings');
+    } finally {
+      setFaviconSaving(false);
+    }
+  };
+
   useEffect(() => {
+    if (tab === 'favicons') {
+      setLoading(false);
+      return;
+    }
     loadPage(tab);
   }, [tab, loadPage]);
+
+  useEffect(() => {
+    if (tab !== 'favicons') return;
+    let cancelled = false;
+    setFaviconLoading(true);
+    authedFetch<Array<{ group: string; key: string; valueJson: unknown }>>('/api/v1/settings?group=site')
+      .then((rows) => {
+        if (cancelled) return;
+        const raw = rows.find((r) => r.key === 'favicons')?.valueJson;
+        const v = raw && typeof raw === 'object' && !Array.isArray(raw) ? (raw as Record<string, unknown>) : {};
+        const s = (x: unknown) => (typeof x === 'string' ? x : '');
+        setFaviconForm({
+          faviconIco: s(v.faviconIco),
+          favicon16: s(v.favicon16),
+          favicon32: s(v.favicon32),
+          appleTouch: s(v.appleTouch),
+          svg: s(v.svg),
+        });
+      })
+      .catch(() => {
+        if (!cancelled) setError('Failed to load favicon settings');
+      })
+      .finally(() => {
+        if (!cancelled) setFaviconLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [tab]);
 
   const updateSection = (type: string, content: any) => {
     if (!page) return;
@@ -199,10 +287,17 @@ export default function CmsDashboard() {
           </p>
         </div>
         <div className="flex gap-2">
-          <Button onClick={savePage} disabled={saving || !page} variant="default" className="gap-2">
-            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-            {saving ? 'Saving...' : 'Save Page'}
-          </Button>
+          {tab === 'favicons' ? (
+            <Button onClick={() => void saveFavicons()} disabled={faviconSaving || faviconLoading} variant="default" className="gap-2">
+              {faviconSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+              {faviconSaving ? 'Saving...' : 'Save favicons'}
+            </Button>
+          ) : (
+            <Button onClick={savePage} disabled={saving || !page} variant="default" className="gap-2">
+              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+              {saving ? 'Saving...' : 'Save Page'}
+            </Button>
+          )}
         </div>
       </div>
 
@@ -215,7 +310,7 @@ export default function CmsDashboard() {
         </Card>
       )}
 
-      <Tabs value={tab} onValueChange={(v) => setTab(v as any)} className="space-y-4">
+      <Tabs value={tab} onValueChange={(v) => setTab(v as typeof tab)} className="space-y-4">
         <TabsList className="flex flex-wrap justify-start w-full h-auto gap-1">
           <TabsTrigger className='cursor-pointer data-[state=active]:bg-primary data-[state=active]:text-white' value="home">Home</TabsTrigger>
           <TabsTrigger className='cursor-pointer data-[state=active]:bg-primary data-[state=active]:text-white' value="about">About</TabsTrigger>
@@ -228,6 +323,7 @@ export default function CmsDashboard() {
           {/* <TabsTrigger className='cursor-pointer data-[state=active]:bg-primary data-[state=active]:text-white' value="promos">Promos</TabsTrigger> */}
           <TabsTrigger className='cursor-pointer data-[state=active]:bg-primary data-[state=active]:text-white' value="header">Header</TabsTrigger>
           <TabsTrigger className='cursor-pointer data-[state=active]:bg-primary data-[state=active]:text-white' value="footer">Footer</TabsTrigger>
+          <TabsTrigger className='cursor-pointer data-[state=active]:bg-primary data-[state=active]:text-white' value="favicons">Favicons</TabsTrigger>
         </TabsList>
         
         <TabsContent value="home" className="space-y-6 mt-0">
@@ -372,37 +468,92 @@ export default function CmsDashboard() {
             ))}
           </div>
         </TabsContent>
+
+        <TabsContent value="favicons" className="space-y-6 mt-0">
+          <Card className="border-[#E8DCC8]">
+            <CardContent className="p-6 space-y-4">
+              <div>
+                <h3 className="font-semibold text-[#4A1D1F]">Site favicons</h3>
+                <p className="mt-1 text-sm text-[#646464]">
+                  Upload each asset below. Files are stored on the server and wired into storefront metadata after you save.
+                </p>
+              </div>
+              {faviconLoading ? (
+                <div className="flex justify-center py-8">
+                  <Loader2 className="h-8 w-8 animate-spin text-[#4A1D1F]" />
+                </div>
+              ) : (
+                <div className="grid gap-5 sm:grid-cols-2">
+                  {([
+                    { key: 'svg' as const, label: 'SVG icon (optional)' },
+                    { key: 'favicon16' as const, label: '16×16 (PNG recommended)' },
+                    { key: 'favicon32' as const, label: '32×32 (PNG recommended)' },
+                    { key: 'appleTouch' as const, label: 'Apple touch icon' },
+                    { key: 'faviconIco' as const, label: '.ico shortcut (optional)' },
+                  ]).map(({ key, label }) => (
+                    <div key={key} className={`space-y-2 ${key === 'svg' ? 'sm:col-span-2' : ''}`}>
+                      <Label className="text-sm text-[#646464]">{label}</Label>
+                      <div className="flex flex-wrap items-center gap-2">
+                        {faviconForm[key] ? (
+                          <img src={faviconForm[key]} alt="" className="h-12 w-12 object-contain rounded border border-[#E8DCC8] bg-white p-0.5" />
+                        ) : null}
+                        <Input
+                          type="file"
+                          accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml,.ico"
+                          className="max-w-[220px] cursor-pointer text-xs"
+                          disabled={faviconUploadKey !== null}
+                          onChange={(e) => {
+                            const f = e.target.files?.[0];
+                            void uploadFaviconSlot(key, f);
+                            e.target.value = '';
+                          }}
+                        />
+                        {faviconUploadKey === key ? <Loader2 className="h-4 w-4 animate-spin text-[#4A1D1F]" /> : null}
+                        {faviconForm[key] ? (
+                          <Button type="button" variant="outline" size="sm" className="h-8 text-xs" onClick={() => setFaviconForm((p) => ({ ...p, [key]: '' }))}>
+                            Clear
+                          </Button>
+                        ) : null}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
       </Tabs>
 
-      {/* <Card className="border-[#E8DCC8]">
-        <CardContent className="p-6">
-          <h3 className="font-semibold text-[#4A1D1F] mb-4">SEO Settings</h3>
-          <div className="space-y-3">
-            <div>
-              <Label className="text-sm text-[#646464]">Meta Title</Label>
-              <Input
-                value={seo.metaTitle}
-                onChange={(e) => setSeo({...seo, metaTitle: e.target.value})}
-                className="mt-1 h-9"
-                placeholder="Page SEO title (60 chars)"
-              />
+      {tab !== 'favicons' && (
+        <Card className="border-[#E8DCC8]">
+          <CardContent className="p-6">
+            <h3 className="font-semibold text-[#4A1D1F] mb-1">Page SEO</h3>
+            <p className="mb-4 text-sm text-[#646464]">
+              Meta title and description for this CMS route (used when server-rendered metadata is wired for static pages).
+            </p>
+            <div className="space-y-3">
+              <div>
+                <Label className="text-sm text-[#646464]">Meta title</Label>
+                <Input
+                  value={seo.metaTitle}
+                  onChange={(e) => setSeo({ ...seo, metaTitle: e.target.value })}
+                  className="mt-1 h-9"
+                  placeholder="Concise title (~60 characters)"
+                />
+              </div>
+              <div>
+                <Label className="text-sm text-[#646464]">Meta description</Label>
+                <Textarea
+                  value={seo.metaDescription}
+                  onChange={(e) => setSeo({ ...seo, metaDescription: e.target.value })}
+                  className="mt-1 min-h-[88px]"
+                  placeholder="Summary for search results (~155–160 characters)"
+                />
+              </div>
             </div>
-            <div>
-              <Label className="text-sm text-[#646464]">Meta Description</Label>
-              <Input
-                value={seo.metaDescription}
-                onChange={(e) => setSeo({...seo, metaDescription: e.target.value})}
-                className="mt-1 h-9"
-                placeholder="Page SEO description (160 chars)"
-              />
-            </div>
-          </div>
-        </CardContent>
-      </Card> */}
-
-      {/* <div className="text-xs text-[#646464] text-center pt-8 border-t">
-        Status: {page?.status?.toUpperCase() || 'DRAFT'} | Ready to save changes
-      </div> */}
+          </CardContent>
+        </Card>
+      )}
 
     </div>
   );

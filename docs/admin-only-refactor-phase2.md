@@ -30,7 +30,7 @@ Phase 2 removes remaining runtime seller code paths while preserving route/API c
 - `components/dashboard/ProductConsolePage.tsx`
 - `app/admin/(panel)/dashboard/page.tsx`
 - `scripts/seed-auth.mjs`
-- `prisma/auth-init.sql`
+- `supabase/sql/auth-init.sql`
 - `src/client/bindings/admin-auth.binding.ts`
 
 ## Regression Checklist (Phase 2)

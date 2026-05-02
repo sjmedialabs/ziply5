@@ -76,7 +76,8 @@ export default function AboutTeamEditor({ value, onChange }: { value: any, onCha
                 </div>
                 <div className="col-span-1 md:col-span-2 mt-2">
                   <Label className="text-xs text-[#646464] block mb-1">Image Upload</Label>
-                  <ImageUploader 
+                  <ImageUploader
+                    folder="cms/about-team" 
                     value={member.imageUrl || ''} 
                     onChange={(image) => {
                       const newM = [...members];

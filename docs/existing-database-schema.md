@@ -1,10 +1,11 @@
 # Existing Database Schema (Admin-Enterprise)
 
-Primary source: `prisma/schema.prisma`.
+Authoritative DDL lives in SQL under **`supabase/sql/`** and **`supabase/migrations/`** (no generated ORM schema in-repo).
 
-This file is a **downloadable overview** (not a full copy of `schema.prisma`), so it’s easy to share. For the complete, authoritative schema, use:
-- `prisma/schema.prisma`
-- Migration scripts: `prisma/init.sql`, `prisma/auth-init.sql`, `prisma/admin-only-phase1.sql`, and the additive enterprise scripts in `prisma/`.
+This file is a **human-readable overview** only. For tables and constraints, apply or inspect:
+- `supabase/sql/init.sql`, `supabase/sql/auth-init.sql`, `supabase/sql/admin-only-phase1.sql`
+- Additive scripts in `supabase/sql/` (enterprise phases, grants, etc.)
+- Timestamped files in `supabase/migrations/`
 
 ## Enums
 - `UserStatus`: `active`, `suspended`, `deleted`

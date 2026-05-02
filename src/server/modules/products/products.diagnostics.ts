@@ -2,7 +2,7 @@ import { pgQuery } from "@/src/server/db/pg"
 
 export const getProductApiDiagnostics = async () => {
   const diagnostics = {
-    prismaClientReady: false,
+    dbDriver: "postgres" as const,
     dbConnectionOk: false,
     productTableExists: false,
   }

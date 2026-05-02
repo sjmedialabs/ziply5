@@ -43,7 +43,8 @@ export default function TermsAndConditionsSectionEditor({ value = { content: '' 
           </div>
           <div>
             <Label className="text-xs font-semibold text-[#646464] mb-1 block">Banner Image</Label>
-            <ImageUploader 
+            <ImageUploader
+              folder="cms/terms" 
               value={value.bgImage || ''} 
               onChange={(image) => onChange({ ...value, bgImage: image })} 
             />

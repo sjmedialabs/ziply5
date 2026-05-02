@@ -22,7 +22,8 @@ export default function AboutHeroEditor({ value = {}, onChange }: { value: any, 
         </div>
         <div>
           <Label className="text-xs text-[#646464] block mb-1">Banner Image</Label>
-          <ImageUploader 
+          <ImageUploader
+            folder="cms/about-hero" 
             value={value.bgImage || ''} 
             onChange={(image) => onChange({ ...value, bgImage: image })} 
           />

@@ -4,7 +4,7 @@ This phase extends the admin-only backend into enterprise-ready foundations with
 
 ## Updated DB schema
 
-`prisma/schema.prisma` now includes additive enterprise models and fields:
+Additive enterprise models and fields (apply via SQL under `supabase/sql/`):
 
 - Product compliance:
   - `ProductComplianceProfile`
@@ -61,7 +61,7 @@ This phase extends the admin-only backend into enterprise-ready foundations with
 
 ## Migration plan
 
-Script: `prisma/enterprise-admin-foundation.sql`
+Script: `supabase/sql/enterprise-admin-foundation.sql`
 
 Principles:
 
@@ -69,11 +69,10 @@ Principles:
 - Existing seller-era columns untouched for compatibility.
 - Existing APIs/UI remain valid.
 
-Execution:
+Execution (Supabase SQL Editor or `psql`):
 
 ```bash
-npx prisma db execute --file "prisma/enterprise-admin-foundation.sql" --schema "prisma/schema.prisma"
-npx prisma generate
+psql "$DIRECT_URL" -f supabase/sql/enterprise-admin-foundation.sql
 ```
 
 ## API structure added

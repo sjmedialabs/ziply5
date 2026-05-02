@@ -32,7 +32,8 @@ export default function AboutMissionEditor({ value, onChange }: { value: any, on
         </div>
         <div>
           <Label className="text-xs text-[#646464] block mb-1">Mission Image</Label>
-          <ImageUploader 
+          <ImageUploader
+            folder="cms/about-mission" 
             value={value.imageUrl || ''} 
             onChange={(image) => onChange({ ...value, imageUrl: image })} 
           />

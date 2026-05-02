@@ -10,6 +10,8 @@ const upsertCmsSchema = z.object({
   slug: z.string().min(1),
   title: z.string().min(1),
   status: z.string().optional(),
+  metaTitle: z.string().nullable().optional(),
+  metaDescription: z.string().nullable().optional(),
   sections: z
     .array(
       z.object({
@@ -48,6 +50,8 @@ export async function GET(request: NextRequest) {
             slug,
             title: slug === "header" ? "Header Settings" : "Footer Settings",
             status: "draft",
+            metaTitle: null,
+            metaDescription: null,
             sections: [],
           },
           "CMS page defaulted",
@@ -79,6 +83,8 @@ export async function POST(request: NextRequest) {
     slug: parsed.data.slug,
     title: parsed.data.title,
     status: parsed.data.status,
+    metaTitle: parsed.data.metaTitle,
+    metaDescription: parsed.data.metaDescription,
     sections: parsed.data.sections?.map((section) => ({
       sectionType: section.sectionType,
       position: section.position,
