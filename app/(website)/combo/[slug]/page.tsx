@@ -4,6 +4,7 @@ import { use, useEffect, useMemo, useState } from "react"
 import Image from "next/image"
 import Link from "next/link"
 import { addToCart, getCartItems, setCartItemQuantity } from "@/lib/cart"
+import { FALLBACK_PRODUCT_IMAGE } from "@/lib/storefront-products"
 
 type BundleProduct = { productId: string; name: string; slug: string; price: number; thumbnail?: string | null }
 type BundleDetail = {
@@ -59,7 +60,7 @@ export default function ComboDetailPage({ params }: { params: Promise<{ slug: st
         name: bundle.name,
         variantId: null,
         price: Number(bundle.effectivePrice || 0),
-        image: bundle.image || bundle.products[0]?.thumbnail || "/placeholder.jpg",
+        image: bundle.image || bundle.products[0]?.thumbnail || FALLBACK_PRODUCT_IMAGE,
         weight: `${bundle.products.length} items`,
       },
       1,
@@ -76,7 +77,7 @@ export default function ComboDetailPage({ params }: { params: Promise<{ slug: st
       </Link>
       <div className="grid gap-6 rounded-2xl border border-[#E8DCC8] bg-white p-5 md:grid-cols-[300px_1fr]">
         <div className="relative h-72 overflow-hidden rounded-xl bg-[#FFFBF3]">
-          <Image src={bundle.image || bundle.products[0]?.thumbnail || "/placeholder.jpg"} alt={bundle.name} fill className="object-contain p-3" />
+          <Image src={bundle.image || bundle.products[0]?.thumbnail || FALLBACK_PRODUCT_IMAGE} alt={bundle.name} fill className="object-contain p-3" />
         </div>
         <div className="space-y-3">
           <h1 className="font-melon text-3xl font-bold text-[#4A1D1F]">{bundle.name}</h1>
@@ -94,7 +95,7 @@ export default function ComboDetailPage({ params }: { params: Promise<{ slug: st
               <button
                 onClick={() =>
                   setCartItemQuantity(
-                    { slug: bundle.slug, name: bundle.name, variantId: null, price: Number(bundle.effectivePrice), image: bundle.image || "/placeholder.jpg", weight: `${bundle.products.length} items` },
+                    { slug: bundle.slug, name: bundle.name, variantId: null, price: Number(bundle.effectivePrice), image: bundle.image || FALLBACK_PRODUCT_IMAGE, weight: `${bundle.products.length} items` },
                     qty + 1,
                   )
                 }

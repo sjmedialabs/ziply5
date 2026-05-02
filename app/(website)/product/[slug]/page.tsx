@@ -6,7 +6,7 @@ import { useParams, useRouter } from "next/navigation"
 import { ArrowLeft, ChevronLeft, ChevronRight } from "lucide-react"
 import { getFavoriteSlugs, toggleFavoriteSlug } from "@/lib/favorites"
 import { addToCart, getCartItems, getCartQuantity, setCartItemQuantity } from "@/lib/cart"
-import { toStorefrontProduct, type StorefrontProduct } from "@/lib/storefront-products"
+import { FALLBACK_PRODUCT_IMAGE, toStorefrontProduct, type StorefrontProduct } from "@/lib/storefront-products"
 import Link from "next/link"
 import { toast } from "@/lib/toast"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -305,7 +305,7 @@ export default function ProductPage() {
             <div className="rounded-xl border border-[#E2E2E2] bg-[#ECECEC]">
               <div className="relative bg-white/70 mx-auto rounded-xl h-100 w-full stretch ">
                 {displayImage ? (
-                  <Image src={displayImage || "/placeholder.jpg"} alt={product.name} fill className="object-contain" />
+                  <Image src={displayImage || FALLBACK_PRODUCT_IMAGE} alt={product.name} fill className="object-contain" />
                 ) : (
                   <div className="flex h-full items-center justify-center text-xs text-[#666]">No image</div>
                 )}
@@ -331,7 +331,7 @@ export default function ProductPage() {
                     selectedImage === thumb ? "border-[#50272A]" : "border-[#E0E0E0]"
                   }`}
                 >
-                  <Image src={thumb || "/placeholder.jpg"} alt={`${product.name} preview`} fill className="object-cover" />
+                  <Image src={thumb || FALLBACK_PRODUCT_IMAGE} alt={`${product.name} preview`} fill className="object-cover" />
                 </button>
               ))}
               </div>

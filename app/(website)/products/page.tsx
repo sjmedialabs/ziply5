@@ -14,7 +14,7 @@ import {
 import { Badge } from "@/components/ui/badge"
 import { getCartItems, setCartItemQuantity, getCartQuantity } from "@/lib/cart"
 import { getFavoriteSlugs, toggleFavoriteSlug } from "@/lib/favorites"
-import { type StorefrontProduct } from "@/lib/storefront-products"
+import { FALLBACK_PRODUCT_IMAGE, type StorefrontProduct } from "@/lib/storefront-products"
 import { useStorefrontProducts } from "@/hooks/useStorefrontProducts"
 import { X } from "lucide-react"
 import { toast } from "@/lib/toast"
@@ -574,7 +574,7 @@ const toggleTag = (tagId: string) => {
               .slice(0, 3)
             const showComboThumbStrip =
               Boolean((product as any).isCombo) &&
-              (product.image === "/placeholder.jpg" || !String(product.image ?? "").trim()) &&
+              (product.image === FALLBACK_PRODUCT_IMAGE || !String(product.image ?? "").trim()) &&
               comboThumbs.length > 0
 
             return (

@@ -65,14 +65,17 @@ type ApiProduct = {
   categories?: Array<{ category: { slug: string } }>
 }
 
-const DEFAULT_IMAGE = "/placeholder.jpg"
+/** Served from `public/fallback-product.png` — default when media is missing or fails. */
+export const FALLBACK_PRODUCT_IMAGE = "/fallback-product.png"
+
+const DEFAULT_IMAGE = FALLBACK_PRODUCT_IMAGE
 
 const toLocalUploadsPath = (value: string) => {
   const clean = value.replace(/^\/+/, "")
   return clean ? `/api/v1/uploads/${clean}` : null
 }
 
-const normalizeMediaUrl = (value: string | null | undefined) => {
+export const normalizeMediaUrl = (value: string | null | undefined) => {
   const raw = (value ?? "").trim()
   if (!raw) return null
   // Keep local upload-proxy URLs as-is in local/dev.

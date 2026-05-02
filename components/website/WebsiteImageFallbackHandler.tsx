@@ -1,12 +1,11 @@
 "use client"
 
+import { FALLBACK_PRODUCT_IMAGE } from "@/lib/storefront-products"
 import { useEffect } from "react"
 
-const PLACEHOLDER_SRC = "/placeholder.jpg"
-
 /**
- * Website-only global image fallback:
- * if any <img> fails to load, swap to /placeholder.jpg.
+ * Website-only global image fallback: if any img fails to load, swap once to
+ * the branded product placeholder (`public/fallback-product.png`).
  */
 export default function WebsiteImageFallbackHandler() {
   useEffect(() => {
@@ -14,10 +13,10 @@ export default function WebsiteImageFallbackHandler() {
       const target = event.target
       if (!(target instanceof HTMLImageElement)) return
       const current = target.getAttribute("src") ?? ""
-      if (!current || current === PLACEHOLDER_SRC) return
+      if (!current || current === FALLBACK_PRODUCT_IMAGE) return
       if (target.dataset.fallbackApplied === "true") return
       target.dataset.fallbackApplied = "true"
-      target.src = PLACEHOLDER_SRC
+      target.src = FALLBACK_PRODUCT_IMAGE
     }
 
     document.addEventListener("error", onError, true)
@@ -28,4 +27,3 @@ export default function WebsiteImageFallbackHandler() {
 
   return null
 }
-
