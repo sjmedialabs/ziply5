@@ -1,9 +1,9 @@
 "use client"
 
-import { Suspense, useEffect, useMemo, useState } from "react"
+import { Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
 import Image from "next/image"
 import Link from "next/link"
-import { useSearchParams, useRouter } from "next/navigation"
+import { useSearchParams, useRouter, usePathname } from "next/navigation"
 import {
   Select,
   SelectContent,
@@ -11,20 +11,20 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { Badge } from "@/components/ui/badge"
 import { getCartItems, setCartItemQuantity, getCartQuantity } from "@/lib/cart"
 import { getFavoriteSlugs, toggleFavoriteSlug } from "@/lib/favorites"
 import { FALLBACK_PRODUCT_IMAGE, type StorefrontProduct } from "@/lib/storefront-products"
 import { useStorefrontProducts } from "@/hooks/useStorefrontProducts"
 import { X } from "lucide-react"
 import { toast } from "@/lib/toast"
-import { FadeIn, SlideUp, ScaleHover, ModalAnimation } from "@/components/animations"
+import { SlideUp, ScaleHover, ModalAnimation } from "@/components/animations"
 
 type CategoryFilter = "all" | string
 type SortType = "popular" | "name-asc" | "name-desc" | "newest" | "price-low-high" | "price-high-low"
 type CategoryApi = { id: string; name: string; slug: string }
 type PreparationFilter = "all" | "ready_to_eat" | "ready_to_cook"
-type SpiceFilter = "all" | "mild" | "medium" | "hot" | "extra_hot"
+
+const PRODUCTS_PAGE_SIZE = 12
 
 function mulberry32(seed: number) {
   let t = seed >>> 0
@@ -48,23 +48,22 @@ function clamp(n: number, min: number, max: number) {
 
 function ProductsPageContent() {
   const searchParams = useSearchParams()
-  const { products, loading, error } = useStorefrontProducts(60)
+  const { products, loading, error } = useStorefrontProducts(200)
   const [categoryOptions, setCategoryOptions] = useState<Array<{ slug: string; name: string }>>([])
   const [tagOptions, setTagOptions] = useState<Array<{ slug: string; name: string, id: string }>>([])
   const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>("all")
   const [selectedTagIds, setSelectedTagIds] = useState<string[]>([])
   const [packFilter, setPackFilter] = useState<any>("all")
   const [mealTimeFilter, setMealTimeFilter] = useState<any>("all")
-  const [availabilityFilter, setAvailabilityFilter] = useState<any>("all")
   const [bestSellerFilter, setBestSellerFilter] = useState<string>("all")
   const [featuredFilter, setFeaturedFilter] = useState<string>("all")
   const [preparationTypeFilter, setPreparationTypeFilter] = useState<PreparationFilter>("all")
-  const [spiceLevelFilter, setSpiceLevelFilter] = useState<SpiceFilter>("all")
   const [sortBy, setSortBy] = useState<SortType>("popular")
   const [favoriteSlugs, setFavoriteSlugs] = useState<string[]>([])
   const [cartQtyBySlug, setCartQtyBySlug] = useState<Record<string, number>>({})
   const searchTerm = (searchParams.get("search") || "").trim().toLowerCase()
   const router = useRouter()
+  const pathname = usePathname()
   const pageSeedRef = useState(() => {
     // Random per page load, stable for this mounted session
     if (typeof crypto !== "undefined" && "getRandomValues" in crypto) {
@@ -81,7 +80,6 @@ function ProductsPageContent() {
   const categoryParam = (searchParams.get("category") || "").trim().toLowerCase()
   const tagParam = (searchParams.get("tag") || "").trim().toLowerCase()
   const preparationTypeParam = (searchParams.get("preparationType") || "").trim().toLowerCase()
-  const spiceLevelParam = (searchParams.get("spiceLevel") || "").trim().toLowerCase()
   useEffect(() => {
     let cancelled = false
     fetch("/api/v1/categories")
@@ -145,18 +143,6 @@ function ProductsPageContent() {
         },
       },
       {
-        key: "spiceLevel",
-        value: spiceLevelParam,
-        apply: (value: string) => {
-          const normalized = value.replace(/-/g, "_")
-          if (["mild", "medium", "hot", "extra_hot"].includes(normalized)) {
-            setSpiceLevelFilter(normalized as SpiceFilter)
-            return
-          }
-          setSpiceLevelFilter("all")
-        },
-      },
-      {
         key: "tag",
         value: tagParam,
         apply: (value: string) => {
@@ -172,8 +158,7 @@ function ProductsPageContent() {
     ] as const
 
     queryFilterConfig.forEach((filter) => filter.apply(filter.value))
-  }, [categoryParam, preparationTypeParam, spiceLevelParam, tagParam, tagOptions])
-  console.log("ProductsPageContent", { products, selectedTagIds})
+  }, [categoryParam, preparationTypeParam, tagParam, tagOptions])
   useEffect(() => {
     const syncFavorites = () => setFavoriteSlugs(getFavoriteSlugs())
     syncFavorites()
@@ -203,7 +188,6 @@ function ProductsPageContent() {
       window.removeEventListener("storage", syncCartQty)
     }
   }, [])
-  console.log("ProductsPageContent render", { categoryFilter, packFilter, mealTimeFilter, availabilityFilter, bestSellerFilter, featuredFilter, selectedTagIds, sortBy, searchTerm })
   // Fetch DB Favorites on mount if logged in
   useEffect(() => {
     const fetchDbFavorites = async () => {
@@ -270,10 +254,6 @@ function ProductsPageContent() {
         (packFilter === "combo-pack" && (item as any).isCombo) ||
         (packFilter === "limited-offers" && (item as any).isLimited)
       const mealTimeMatch = mealTimeFilter === "all" || (item as any).mealTime === mealTimeFilter
-      const availabilityMatch =
-        availabilityFilter === "all" ||
-        (availabilityFilter === "in-stock" && (item as any).inStock !== false) ||
-        (availabilityFilter === "out-of-stock" && (item as any).inStock === false)
 
       const bestSellerMatch =
         bestSellerFilter === "all" || (item as any).isBestSeller === true
@@ -281,16 +261,14 @@ function ProductsPageContent() {
         featuredFilter === "all" || (item as any).isFeatured === true
       const preparationTypeMatch =
         preparationTypeFilter === "all" || String((item as any).preparationType ?? "") === preparationTypeFilter
-      const spiceLevelMatch =
-        spiceLevelFilter === "all" || String((item as any).spiceLevel ?? "") === spiceLevelFilter
 
 const tagMatch =
   selectedTagIds.length === 0 ||
   selectedTagIds.some((selectedId) =>
     (item as any).tags?.some((t: any) => t.tag.id === selectedId)
   );
-      return categoryMatch && packMatch && mealTimeMatch && availabilityMatch && 
-             bestSellerMatch && featuredMatch && preparationTypeMatch && spiceLevelMatch && tagMatch
+      return categoryMatch && packMatch && mealTimeMatch && 
+             bestSellerMatch && featuredMatch && preparationTypeMatch && tagMatch
     })
 
     if (searchTerm) {
@@ -313,7 +291,45 @@ const tagMatch =
     }
 
     return items
-  }, [products, categoryFilter, packFilter, mealTimeFilter, availabilityFilter, bestSellerFilter, featuredFilter, preparationTypeFilter, spiceLevelFilter, selectedTagIds, sortBy, searchTerm])
+  }, [products, categoryFilter, packFilter, mealTimeFilter, bestSellerFilter, featuredFilter, preparationTypeFilter, selectedTagIds, sortBy, searchTerm])
+
+  const totalPages = Math.max(1, Math.ceil(filteredProducts.length / PRODUCTS_PAGE_SIZE))
+  const pageFromQuery = parseInt(searchParams.get("page") || "1", 10)
+  const currentPage = Math.min(
+    Math.max(1, Number.isFinite(pageFromQuery) && pageFromQuery > 0 ? pageFromQuery : 1),
+    totalPages,
+  )
+
+  const paginatedProducts = useMemo(() => {
+    const start = (currentPage - 1) * PRODUCTS_PAGE_SIZE
+    return filteredProducts.slice(start, start + PRODUCTS_PAGE_SIZE)
+  }, [filteredProducts, currentPage])
+
+  const goToPage = useCallback(
+    (p: number) => {
+      const next = Math.min(Math.max(1, p), totalPages)
+      const params = new URLSearchParams(searchParams.toString())
+      if (next <= 1) params.delete("page")
+      else params.set("page", String(next))
+      const qs = params.toString()
+      router.push(qs ? `${pathname}?${qs}` : pathname)
+      if (typeof window !== "undefined") {
+        window.scrollTo({ top: 0, behavior: "smooth" })
+      }
+    },
+    [pathname, router, searchParams, totalPages],
+  )
+
+  useEffect(() => {
+    const raw = parseInt(searchParams.get("page") || "1", 10)
+    if (!Number.isFinite(raw) || raw < 1) return
+    if (raw === currentPage) return
+    const params = new URLSearchParams(searchParams.toString())
+    if (currentPage <= 1) params.delete("page")
+    else params.set("page", String(currentPage))
+    const qs = params.toString()
+    router.replace(qs ? `${pathname}?${qs}` : pathname)
+  }, [currentPage, pathname, router, searchParams])
 
   const productBgBySlug = useMemo(() => {
     const rng = mulberry32(pageSeedRef)
@@ -354,6 +370,18 @@ const toggleTag = (tagId: string) => {
 }
 
   const [selectedProduct, setSelectedProduct] = useState<any | null>(null)
+  const filterBarRef = useRef<HTMLDivElement | null>(null)
+  const [filterBarHeight, setFilterBarHeight] = useState(0)
+
+  useLayoutEffect(() => {
+    const el = filterBarRef.current
+    if (!el) return
+    const measure = () => setFilterBarHeight(el.getBoundingClientRect().height)
+    measure()
+    const ro = new ResizeObserver(measure)
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
 
   const updateVariantQty = (product: any, variant: any, nextQty: number) => {
     const vId = variant.id ? String(variant.id) : (variant.sku || variant.weight || variant.name);
@@ -370,8 +398,94 @@ const toggleTag = (tagId: string) => {
   }
 
   return (
-    <FadeIn>
-    <section className="w-full bg-[#F3F0DC] py-8 md:py-10">
+    <section className="w-full bg-[#F3F0DC]">
+      {/* Fixed below global header — Framer FadeIn was breaking sticky; fixed pins to viewport */}
+      <div
+        ref={filterBarRef}
+        className="fixed left-0 right-0 z-[90] bg-[#F3F0DC]/75 backdrop-blur-sm"
+      >
+        <div className="mx-auto w-full max-w-7xl px-4 sm:px-6 lg:px-8">
+            <div className="rounded-3xl bg-white/40 p-3 md:p-4">
+              <div className="flex flex-col gap-4">
+                {/* <div className="flex items-center justify-between">
+                  <p className="text-xs font-bold uppercase tracking-wide text-[#1F1F1C]">Filtered Products By</p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setCategoryFilter("all")
+                      setPackFilter("all")
+                      setMealTimeFilter("all")
+                      setBestSellerFilter("all")
+                      setFeaturedFilter("all")
+                      setPreparationTypeFilter("all")
+                      setSelectedTagIds([])
+                      setSortBy("popular")
+                      const params = new URLSearchParams(searchParams.toString())
+                      params.delete("page")
+                      const qs = params.toString()
+                      router.push(qs ? `${pathname}?${qs}` : pathname)
+                    }}
+                    className="text-[10px] font-bold uppercase tracking-widest text-[#7A2B19] hover:underline"
+                  >
+                    Reset Filters
+                  </button>
+                </div> */}
+
+                <div className="grid grid-cols-2 items-center gap-3 md:grid-cols-3 lg:grid-cols-4">
+                  <Select value={categoryFilter} onValueChange={(value) => setCategoryFilter(value as CategoryFilter)}>
+                    <SelectTrigger className="h-9 rounded-full border-[#D9D9D1] bg-white px-4 text-xs font-medium">
+                      <SelectValue placeholder="Category & Type" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Categories</SelectItem>
+                      {categories.map((cat, idx) => (
+                        <SelectItem key={`${cat.slug || "cat"}-${idx}`} value={cat.slug}>
+                          {cat.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+
+                  <Select value={packFilter} onValueChange={(value) => setPackFilter(value as any)}>
+                    <SelectTrigger className="h-9 rounded-full border-[#D9D9D1] bg-white px-4 text-xs font-medium">
+                      <SelectValue placeholder="Packs & Deals" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Packs</SelectItem>
+                      <SelectItem value="combo-pack">Combo Pack</SelectItem>
+                      <SelectItem value="limited-offers">Limited Deals</SelectItem>
+                    </SelectContent>
+                  </Select>
+
+                  <Select value={sortBy} onValueChange={(value) => setSortBy(value as SortType)}>
+                    <SelectTrigger className="h-9 rounded-full border-[#D9D9D1] bg-white px-4 text-xs font-medium">
+                      <SelectValue placeholder="Sort by" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="popular">Popular</SelectItem>
+                      <SelectItem value="newest">Newest</SelectItem>
+                      <SelectItem value="price-low-high">Price: Low to High</SelectItem>
+                      <SelectItem value="price-high-low">Price: High to Low</SelectItem>
+                      <SelectItem value="name-asc">A to Z</SelectItem>
+                      <SelectItem value="name-desc">Z to A</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Select value={preparationTypeFilter} onValueChange={(value) => setPreparationTypeFilter(value as PreparationFilter)}>
+                    <SelectTrigger className="h-9 rounded-full border-[#D9D9D1] bg-white px-4 text-xs font-medium">
+                      <SelectValue placeholder="Preparation Type" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Preparation Types</SelectItem>
+                      <SelectItem value="ready_to_eat">Ready to Eat</SelectItem>
+                      <SelectItem value="ready_to_cook">Ready to Cook</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            </div>
+        </div>
+      </div>
+
       <div className="mx-auto w-full max-w-7xl px-4 sm:px-6 lg:px-8">
         {error && <p className="mb-4 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-800">{error}</p>}
         <div className="mb-6 flex flex-col gap-4">
@@ -381,161 +495,55 @@ const toggleTag = (tagId: string) => {
             </p>
           )}
 
-          <div className="p-3 md:p-4 bg-white/40 rounded-3xl">
-            <div className="flex flex-col gap-4">
-              <div className="flex items-center justify-between">
-                <p className="text-xs font-bold uppercase tracking-wide text-[#1F1F1C]">Filtered Products By</p>
+          {/* Reserves layout space for the fixed filter bar (measured after paint) */}
+          <div
+            aria-hidden
+            className={`shrink-0 ${filterBarHeight > 0 ? "" : "min-h-[7.5rem]"}`}
+            style={{ height: filterBarHeight > 0 ? filterBarHeight : undefined }}
+          />
+
+          {/* Tags + highlights — scroll with page (not fixed) */}
+          <div className="rounded-3xl">
+            <div className="flex flex-wrap gap-2">
+              {tagOptions.map((tag) => (
                 <button
-                  onClick={() => {
-                    setCategoryFilter("all")
-                    setPackFilter("all")
-                    setMealTimeFilter("all")
-                    setAvailabilityFilter("all")
-                    setBestSellerFilter("all")
-                    setFeaturedFilter("all")
-                    setPreparationTypeFilter("all")
-                    setSpiceLevelFilter("all")
-                    setSelectedTagIds([])
-                    setSortBy("popular")
-                  }}
-                  className="text-[10px] font-bold uppercase tracking-widest text-[#7A2B19] hover:underline"
+                  key={tag.id}
+                  type="button"
+                  onClick={() => toggleTag(tag.id)}
+                  className={`rounded-full border px-3 py-1 text-[10px] font-bold uppercase transition-all ${
+                    selectedTagIds.includes(tag.id)
+                      ? "border-primary bg-primary text-white shadow-sm"
+                      : "border-gray-200 bg-white text-gray-500 hover:border-primary"
+                  }`}
                 >
-                  Reset Filters
+                  {tag.name}
                 </button>
-              </div>
-              
-              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 items-center">
-                <Select value={categoryFilter} onValueChange={(value) => setCategoryFilter(value as CategoryFilter)}>
-                  <SelectTrigger className="rounded-full border-[#D9D9D1] bg-white px-4 text-xs font-medium h-9">
-                    <SelectValue placeholder="Category & Type" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All Categories</SelectItem>
-                    {categories.map((cat, idx) => (
-                      <SelectItem key={`${cat.slug || "cat"}-${idx}`} value={cat.slug}>
-                        {cat.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-
-                <Select value={packFilter} onValueChange={(value) => setPackFilter(value as any)}>
-                  <SelectTrigger className="rounded-full border-[#D9D9D1] bg-white px-4 text-xs font-medium h-9">
-                    <SelectValue placeholder="Packs & Deals" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All Packs</SelectItem>
-                    <SelectItem value="combo-pack">Combo Pack</SelectItem>
-                    <SelectItem value="limited-offers">Limited Deals</SelectItem>
-                  </SelectContent>
-                </Select>
-
-                {/* <Select value={mealTimeFilter} onValueChange={(value) => setMealTimeFilter(value as any)}>
-                  <SelectTrigger className="rounded-full border-[#D9D9D1] bg-white px-4 text-xs font-medium h-9">
-                    <SelectValue placeholder="Meal Time" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All Meal Times</SelectItem>
-                    <SelectItem value="breakfast">Breakfast</SelectItem>
-                    <SelectItem value="lunch">Lunch</SelectItem>
-                    <SelectItem value="dinner">Dinner</SelectItem>
-                  </SelectContent>
-                </Select> */}
-
-                <Select value={availabilityFilter} onValueChange={(value) => setAvailabilityFilter(value as any)}>
-                  <SelectTrigger className="rounded-full border-[#D9D9D1] bg-white px-4 text-xs font-medium h-9">
-                    <SelectValue placeholder="Availability" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All Availability</SelectItem>
-                    <SelectItem value="in-stock">In Stock</SelectItem>
-                    <SelectItem value="out-of-stock">Out of Stock</SelectItem>
-                  </SelectContent>
-                </Select>
-
-                <Select value={sortBy} onValueChange={(value) => setSortBy(value as SortType)}>
-                  <SelectTrigger className="rounded-full border-[#D9D9D1] bg-white px-4 text-xs font-medium h-9">
-                    <SelectValue placeholder="Sort by" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="popular">Popular</SelectItem>
-                    <SelectItem value="newest">Newest</SelectItem>
-                    <SelectItem value="price-low-high">Price: Low to High</SelectItem>
-                    <SelectItem value="price-high-low">Price: High to Low</SelectItem>
-                    <SelectItem value="name-asc">A to Z</SelectItem>
-                    <SelectItem value="name-desc">Z to A</SelectItem>
-                  </SelectContent>
-                </Select>
-                <Select value={preparationTypeFilter} onValueChange={(value) => setPreparationTypeFilter(value as PreparationFilter)}>
-                  <SelectTrigger className="rounded-full border-[#D9D9D1] bg-white px-4 text-xs font-medium h-9">
-                    <SelectValue placeholder="Preparation Type" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All Preparation Types</SelectItem>
-                    <SelectItem value="ready_to_eat">Ready to Eat</SelectItem>
-                    <SelectItem value="ready_to_cook">Ready to Cook</SelectItem>
-                  </SelectContent>
-                </Select>
-                <Select value={spiceLevelFilter} onValueChange={(value) => setSpiceLevelFilter(value as SpiceFilter)}>
-                  <SelectTrigger className="rounded-full border-[#D9D9D1] bg-white px-4 text-xs font-medium h-9">
-                    <SelectValue placeholder="Spice Level" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All Spice Levels</SelectItem>
-                    <SelectItem value="mild">Mild</SelectItem>
-                    <SelectItem value="medium">Medium</SelectItem>
-                    <SelectItem value="hot">Hot</SelectItem>
-                    <SelectItem value="extra_hot">Extra Hot</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              {/* Tag Selector */}
-              <div className="pt-2">
-                <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-2">Filter by Tags & Highlights</p>
-                <div className="flex flex-wrap gap-2">
-                  {tagOptions.map((tag) => (
-                    <button
-                      key={tag.id}
-                      onClick={() => toggleTag(tag.id)}
-                      className={`px-3 py-1 rounded-full text-[10px] font-bold uppercase transition-all border ${
-                        selectedTagIds.includes(tag.id) 
-                          ? "bg-primary text-white border-primary shadow-sm" 
-                          : "bg-white text-gray-500 border-gray-200 hover:border-primary"
-                      }`}
-                    >
-                      {tag.name}
-                    </button>
-                  ))}
-                  <button
-                    onClick={() => setBestSellerFilter(bestSellerFilter === "all" ? "true" : "all")}
-                    className={`px-3 py-1 rounded-full text-[10px] font-bold uppercase transition-all border ${
-                      bestSellerFilter === "true"
-                        ? "bg-primary text-white border-primary shadow-sm"
-                        : "bg-white text-gray-500 border-gray-200 hover:border-primary"
-                    }`}
-                  >
-                    Best Sellers
-                  </button>
-                  <button
-                    onClick={() => setFeaturedFilter(featuredFilter === "all" ? "true" : "all")}
-                    className={`px-3 py-1 rounded-full text-[10px] font-bold uppercase transition-all border ${
-                      featuredFilter === "true"
-                        ? "bg-primary text-white border-primary shadow-sm"
-                        : "bg-white text-gray-500 border-gray-200 hover:border-primary"
-                    }`}
-                  >
-                    Featured
-                  </button>
-                </div>
-              </div>
+              ))}
+              <button
+                type="button"
+                onClick={() => setBestSellerFilter(bestSellerFilter === "all" ? "true" : "all")}
+                className={`rounded-full border px-3 py-1 text-[10px] font-bold uppercase transition-all ${
+                  bestSellerFilter === "true"
+                    ? "border-primary bg-primary text-white shadow-sm"
+                    : "border-gray-200 bg-white text-gray-500 hover:border-primary"
+                }`}
+              >
+                Best Sellers
+              </button>
+              <button
+                type="button"
+                onClick={() => setFeaturedFilter(featuredFilter === "all" ? "true" : "all")}
+                className={`rounded-full border px-3 py-1 text-[10px] font-bold uppercase transition-all ${
+                  featuredFilter === "true"
+                    ? "border-primary bg-primary text-white shadow-sm"
+                    : "border-gray-200 bg-white text-gray-500 hover:border-primary"
+                }`}
+              >
+                Featured
+              </button>
             </div>
           </div>
 
-          <div className="flex items-center justify-between">
-            <p className="text-xs font-bold uppercase tracking-wide text-[#1F1F1C]">
-              Showing {filteredProducts.length} products
-            </p>
-          </div>
         </div>
 
         {loading && (
@@ -551,7 +559,19 @@ const toggleTag = (tagId: string) => {
             <h3 className="font-melon text-xl text-[#5A272A] font-bold uppercase">No Products Found</h3>
             <p className="text-sm text-gray-500 mt-2">Try adjusting your filters or search term to find what you're looking for.</p>
             <button 
-              onClick={() => { setCategoryFilter("all"); setPackFilter("all"); setMealTimeFilter("all"); setPreparationTypeFilter("all"); setSpiceLevelFilter("all"); setSelectedTagIds([]); }}
+              onClick={() => {
+                setCategoryFilter("all")
+                setPackFilter("all")
+                setMealTimeFilter("all")
+                setPreparationTypeFilter("all")
+                setBestSellerFilter("all")
+                setFeaturedFilter("all")
+                setSelectedTagIds([])
+                const params = new URLSearchParams(searchParams.toString())
+                params.delete("page")
+                const qs = params.toString()
+                router.push(qs ? `${pathname}?${qs}` : pathname)
+              }}
               className="mt-6 rounded-full bg-primary px-6 py-2 text-xs font-bold text-white uppercase tracking-widest"
             >
               Clear All Filters
@@ -559,14 +579,15 @@ const toggleTag = (tagId: string) => {
           </div>
         )}
         <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
-          {filteredProducts.map((product, idx) => {
+          {paginatedProducts.map((product, idx) => {
             const displayPrice = (product as any).variants?.length
               ? Number(
                   (product as any).variants.find((v: any) => v.isDefault)?.price ||
                     (product as any).variants[0].price
                 )
               : Number(product.price || 0);
-            const cardBg = productBgBySlug[String(product.slug || product.id || idx)] || "#3EA6CF"
+            const globalIdx = (currentPage - 1) * PRODUCTS_PAGE_SIZE + idx
+            const cardBg = productBgBySlug[String(product.slug || product.id || globalIdx)] || "#3EA6CF"
             const comboProducts = ((product as any).bundleProducts ?? []) as Array<{ thumbnail?: string | null; name?: string }>
             const comboThumbs = comboProducts
               .map((x) => (x?.thumbnail ?? "").trim())
@@ -578,7 +599,7 @@ const toggleTag = (tagId: string) => {
               comboThumbs.length > 0
 
             return (
-              <SlideUp key={`${product.id || product.slug || "product"}-${idx}`} delay={Math.min(0.18, idx * 0.03)}>
+              <SlideUp key={`${product.id || product.slug || "product"}-${globalIdx}`} delay={Math.min(0.18, idx * 0.03)}>
                 <ScaleHover>
                   <article
                     className="group relative rounded-2xl border-2 border-transparent p-4 transition-all duration-300 hover:ring-4 hover:ring-[#F36E21] hover:shadow-xl will-change-transform"
@@ -713,6 +734,33 @@ const toggleTag = (tagId: string) => {
             );
           })}
         </div>
+
+        {!loading && totalPages > 1 && (
+          <nav
+            className="mt-10 flex flex-wrap items-center justify-center gap-3"
+            aria-label="Product list pagination"
+          >
+            <button
+              type="button"
+              disabled={currentPage <= 1}
+              onClick={() => goToPage(currentPage - 1)}
+              className="rounded-full border-2 border-primary bg-white px-4 py-2 text-xs font-bold uppercase tracking-widest text-primary transition-colors hover:bg-primary/10 disabled:pointer-events-none disabled:opacity-40"
+            >
+              Previous
+            </button>
+            <span className="min-w-[140px] text-center text-sm font-medium text-[#5A272A]">
+              Page {currentPage} of {totalPages}
+            </span>
+            <button
+              type="button"
+              disabled={currentPage >= totalPages}
+              onClick={() => goToPage(currentPage + 1)}
+              className="rounded-full border-2 border-primary bg-white px-4 py-2 text-xs font-bold uppercase tracking-widest text-primary transition-colors hover:bg-primary/10 disabled:pointer-events-none disabled:opacity-40"
+            >
+              Next
+            </button>
+          </nav>
+        )}
       </div>
 
       {/* VARIANT SELECTION MODAL */}
@@ -793,7 +841,6 @@ const toggleTag = (tagId: string) => {
         ) : null}
       </ModalAnimation>
     </section>
-    </FadeIn>
   )
 }
 
