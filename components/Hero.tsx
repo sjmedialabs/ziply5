@@ -1,13 +1,33 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo } from "react"
 import Image from "next/image"
-import { FadeIn } from "@/components/animations/FadeIn"
+import { m, useReducedMotion } from "framer-motion"
+
+function splitIntoLines(text: string, mode: "title" | "subtitle") {
+  const t = text.trim()
+  if (!t) return []
+  if (t.includes("\n")) {
+    return t
+      .split("\n")
+      .map((l) => l.trim())
+      .filter(Boolean)
+  }
+  const words = t.split(/\s+/).filter(Boolean)
+  if (mode === "title") {
+    if (words.length <= 2) return [words.join(" ")]
+    if (words.length <= 4) return [words.slice(0, 2).join(" "), words.slice(2).join(" ")]
+    return [words.slice(0, 2).join(" "), words.slice(2, 4).join(" "), words.slice(4).join(" ")]
+  }
+  if (words.length <= 4) return [words.join(" ")]
+  return [words.slice(0, 4).join(" "), words.slice(4).join(" ")]
+}
 
 export default function Hero({ cmsData }: { cmsData?: any }) {
   const [currentSlide, setCurrentSlide] = useState(0)
   const [startX, setStartX] = useState(0)
   const [endX, setEndX] = useState(0)
+  const reduceMotion = useReducedMotion()
 
   const defaultSlides = [
     { image: "/hero-banner.png", alt: "Hero Image" },
@@ -15,29 +35,27 @@ export default function Hero({ cmsData }: { cmsData?: any }) {
     { image: "/hero-banner.png", alt: "Hero Image" },
   ]
 
-  const slides = cmsData?.slides?.length > 0 ? cmsData.slides : defaultSlides;
-  const globalTitle = cmsData?.title || "Nothing Artificial.\nEverything Delicious.";
-  const globalSubtitle = cmsData?.subtitle || "TASTE THE AUTHENTIC FLAVORS\nOF HOME-COOKED MEALS!";
+  const slides = cmsData?.slides?.length > 0 ? cmsData.slides : defaultSlides
+  const globalTitle = cmsData?.title || "Nothing Artificial.\nEverything Delicious."
+  const globalSubtitle = cmsData?.subtitle || "TASTE THE AUTHENTIC FLAVORS\nOF HOME-COOKED MEALS!"
 
-  const handleTouchStart = (e: any) => {
-  setStartX(e.targetTouches[0].clientX)
-}
-
-const handleTouchMove = (e: any) => {
-  e.preventDefault()
-  setEndX(e.targetTouches[0].clientX)
-}
-
-const handleTouchEnd = () => {
-  const delta = startX - endX
-  if (delta > 75) {
-    // swipe left
-    setCurrentSlide((prev) => (prev + 1) % slides.length)
-  } else if (delta < -75) {
-    // swipe right
-    setCurrentSlide((prev) => prev === 0 ? slides.length - 1 : prev - 1)
+  const handleTouchStart = (e: React.TouchEvent) => {
+    setStartX(e.targetTouches[0].clientX)
   }
-}
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    e.preventDefault()
+    setEndX(e.targetTouches[0].clientX)
+  }
+
+  const handleTouchEnd = () => {
+    const delta = startX - endX
+    if (delta > 75) {
+      setCurrentSlide((prev) => (prev + 1) % slides.length)
+    } else if (delta < -75) {
+      setCurrentSlide((prev) => (prev === 0 ? slides.length - 1 : prev - 1))
+    }
+  }
 
   useEffect(() => {
     let rafId: number
@@ -58,18 +76,32 @@ const handleTouchEnd = () => {
     }
 
     rafId = requestAnimationFrame(tick)
-    document.addEventListener('visibilitychange', handleVisibility)
+    document.addEventListener("visibilitychange", handleVisibility)
 
     return () => {
       if (rafId) cancelAnimationFrame(rafId)
-      document.removeEventListener('visibilitychange', handleVisibility)
+      document.removeEventListener("visibilitychange", handleVisibility)
     }
-  }, [])
+  }, [slides.length])
 
-  const currentTitle = slides[currentSlide]?.title || globalTitle;
-  const titleWords = currentTitle ? currentTitle.split(/\s+/).filter(Boolean) : [];
-  const currentSubtitle = slides[currentSlide]?.subtitle || globalSubtitle;
-  const subtitleWords = currentSubtitle ? currentSubtitle.split(/\s+/).filter(Boolean) : [];
+  const currentTitle = slides[currentSlide]?.title || globalTitle
+  const currentSubtitle = slides[currentSlide]?.subtitle || globalSubtitle
+
+  const titleLines = useMemo(
+    () => splitIntoLines(currentTitle, "title"),
+    [currentTitle, currentSlide],
+  )
+  const subtitleLines = useMemo(
+    () => splitIntoLines(currentSubtitle, "subtitle"),
+    [currentSubtitle, currentSlide],
+  )
+
+  const lineMotion = reduceMotion
+    ? {}
+    : {
+        initial: { opacity: 0, y: 18 },
+        animate: { opacity: 1, y: 0 },
+      }
 
   return (
     <section className="relative overflow-hidden">
@@ -78,9 +110,8 @@ const handleTouchEnd = () => {
         onTouchStart={handleTouchStart}
         onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}
-        onTouchMoveCapture={(e) => handleTouchMove(e as any)}
+        onTouchMoveCapture={(e) => handleTouchMove(e)}
       >
-        
         <Image
           src={slides[currentSlide]?.image || slides[currentSlide]}
           alt={slides[currentSlide]?.alt || "Hero Image"}
@@ -90,48 +121,60 @@ const handleTouchEnd = () => {
           priority
         />
 
-        <div className="absolute inset-0 flex items-start mt-15">
+        <div className="absolute inset-0 flex items-start pt-10 md:pt-14 lg:pt-16">
           <div className="w-full max-w-7xl mx-auto px-4">
-            <div className="max-w-7xl">
-              <FadeIn key={`hero-${currentSlide}`} y={22} duration={0.55}>
-                <h1 className="font-heading text-3xl md:text-5xl lg:text-7xl font-extrabold text-primary leading-[1.05] mb-4">
-                  {titleWords.length > 0 ? (
-                    <>
-                      {titleWords.slice(0, 2).join(" ")}
-                      {titleWords.length > 2 && <br />}
-                      {titleWords.slice(2, 4).join(" ")}
-                      {titleWords.length > 4 && <br />}
-                      {titleWords.slice(4).join(" ")}
-                    </>
-                  ) : (
-                    currentTitle
-                  )}
-                </h1>
-                <p
-                  className="font-heading text-lg md:text-2xl lg:text-4xl font-extrabold text-primary leading-[1.05] mb-4 uppercase"
-                  style={{ textShadow: "1px 1px 2px rgba(0,0,0,0.3)" }}
-                >
-                  {subtitleWords.length > 0 ? (
-                    <>
-                      {subtitleWords.slice(0, 4).join(" ")}
-                      {subtitleWords.length > 4 && <br />}
-                      {subtitleWords.slice(4).join(" ")}
-                    </>
-                  ) : (
-                    currentSubtitle
-                  )}
-                </p>
-              </FadeIn>
+            <div className="max-w-7xl" key={`hero-copy-${currentSlide}`}>
+              <h1 className="font-heading text-3xl md:text-5xl lg:text-7xl font-extrabold text-primary leading-[1.05]">
+                <span className="block space-y-1 md:space-y-2">
+                  {titleLines.map((line, i) => (
+                    <m.span
+                      key={`t-${i}`}
+                      className="block"
+                      {...lineMotion}
+                      transition={
+                        reduceMotion
+                          ? undefined
+                          : { duration: 0.5, delay: i * 0.1, ease: [0.22, 1, 0.36, 1] }
+                      }
+                    >
+                      {line}
+                    </m.span>
+                  ))}
+                </span>
+              </h1>
+
+              <div className="mt-4 space-y-1 md:space-y-2">
+                {subtitleLines.map((line, i) => (
+                  <m.p
+                    key={`s-${i}`}
+                    className="font-heading text-lg md:text-2xl lg:text-4xl font-extrabold text-primary leading-[1.05] uppercase"
+                    style={{ textShadow: "1px 1px 2px rgba(0,0,0,0.3)" }}
+                    {...lineMotion}
+                    transition={
+                      reduceMotion
+                        ? undefined
+                        : {
+                            duration: 0.48,
+                            delay: 0.18 + i * 0.09,
+                            ease: [0.22, 1, 0.36, 1],
+                          }
+                    }
+                  >
+                    {line}
+                  </m.p>
+                ))}
+              </div>
             </div>
           </div>
         </div>
       </div>
 
-      {/* DOTS */}
       <div className="absolute bottom-6 left-1/2 -translate-x-1/2 flex gap-2">
         {slides.map((_: any, dot: number) => (
           <button
             key={dot}
+            type="button"
+            aria-label={`Slide ${dot + 1}`}
             onClick={() => setCurrentSlide(dot)}
             className={`h-2.5 rounded-full cursor-pointer transition-all duration-300 ${
               currentSlide === dot

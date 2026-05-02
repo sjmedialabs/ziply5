@@ -14,11 +14,22 @@ export default function BestSellers({ cmsData }: { cmsData?: any }) {
   const [favoriteSlugs, setFavoriteSlugs] = useState<string[]>([])
   const [cartQtyBySlug, setCartQtyBySlug] = useState<Record<string, number>>({})
   const best = products.filter((p) => p.isBestSeller === true)
-  const bestSellers = useMemo(() => best.slice(0, 6), [best])
+  const bestSellers = useMemo(() => best.slice(0, 3), [best])
   const router = useRouter()
   const sectionTitle = cmsData?.title || "BEST SELLERS" 
   const buttonText = cmsData?.buttonText || "view all"
   const buttonUrl = cmsData?.url || "/#best-sellers"
+
+  const bgPalette = useMemo(
+    () => ["#3EA6CF", "#F36E21", "#10B981", "#7C3AED", "#F59E0B", "#EC4899"],
+    [],
+  )
+  const pickBg = (product: any) => {
+    const key = String(product?.id ?? product?.slug ?? product?.name ?? "")
+    let hash = 0
+    for (let i = 0; i < key.length; i++) hash = (hash * 31 + key.charCodeAt(i)) >>> 0
+    return bgPalette[hash % bgPalette.length]
+  }
   useEffect(() => {
     const syncFavorites = () => setFavoriteSlugs(getFavoriteSlugs())
     syncFavorites()
@@ -113,34 +124,33 @@ export default function BestSellers({ cmsData }: { cmsData?: any }) {
     }, nextQty)
   }
   if (bestSellers.length === 0) return null;
-  console.log("Best Sellers data:", bestSellers) // Debug log to check the data structure
   return (
     <section id="best-sellers" className="bg-[#FFF5C5] py-12 md:py-16 lg:py-20">
       <div className="max-w-7xl mx-auto px-4">
         <SectionHeader title={sectionTitle} linkHref={buttonUrl} linkText={buttonText} />
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 md:gap-8 justify-items-center">
-          {bestSellers.map((product) => (
+          {bestSellers.map((product) => {
+            const tagName = product.tags?.[0]?.tag?.name
+            return (
             <div key={product.id} className="w-full max-w-sm group cursor-pointer font-melon" onClick={() =>
               router.push(`/product/${product.slug}`)
             }>
               <div
-                className="rounded-2xl px-8 relative overflow-hidden transition-all duration-300 group-hover:ring-4 group-hover:ring-[#F36E21] group-hover:shadow-xl h-full flex flex-col"
-                style={{ backgroundColor: "#3EA6CF" }}
+                className="card-smooth rounded-2xl px-8 relative overflow-hidden transition-all duration-300 ease-out group-hover:ring-4 group-hover:ring-[#F36E21] group-hover:shadow-xl h-full flex flex-col"
+                style={{ backgroundColor: pickBg(product) }}
               >
-                {
-                  product.tags[0]?.tag?.name &&(
-                    <>
-                    {
-                      product.tags[0].tag.name === "veg"?(<span className="absolute top-4 right-0 bg-[#10B981] text-white text-[11px] font-medium px-3 py-1 border border-white rounded-l-sm z-10">
-                    {product.tags[0].tag.name?.charAt(0).toUpperCase() + product.tags[0].tag.name.slice(1)}
-                  </span>):(<span className="absolute top-4 right-0 bg-[#F97316] text-white text-[11px] font-medium px-3 py-1 rounded-l-sm border border-white z-10">
-                    {product.tags[0].tag.name?.charAt(0).toUpperCase() + product.tags[0].tag.name.slice(1)}
-                  </span>)
-                    }
-                    </>
+                {tagName ? (
+                  tagName === "veg" ? (
+                    <span className="absolute top-4 right-0 bg-[#10B981] text-white text-[11px] font-medium px-3 py-1 border border-white rounded-l-sm z-10">
+                      {tagName.charAt(0).toUpperCase() + tagName.slice(1)}
+                    </span>
+                  ) : (
+                    <span className="absolute top-4 right-0 bg-[#F97316] text-white text-[11px] font-medium px-3 py-1 rounded-l-sm border border-white z-10">
+                      {tagName.charAt(0).toUpperCase() + tagName.slice(1)}
+                    </span>
                   )
-                }
+                ) : null}
                 {/* {product.type === "non-veg" && (
                   <span className="absolute top-4 right-0 bg-[#F97316] text-white text-[11px] font-medium px-3 py-1 rounded-l-sm border border-white z-10">
                     Non-veg
@@ -161,21 +171,16 @@ export default function BestSellers({ cmsData }: { cmsData?: any }) {
                 </button>
 
                 <div className="relative h-full flex items-center justify-center py-4">
-                  <Image src={product.image} alt={product.name} width={180} height={220} className="w-auto h-full object-contain drop-shadow-lg group-hover:scale-105 transition-transform duration-300" />
+                  <Image src={product.image} alt={product.name} width={180} height={220} className="w-auto h-full object-contain group-hover:scale-105 transition-transform duration-300 ease-out" />
                 </div>
 
                 <div className="text-center pb-4">
-                  <h3 className="font-medium text-white text-[15px] md:text-xl leading-tight tracking-wide">
+                  <h3 className="font-medium text-white text-[15px] md:text-xl leading-tight tracking-wide line-clamp-2 min-h-[44px] md:min-h-[56px]">
                     {product.name}
                   </h3>
-                  <p className="text-[#FFF5C5] text-[11px] uppercase tracking-wide line-clamp-1">
+                  <p className="text-[#FFF5C5] text-[11px] uppercase tracking-wide line-clamp-2 min-h-[30px]">
                     {product.description}
                   </p>
-                  {product.productKind === "simple" && product.totalStock > 0 && (
-                    <p className="mt-1 text-[10px] font-bold text-orange-200 uppercase">
-                      {product.totalStock < 5 ? `Hurry up only ${product.totalStock} left` : `${product.totalStock} in stock`}
-                    </p>
-                  )}
 
                   <div className="mt-3 flex items-center justify-between gap-2">
                     {(cartQtyBySlug[product.slug] ?? 0) > 0 && product.productKind === "simple" ? (
@@ -240,7 +245,8 @@ export default function BestSellers({ cmsData }: { cmsData?: any }) {
                 </div>
               </div>
             </div>
-          ))}
+            )
+          })}
         </div>
       </div>
 

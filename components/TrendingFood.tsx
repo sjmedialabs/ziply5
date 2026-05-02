@@ -146,8 +146,8 @@ if (trendingProducts.length === 0) return null;
           {visibleProducts.map((product, index) => (
             <div
               key={product.id}
-              className="w-full max-w-sm group bg-white rounded-[16px] overflow-hidden 
-              transition-all duration-300  h-85
+              className="card-smooth w-full max-w-sm group bg-white rounded-[16px] overflow-hidden 
+              h-85
               shadow-[0_10px_25px_rgba(0,0,0,0.08)] 
               hover:shadow-[0_15px_35px_rgba(0,0,0,0.12)]
               hover:ring-2 hover:ring-[#EF4444]"
@@ -206,11 +206,6 @@ if (trendingProducts.length === 0) return null;
                       >
                         {product.description}
                       </p>
-                      {product.productKind === "simple" && product.stock && product?.stock > 0 && (
-                        <p className="text-[10px] font-bold text-orange-500 mt-1">
-                          {product?.stock < 5 ? `Hurry up only ${product.stock} left` : `${product.stock} in stock`}
-                        </p>
-                      )}
                     </div>
                     <button
                       type="button"

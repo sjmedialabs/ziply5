@@ -3,6 +3,7 @@
 import Link from "next/link"
 import Image from "next/image"
 import { useScroll } from "../hooks/useScroll"
+import { useEffect, useState } from "react"
 
 const categories = [
   { id: 1, name: "Cashew Delight Upma", subtitle: "A Perfect Blend Of Flavors & Nutrition", image: "https://hebbkx1anhila5yf.public.blob.vercel-storage.com/drink.png-Bn98EV0Y9ho9LurBeWpUqNxRPM9o2p.png" },
@@ -16,6 +17,27 @@ const categories = [
 
 export default function Products() {
   const { scrollRef, scroll } = useScroll<HTMLDivElement>()
+  const [isAutoScrollPaused, setIsAutoScrollPaused] = useState(false)
+
+  useEffect(() => {
+    if (isAutoScrollPaused) return
+    const el = scrollRef.current
+    if (!el) return
+
+    const interval = window.setInterval(() => {
+      const node = scrollRef.current
+      if (!node) return
+
+      const atEnd = node.scrollLeft + node.clientWidth >= node.scrollWidth - 8
+      if (atEnd) {
+        node.scrollTo({ left: 0, behavior: "smooth" })
+      } else {
+        node.scrollBy({ left: 260, behavior: "smooth" })
+      }
+    }, 2600)
+
+    return () => window.clearInterval(interval)
+  }, [isAutoScrollPaused, scrollRef])
 
   return (
     <section
@@ -35,25 +57,29 @@ export default function Products() {
 
           <div
               ref={scrollRef}
+              onMouseEnter={() => setIsAutoScrollPaused(true)}
+              onMouseLeave={() => setIsAutoScrollPaused(false)}
+              onFocusCapture={() => setIsAutoScrollPaused(true)}
+              onBlurCapture={() => setIsAutoScrollPaused(false)}
               className="flex gap-6 overflow-x-auto scrollbar-hide px-6 md:px-10 xl:px-16 py-6 w-full mt-4 snap-x snap-mandatory"
             >
             {categories.map((category) => (
               <Link key={category.id} href={`/product/${category.name.toLowerCase().replace(/\s+/g, "-")}`} className="flex-shrink-0 group">
                 <div className="
-                  bg-white rounded-full 
+                  card-smooth bg-white rounded-full 
                   w-[140px] md:w-[180px] xl:w-[220px] 
                   h-[220px] md:h-[260px] xl:h-[300px] 
                   flex flex-col items-center pt-5 pb-5 px-4 
-                  transition-all duration-300 
-                  group-hover:-translate-y-1 group-hover:scale-[1.03]
+                  transition-all duration-300 ease-out
+                  group-hover:shadow-lg group-hover:scale-[1.02]
                 ">
-                  <div className="w-[80px] h-[80px] md:w-[100px] md:h-[100px] rounded-full overflow-hidden mb-4 flex-shrink-0">
-                    <Image src={category.image} alt={category.name} width={100} height={100} className="w-full h-full object-cover" />
+                  <div className="w-[88px] h-[88px] md:w-[110px] md:h-[110px] overflow-hidden mb-3 flex-shrink-0">
+                    <Image src={category.image} alt={category.name} width={110} height={110} className="w-full h-full object-contain" />
                   </div>
-                  <h3 className="font-semibold text-[#5B2C2C] text-center text-[14px] md:text-[15px] leading-tight mb-1.5">
+                  <h3 className="font-semibold text-[#5B2C2C] text-center text-[14px] md:text-[15px] leading-tight line-clamp-2 min-h-[36px] md:min-h-[40px] mb-1">
                     {category.name}
                   </h3>
-                  <p className="text-[#8B8B8B] text-[11px] md:text-[12px] text-center leading-tight px-1 line-clamp-2">
+                  <p className="text-[#8B8B8B] text-[11px] md:text-[12px] text-center leading-tight px-1 line-clamp-2 min-h-[32px] md:min-h-[36px]">
                     {category.subtitle}
                   </p>
                 </div>

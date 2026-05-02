@@ -49,8 +49,8 @@ export default function ProductCategories({ cmsData }: { cmsData?: any }) {
           {loading
             ? Array.from({ length: 7 }).map((_, i) => (
                 <SwiperSlide key={`cat-skeleton-${i}`}>
-                  <div className="bg-white/50 animate-pulse rounded-full h-75 flex flex-col items-center px-2 shadow-sm border border-white/20">
-                    <div className="w-[100px] h-[100px] md:w-[120px] md:h-[120px] shrink-0 rounded-full bg-white/40 mt-4 mb-4" />
+                  <div className="bg-white/50 animate-pulse rounded-full overflow-hidden h-75 flex flex-col items-center px-2 shadow-sm border border-white/20">
+                    <div className="w-[100px] h-[100px] md:w-[120px] md:h-[120px] shrink-0 rounded-full overflow-hidden bg-white/40 mt-4 mb-4" />
                     <div className="h-4 w-24 bg-white/40 rounded mb-2" />
                     <div className="h-3 w-32 bg-white/40 rounded" />
                   </div>
@@ -60,24 +60,25 @@ export default function ProductCategories({ cmsData }: { cmsData?: any }) {
                 <SwiperSlide key={product.id || i}>
                   <Link
                     href={`/product/${product.slug}`}
+                    className="group"
                   >
-                    <div className="bg-white rounded-full h-75 flex flex-col justify-between pt-4 pb-8 items-center px-2 shadow-md transition hover:scale-105">
+                    <div className="card-smooth bg-white rounded-full overflow-hidden h-75 flex flex-col pt-4 pb-6 items-center px-2 shadow-md hover:shadow-lg">
 
-                      <div className="w-[100px] h-[100px] md:w-[120px] md:h-[120px] shrink-0 rounded-full shadow-md overflow-hidden mb-4">
+                      <div className="w-[100px] h-[100px] md:w-[120px] md:h-[120px] shrink-0 rounded-full overflow-hidden mb-3 bg-white flex items-center justify-center">
                         <Image
                           src={product.image}
                           alt={product.name}
                           width={120}
                           height={120}
-                          className="object-contain p-2 w-full h-full"
+                          className="object-contain p-2 w-full h-full max-h-full"
                         />
                       </div>
-                      <div className="mb-4">
-                      <h3 className="text-[#6F2C2A] text-center font-semibold text-sm">
+                      <div className="mb-0 flex flex-col items-stretch w-full px-1">
+                      <h3 className="text-[#6F2C2A] text-center font-semibold text-sm line-clamp-2 min-h-[40px] leading-tight">
                         {product.name}
                       </h3>
 
-                      <p className="text-[#656565] text-[10px] text-center mt-1 line-clamp-2">
+                      <p className="text-[#656565] text-[10px] text-center mt-1 line-clamp-2 min-h-[28px] leading-tight">
                         {product.description}
                       </p>
                       </div>
