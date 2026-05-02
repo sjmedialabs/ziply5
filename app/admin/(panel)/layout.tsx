@@ -1,4 +1,5 @@
 import type React from "react"
+import { Suspense } from "react"
 import { AdminPanelLayout } from "@/components/dashboard/AdminPanelLayout"
 
 export default function AdminPanelRootLayout({
@@ -6,5 +7,9 @@ export default function AdminPanelRootLayout({
 }: Readonly<{
   children: React.ReactNode
 }>) {
-  return <AdminPanelLayout>{children}</AdminPanelLayout>
+  return (
+    <Suspense>
+      <AdminPanelLayout>{children}</AdminPanelLayout>
+    </Suspense>
+  )
 }
