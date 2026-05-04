@@ -16,6 +16,8 @@ export default function ProductCategories({ cmsData }: { cmsData?: any }) {
   const displayItems = useMemo(() => products.slice(0, 15), [products]);
   const sectionTitle = cmsData?.title || "OUR PRODUCTS";
 
+  if (!loading && displayItems.length === 0) return null;
+
   return (
     <section className="w-full bg-[#F97316] py-12 relative">
       <div className="max-w-7xl mx-auto px-4 relative">
@@ -78,7 +80,7 @@ export default function ProductCategories({ cmsData }: { cmsData?: any }) {
                         {product.name}
                       </h3>
 
-                      <p className="text-[#656565] text-[10px] text-center mt-1 line-clamp-2 min-h-[28px] leading-tight">
+                      <p className="text-[#656565] text-[10px] text-center mt-1 line-clamp-2 min-h-[28px]">
                         {product.description}
                       </p>
                       </div>

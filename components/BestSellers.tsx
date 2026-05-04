@@ -304,6 +304,27 @@ export default function BestSellers({ cmsData }: { cmsData?: any }) {
                 })}
               </div>
             </div>
+
+            <div className="border-t border-gray-100 p-5 flex items-center justify-between gap-3 bg-gray-50/50">
+              <button
+                onClick={() => {
+                  setSelectedProduct(null);
+                  router.push("/products");
+                }}
+                className="flex-1 rounded-full border-2 cursor-pointer border-primary py-2.5 text-[11px] font-bold uppercase tracking-widest text-primary hover:bg-primary/10 transition-colors"
+              >
+                Continue Shopping
+              </button>
+              <button
+                onClick={() => {
+                  setSelectedProduct(null);
+                  router.push("/cart");
+                }}
+                className="flex-1 rounded-full bg-primary cursor-pointer border-2 border-primary py-2.5 text-[11px] font-bold uppercase tracking-widest text-white hover:bg-[#3a1517] transition-colors"
+              >
+                Go to Cart
+              </button>
+            </div>
           </div>
         </div>
       )}
