@@ -31,6 +31,7 @@ import FaqSectionEditor from './FaqSectionEditor';
 import PromoSectionEditor from './PromoSectionEditor';
 import HeaderSectionEditor from './HeaderSectionEditor';
 import FooterSectionEditor from './FooterSectionEditor';
+import { toast } from '@/lib/toast';
 
 type CmsSection = {
   sectionType: string;
@@ -168,6 +169,7 @@ export default function CmsDashboard() {
         metaTitle: seo.metaTitle,
         metaDescription: seo.metaDescription,
       });
+      toast.success('Content Updated Successfully');
       setError('');
     } catch (err) {
       setError('Save failed');
