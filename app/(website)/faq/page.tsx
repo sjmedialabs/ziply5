@@ -50,28 +50,28 @@ export default function FAQPage() {
       {/* HERO SECTION */}
 
       <section
-        className="w-full h-[280px] md:h-[320px] flex flex-col items-center justify-center text-center bg-cover bg-center"
+        className="w-full h-[40vh]  flex flex-col items-center justify-center text-center bg-cover bg-center"
         style={{
           backgroundImage: `url('${cmsData?.bgImage || '/contactUsBg.png'}')`,
         }}
       >
         {cmsData?.title && (
-          <h1 className="font-melon text-primary text-3xl md:text-4xl font-medium">
+          <h1 className="font-melon text-primary text-xl lg:text-4xl font-medium">
             {cmsData.title}
           </h1>
         )}
 
-        {cmsData?.description && (
+        {/* {cmsData?.description && (
           <p className="text-sm text-gray-600 mt-2">
             {cmsData.description}
           </p>
-        )}
+        )} */}
 
-        <div className="mt-4 px-4 py-2 bg-white rounded-full text-sm shadow">
+        {/* <div className="mt-4 px-4 py-2 bg-white rounded-full text-sm shadow">
           <span className="text-primary">Home</span>
           <span className="mx-2 text-gray-400">/</span>
           <span className="text-gray-600">FAQ</span>
-        </div>
+        </div> */}
       </section>
 
       {/* FAQ SECTION */}

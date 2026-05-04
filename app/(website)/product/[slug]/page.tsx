@@ -598,10 +598,10 @@ export default function ProductPage() {
               <div
                 key={`${item.id}-${item.slug}-${idx}`}
                 onClick={() => router.push(`/product/${item.slug}`)}
-                className="block text-left"
+                className="block text-left h-full"
               >
                 <article
-                  className="group rounded-2xl border-2 border-transparent p-3 transition-all duration-300 hover:border-[#F0E4A3]"
+                  className="group flex flex-col h-full rounded-2xl border-2 border-transparent p-3 transition-all duration-300 hover:border-[#F0E4A3]"
                   style={{ backgroundColor: "#3EA6CF" }}
                 >
                   <div className="relative mx-auto h-[220px] w-full max-w-[140px]">
@@ -611,7 +611,8 @@ export default function ProductPage() {
                   <p className="mt-1 text-center text-[10px] font-semibold uppercase text-white/90">
                     Home style meal | Net wt. {item.weight}
                   </p>
-                                    <div className="mt-3 flex items-center justify-between gap-2">
+                   <p className="mt-2 text-sm text-center font-medium text-[#FFF5C5]">Rs. {product.price.toFixed(2)}</p>
+                                    <div className="mt-auto pt-3 flex items-center justify-between gap-2">
                     {(cartQtyBySlug[product.slug] ?? 0) > 0 ? (
                       <div className="flex items-center rounded-md border border-[#d5c4b8] bg-white/95 px-1 py-0.5">
                         <button
@@ -646,7 +647,7 @@ export default function ProductPage() {
                     </Link>
                   </div>
 
-                  <p className="mt-2 text-sm font-medium text-[#FFF5C5]">Rs. {product.price.toFixed(2)}</p>
+                  {/* <p className="mt-2 text-sm font-medium text-[#FFF5C5]">Rs. {product.price.toFixed(2)}</p> */}
                 </article>
               </div>
             ))}
