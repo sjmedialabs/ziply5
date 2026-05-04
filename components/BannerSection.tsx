@@ -31,7 +31,7 @@ export default function BannerSection({
   const isAboutPage = pathname === "/about";
   return (
     <section
-      className="relative w-full flex items-center justify-center text-white h-[70vh]"
+      className="relative w-full flex items-center justify-center text-white h-[40vh]"
   style={{
     background: bgImage
       ? `url(${bgImage}) center/cover no-repeat`
@@ -51,15 +51,15 @@ export default function BannerSection({
       <div className="relative z-10 text-center max-w-7xl mx-auto px-4 flex flex-col items-center justify-center gap-2">
         <div>
         {title && (
-          <h1   className={`text-3xl md:text-5xl lg:text-7xl font-medium font-melon tracking-wide ${
-    isAboutPage ? "text-white" : "text-primary"
-  }`}>{title}</h1>
-        )}
+          <h1   className={`text-xl lg:text-4xl font-medium font-melon tracking-wide ${
+            isAboutPage ? "text-white" : "text-primary"
+          }`}>{title}</h1>
+                )}
 
-        {subtitle && <p className={`mt-2 text-2xl font-light ${isAboutPage ? "text-white" : "text-[#646464]"}`}>{subtitle}</p>}
+        {/* {subtitle && <p className={`mt-2 text-2xl font-light ${isAboutPage ? "text-white" : "text-[#646464]"}`}>{subtitle}</p>} */}
            </div>
-        {/* ✅ Auto Breadcrumb */}
-        <div className="mt-4 flex items-center justify-center gap-2 text-sm bg-white text-black px-8 py-2 rounded-full">
+        {/* Auto Breadcrumb */}
+        {/* <div className="mt-4 flex items-center justify-center gap-2 text-sm bg-white text-black px-8 py-2 rounded-full">
           <Link href="/" className="hover:text-orange-500">
             Home
           </Link>
@@ -87,7 +87,7 @@ export default function BannerSection({
               </span>
             );
           })}
-        </div>
+        </div> */}
       </div>
     </section>
   );
