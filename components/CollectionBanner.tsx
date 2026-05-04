@@ -12,7 +12,7 @@ export default function CollectionBanner({ cmsData }: { cmsData?: any }) {
 
   const slides = cmsData?.slides || []
   const cmsFallbackBig = slides[0]?.mainImage || "/assets/Homepage/CollectionBigImg.png"
-  const displayProducts = useMemo(() => fetchedProducts.slice(0, 6), [fetchedProducts])
+  const displayProducts = useMemo(() => fetchedProducts.filter((p: any) => !p.isCombo).slice(0, 10), [fetchedProducts])
 
   const items = useMemo(() => {
     if (displayProducts.length > 0) return displayProducts
@@ -49,12 +49,12 @@ export default function CollectionBanner({ cmsData }: { cmsData?: any }) {
     n > 1
       ? items[(activeIndex + 1) % n]
       : {
-          id: "browse-more",
-          slug: "products",
-          image: cmsFallbackBig,
-          name: "See full range",
-          description: "Browse every meal in the collection.",
-        }
+        id: "browse-more",
+        slug: "products",
+        image: cmsFallbackBig,
+        name: "See full range",
+        description: "Browse every meal in the collection.",
+      }
 
   const bigImageSrc = useMemo(() => {
     if (loading) return cmsFallbackBig
@@ -160,7 +160,7 @@ export default function CollectionBanner({ cmsData }: { cmsData?: any }) {
               </h2>
             </div>
 
-            <div className="relative flex justify-between items-center min-h-[280px] md:min-h-[320px]">
+            <div className="relative w-full flex justify-between items-center min-h-[280px] md:min-h-[320px]">
               {loading ? (
                 <div className="bg-[#F9FAFB] border-2 border-gray-100 rounded-2xl shadow-md mx-10 md:mx-40 lg:mx-0 lg:mr-12 animate-pulse overflow-hidden w-full max-w-md mx-auto lg:mr-12">
                   <div className="bg-gray-100 h-48 flex justify-center items-center">
@@ -173,7 +173,7 @@ export default function CollectionBanner({ cmsData }: { cmsData?: any }) {
                 </div>
               ) : (
                 <div className="w-full flex justify-center lg:justify-start">
-                  <Link href={`/product/${nextItem.slug}`} className="block w-full max-w-md">
+                  <Link href={`/product/${nextItem.slug}`} className="block w-full lg:max-w-md">
                     <div className="card-smooth bg-[#F9FAFB] border-2 border-[#51282B] rounded-2xl shadow-md mx-10 md:mx-40 lg:mx-0 lg:mr-12 cursor-pointer hover:shadow-lg">
                       <div className="bg-green-200 rounded-t-2xl py-8 flex justify-center">
                         <Image
@@ -207,7 +207,7 @@ export default function CollectionBanner({ cmsData }: { cmsData?: any }) {
                   aria-label="Previous product"
                   onClick={goPrev}
                   disabled={n <= 1}
-                  className="collection-banner-prev absolute left-2/5 lg:left-88 lg:right-0 -translate-y-1/2 -bottom-20 lg:top-2/5 z-10 w-9 h-9 border-2 border-primary rounded-full shadow flex items-center justify-center transition-transform duration-300 hover:scale-105 disabled:opacity-40 disabled:pointer-events-none"
+                  className="collection-banner-prev absolute left-2/5 lg:left-88 lg:right-0 -translate-y-1/2 -bottom-15 lg:top-2/5 z-10 w-9 h-9 border-2 border-primary rounded-full shadow flex items-center justify-center transition-transform duration-300 hover:scale-105 disabled:opacity-40 disabled:pointer-events-none"
                 >
                   <svg className="w-4 h-4 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
@@ -219,7 +219,7 @@ export default function CollectionBanner({ cmsData }: { cmsData?: any }) {
                   aria-label="Next product"
                   onClick={goNext}
                   disabled={n <= 1}
-                  className="collection-banner-next absolute right-2/5 lg:right-0 -translate-y-1/2 -bottom-20 lg:top-1/2 z-10 w-9 h-9 border-2 border-primary rounded-full shadow flex items-center justify-center transition-transform duration-300 hover:scale-105 disabled:opacity-40 disabled:pointer-events-none"
+                  className="collection-banner-next absolute right-2/5 lg:right-0 -translate-y-1/2 -bottom-15 lg:top-1/2 z-10 w-9 h-9 border-2 border-primary rounded-full shadow flex items-center justify-center transition-transform duration-300 hover:scale-105 disabled:opacity-40 disabled:pointer-events-none"
                 >
                   <svg className="w-4 h-4 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
