@@ -63,6 +63,7 @@ export default function ProductPage() {
           setError(single.message ?? "Product not found")
           return
         }
+        console.log("products from api", single.data)
         const item = toStorefrontProduct(single.data as never)
         setProduct(item)
         const rel =
@@ -533,7 +534,7 @@ export default function ProductPage() {
             </div>
           </div>
         </div>
-         <div className="mt-8 xl:hidden grid-cols-6 gap-4 hidden lg:grid border-t border-[#DEDEDE] pt-5">
+         {/* <div className="mt-8 xl:hidden grid-cols-6 gap-4 hidden lg:grid border-t border-[#DEDEDE] pt-5">
               {product?.features?.length  && (product?.features?.map((item) => (
                 <div key={item.title} className="flex flex-col border rounded-2xl py-2 border-[#DEDEDE]] items-center gap-2 text-center">
                   <div className="relative h-10 w-10">
@@ -542,35 +543,108 @@ export default function ProductPage() {
                   <p className="text-[11px] font-semibold text-[#333]">{item.title}</p>
                 </div>
               )))}
-            </div>
-        <div className="mt-10 border-t border-[#DFDFDF]">
-          {(product.details.length || product.sections.length
-            ? (product.details || product.sections)
-            : [{ title: "Description", content: product.description }]).map((section, idx) => {
-            const sectionId = section.title.toLowerCase().replace(/[^a-z0-9]+/g, "-") || `section-${idx}`
-            const isOpen = openSection === sectionId
-            return (
-              <div key={sectionId} className="border-b border-[#DFDFDF]">
-                <button
-                  type="button"
-                  onClick={() => setOpenSection(isOpen ? null : sectionId)}
-                  className="flex w-full items-center justify-between py-5 text-left"
-                >
-                  <span className="text-sm font-light font-melon tracking-wide text-[#262626]">{section.title}</span>
-                  <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-[#F58B2E] text-sm font-bold text-white">
-                    {isOpen ? "-" : "+"}
-                  </span>
-                </button>
-                {isOpen && (
-                  <div
-                    className="pb-5 pr-10 text-sm leading-6 text-[#606060]"
-                    dangerouslySetInnerHTML={{ __html: section.content }}
-                  />
-                )}
-              </div>
-            )
-          })}
+            </div> */}
+      <div className="mt-10 border-t border-[#DFDFDF]">
+  {/* Product Details */}
+  {product?.details?.length > 0 &&
+    product.details.map((section: any) => {
+      const sectionId = `detail-${section.id}`
+      const isOpen = openSection === sectionId
+      const content = section.description || section.content
+
+      return (
+        <div key={sectionId} className="border-b border-[#DFDFDF]">
+          <button
+            type="button"
+            onClick={() => setOpenSection(isOpen ? null : sectionId)}
+            className="flex w-full items-center justify-between py-5 text-left"
+          >
+            <span className="font-melon text-sm font-light tracking-wide text-[#262626]">
+              {section.title}
+            </span>
+
+            <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-[#F58B2E] text-sm font-bold text-white">
+              {isOpen ? "-" : "+"}
+            </span>
+          </button>
+
+          {isOpen && (
+            <div
+              className="pb-5 pr-10 text-sm leading-6 text-[#606060]"
+              dangerouslySetInnerHTML={{ __html: content }}
+            />
+          )}
         </div>
+      )
+    })}
+
+  {/* Product Sections */}
+  {(!product?.details || product.details.length === 0) &&
+    product?.sections?.length > 0 &&
+    product.sections.map((section: any) => {
+      const sectionId = `section-${section.id}`
+      const isOpen = openSection === sectionId
+      const content = section.description || section.content
+
+      return (
+        <div key={sectionId} className="border-b border-[#DFDFDF]">
+          <button
+            type="button"
+            onClick={() => setOpenSection(isOpen ? null : sectionId)}
+            className="flex w-full items-center justify-between py-5 text-left"
+          >
+            <span className="font-melon text-sm font-light tracking-wide text-[#262626]">
+              {section.title}
+            </span>
+
+            <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-[#F58B2E] text-sm font-bold text-white">
+              {isOpen ? "-" : "+"}
+            </span>
+          </button>
+
+          {isOpen && (
+            <div
+              className="pb-5 pr-10 text-sm leading-6 text-[#606060]"
+              dangerouslySetInnerHTML={{ __html: content }}
+            />
+          )}
+        </div>
+      )
+    })}
+
+  {/* Fallback Description */}
+  {(!product?.details || product.details.length === 0) &&
+    (!product?.sections || product.sections.length === 0) && (
+      <div className="border-b border-[#DFDFDF]">
+        <button
+          type="button"
+          onClick={() =>
+            setOpenSection(
+              openSection === "description" ? null : "description"
+            )
+          }
+          className="flex w-full items-center justify-between py-5 text-left"
+        >
+          <span className="font-melon text-sm font-light tracking-wide text-[#262626]">
+            Description
+          </span>
+
+          <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-[#F58B2E] text-sm font-bold text-white">
+            {openSection === "description" ? "-" : "+"}
+          </span>
+        </button>
+
+        {openSection === "description" && (
+          <div
+            className="pb-5 pr-10 text-sm leading-6 text-[#606060]"
+            dangerouslySetInnerHTML={{
+              __html: product.description || "",
+            }}
+          />
+        )}
+      </div>
+    )}
+</div>
 
        {reviews.length > 0 && ( <div className="mt-10 rounded-2xl border border-[#E8DCC8] bg-white p-5 sm:p-7">
           <h2 className="font-heading text-3xl uppercase text-[#4A1E1F]">Customer Reviews</h2>
