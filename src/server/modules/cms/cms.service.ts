@@ -3,7 +3,7 @@ import { pgQuery, pgTx } from "@/src/server/db/pg"
 
 export const listCmsPages = async () => {
   const pages = await pgQuery<Array<{ id: string; slug: string; title: string; status: string; updatedAt: Date }>>(
-    `SELECT id, slug, title, status, "updatedAt" FROM "CmsPage" ORDER BY "updatedAt" DESC`,
+    `SELECT id, slug, title,"metaTitle", "metaDescription", status, "updatedAt" FROM "CmsPage" ORDER BY "updatedAt" DESC`,
   )
   const counts = await pgQuery<Array<{ pageId: string; count: number }>>(
     `SELECT "pageId" as "pageId", COUNT(*)::int as count FROM "CmsSection" GROUP BY "pageId"`,
