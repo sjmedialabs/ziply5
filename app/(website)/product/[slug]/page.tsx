@@ -127,7 +127,7 @@ export default function ProductPage() {
   const salePercent =
     activeVariant != null && activeVariant.discountPercent !== undefined
       ? activeVariant.discountPercent
-      : product?.discountPercent ?? 0
+      : product?.discountPercent
 
   useEffect(() => {
     if (!product) return
@@ -377,7 +377,7 @@ export default function ProductPage() {
                   <> {activeVariant.stock <= 5 ? "Hurry, only a few left!" : `${activeVariant.stock} available`}</>
                 )}
               </span>
-              {salePercent && salePercent > 0 && (
+              {salePercent && salePercent> 0 && (
                 <span className="rounded-md bg-[#2E84CF] px-2 py-1 text-[11px] font-semibold text-white">SALE {salePercent}% Off</span>
               )}
               {product.labels.slice(0, 2).map((label, idx) => (
