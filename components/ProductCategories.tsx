@@ -13,7 +13,7 @@ export default function ProductCategories({ cmsData }: { cmsData?: any }) {
   const { products, loading } = useStorefrontProducts(20);
   const [navLocked, setNavLocked] = useState(false);
   
-  const displayItems = useMemo(() => products.slice(0, 15), [products]);
+  const displayItems = useMemo(() => products.filter((p: any) => !p.isCombo).slice(0, 15), [products]);
   const sectionTitle = cmsData?.title || "OUR PRODUCTS";
 
   if (!loading && displayItems.length === 0) return null;
