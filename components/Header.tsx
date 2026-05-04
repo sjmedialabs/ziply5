@@ -2,7 +2,7 @@
 
 import Link from "next/link"
 import { Menu, X } from "lucide-react"
-import { useState, useRef, useEffect, useCallback } from "react"
+import { useState, useRef, useEffect, useCallback, Fragment } from "react"
 import Image from "next/image"
 import CartDropdown from "./CartDropdown"
 import { useSearch } from "../hooks/useSearch"
@@ -177,36 +177,60 @@ export default function Header() {
   return (
     <header className="sticky top-0 z-[100]">
       {/* Top Marquee Bar */}
-      <div className="bg-yellow-400 py-2.5 overflow-hidden relative z-0">
-        <div className="marquee-container">
-          <div className="marquee-content ">
-            <span className="marquee-item ">SUBSCRIBE & SAVE</span>
-            <span className="marquee-dot">•</span>
-            <span className="marquee-item">SUBSCRIBE & SAVE 15%</span>
-            <span className="marquee-dot">•</span>
-            <span className="marquee-item">SUBSCRIBE & SAVE 15%</span>
-            <span className="marquee-dot">•</span>
-            <span className="marquee-item">SUBSCRIBE & SAVE 15%</span>
-            <span className="marquee-dot">•</span>
-            <span className="marquee-item">SUBSCRIBE & SAVE 15%</span>
-            <span className="marquee-dot">•</span>
-            <span className="marquee-item">SUBSCRIBE & SAVE</span>
-            <span className="marquee-dot">•</span>
-            <span className="marquee-item">SUBSCRIBE & SAVE 15%</span>
-            <span className="marquee-dot">•</span>
-            <span className="marquee-item">SUBSCRIBE & SAVE 15%</span>
-            <span className="marquee-dot">•</span>
-            <span className="marquee-item">SUBSCRIBE & SAVE 15%</span>
-            <span className="marquee-dot">•</span>
-            <span className="marquee-item">SUBSCRIBE & SAVE 15%</span>
-            <span className="marquee-dot">•</span>
-          </div>
+      <div className="bg-yellow-400 py-1.5 overflow-hidden relative z-0">
+        <style>{`
+          @keyframes seamless-marquee {
+            0% { transform: translateX(0%); }
+            100% { transform: translateX(-50%); }
+          }
+          .animate-seamless-marquee {
+            animation: seamless-marquee 25s linear infinite;
+            will-change: transform;
+          }
+          .animate-seamless-marquee:hover {
+            animation-play-state: paused;
+          }
+        `}</style>
+        <div className="marquee-container flex whitespace-nowrap animate-seamless-marquee" style={{ width: 'max-content' }}>
+          {(() => {
+            const customItems = cmsData?.marqueeItems?.filter((i: string) => typeof i === 'string' && i.trim() !== "");
+            let itemsToUse = [];
+            if (customItems?.length > 0) {
+              const repeatedItems = [];
+              while (repeatedItems.length < 20) {
+                repeatedItems.push(...customItems);
+              }
+              itemsToUse = repeatedItems;
+            } else if (cmsData?.marqueeText?.trim()) {
+              itemsToUse = Array(20).fill(cmsData.marqueeText);
+            } else {
+              itemsToUse = Array(20).fill("Welcome To Ziply5");
+            }
+
+            const elements = itemsToUse.map((item: string, idx: number) => (
+              <Fragment key={idx}>
+                <span className="marquee-item ">{item}</span>
+                <span className="marquee-dot">•</span>
+              </Fragment>
+            ));
+
+            return (
+              <>
+                <div className="marquee-content flex shrink-0 items-center" style={{ animation: 'none' }}>
+                  {elements}
+                </div>
+                <div className="marquee-content flex shrink-0 items-center" aria-hidden="true" style={{ animation: 'none' }}>
+                  {elements}
+                </div>
+              </>
+            );
+          })()}
         </div>
       </div>
 
       {/* Navigation */}
       <nav className="bg-white w-full relative z-10">
-        <div className="w-full px-4 max-w-7xl mx-auto flex items-center justify-between py-2">
+        <div className="w-full px-4 max-w-7xl mx-auto flex items-center justify-between py-0">
 
           {/* MOBILE MENU BUTTON */}
           <button

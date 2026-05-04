@@ -4,6 +4,7 @@ import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import ImageUploader from './ImageUploader';
+import DynamicList from './DynamicList';
 
 interface HeaderProps {
   value?: {
@@ -12,6 +13,8 @@ interface HeaderProps {
     link1Url?: string;
     link2Title?: string;
     link2Url?: string;
+    marqueeText?: string;
+    marqueeItems?: string[];
   };
   onChange: (value: any) => void;
 }
@@ -75,6 +78,44 @@ export default function HeaderSectionEditor({ value = {}, onChange }: HeaderProp
                 placeholder="e.g. /book"
                 className="h-8 text-sm"
               />
+            </div>
+          </div>
+
+          <div className="border-t border-[#E8DCC8] pt-4">
+            <Label className="text-sm font-semibold text-[#4A1D1F] mb-4 block">Marquee Settings</Label>
+            
+            <div className="space-y-4">
+              <div>
+                {/* <Label className="text-xs font-semibold text-[#646464] mb-1 block">Marquee Text (Single)</Label>
+                <Input
+                  value={value.marqueeText || ''}
+                  onChange={(e) => updateField('marqueeText', e.target.value)}
+                  placeholder="e.g. SUBSCRIBE & SAVE 15%"
+                  className="h-8 text-sm"
+                /> */}
+                <p className="text-[10px] text-[#646464] mt-1">This text will be repeated across the marquee. To use multiple varying phrases, add them below.</p>
+              </div>
+
+              <div>
+                <DynamicList
+                  title="Marquee Items (Multiple)"
+                  items={value.marqueeItems || []}
+                  onChange={(items) => updateField('marqueeItems', items.map((i: any) => typeof i === 'string' ? i : ''))}
+                  renderItem={(item: string | any, index: number) => (
+                    <Input
+                      value={typeof item === 'string' ? item : ''}
+                      onChange={(e) => {
+                        const newItems = [...(value.marqueeItems || [])];
+                        newItems[index] = e.target.value;
+                        updateField('marqueeItems', newItems);
+                      }}
+                      placeholder="e.g. SUBSCRIBE & SAVE"
+                      className="h-8 text-sm"
+                    />
+                  )}
+                  emptyMessage="No multiple items added."
+                />
+              </div>
             </div>
           </div>
         </div>
