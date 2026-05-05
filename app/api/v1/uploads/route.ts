@@ -45,7 +45,12 @@ export async function POST(request: NextRequest) {
       const file = allFiles[i]
       if (!file.name) continue
       const bytes = new Uint8Array(await file.arrayBuffer())
-      if (useRawFaviconUpload) {
+      
+      // Determine if we should use raw upload (favicons OR videos)
+      const isVideo = file.type.startsWith("video/")
+      const useRaw = useRawFaviconUpload || isVideo
+      
+      if (useRaw) {
         const saved = await storageService.saveRawUpload({
           folder,
           originalName: file.name,
