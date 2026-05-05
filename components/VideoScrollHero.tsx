@@ -34,6 +34,8 @@ export default function VideoScrollHero({ videoUrl, cmsData }: VideoScrollHeroPr
       setIsExtracting(false);
       return;
     }
+
+    const extract = async () => {
       // 1. Instant Cache Check
       const cacheKey = `ziply_hero_cache_${videoUrl}`;
       if ((window as any)[cacheKey]) {
@@ -103,8 +105,7 @@ export default function VideoScrollHero({ videoUrl, cmsData }: VideoScrollHeroPr
             video.removeEventListener("seeked", onSeeked);
             requestAnimationFrame(() => setTimeout(resolve, 10));
           }
-          // Add a safety timeout for each frame - live servers can be slow
-          setTimeout(onSeeked, 1000); 
+          setTimeout(onSeeked, 1000);
           video.addEventListener("seeked", onSeeked);
         });
 
@@ -115,12 +116,11 @@ export default function VideoScrollHero({ videoUrl, cmsData }: VideoScrollHeroPr
             img.src = canvas.toDataURL("image/jpeg", 0.7);
             await new Promise(r => {
               img.onload = r;
-              img.onerror = r; // Continue even if one frame fails
+              img.onerror = r;
             });
             extractedImages.push(img);
           } catch (e) {
             console.warn("Frame extraction blocked by CORS or security:", e);
-            // If we hit a security error (CORS), we must stop and fallback
             break;
           }
         }
@@ -132,12 +132,12 @@ export default function VideoScrollHero({ videoUrl, cmsData }: VideoScrollHeroPr
         (window as any)[cacheKey] = extractedImages;
         setImages(extractedImages);
       }
-      
+
       setIsExtracting(false);
       if (document.body.contains(video)) {
         document.body.removeChild(video);
       }
-    }
+    };
 
     extract();
   }, [videoUrl]);
@@ -226,7 +226,7 @@ export default function VideoScrollHero({ videoUrl, cmsData }: VideoScrollHeroPr
         <div className="absolute inset-0 flex items-start pt-10 md:pt-14 lg:pt-16 pointer-events-none">
           <div className="w-full max-w-7xl mx-auto px-4 relative h-full">
             <m.div style={{ opacity: titleOpacity, y: titleY }} className="max-w-7xl pt-24 md:pt-32">
-              <h1 className="font-heading text-3xl md:text-5xl lg:text-5xl font-extrabold text-amber-900 leading-[1.05] whitespace-pre-line drop-shadow-lg">
+              <h1 className="font-heading text-3xl md:text-5xl lg:text-7xl font-extrabold text-amber-900 leading-[1.05] whitespace-pre-line drop-shadow-lg">
                 {(() => {
                   const title = cmsData?.title || "Nothing Artificial.\nEverything Delicious.";
                   const words = title.trim().split(/\s+/);
@@ -237,8 +237,15 @@ export default function VideoScrollHero({ videoUrl, cmsData }: VideoScrollHeroPr
                 })()}
               </h1>
               <div className="mt-4">
-                <p className="font-heading text-lg md:text-2xl lg:text-3xl font-extrabold text-amber-900 leading-[1.05] uppercase drop-shadow-md">
-                  {cmsData?.subtitle || "Taste the authentic flavors\nof home-cooked meals!"}
+                <p className="font-heading text-lg md:text-2xl lg:text-5xl font-extrabold text-amber-900 leading-[1.05] uppercase drop-shadow-md whitespace-pre-line">
+                  {(() => {
+                    const subtitle = cmsData?.subtitle || "Taste the authentic flavors\nof home-cooked meals!";
+                    const words = subtitle.trim().split(/\s+/);
+                    if (words.length > 3) {
+                      return `${words.slice(0, 3).join(" ")}\n${words.slice(3).join(" ")}`;
+                    }
+                    return subtitle;
+                  })()}
                 </p>
               </div>
             </m.div>
