@@ -29,9 +29,11 @@ export default function VideoScrollHero({ videoUrl, cmsData }: VideoScrollHeroPr
   })
 
   useEffect(() => {
-    if (!videoUrl) return
-
-    const extract = async () => {
+    if (!videoUrl) {
+      console.warn("VideoScrollHero: No videoUrl provided. Hiding loader.");
+      setIsExtracting(false);
+      return;
+    }
       // 1. Instant Cache Check
       const cacheKey = `ziply_hero_cache_${videoUrl}`;
       if ((window as any)[cacheKey]) {
@@ -57,51 +59,84 @@ export default function VideoScrollHero({ videoUrl, cmsData }: VideoScrollHeroPr
       video.crossOrigin = "anonymous";
 
       await new Promise((resolve) => {
+        const timeout = setTimeout(() => {
+          console.warn("Video metadata load timed out");
+          resolve(false);
+        }, 8000);
+
         video.onloadedmetadata = () => {
+          clearTimeout(timeout);
           video.currentTime = 0;
           resolve(true);
+        }
+        video.onerror = (e) => {
+          clearTimeout(timeout);
+          console.error("Video load error:", e);
+          resolve(false);
         }
         video.load();
       });
 
       const canvas = document.createElement("canvas");
-      const ctx = canvas.getContext("2d", { alpha: false }); // Performance optimization
-      canvas.width = video.videoWidth;
-      canvas.height = video.videoHeight;
+      const ctx = canvas.getContext("2d", { alpha: false });
+      canvas.width = video.videoWidth || 1280;
+      canvas.height = video.videoHeight || 720;
 
       const extractedImages: HTMLImageElement[] = [];
-      const duration = video.duration;
+      const duration = video.duration || 0;
+
+      if (duration === 0) {
+        setIsExtracting(false);
+        document.body.removeChild(video);
+        return;
+      }
 
       for (let i = 0; i < frameCount; i++) {
         const time = (i / (frameCount - 1)) * duration;
         video.currentTime = time;
 
         await new Promise((resolve) => {
+          let resolved = false;
           const onSeeked = () => {
+            if (resolved) return;
+            resolved = true;
             video.removeEventListener("seeked", onSeeked);
-            // Reduced to 10ms for much faster local extraction
             requestAnimationFrame(() => setTimeout(resolve, 10));
           }
+          // Add a safety timeout for each frame - live servers can be slow
+          setTimeout(onSeeked, 1000); 
           video.addEventListener("seeked", onSeeked);
         });
 
         if (ctx) {
-          ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-          const img = new Image();
-          img.src = canvas.toDataURL("image/jpeg", 0.7);
-          await new Promise(r => img.onload = r);
-          extractedImages.push(img);
+          try {
+            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+            const img = new Image();
+            img.src = canvas.toDataURL("image/jpeg", 0.7);
+            await new Promise(r => {
+              img.onload = r;
+              img.onerror = r; // Continue even if one frame fails
+            });
+            extractedImages.push(img);
+          } catch (e) {
+            console.warn("Frame extraction blocked by CORS or security:", e);
+            // If we hit a security error (CORS), we must stop and fallback
+            break;
+          }
         }
 
         setExtractProgress(Math.round(((i + 1) / frameCount) * 100));
       }
 
-      // 2. Save to Cache
-      (window as any)[cacheKey] = extractedImages;
-
-      setImages(extractedImages);
+      if (extractedImages.length > 0) {
+        (window as any)[cacheKey] = extractedImages;
+        setImages(extractedImages);
+      }
+      
       setIsExtracting(false);
-      document.body.removeChild(video);
+      if (document.body.contains(video)) {
+        document.body.removeChild(video);
+      }
     }
 
     extract();
@@ -160,7 +195,7 @@ export default function VideoScrollHero({ videoUrl, cmsData }: VideoScrollHeroPr
   const finalTitleOpacity = useTransform(smoothProgress, [0.8, 0.9, 1], [0, 1, 1])
 
   return (
-    <div ref={containerRef} className="relative h-[300vh] bg-black">
+    <div ref={containerRef} className="relative h-[500vh] bg-black">
       <AnimatePresence>
         {isExtracting && (
           <m.div
