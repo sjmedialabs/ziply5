@@ -161,7 +161,7 @@ if (trendingProducts.length === 0) return null;
                 <div
                   className={`relative bg-gradient-to-b ${cardGradients[index % cardGradients.length]} 
                   flex items-center justify-center 
-                  h-[280px] group-hover:-mt-10`}
+                  h-[280px] `}
                 >
                   {/* veg icon */}
                   <div className="absolute top-2 z-20 right-0 w-20 h-5 rounded-sm flex items-center justify-center">
@@ -179,7 +179,7 @@ if (trendingProducts.length === 0) return null;
                   )
                 }
                   </div>
-                  <div className="relative h-full w-full">
+                  <div className="relative h-full w-full transition-transform duration-300 hover:scale-90 ">
                     <Image
                       src={product.image}
                       alt={product.name}

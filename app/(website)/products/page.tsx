@@ -397,6 +397,7 @@ const toggleTag = (tagId: string) => {
       sku: variant.sku
     }, nextQty)
   }
+  console.log("fetch products:::::::",filteredProducts)
 
   return (
     <section className="w-full bg-[#F3F0DC]">
@@ -579,7 +580,7 @@ const toggleTag = (tagId: string) => {
             </button>
           </div>
         )}
-        <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3 pb-5">
           {paginatedProducts.map((product, idx) => {
             const displayPrice = (product as any).variants?.length
               ? Number(
@@ -606,13 +607,6 @@ const toggleTag = (tagId: string) => {
                     className="group relative rounded-2xl border-2 border-transparent p-4 transition-all duration-300 hover:ring-4 hover:ring-[#F36E21] hover:shadow-xl will-change-transform"
                     style={{ backgroundColor: cardBg }}
                   >
-              <button
-                type="button"
-                onClick={(e) => handleToggleFavorite(e, product.slug)}
-                className="absolute left-3 top-3 z-20 text-lg text-white cursor-pointer"
-              >
-                <Heart size={24} className={favoriteSlugs.includes(product.slug) ? "fill-white text-white" : "text-white"} />
-              </button>
 
                 
                   {product.tags &&
@@ -629,6 +623,7 @@ const toggleTag = (tagId: string) => {
                   )
                 }
                 <Link href={(product as any).isCombo ? `/combo/${product.slug}` : `/product/${product.slug}`} className="block">
+                
     
 
                   <div className={`relative mx-auto min-h-[280px] h-full w-full transition-transform duration-300 hover:scale-90 ${showComboThumbStrip ? 'max-w-full' : 'max-w-[190px]'}`}>
@@ -670,6 +665,18 @@ const toggleTag = (tagId: string) => {
                    <p className="mt-1 text-sm font-melon text-[#FFF5C5]">Rs. {product.price.toFixed(2)}</p>
                 </div>
               </Link>
+
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    handleToggleFavorite(e, product.slug);
+                  }}
+                  className="absolute left-3 top-3 z-[60] p-2 text-white cursor-pointer hover:scale-110 transition-transform"
+                >
+                  <Heart size={24} className={favoriteSlugs.includes(product.slug) ? "fill-white text-white" : "text-white"} />
+                </button>
 
                 <div className="mt-auto flex items-end justify-between gap-2 pt-2 font-melon tracking-wide font-light">
                   {(cartQtyBySlug[product.slug] ?? 0) > 0 && product.productKind === "simple" ? (
@@ -740,7 +747,7 @@ const toggleTag = (tagId: string) => {
 
         {!loading && totalPages > 1 && (
           <nav
-            className="mt-10 pb-4 flex flex-wrap items-center justify-center gap-3"
+            className="mt-5 pb-4 flex flex-wrap items-center justify-center gap-3"
             aria-label="Product list pagination"
           >
             <button

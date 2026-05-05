@@ -9,6 +9,7 @@ import { useRouter, useSearchParams } from "next/navigation"
 import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query"
 import { getFavoriteSlugs, toggleFavoriteSlug } from "@/lib/favorites"
 import { addToCart, getCartItems, setCartItemQuantity } from "@/lib/cart"
+import { FALLBACK_PRODUCT_IMAGE } from "@/lib/storefront-products"
 import { useStorefrontProducts } from "@/hooks/useStorefrontProducts"
 import { useRealtimeTables } from "@/hooks/useRealtimeTables"
 import { clearSession } from "@/lib/auth-session"
@@ -717,74 +718,145 @@ function ProfilePageContent() {
                     </div>
                   </div>
                 )}
-
                 {activeTab === "favorite" && (
-                  <>
-                    {favoriteProducts.length === 0 ? (
-                      <p className="text-gray-500">No favorites yet.</p>
-                    ) : (
-                      <>
-                        <div className="mb-5 flex items-center justify-between">
-                          <p className="text-base font-semibold text-[#111827]">Wishlist ({favoriteProducts.length})</p>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              favoriteProducts.forEach((p) => {
-                                setCartItemQuantity(toCartProduct(p), 1)
-                                removeFavorite(p.slug)
-                              })
-                            }}
-                            className="rounded-md border border-[#D1D5DB] bg-white px-4 py-2 text-xs font-medium text-[#111827] hover:bg-[#F9FAFB]"
-                          >
-                            Move all to cart
-                          </button>
-                        </div>
+  <>
+    {favoriteProducts.length === 0 ? (
+      <p className="text-gray-500">No favorites yet.</p>
+    ) : (
+      <>
+        <div className="mb-5 flex items-center justify-between">
+          <p className="text-base font-semibold text-[#111827]">
+            Wishlist ({favoriteProducts.length})
+          </p>
+          <button
+            type="button"
+            onClick={() => {
+              favoriteProducts.forEach((p) => {
+                setCartItemQuantity(toCartProduct(p), 1)
+                removeFavorite(p.slug)
+              })
+            }}
+            className="rounded-md border border-[#D1D5DB] bg-white px-4 py-2 text-xs font-medium text-[#111827] hover:bg-[#F9FAFB]"
+          >
+            Move all to cart
+          </button>
+        </div>
 
-                        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                          {favoriteProducts.map((product) => (
-                            <article
-                              key={product.slug}
-                              className="rounded-xl border border-[#E5E7EB] bg-white p-3 shadow-sm transition hover:shadow-md"
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {favoriteProducts.map((product) => {
+            const comboProducts = ((product as any).bundleProducts ?? []) as Array<{
+              thumbnail?: string | null
+              name?: string
+            }>
+
+            const comboThumbs = comboProducts
+              .map((x) => (x?.thumbnail ?? "").trim())
+              .filter(Boolean)
+              .slice(0, 3)
+
+            const showComboThumbStrip =
+              Boolean((product as any).isCombo) &&
+              comboThumbs.length > 0
+
+            return (
+              <article
+                key={product.slug}
+                className="rounded-xl border border-[#E5E7EB] bg-white p-3 shadow-sm transition hover:shadow-md"
+              >
+                <div className="relative rounded-md bg-[#F8F9FB] p-3">
+                  <button
+                    type="button"
+                    onClick={() => removeFavorite(product.slug)}
+                    className="absolute right-2 top-2 h-7 w-7 z-10 rounded-full border border-[#E5E7EB] bg-white text-sm text-[#6B7280]"
+                    aria-label="Remove from wishlist"
+                  >
+                    ×
+                  </button>
+
+                  <Link
+                    href={
+                      (product as any).isCombo
+                        ? `/combo/${product.slug}`
+                        : `/product/${product.slug}`
+                    }
+                    className="block"
+                  >
+                    <div className="relative h-32 w-full">
+                      {showComboThumbStrip ? (
+                        <div className="flex flex-col sm:flex-row items-center justify-center gap-1 h-full">
+                          {comboThumbs.map((thumb, imageIdx) => (
+                            <div
+                              key={imageIdx}
+                              className="flex flex-col sm:flex-row items-center justify-center gap-1"
                             >
-                              <div className="relative rounded-md bg-[#F8F9FB] p-3">
-                                <button
-                                  type="button"
-                                  onClick={() => removeFavorite(product.slug)}
-                                  className="absolute right-2 top-2 h-7 w-7 rounded-full border border-[#E5E7EB] bg-white text-sm text-[#6B7280]"
-                                  aria-label="Remove from wishlist"
-                                >
-                                  ×
-                                </button>
-                                <Link href={`/product/${product.slug}`} className="block">
-                                  <div className="relative mx-auto h-[140px] w-full max-w-[130px]">
-                                    <Image src={product.image} alt={product.name} fill className="object-contain" />
-                                  </div>
-                                </Link>
+                              <div className="relative h-10 w-10 sm:h-12 sm:w-12">
+                                <Image
+                                  src={thumb}
+                                  alt={`${product.name} item ${imageIdx + 1}`}
+                                  fill
+                                  className="object-contain"
+                                />
                               </div>
-
-                              <h3 className="mt-3 line-clamp-2 text-sm font-semibold text-[#111827]">{product.name}</h3>
-                              <p className="mt-1 text-xs text-[#6B7280]">Net wt. {product.weight}</p>
-                              <p className="mt-2 text-sm font-semibold text-[#B91C1C]">Rs.{Number(product.price).toFixed(2)}</p>
-
-                              <div className="mt-3 flex items-center justify-end">
-                                <button
-                                  type="button"
-                                  onClick={(e) => {
-                                    e.stopPropagation()
-                                    moveFavoriteToCart(product)
-                                  }}
-                                  className="rounded-md border border-[#D1D5DB] px-3 py-1.5 text-xs font-medium text-[#111827] hover:bg-[#F9FAFB]"
-                                >
-                                  Move to cart
-                                </button>
-                              </div>
-                            </article>
+                              {imageIdx < comboThumbs.length - 1 && (
+                                <span className="text-lg font-bold text-gray-400">
+                                  +
+                                </span>
+                              )}
+                            </div>
                           ))}
                         </div>
-                      </>
-                    )}
-                  </>
-                )}
+                      ) : (
+                        <Image
+                          src={product.image}
+                          alt={product.name}
+                          fill
+                          className="object-contain"
+                        />
+                      )}
+                    </div>
+                  </Link>
+                </div>
+
+                <h3 className="mt-3 line-clamp-2 text-sm font-semibold text-[#111827]">
+                  {product.name}
+                </h3>
+
+                <p className="mt-1 text-xs text-[#6B7280]">
+                  {(product as any).isCombo
+                    ? "Combo Pack"
+                    : `Net wt. ${product.weight}`}
+                </p>
+
+                <p className="mt-2 text-sm font-semibold text-[#B91C1C]">
+                  Rs.{Number(product.price).toFixed(2)}
+                </p>
+
+                <div className="mt-3 flex items-center justify-end">
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      if ((product as any).isCombo) {
+                        router.push(`/combo/${product.slug}`)
+                      } else {
+                        moveFavoriteToCart(product)
+                      }
+                    }}
+                    className="rounded-md border border-[#D1D5DB] px-3 py-1.5 text-xs font-medium text-[#111827] hover:bg-[#F9FAFB]"
+                  >
+                    {(product as any).isCombo
+                      ? "View Combo"
+                      : "Move to cart"}
+                  </button>
+                </div>
+              </article>
+            )
+          })}
+        </div>
+      </>
+    )}
+  </>
+)}
 
                 {activeTab === "orders" && (
                   <div className="space-y-4 text-sm">
