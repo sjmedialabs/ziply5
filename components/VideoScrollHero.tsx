@@ -66,7 +66,6 @@ export default function VideoScrollHero({ videoUrl, cmsData }: VideoScrollHeroPr
       setIsExtracting(false);
       return;
     }
-
     const extract = async () => {
       // 1. Instant Cache Check
       const cacheKey = `ziply_hero_cache_${videoUrl}`;
