@@ -236,6 +236,8 @@ function ProfilePageContent() {
     mutationFn: async (payload: typeof editForm) => {
       const token = window.localStorage.getItem("ziply5_access_token")
       const userId = JSON.parse(window.localStorage.getItem("ziply5_user") || "{}").id
+      if (!userId) throw new Error("User session not found. Please log in again.")
+
       const res = await fetch(`/api/v1/profile?userId=${encodeURIComponent(userId)}`, {
         method: "PATCH",
         headers: {
@@ -246,12 +248,16 @@ function ProfilePageContent() {
         body: JSON.stringify(payload),
       })
       const data = await res.json()
-      if (!data.success) throw new Error(data.message)
+      if (!data.success) throw new Error(data.message || "Update failed")
       return data
     },
     onSuccess: () => {
+      toast.success("Profile Updated", "Your profile has been successfully updated.")
       void queryClient.invalidateQueries({ queryKey: ["user-profile"] })
       setIsManageModalOpen(false)
+    },
+    onError: (error: Error) => {
+      toast.error("Update Failed", error.message)
     },
   })
 
