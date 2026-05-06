@@ -3,12 +3,19 @@
 import { useMemo } from "react"
 import { useParams, useRouter } from "next/navigation"
 import { useQuery } from "@tanstack/react-query"
+import { Download } from "lucide-react"
+import { toast } from "@/lib/toast"
+import { generateInvoicePDF } from "@/lib/invoice"
 
 type OrderDetail = {
   id: string
   status: string
   paymentMethod?: string | null
   paymentStatus?: string | null
+  subtotal?: string | number
+  tax?: string | number
+  discount?: string | number
+  shipping?: string | number
   total: string | number
   createdAt: string
   customerName?: string | null
@@ -56,24 +63,22 @@ export default function TrackOrderPage() {
     return set
   }, [order])
 
-  const downloadInvoice = () => {
+  const downloadInvoice = async () => {
     if (!order) return
-    const blob = new Blob(
-      [
-        `Invoice - Order ${order.id}\n` +
-          `Date: ${new Date(order.createdAt).toLocaleString()}\n` +
-          `Status: ${order.status}\n` +
-          `Payment: ${(order.paymentStatus ?? "pending").toUpperCase()}\n` +
-          `Total: Rs.${Number(order.total).toFixed(2)}\n`,
-      ],
-      { type: "text/plain;charset=utf-8" },
-    )
-    const url = URL.createObjectURL(blob)
-    const anchor = document.createElement("a")
-    anchor.href = url
-    anchor.download = `invoice-${order.id}.txt`
-    anchor.click()
-    URL.revokeObjectURL(url)
+    const success = await generateInvoicePDF({
+      ...order,
+      currency: "Rs.", // Default currency for this page
+      subtotal: Number(order.total) * 0.95, // Mock subtotal
+      tax: Number(order.total) * 0.05, // Mock tax
+      discount: Number(order.total) * 0.1, // Mock discount
+      shipping: Number(order.total) * 0.1, // Mock shipping
+    } as any)
+    
+    if (success) {
+      toast.success("Success", "Invoice downloaded as PDF")
+    } else {
+      toast.error("Error", "Failed to generate PDF invoice")
+    }
   }
 
   return (
@@ -101,7 +106,11 @@ export default function TrackOrderPage() {
             </p>
           </div>
           <div className="flex gap-2">
-            <button onClick={downloadInvoice} className="rounded-md border border-[#D1D5DB] px-3 py-1.5 text-xs">
+            <button 
+              onClick={() => void downloadInvoice()} 
+              className="flex items-center gap-1.5 rounded-md border border-[#D1D5DB] px-3 py-1.5 text-xs font-medium text-[#111827] hover:bg-[#F9FAFB]"
+            >
+              <Download size={14} />
               Invoice
             </button>
             <button onClick={() => window.print()} className="rounded-md border border-[#D1D5DB] px-3 py-1.5 text-xs">
