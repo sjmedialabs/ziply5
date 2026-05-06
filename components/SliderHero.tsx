@@ -57,6 +57,13 @@ export default function Hero({ cmsData }: { cmsData?: any }) {
     }
   }
 
+  const extendedSlides = useMemo(() => {
+    if (slides.length <= 1) return slides
+    return [...slides, slides[0]]
+  }, [slides])
+
+  const [isWarping, setIsWarping] = useState(false)
+
   useEffect(() => {
     let rafId: number
     let nextSlideTime = Date.now() + 4000
@@ -65,7 +72,14 @@ export default function Hero({ cmsData }: { cmsData?: any }) {
     const tick = () => {
       const now = Date.now()
       if (!isPaused && now >= nextSlideTime) {
-        setCurrentSlide((prev) => (prev + 1) % slides.length)
+        setCurrentSlide((prev) => {
+          const next = prev + 1
+          if (next >= extendedSlides.length) {
+            // This case shouldn't happen with the warping logic but safety first
+            return 0
+          }
+          return next
+        })
         nextSlideTime = now + 4000
       }
       rafId = requestAnimationFrame(tick)
@@ -82,10 +96,23 @@ export default function Hero({ cmsData }: { cmsData?: any }) {
       if (rafId) cancelAnimationFrame(rafId)
       document.removeEventListener("visibilitychange", handleVisibility)
     }
-  }, [slides.length])
+  }, [extendedSlides.length])
 
-  const currentTitle = slides[currentSlide]?.title || globalTitle
-  const currentSubtitle = slides[currentSlide]?.subtitle || globalSubtitle
+  // Warping Logic: When we hit the last (cloned) slide, warp back to 0
+  useEffect(() => {
+    if (currentSlide === extendedSlides.length - 1) {
+      const timer = setTimeout(() => {
+        setIsWarping(true)
+        setCurrentSlide(0)
+        // Reset warping state after the warp happens
+        setTimeout(() => setIsWarping(false), 50)
+      }, 850) // Wait for the transition to finish
+      return () => clearTimeout(timer)
+    }
+  }, [currentSlide, extendedSlides.length])
+
+  const currentTitle = slides[currentSlide % slides.length]?.title || globalTitle
+  const currentSubtitle = slides[currentSlide % slides.length]?.subtitle || globalSubtitle
 
   const titleLines = useMemo(
     () => splitIntoLines(currentTitle, "title"),
@@ -110,21 +137,32 @@ export default function Hero({ cmsData }: { cmsData?: any }) {
         onTouchStart={handleTouchStart}
         onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}
-        onTouchMoveCapture={(e) => handleTouchMove(e)}
       >
-        <Image
-          src={slides[currentSlide]?.image || slides[currentSlide]}
-          alt={slides[currentSlide]?.alt || "Hero Image"}
-          fill
-          sizes="100vw"
-          className="object-cover w-full h-full"
-          priority
-        />
+        <div className="relative h-full w-full overflow-hidden">
+          <m.div 
+            className="flex h-full w-full"
+            animate={{ x: `-${currentSlide * 100}%` }}
+            transition={isWarping ? { duration: 0 } : { duration: 0.8, ease: [0.32, 0.72, 0, 1] }}
+          >
+            {extendedSlides.map((slide: any, idx: number) => (
+              <div key={idx} className="h-full w-full flex-shrink-0 relative">
+                <Image
+                  src={slide?.image || slide}
+                  alt={slide?.alt || `Hero Image ${idx}`}
+                  fill
+                  sizes="100vw"
+                  className="object-cover w-full h-full"
+                  priority={idx === 0}
+                />
+              </div>
+            ))}
+          </m.div>
+        </div>
 
-        <div className="absolute inset-0 flex items-start pt-10 md:pt-14 lg:pt-16">
+        <div className="absolute inset-0 flex items-start pt-10 md:pt-14 lg:pt-16 pointer-events-none">
           <div className="w-full max-w-7xl mx-auto px-4">
-            <div className="max-w-7xl" key={`hero-copy-${currentSlide}`}>
-              <h1 className="font-heading text-3xl md:text-5xl lg:text-7xl font-extrabold text-primary leading-[1.05]">
+            <div className="max-w-7xl" key={`hero-copy-${currentSlide % slides.length}`}>
+              <h1 className="font-heading text-3xl md:text-5xl lg:text-7xl font-extrabold text-amber-900 leading-[1.05] drop-shadow-lg">
                 <span className="block space-y-1 md:space-y-2">
                   {titleLines.map((line, i) => (
                     <m.span
@@ -147,8 +185,7 @@ export default function Hero({ cmsData }: { cmsData?: any }) {
                 {subtitleLines.map((line, i) => (
                   <m.p
                     key={`s-${i}`}
-                    className="font-heading text-lg md:text-2xl lg:text-4xl font-extrabold text-primary leading-[1.05] uppercase"
-                    style={{ textShadow: "1px 1px 2px rgba(0,0,0,0.3)" }}
+                    className="font-heading text-lg md:text-2xl lg:text-4xl font-extrabold text-amber-900 leading-[1.05] uppercase drop-shadow-md"
                     {...lineMotion}
                     transition={
                       reduceMotion
@@ -175,9 +212,12 @@ export default function Hero({ cmsData }: { cmsData?: any }) {
             key={dot}
             type="button"
             aria-label={`Slide ${dot + 1}`}
-            onClick={() => setCurrentSlide(dot)}
+            onClick={() => {
+              setIsWarping(false)
+              setCurrentSlide(dot)
+            }}
             className={`h-2.5 rounded-full cursor-pointer transition-all duration-300 ${
-              currentSlide === dot
+              currentSlide % slides.length === dot
                 ? "w-6 bg-amber-900"
                 : "w-2.5 bg-white/80 border border-amber-900/50"
             }`}
