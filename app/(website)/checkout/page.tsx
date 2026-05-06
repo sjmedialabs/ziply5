@@ -102,6 +102,21 @@ export default function CheckoutPage() {
   const [offerTotalDiscount, setOfferTotalDiscount] = useState(0);
   const [offerAdjustedShipping, setOfferAdjustedShipping] = useState<number | null>(null);
   const [offerFinalTotal, setOfferFinalTotal] = useState<number | null>(null);
+  const [taxPercentage, setTaxPercentage] = useState(0);
+
+  useEffect(() => {
+    fetch("/api/v1/settings?group=TAX")
+      .then((res) => res.json())
+      .then((payload: any) => {
+        if (payload.success && Array.isArray(payload.data)) {
+          const row = payload.data.find((r: any) => r.key === "percentage");
+          if (row && row.valueJson != null) {
+            setTaxPercentage(Number(row.valueJson));
+          }
+        }
+      })
+      .catch((err) => console.error("Tax setting fetch failed", err));
+  }, []);
 
   const couponApplied = !!couponCode.trim() && offerBreakdown.some((entry) => entry.type === "coupon");
   const [savedAddresses, setSavedAddresses] = useState<Addr[]>([]);
@@ -203,10 +218,13 @@ useEffect(() => {
   const hasValidationErrors = validatedItems.some(i => i.variantError || i.stock < i.quantity);
 
   const shipping = items.length === 0 ? 0 : 20;
-  const total =
+  const baseTotal =
     offerFinalTotal != null
       ? offerFinalTotal
       : Math.max(subTotal - offerTotalDiscount, 0) + (offerAdjustedShipping ?? shipping);
+  
+  const taxAmount = (subTotal - offerTotalDiscount) * (taxPercentage / 100);
+  const total = baseTotal + taxAmount;
 
   const recalculateOffers = useCallback(
     async (incomingCoupon?: string) => {
@@ -747,6 +765,12 @@ useEffect(() => {
               <span>Total Savings</span>
               <span>-Rs.{offerTotalDiscount.toFixed(2)}</span>
             </div>
+            {taxPercentage > 0 && (
+              <div className="flex justify-between text-[#C03621] font-medium font-melon tracking-wide mt-2">
+                <span>Tax ({taxPercentage}%)</span>
+                <span>Rs.{taxAmount.toFixed(2)}</span>
+              </div>
+            )}
             <div className="flex justify-between text-[#C03621] font-medium font-melon tracking-wide mt-2">
               <span>Grand Total</span>
               <span>Rs.{total.toFixed(2)}</span>
