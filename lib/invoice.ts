@@ -134,9 +134,14 @@ export const generateInvoicePDF = async (order: OrderForInvoice) => {
     doc.text("Discount:", summaryX, finalY + 14)
     doc.text("Shipping:", summaryX, finalY + 21)
 
+    // --- Line above Total ---
+    doc.setDrawColor(232, 220, 200) // #E8DCC8
+    doc.setLineWidth(0.5)
+    doc.line(summaryX, finalY + 25, pageWidth - 15, finalY + 25)
+
     doc.setFontSize(11)
     doc.setTextColor(74, 29, 31)
-    doc.text("Total:", summaryX, finalY + 29)
+    doc.text("Total:", summaryX, finalY + 31)
 
     doc.setFontSize(10)
     doc.setTextColor(42, 24, 16)
@@ -148,7 +153,7 @@ export const generateInvoicePDF = async (order: OrderForInvoice) => {
     doc.setFontSize(11)
     doc.setTextColor(123, 48, 16)
     doc.setFont("helvetica", "bold")
-    doc.text(`${order.currency} ${Number(order.total).toFixed(2)}`, valueX, finalY + 29, { align: "right" })
+    doc.text(`${order.currency} ${Number(order.total).toFixed(2)}`, valueX, finalY + 31, { align: "right" })
 
     // --- Footer ---
     doc.setFontSize(8)
