@@ -21,7 +21,7 @@ export default function Hero({ cmsData }: { cmsData?: any }) {
 
   const slides = cmsData?.slides?.length > 0 ? cmsData.slides : defaultSlides
   const globalTitle = cmsData?.title || "Nothing Artificial.\nEverything Delicious."
-  const globalSubtitle = cmsData?.subtitle || "TASTE THE AUTHENTIC FLAVORS OF\nHOME-COOKED MEALS!"
+  const globalSubtitle = cmsData?.subtitle || "TASTE THE AUTHENTIC FLAVORS\nOF HOME-COOKED MEALS!"
 
   const handleTouchStart = (e: React.TouchEvent) => {
     setStartX(e.targetTouches[0].clientX)
