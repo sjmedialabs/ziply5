@@ -255,7 +255,7 @@ export default function VideoScrollHero({ videoUrl, cmsData }: VideoScrollHeroPr
   const finalTitleOpacity = useTransform(smoothProgress, [0.8, 0.9, 1], [0, 1, 1])
 
   return (
-    <div ref={containerRef} className={`relative ${isExtracting ? 'h-screen' : 'h-[500vh]'} bg-black -mt-[110px] md:-mt-[130px] transition-[height] duration-1000`}>
+    <div ref={containerRef} className="relative h-[130vh] bg-black -mt-[110px] md:-mt-[130px]">
       <div className="sticky top-0 h-screen w-full overflow-hidden bg-[#fafaf9]">
         {/* 
             BACKGROUND LOADING LOGIC:
