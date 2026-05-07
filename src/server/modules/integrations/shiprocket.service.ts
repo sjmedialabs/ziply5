@@ -21,7 +21,13 @@ type ShiprocketTrackResponse = {
 
 let tokenCache: { token: string; expiresAt: number } | null = null
 
-const hasShiprocketConfig = () => Boolean(env.SHIPROCKET_EMAIL && env.SHIPROCKET_PASSWORD)
+const normalizeStaticShiprocketToken = () => {
+  const raw = env.SHIPROCKET_TOKEN?.trim() || env.SHIPROCKET_API_KEY?.trim()
+  return raw ? raw.replace(/^Bearer\s+/i, "") : ""
+}
+
+const hasShiprocketConfig = () =>
+  Boolean((env.SHIPROCKET_EMAIL?.trim() && env.SHIPROCKET_PASSWORD) || normalizeStaticShiprocketToken())
 const shiprocketBaseUrl = (env.SHIPROCKET_BASE_URL ?? "https://apiv2.shiprocket.in/v1/external").replace(/\/+$/, "")
 
 const normalizeShiprocketState = (value: string) => value.trim().toLowerCase()
@@ -61,6 +67,8 @@ const verifyWebhookSignature = (payload: string, signature: string | null) => {
 
 const authToken = async () => {
   if (!hasShiprocketConfig()) return null
+  const fromEnv = normalizeStaticShiprocketToken()
+  if (fromEnv) return fromEnv
   if (tokenCache && tokenCache.expiresAt > Date.now()) return tokenCache.token
   const res = await fetch(`${shiprocketBaseUrl}/auth/login`, {
     method: "POST",
@@ -77,7 +85,7 @@ const authToken = async () => {
   if (!payload.token) throw new Error("Shiprocket auth token missing")
   tokenCache = {
     token: payload.token,
-    expiresAt: Date.now() + 50 * 60 * 1000,
+    expiresAt: Date.now() + 23 * 60 * 60 * 1000,
   }
   return payload.token
 }
