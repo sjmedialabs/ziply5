@@ -19,7 +19,7 @@ export default function Footer({ cmsPayload = {} }: FooterProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
-  const handleSubscribe = () => {
+  const handleSubscribe = async () => {
     if (!email) {
       toast.error("Please enter an email");
       return;
@@ -29,7 +29,25 @@ export default function Footer({ cmsPayload = {} }: FooterProps) {
       return;
     }
 
-
+    setLoading(true);
+    try {
+      const res = await fetch("/api/v1/newsletter", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email })
+      });
+      const json = await res.json();
+      if (json.success) {
+        toast.success("Subscribed!", "You have successfully subscribed to our newsletter.");
+        setEmail("");
+      } else {
+        toast.error("Subscription failed", json.message || "Please try again later.");
+      }
+    } catch (err) {
+      toast.error("Network Error", "Could not connect to the server.");
+    } finally {
+      setLoading(false);
+    }
   }
 
   const mapFooterLinks = (section: unknown) => {
@@ -187,13 +205,13 @@ export default function Footer({ cmsPayload = {} }: FooterProps) {
               />
 
               {/* Double Border Button */}
-              <Button className="relative cursor-pointer bg-white h-[40px] rounded-lg font-semibold text-[var(--primary-color)] border-2 border-yellow-400 hover:bg-yellow-400 transition"
+              <Button 
+                disabled={loading}
+                className="relative cursor-pointer bg-white h-[40px] rounded-lg font-semibold text-[var(--primary-color)] border-2 border-yellow-400 hover:bg-yellow-400 transition disabled:opacity-70 disabled:cursor-not-allowed"
                 onClick={() => handleSubscribe()}>
 
-                {/* <span className="absolute inset-1 border border-yellow-400 rounded-lg"></span> */}
-
                 <span className="relative">
-                  Subscribe
+                  {loading ? "Subscribing..." : "Subscribe"}
                 </span>
 
               </Button>

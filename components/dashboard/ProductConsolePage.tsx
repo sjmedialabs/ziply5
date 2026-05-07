@@ -104,6 +104,17 @@ const toNumOrNull = (value: string) => {
   return Number.isFinite(n) ? n : null
 }
 
+const parseWeight = (w: string | null | undefined) => {
+  if (!w) return { value: "", unit: "gm" };
+  const val = w.match(/[\d.]+/)?.[0] || "";
+  const unitStr = w.replace(/[\d.]/g, "").toLowerCase().trim();
+  let unit = "gm";
+  if (unitStr.includes("kg") || unitStr.includes("kilo")) unit = "kg";
+  else if (unitStr.includes("mg") || unitStr.includes("milli")) unit = "mg";
+  else if (unitStr.includes("g")) unit = "gm";
+  return { value: val, unit };
+};
+
 const Card = ({ title, children }: any) => (
   <div className="bg-white rounded-2xl p-4 border border-[#E5E5DC] shadow-sm">
     <p className="font-semibold mb-3 text-[#4A1D1F]">{title}</p>
@@ -191,7 +202,7 @@ export function ProductConsolePage({
   const [shelfLife, setShelfLife] = useState("")
   const [preparationType, setPreparationType] = useState<"" | "ready_to_eat" | "ready_to_cook">("")
   const [spiceLevel, setSpiceLevel] = useState<"" | "mild" | "medium" | "hot" | "extra_hot">("")
-  const [taxIncluded, setTaxIncluded] = useState(true)
+  const [taxIncluded, setTaxIncluded] = useState(false)
   const [isActive, setIsActive] = useState(true)
   const [isFeatured, setIsFeatured] = useState(false)
   const [isBestSeller, setIsBestSeller] = useState(false)
@@ -388,7 +399,7 @@ export function ProductConsolePage({
       setShelfLife(p.shelfLife ?? "")
       setPreparationType((p.preparationType ?? "") as "" | "ready_to_eat" | "ready_to_cook")
       setSpiceLevel((p.spiceLevel ?? "") as "" | "mild" | "medium" | "hot" | "extra_hot")
-      setTaxIncluded(p.taxIncluded ?? true)
+      setTaxIncluded(p.taxIncluded ?? false)
       setIsActive(p.isActive ?? true)
       setIsFeatured(p.isFeatured ?? false)
       setIsBestSeller(p.isBestSeller ?? false)
@@ -483,6 +494,20 @@ export function ProductConsolePage({
     if (next === "combos") void loadCombos()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mode])
+
+  // Auto-calculate Sale Price for Simple Product
+  useEffect(() => {
+    if (type === "simple") {
+      const base = parseFloat(basePrice) || 0
+      const discount = parseFloat(discountPercent) || 0
+      const sale = base - (base * discount) / 100
+      const res = sale > 0 ? sale.toFixed(2) : (base > 0 ? base.toFixed(2) : "")
+      if (res !== price) {
+        setPrice(res)
+        setSalePrice(res)
+      }
+    }
+  }, [basePrice, discountPercent, type, price])
 
   const payload = useMemo(() => {
     const normalizedVariants = variants
@@ -1460,20 +1485,20 @@ export function ProductConsolePage({
                 <Input
                   placeholder="Name"
                   value={name}
-                onChange={(e) => {
-                  const newName = e.target.value
-                  setName(newName)
-                  // Automatically generate slug from name only in Add mode
-                  if (mode === "add") {
-                    const autoSlug = newName
-                      .toLowerCase()
-                      .replace(/\s+/g, "-") // Replace spaces with hyphens
-                      .replace(/[^a-z0-9-_]/g, "") // Remove invalid characters
-                      .replace(/[-_]{2,}/g, "-") // Prevent multiple consecutive separators
-                      .replace(/^[-_]+|[-_]+$/g, "") // Trim separators from start/end
-                    setSlug(autoSlug)
-                  }
-                }}
+                  onChange={(e) => {
+                    const newName = e.target.value
+                    setName(newName)
+                    // Automatically generate slug from name only in Add mode
+                    if (mode === "add") {
+                      const autoSlug = newName
+                        .toLowerCase()
+                        .replace(/\s+/g, "-") // Replace spaces with hyphens
+                        .replace(/[^a-z0-9-_]/g, "") // Remove invalid characters
+                        .replace(/[-_]{2,}/g, "-") // Prevent multiple consecutive separators
+                        .replace(/^[-_]+|[-_]+$/g, "") // Trim separators from start/end
+                      setSlug(autoSlug)
+                    }
+                  }}
                   required
                   className="rounded-lg border border-[#D9D9D1] px-3 py-2 text-sm"
                 />
@@ -1567,9 +1592,9 @@ export function ProductConsolePage({
               {type === "simple" ? (
                 <>
                   {/* mrp/baseprice for simple product  */}
-                  <Field label="Base / MRP" required={status !== "draft"}>
+                  <Field label="Base Price" required={status !== "draft"}>
                     <Input
-                      placeholder="Base/MRP"
+                      placeholder="Base Price"
                       type="number"
                       step="0.01"
                       value={basePrice}
@@ -1595,31 +1620,40 @@ export function ProductConsolePage({
                       type="number"
                       step="0.01"
                       value={price}
-                      onChange={(e) => setPrice(e.target.value)}
-                      className="rounded-lg border border-[#D9D9D1] px-3 py-2 text-sm"
+                      readOnly
+                      className="rounded-lg border border-[#D9D9D1] bg-[#F5F5F5] px-3 py-2 text-sm cursor-not-allowed"
                     />
                   </Field>
                   {/* New Weight field for simple products */}
                   <Field label="Weight" required={status !== "draft"}>
-                    <Select value={simpleProductWeight} onValueChange={setSimpleProductWeight}>
-                      <SelectTrigger className="rounded-lg border border-[#D9D9D1] px-3 py-2 text-sm">
-                        <SelectValue placeholder="Select weight" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="100g">
-                          100g
-                        </SelectItem>
-                        <SelectItem value="250g">
-                          250g
-                        </SelectItem>
-                        <SelectItem value="500g">
-                          500g
-                        </SelectItem>
-                        <SelectItem value="1kg">
-                          1kg
-                        </SelectItem>
-                      </SelectContent>
-                    </Select>
+                    <div className="flex gap-2">
+                      <Input
+                        type="number"
+                        placeholder="0"
+                        value={parseWeight(simpleProductWeight).value}
+                        onChange={(e) => {
+                          const { unit } = parseWeight(simpleProductWeight);
+                          setSimpleProductWeight(e.target.value + unit);
+                        }}
+                        className="flex-1 rounded-lg border border-[#D9D9D1] px-3 py-2 text-sm"
+                      />
+                      <Select
+                        value={parseWeight(simpleProductWeight).unit}
+                        onValueChange={(unit) => {
+                          const { value } = parseWeight(simpleProductWeight);
+                          setSimpleProductWeight(value + unit);
+                        }}
+                      >
+                        <SelectTrigger className="w-[120px] rounded-lg border border-[#D9D9D1] px-3 py-2 text-sm">
+                          <SelectValue placeholder="Unit" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="gm">gm</SelectItem>
+                          <SelectItem value="mg">milligrams</SelectItem>
+                          <SelectItem value="kg">kilos</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
                   </Field>
                 </>
               ) : null}
@@ -1916,24 +1950,38 @@ export function ProductConsolePage({
                       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6">
                         <div className="space-y-1.5">
                           <Label className="text-[10px] font-bold uppercase text-[#646464]">Weight</Label>
-                          <Select
-                            value={variant.weight}
-                            onValueChange={(val) =>
-                              setVariants((prev) =>
-                                prev.map((x, i) => i === idx ? { ...x, weight: val, name: val } : x),
-                              )
-                            }
-                          >
-                            <SelectTrigger className="rounded border border-[#D9D9D1] bg-white px-3 py-2 text-sm h-9">
-                              <SelectValue placeholder="Weight" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="100g">100g</SelectItem>
-                              <SelectItem value="250g">250g</SelectItem>
-                              <SelectItem value="500g">500g</SelectItem>
-                              <SelectItem value="1kg">1kg</SelectItem>
-                            </SelectContent>
-                          </Select>
+                          <div className="flex gap-1">
+                            <Input
+                              type="number"
+                              placeholder="0"
+                              value={parseWeight(variant.weight).value}
+                              onChange={(e) => {
+                                const newVal = e.target.value + parseWeight(variant.weight).unit;
+                                setVariants((prev) =>
+                                  prev.map((x, i) => i === idx ? { ...x, weight: newVal, name: newVal } : x),
+                                );
+                              }}
+                              className="w-full bg-white h-9 rounded border border-[#D9D9D1] px-2 text-sm"
+                            />
+                            <Select
+                              value={parseWeight(variant.weight).unit}
+                              onValueChange={(unit) => {
+                                const newVal = parseWeight(variant.weight).value + unit;
+                                setVariants((prev) =>
+                                  prev.map((x, i) => i === idx ? { ...x, weight: newVal, name: newVal } : x),
+                                );
+                              }}
+                            >
+                              <SelectTrigger className="w-[80px] rounded border border-[#D9D9D1] bg-white px-2 py-2 text-xs h-9 max-h-[35px]">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="gm">gm</SelectItem>
+                                <SelectItem value="mg">mg</SelectItem>
+                                <SelectItem value="kg">kg</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
                         </div>
 
                         <div className="space-y-1.5">
@@ -1942,18 +1990,25 @@ export function ProductConsolePage({
                             placeholder="Sale Price"
                             type="number"
                             value={variant.price}
-                            onChange={(e) => setVariants((prev) => prev.map((x, i) => i === idx ? { ...x, price: e.target.value } : x))}
-                            className="bg-white h-9"
+                            readOnly
+                            className="bg-[#F5F5F5] h-9 cursor-not-allowed"
                           />
                         </div>
 
                         <div className="space-y-1.5">
-                          <Label className="text-[10px] font-bold uppercase text-[#646464]">MRP / Base</Label>
+                          <Label className="text-[10px] font-bold uppercase text-[#646464]">Base Price</Label>
                           <Input
-                            placeholder="MRP"
+                            placeholder="Base Price"
                             type="number"
                             value={variant.mrp}
-                            onChange={(e) => setVariants((prev) => prev.map((x, i) => i === idx ? { ...x, mrp: e.target.value } : x))}
+                            onChange={(e) => {
+                              const val = e.target.value
+                              const base = parseFloat(val) || 0
+                              const disc = parseFloat(variant.discountPercent) || 0
+                              const sale = base - (base * disc) / 100
+                              const res = sale > 0 ? sale.toFixed(2) : (base > 0 ? base.toFixed(2) : "")
+                              setVariants((prev) => prev.map((x, i) => i === idx ? { ...x, mrp: val, price: res } : x))
+                            }}
                             className="bg-white h-9"
                           />
                         </div>
@@ -1964,7 +2019,14 @@ export function ProductConsolePage({
                             placeholder="%"
                             type="number"
                             value={variant.discountPercent}
-                            onChange={(e) => setVariants((prev) => prev.map((x, i) => i === idx ? { ...x, discountPercent: e.target.value } : x))}
+                            onChange={(e) => {
+                              const val = e.target.value
+                              const base = parseFloat(variant.mrp) || 0
+                              const disc = parseFloat(val) || 0
+                              const sale = base - (base * disc) / 100
+                              const res = sale > 0 ? sale.toFixed(2) : (base > 0 ? base.toFixed(2) : "")
+                              setVariants((prev) => prev.map((x, i) => i === idx ? { ...x, discountPercent: val, price: res } : x))
+                            }}
                             className="bg-white h-9"
                           />
                         </div>

@@ -5,8 +5,9 @@ import { useParams, useRouter } from "next/navigation"
 import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query"
 import { useRealtimeTables } from "@/hooks/useRealtimeTables"
 import { useMasterValues } from "@/hooks/useMasterData"
-import { Camera, X } from "lucide-react"
+import { Camera, X, Download } from "lucide-react"
 import { toast } from "@/lib/toast"
+import { generateInvoicePDF } from "@/lib/invoice"
 
 type OrderDetail = {
   id: string
@@ -14,6 +15,8 @@ type OrderDetail = {
   paymentStatus?: string | null
   currency: string
   subtotal?: string | number
+  tax?: string | number
+  discount?: string | number
   shipping?: string | number
   total: string | number
   createdAt: string
@@ -324,41 +327,14 @@ export default function OrderDetailPage() {
     }
   }
 
-  const downloadInvoice = () => {
+  const downloadInvoice = async () => {
     if (!order) return
-    const createdOn = new Date(order.createdAt).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })
-    const invoiceText = [
-      `Invoice - Order ${order.id}`,
-      `Order Date: ${createdOn}`,
-      `Order Status: ${order.status}`,
-      `Payment Status: ${paymentStatus}`,
-      "",
-      "Customer Details",
-      `Name: ${order.customerName ?? "-"}`,
-      `Phone: ${order.customerPhone ?? "-"}`,
-      `Email: ${order.user?.email ?? "-"}`,
-      `Address: ${order.customerAddress ?? "-"}`,
-      "",
-      "Items",
-      ...order.items.map((item) => {
-        const unit = Number(item.unitPrice ?? 0)
-        const line = Number(item.lineTotal ?? unit * Number(item.quantity ?? 0))
-        return `${item.product?.name ?? "Product"} | Qty: ${item.quantity} | Price: ${unit.toFixed(2)} | Subtotal: ${line.toFixed(2)}`
-      }),
-      "",
-      "Billing",
-      `Subtotal: ${Number(order.subtotal ?? 0).toFixed(2)}`,
-      `Shipping: ${Number(order.shipping ?? 0).toFixed(2)}`,
-      `Total: ${Number(order.total).toFixed(2)}`,
-    ].join("\n")
-
-    const blob = new Blob([invoiceText], { type: "text/plain;charset=utf-8" })
-    const url = URL.createObjectURL(blob)
-    const anchor = document.createElement("a")
-    anchor.href = url
-    anchor.download = `invoice-${order.id}.txt`
-    anchor.click()
-    URL.revokeObjectURL(url)
+    const success = await generateInvoicePDF(order as any)
+    if (success) {
+      toast.success("Success", "Invoice downloaded as PDF")
+    } else {
+      toast.error("Error", "Failed to generate PDF invoice")
+    }
   }
 
   return (
@@ -406,9 +382,10 @@ export default function OrderDetailPage() {
               <p className="text-sm text-[#646464]">Payment status: <span className="font-semibold uppercase">{paymentStatus}</span></p>
               <button
                 type="button"
-                onClick={downloadInvoice}
-                className="rounded-full border border-[#E8DCC8] bg-white px-4 py-2 text-xs font-semibold uppercase text-[#4A1D1F]"
+                onClick={() => void downloadInvoice()}
+                className="flex items-center gap-2 rounded-full border border-[#E8DCC8] bg-white px-4 py-2 text-xs font-semibold uppercase text-[#4A1D1F]"
               >
+                <Download size={14} />
                 Download Invoice
               </button>
             </div>
@@ -563,6 +540,8 @@ export default function OrderDetailPage() {
             <h2 className="mb-3 text-sm font-semibold uppercase tracking-[0.15em] text-[#4A1D1F]">Billing</h2>
             <div className="space-y-1 text-sm text-[#646464]">
               <p>Subtotal: <span className="font-semibold text-[#2A1810]">{order.currency} {Number(order.subtotal ?? 0).toFixed(2)}</span></p>
+              <p>Tax: <span className="font-semibold text-[#2A1810]">{order.currency} {Number(order.tax ?? 0).toFixed(2)}</span></p>
+              <p>Discount: <span className="font-semibold text-red-600">- {order.currency} {Number(order.discount ?? 0).toFixed(2)}</span></p>
               <p>Shipping: <span className="font-semibold text-[#2A1810]">{order.currency} {Number(order.shipping ?? 0).toFixed(2)}</span></p>
               <p>Total: <span className="font-semibold text-[#2A1810]">{order.currency} {Number(order.total).toFixed(2)}</span></p>
             </div>

@@ -1,8 +1,9 @@
 "use client"
 
 import Link from "next/link"
+import { usePathname } from "next/navigation"
 import { Menu, X } from "lucide-react"
-import { useState, useRef, useEffect, useCallback } from "react"
+import { useState, useRef, useEffect, useCallback, Fragment } from "react"
 import Image from "next/image"
 import CartDropdown from "./CartDropdown"
 import { useSearch } from "../hooks/useSearch"
@@ -27,6 +28,7 @@ type ApiProduct = {
 }
 
 export default function Header() {
+  const pathname = usePathname()
   const reduce = useReducedMotion()
   const [menuOpen, setMenuOpen] = useState(false)
   const { searchOpen, setSearchOpen, searchQuery, setSearchQuery, searchResults, handleSearch } = useSearch()
@@ -38,6 +40,7 @@ export default function Header() {
   const [cmsData, setCmsData] = useState<any>(null)
 
   const productRef = useRef<HTMLDivElement>(null)
+  const [productDropdownOpen, setProductDropdownOpen] = useState(false)
   const [arrowLeft, setArrowLeft] = useState(0)
 
   const loadMenuData = useCallback(async () => {
@@ -177,36 +180,60 @@ export default function Header() {
   return (
     <header className="sticky top-0 z-[100]">
       {/* Top Marquee Bar */}
-      <div className="bg-yellow-400 py-2.5 overflow-hidden relative z-0">
-        <div className="marquee-container">
-          <div className="marquee-content ">
-            <span className="marquee-item ">SUBSCRIBE & SAVE</span>
-            <span className="marquee-dot">•</span>
-            <span className="marquee-item">SUBSCRIBE & SAVE 15%</span>
-            <span className="marquee-dot">•</span>
-            <span className="marquee-item">SUBSCRIBE & SAVE 15%</span>
-            <span className="marquee-dot">•</span>
-            <span className="marquee-item">SUBSCRIBE & SAVE 15%</span>
-            <span className="marquee-dot">•</span>
-            <span className="marquee-item">SUBSCRIBE & SAVE 15%</span>
-            <span className="marquee-dot">•</span>
-            <span className="marquee-item">SUBSCRIBE & SAVE</span>
-            <span className="marquee-dot">•</span>
-            <span className="marquee-item">SUBSCRIBE & SAVE 15%</span>
-            <span className="marquee-dot">•</span>
-            <span className="marquee-item">SUBSCRIBE & SAVE 15%</span>
-            <span className="marquee-dot">•</span>
-            <span className="marquee-item">SUBSCRIBE & SAVE 15%</span>
-            <span className="marquee-dot">•</span>
-            <span className="marquee-item">SUBSCRIBE & SAVE 15%</span>
-            <span className="marquee-dot">•</span>
-          </div>
+      <div className="bg-yellow-400 py-1.5 overflow-hidden relative z-0">
+        <style>{`
+          @keyframes seamless-marquee {
+            0% { transform: translateX(0%); }
+            100% { transform: translateX(-50%); }
+          }
+          .animate-seamless-marquee {
+            animation: seamless-marquee 25s linear infinite;
+            will-change: transform;
+          }
+          .animate-seamless-marquee:hover {
+            animation-play-state: paused;
+          }
+        `}</style>
+        <div className="marquee-container flex whitespace-nowrap animate-seamless-marquee" style={{ width: 'max-content' }}>
+          {(() => {
+            const customItems = cmsData?.marqueeItems?.filter((i: string) => typeof i === 'string' && i.trim() !== "");
+            let itemsToUse = [];
+            if (customItems?.length > 0) {
+              const repeatedItems = [];
+              while (repeatedItems.length < 20) {
+                repeatedItems.push(...customItems);
+              }
+              itemsToUse = repeatedItems;
+            } else if (cmsData?.marqueeText?.trim()) {
+              itemsToUse = Array(20).fill(cmsData.marqueeText);
+            } else {
+              itemsToUse = Array(20).fill("Welcome To Ziply5");
+            }
+
+            const elements = itemsToUse.map((item: string, idx: number) => (
+              <Fragment key={idx}>
+                <span className="marquee-item ">{item}</span>
+                <span className="marquee-dot">•</span>
+              </Fragment>
+            ));
+
+            return (
+              <>
+                <div className="marquee-content flex shrink-0 items-center" style={{ animation: 'none' }}>
+                  {elements}
+                </div>
+                <div className="marquee-content flex shrink-0 items-center" aria-hidden="true" style={{ animation: 'none' }}>
+                  {elements}
+                </div>
+              </>
+            );
+          })()}
         </div>
       </div>
 
       {/* Navigation */}
       <nav className="bg-white w-full relative z-10">
-        <div className="w-full px-4 max-w-7xl mx-auto flex items-center justify-between py-2">
+        <div className="w-full px-4 max-w-7xl mx-auto flex items-center justify-between py-0">
 
           {/* MOBILE MENU BUTTON */}
           <button
@@ -221,8 +248,9 @@ export default function Header() {
             {/* PRODUCTS WITH DROPDOWN */}
             <div
               ref={productRef}
-              className="relative group flex flex-col items-center"
+              className="relative flex flex-col items-center"
               onMouseEnter={() => {
+                setProductDropdownOpen(true)
                 if (productRef.current) {
                   const rect = productRef.current.getBoundingClientRect()
                   setArrowLeft(rect.left + rect.width / 2)
@@ -231,13 +259,18 @@ export default function Header() {
                   void loadMenuData()
                 }
               }}
+              onMouseLeave={() => setProductDropdownOpen(false)}
             >
-              <Link href="/products" className="font-extrabold text-black hover:text-[#f97316] transition-colors text-[15px]">
+              <Link 
+                href="/products" 
+                onClick={() => setProductDropdownOpen(false)}
+                className="font-extrabold text-black hover:text-[#f97316] transition-colors text-[15px]"
+              >
                 Products
               </Link>
 
               {/* DROPDOWN */}
-              <div className="absolute left-0 top-[calc(100%+16px)] w-[100vw] flex justify-start opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-300">
+              <div className={`absolute left-0 top-[calc(100%+16px)] w-[100vw] flex justify-start ${productDropdownOpen ? "opacity-100 visible" : "opacity-0 invisible"} transition-all duration-300`}>
 
                 <div className="relative w-full max-w-7xl">
 
@@ -263,7 +296,11 @@ export default function Header() {
                             <ul className="space-y-3">
                               {category.products.slice(0, 8).map((product, idx) => (
                                 <li key={product.id}>
-                                  <Link href={`/product/${product.slug}`} className={`${idx === 0 ? "text-orange-400 font-semibold" : "text-white"} hover:underline`}>
+                                  <Link 
+                                    href={`/product/${product.slug}`} 
+                                    onClick={() => setProductDropdownOpen(false)}
+                                    className={`${pathname === `/product/${product.slug}` ? "text-orange-400 font-semibold" : "text-white"} hover:underline`}
+                                  >
                                     {product.name}
                                   </Link>
                                 </li>

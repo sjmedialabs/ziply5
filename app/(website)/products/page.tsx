@@ -15,7 +15,7 @@ import { getCartItems, setCartItemQuantity, getCartQuantity } from "@/lib/cart"
 import { getFavoriteSlugs, toggleFavoriteSlug } from "@/lib/favorites"
 import { FALLBACK_PRODUCT_IMAGE, type StorefrontProduct } from "@/lib/storefront-products"
 import { useStorefrontProducts } from "@/hooks/useStorefrontProducts"
-import { X } from "lucide-react"
+import { X, Heart } from "lucide-react"
 import { toast } from "@/lib/toast"
 import { SlideUp, ScaleHover, ModalAnimation } from "@/components/animations"
 
@@ -215,6 +215,7 @@ function ProductsPageContent() {
   }, []);
 
   const handleToggleFavorite = async (e: React.MouseEvent, slug: string) => {
+    console.log("Toggling favorite for slug:", slug);
     e.stopPropagation();
     const token = window.localStorage.getItem("ziply5_access_token");
     if (!token) {
@@ -396,13 +397,14 @@ const toggleTag = (tagId: string) => {
       sku: variant.sku
     }, nextQty)
   }
+  console.log("fetch products:::::::",filteredProducts)
 
   return (
     <section className="w-full bg-[#F3F0DC]">
       {/* Fixed below global header — Framer FadeIn was breaking sticky; fixed pins to viewport */}
       <div
         ref={filterBarRef}
-        className="fixed left-0 right-0 z-[90] bg-[#F3F0DC]/75 backdrop-blur-sm"
+        className="fixed left-0 right-0 z-[90] bg-[#F3F0DC]/75 backdrop-blur-sm pt-3"
       >
         <div className="mx-auto w-full max-w-7xl px-4 sm:px-6 lg:px-8">
             <div className="rounded-3xl bg-white/40 p-3 md:p-4">
@@ -503,7 +505,7 @@ const toggleTag = (tagId: string) => {
           />
 
           {/* Tags + highlights — scroll with page (not fixed) */}
-          <div className="rounded-3xl">
+          <div className="rounded-3xl mt-2">
             <div className="flex flex-wrap gap-2">
               {tagOptions.map((tag) => (
                 <button
@@ -578,7 +580,7 @@ const toggleTag = (tagId: string) => {
             </button>
           </div>
         )}
-        <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3 pb-5">
           {paginatedProducts.map((product, idx) => {
             const displayPrice = (product as any).variants?.length
               ? Number(
@@ -605,18 +607,11 @@ const toggleTag = (tagId: string) => {
                     className="group relative rounded-2xl border-2 border-transparent p-4 transition-all duration-300 hover:ring-4 hover:ring-[#F36E21] hover:shadow-xl will-change-transform"
                     style={{ backgroundColor: cardBg }}
                   >
-              <button
-                type="button"
-                onClick={(e) => handleToggleFavorite(e, product.slug)}
-                className="absolute left-3 top-3 z-20 text-lg text-white"
-              >
-                {favoriteSlugs.includes(product.slug) ? "♥" : "♡"}
-              </button>
 
-                <Link href={(product as any).isCombo ? `/combo/${product.slug}` : `/product/${product.slug}`} className="block">
+                
                   {product.tags &&
                   product?.tags[0]?.tag?.name && (
-                           <div className="absolute top-3  z-20 right-0 w-20 h-5 rounded-sm flex items-center justify-center">
+                           <div className="absolute top-0  z-20 right-0 w-20 h-5 rounded-sm flex items-center justify-center">
                                     {
                                         product.tags[0].tag.name === "veg"?(<span className="absolute top-4 right-0 bg-[#10B981] text-white text-[11px] font-medium px-3 py-1 border border-white rounded-l-sm z-10">
                                       {product.tags[0].tag.name?.charAt(0).toUpperCase() + product.tags[0].tag.name.slice(1)}
@@ -627,18 +622,21 @@ const toggleTag = (tagId: string) => {
                             </div>
                   )
                 }
+                <Link href={(product as any).isCombo ? `/combo/${product.slug}` : `/product/${product.slug}`} className="block">
+                
+    
 
-                  <div className="relative mx-auto h-[280px] w-full max-w-[190px] transition-transform duration-300 hover:scale-90">
+                  <div className={`relative mx-auto min-h-[280px] h-full w-full transition-transform duration-300 hover:scale-90 ${showComboThumbStrip ? 'max-w-full' : 'max-w-[190px]'}`}>
                     {showComboThumbStrip ? (
-                      <div className="flex h-full w-full items-center justify-center gap-2 px-1">
+                      <div className="h-full w-full flex flex-col sm:flex-row   items-center justify-center gap-2 px-1">
                         {comboThumbs.map((thumb, imageIdx) => (
-                          <div key={`${product.slug}-combo-thumb-${imageIdx}`} className="flex items-center gap-2">
+                          <div key={`${product.slug}-combo-thumb-${imageIdx}`} className="flex mt-[0px] sm:mt-[100px]  mb-0 flex-col sm:flex-row justify-center items-center gap-2">
                             <div className="relative h-30 w-28">
                               <Image
                                 src={thumb}
                                 alt={`${product.name} item ${imageIdx + 1}`}
                                 fill
-                                className=""
+                                className="object-contain"
                               />
                             </div>
                             {imageIdx < comboThumbs.length - 1 ? (
@@ -667,6 +665,18 @@ const toggleTag = (tagId: string) => {
                    <p className="mt-1 text-sm font-melon text-[#FFF5C5]">Rs. {product.price.toFixed(2)}</p>
                 </div>
               </Link>
+
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    handleToggleFavorite(e, product.slug);
+                  }}
+                  className="absolute left-3 top-3 z-[60] p-2 text-white cursor-pointer hover:scale-110 transition-transform"
+                >
+                  <Heart size={24} className={favoriteSlugs.includes(product.slug) ? "fill-white text-white" : "text-white"} />
+                </button>
 
                 <div className="mt-auto flex items-end justify-between gap-2 pt-2 font-melon tracking-wide font-light">
                   {(cartQtyBySlug[product.slug] ?? 0) > 0 && product.productKind === "simple" ? (
@@ -737,14 +747,14 @@ const toggleTag = (tagId: string) => {
 
         {!loading && totalPages > 1 && (
           <nav
-            className="mt-10 flex flex-wrap items-center justify-center gap-3"
+            className="mt-5 pb-4 flex flex-wrap items-center justify-center gap-3"
             aria-label="Product list pagination"
           >
             <button
               type="button"
               disabled={currentPage <= 1}
               onClick={() => goToPage(currentPage - 1)}
-              className="rounded-full border-2 border-primary bg-white px-4 py-2 text-xs font-bold uppercase tracking-widest text-primary transition-colors hover:bg-primary/10 disabled:pointer-events-none disabled:opacity-40"
+              className="rounded-full cursor-pointer border-2 border-primary bg-white px-4 py-2 text-xs font-bold uppercase tracking-widest text-primary transition-colors hover:bg-primary/10 disabled:pointer-events-none disabled:opacity-40"
             >
               Previous
             </button>
@@ -755,7 +765,7 @@ const toggleTag = (tagId: string) => {
               type="button"
               disabled={currentPage >= totalPages}
               onClick={() => goToPage(currentPage + 1)}
-              className="rounded-full border-2 border-primary bg-white px-4 py-2 text-xs font-bold uppercase tracking-widest text-primary transition-colors hover:bg-primary/10 disabled:pointer-events-none disabled:opacity-40"
+              className="rounded-full cursor-pointer border-2 border-primary bg-white px-4 py-2 text-xs font-bold uppercase tracking-widest text-primary transition-colors hover:bg-primary/10 disabled:pointer-events-none disabled:opacity-40"
             >
               Next
             </button>

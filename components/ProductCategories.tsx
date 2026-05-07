@@ -12,9 +12,11 @@ import "swiper/css/navigation";
 export default function ProductCategories({ cmsData }: { cmsData?: any }) {
   const { products, loading } = useStorefrontProducts(20);
   const [navLocked, setNavLocked] = useState(false);
-  
-  const displayItems = useMemo(() => products.slice(0, 15), [products]);
+
+  const displayItems = useMemo(() => products.filter((p: any) => !p.isCombo).slice(0, 15), [products]);
   const sectionTitle = cmsData?.title || "OUR PRODUCTS";
+
+  if (!loading && displayItems.length === 0) return null;
 
   return (
     <section className="w-full bg-[#F97316] py-12 relative">
@@ -44,63 +46,63 @@ export default function ProductCategories({ cmsData }: { cmsData?: any }) {
             1024: { slidesPerView: 5 },
             1280: { slidesPerView: 7 },
           }}
-          style={{padding: "10px 12px"}}
+          style={{ padding: "10px 12px" }}
         >
           {loading
             ? Array.from({ length: 7 }).map((_, i) => (
-                <SwiperSlide key={`cat-skeleton-${i}`}>
-                  <div className="bg-white/50 animate-pulse rounded-full overflow-hidden h-75 flex flex-col items-center px-2 shadow-sm border border-white/20">
-                    <div className="w-[100px] h-[100px] md:w-[120px] md:h-[120px] shrink-0 rounded-full overflow-hidden bg-white/40 mt-4 mb-4" />
-                    <div className="h-4 w-24 bg-white/40 rounded mb-2" />
-                    <div className="h-3 w-32 bg-white/40 rounded" />
-                  </div>
-                </SwiperSlide>
-              ))
+              <SwiperSlide key={`cat-skeleton-${i}`}>
+                <div className="bg-white/50 animate-pulse rounded-full overflow-hidden h-75 flex flex-col items-center px-2 shadow-sm border border-white/20">
+                  <div className="w-[100px] h-[100px] md:w-[120px] md:h-[120px] shrink-0 rounded-full overflow-hidden bg-white/40 mt-4 mb-4" />
+                  <div className="h-4 w-24 bg-white/40 rounded mb-2" />
+                  <div className="h-3 w-32 bg-white/40 rounded" />
+                </div>
+              </SwiperSlide>
+            ))
             : displayItems.map((product: any, i: number) => (
-                <SwiperSlide key={product.id || i}>
-                  <Link
-                    href={`/product/${product.slug}`}
-                    className="group"
-                  >
-                    <div className="card-smooth bg-white rounded-full overflow-hidden h-75 flex flex-col pt-4 pb-6 items-center px-2 shadow-md hover:shadow-lg">
+              <SwiperSlide key={product.id || i}>
+                <Link
+                  href={`/product/${product.slug}`}
+                  className="group"
+                >
+                  <div className="card-smooth bg-white rounded-full overflow-hidden h-75 flex flex-col pt-4 pb-6 items-center px-2 shadow-md hover:shadow-lg">
 
-                      <div className="w-[100px] h-[100px] md:w-[120px] md:h-[120px] shrink-0 rounded-full overflow-hidden mb-3 bg-white flex items-center justify-center">
-                        <Image
-                          src={product.image}
-                          alt={product.name}
-                          width={120}
-                          height={120}
-                          className="object-contain p-2 w-full h-full max-h-full"
-                        />
-                      </div>
-                      <div className="mb-0 flex flex-col items-stretch w-full px-1">
+                    <div className="w-[100px] h-[100px] md:w-[120px] md:h-[120px] shrink-0 rounded-full overflow-hidden mb-3 bg-white flex items-center justify-center">
+                      <Image
+                        src={product.image}
+                        alt={product.name}
+                        width={120}
+                        height={120}
+                        className="object-contain p-2 w-full h-full max-h-full"
+                      />
+                    </div>
+                    <div className="mb-0 flex flex-col items-stretch w-full px-1">
                       <h3 className="text-[#6F2C2A] text-center font-semibold text-sm line-clamp-2 min-h-[40px] leading-tight">
                         {product.name}
                       </h3>
 
-                      <p className="text-[#656565] text-[10px] text-center mt-1 line-clamp-2 min-h-[28px] leading-tight">
+                      <p className="text-[#656565] text-[10px] text-center mt-1 line-clamp-2 min-h-[28px]">
                         {product.description}
                       </p>
-                      </div>
                     </div>
-                  </Link>
-                </SwiperSlide>
-              ))}
+                  </div>
+                </Link>
+              </SwiperSlide>
+            ))}
         </Swiper>
 
         {/* Custom Arrows - Hidden if navigation is locked (insufficient slides) */}
-        {!navLocked && (
-          <>
-            <button className="custom-prev absolute left-0 xl:-left-8 mt-8 top-1/2 -translate-y-1/2 z-10 w-10 h-10 bg-white rounded-full shadow flex items-center justify-center">
-              <svg className="w-4 h-4 text-zinc-700" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
-            </button>
+        {/* {!navLocked && (
+          <> */}
+        <button className="custom-prev absolute left-0 xl:-left-8 mt-8 top-1/2 -translate-y-1/2 z-10 w-10 h-10 bg-white rounded-full shadow flex items-center justify-center">
+          <svg className="w-4 h-4 text-zinc-700" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
+        </button>
 
-            <button className="custom-next absolute right-0 xl:-right-8 mt-8 top-1/2 -translate-y-1/2 z-10 w-10 h-10 bg-white rounded-full shadow flex items-center justify-center">
-              <svg className="w-4 h-4 text-zinc-700" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
-            </button>
-          </>
-        )}
+        <button className="custom-next absolute right-0 xl:-right-8 mt-8 top-1/2 -translate-y-1/2 z-10 w-10 h-10 bg-white rounded-full shadow flex items-center justify-center">
+          <svg className="w-4 h-4 text-zinc-700" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
+        </button>
+        {/* </>
+        )} */}
       </div>
-    </section>
+    </section >
   );
 }

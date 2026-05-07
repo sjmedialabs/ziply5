@@ -161,7 +161,7 @@ if (trendingProducts.length === 0) return null;
                 <div
                   className={`relative bg-gradient-to-b ${cardGradients[index % cardGradients.length]} 
                   flex items-center justify-center 
-                  h-[280px] group-hover:-mt-10`}
+                  h-[280px] `}
                 >
                   {/* veg icon */}
                   <div className="absolute top-2 z-20 right-0 w-20 h-5 rounded-sm flex items-center justify-center">
@@ -179,7 +179,7 @@ if (trendingProducts.length === 0) return null;
                   )
                 }
                   </div>
-                  <div className="relative h-full w-full">
+                  <div className="relative h-full w-full transition-transform duration-300 hover:scale-90 ">
                     <Image
                       src={product.image}
                       alt={product.name}
@@ -326,12 +326,36 @@ if (trendingProducts.length === 0) return null;
                           >
                             ADD
                           </button>
+
+            
                         )}
                       </div>
                     </div>
+
+                    
                   )
                 })}
               </div>
+            </div>
+
+            <div className="border-t border-gray-100 p-5 flex items-center justify-between gap-3 bg-gray-50/50">
+              <button
+                onClick={() => {setSelectedProduct(null);
+                router.push("/products");
+              }}
+                className="flex-1 rounded-full border-2 cursor-pointer border-primary py-2.5 text-[11px] font-bold uppercase tracking-widest text-primary hover:bg-primary/10 transition-colors"
+              >
+                Continue Shopping
+              </button>
+              <button
+                onClick={() => {
+                  setSelectedProduct(null);
+                  router.push("/cart");
+                }}
+                className="flex-1 rounded-full bg-primary cursor-pointer border-2 border-primary py-2.5 text-[11px] font-bold uppercase tracking-widest text-white hover:bg-[#3a1517] transition-colors"
+              >
+                Go to Cart
+              </button>
             </div>
           </div>
         </div>

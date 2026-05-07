@@ -44,12 +44,16 @@ export default function AdminSettingsPage() {
   const [rows, setRows] = useState<SettingRow[]>([]);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<"generic" | "locations" | "master_data" | "seo">("generic");
+  const [activeTab, setActiveTab] = useState<"generic" | "locations" | "master_data" | "seo" | "tax">("generic");
   const [seoForm, setSeoForm] = useState<StorefrontSeoForm>(emptySeoForm);
   const [seoLoading, setSeoLoading] = useState(false);
   const [seoSaving, setSeoSaving] = useState(false);
   const [seoError, setSeoError] = useState("");
   const [ogImageUploading, setOgImageUploading] = useState(false);
+  const [taxValue, setTaxValue] = useState<number | string>("");
+  const [taxLoading, setTaxLoading] = useState(false);
+  const [taxSaving, setTaxSaving] = useState(false);
+  const [taxError, setTaxError] = useState("");
 
   const { data: warehouses, refetch: refetchWarehouses, loading: loadingWarehouses } = useLocations("warehouse", undefined);
   const { data: states, refetch: refetchStates, loading: loadingStates } = useLocations("state", undefined);
@@ -104,6 +108,51 @@ export default function AdminSettingsPage() {
       cancelled = true;
     };
   }, [activeTab]);
+
+  useEffect(() => {
+    if (activeTab !== "tax") return;
+    let cancelled = false;
+    setTaxLoading(true);
+    setTaxError("");
+    authedFetch<SettingRow[]>("/api/v1/settings?group=TAX")
+      .then((list) => {
+        if (cancelled) return;
+        const row = list.find((r) => r.key === "percentage");
+        if (row && row.valueJson != null) {
+          setTaxValue(String(row.valueJson));
+        }
+      })
+      .catch((e: Error) => {
+        if (!cancelled) setTaxError(e.message);
+      })
+      .finally(() => {
+        if (!cancelled) setTaxLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [activeTab]);
+
+  const saveTaxSettings = async () => {
+    const val = Number(taxValue);
+    if (taxValue === "" || isNaN(val) || val < 0 || val > 100) {
+      setTaxError("Tax percentage must be between 0 and 100");
+      return;
+    }
+    setTaxSaving(true);
+    setTaxError("");
+    try {
+      await authedPost("/api/v1/settings", {
+        group: "TAX",
+        key: "percentage",
+        valueJson: val,
+      });
+    } catch (e: unknown) {
+      setTaxError(e instanceof Error ? e.message : "Save failed");
+    } finally {
+      setTaxSaving(false);
+    }
+  };
 
   const saveStorefrontSeo = async () => {
     setSeoSaving(true);
@@ -194,6 +243,12 @@ export default function AdminSettingsPage() {
           onClick={() => setActiveTab('seo')}
         >
           SEO & storefront
+        </button>
+        <button
+          className={`pb-2 text-sm font-semibold cursor-pointer transition-colors ${activeTab === 'tax' ? 'border-b-2 border-[#7B3010] text-[#7B3010]' : 'text-[#646464] hover:text-[#2A1810]'}`}
+          onClick={() => setActiveTab('tax')}
+        >
+          Tax Settings
         </button>
         {/* <button
           className={`pb-2 text-sm font-semibold cursor-pointer transition-colors ${activeTab === 'master_data' ? 'border-b-2 border-[#7B3010] text-[#7B3010]' : 'text-[#646464] hover:text-[#2A1810]'}`}
@@ -405,6 +460,47 @@ export default function AdminSettingsPage() {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <MasterDataCreatorForm groupKey="ORDER_STATUSES" groupName="Order Statuses" />
           {/* <MasterDataCreatorForm groupKey="RETURN_REASONS" groupName="Return Reasons" /> */}
+        </div>
+      )}
+      {!loading && activeTab === 'tax' && (
+        <div className="rounded-2xl border border-[#E8DCC8] bg-white p-6 shadow-sm space-y-6">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h2 className="font-melon text-xl font-bold text-[#4A1D1F]">Tax Settings</h2>
+              <p className="mt-1 max-w-2xl text-sm text-[#646464]">
+                Configure the default tax percentage applied to orders.
+              </p>
+            </div>
+            <Button
+              type="button"
+              onClick={() => void saveTaxSettings()}
+              disabled={taxSaving || taxLoading}
+              className="gap-2 rounded-full bg-[#7B3010] hover:bg-[#5c240c]"
+            >
+              {taxSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+              {taxSaving ? "Saving…" : "Save"}
+            </Button>
+          </div>
+          {taxError ? <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-800">{taxError}</p> : null}
+          {taxLoading ? (
+            <p className="text-sm text-[#646464]">Loading tax settings…</p>
+          ) : (
+            <div className="max-w-xs space-y-2">
+              <Label htmlFor="tax-percentage">Tax Percentage (%)</Label>
+              <Input
+                id="tax-percentage"
+                type="number"
+                min="0"
+                max="100"
+                step="0.01"
+                value={taxValue}
+                onChange={(e) => setTaxValue(e.target.value)}
+                placeholder="0.00"
+                className="border-[#E8DCC8]"
+              />
+              <p className="text-xs text-[#646464]">Enter a value between 0 and 100.</p>
+            </div>
+          )}
         </div>
       )}
     </section>
