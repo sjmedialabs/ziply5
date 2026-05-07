@@ -40,12 +40,41 @@ export async function GET(
   }
 
   try {
-    const data = await fs.readFile(absolutePath)
+    const stats = await fs.stat(absolutePath)
     const ext = path.extname(absolutePath)
+    const contentType = contentTypeForExt(ext)
     const immutable = /-(thumb|medium|original)\.(webp|png|jpg|jpeg|gif)$/i.test(relativePath)
+    
+    // Support Range Requests for Video Scrubbing/Seeking
+    const range = _request.headers.get("range")
+    if (range && (contentType.startsWith("video/") || contentType.startsWith("audio/"))) {
+      const parts = range.replace(/bytes=/, "").split("-")
+      const start = parseInt(parts[0], 10)
+      const end = parts[1] ? parseInt(parts[1], 10) : stats.size - 1
+      const chunksize = end - start + 1
+      
+      const file = await fs.open(absolutePath, "r")
+      const buffer = Buffer.alloc(chunksize)
+      await file.read(buffer, 0, chunksize, start)
+      await file.close()
+
+      return new NextResponse(buffer, {
+        status: 206,
+        headers: {
+          "Content-Range": `bytes ${start}-${end}/${stats.size}`,
+          "Accept-Ranges": "bytes",
+          "Content-Length": String(chunksize),
+          "Content-Type": contentType,
+          "Cache-Control": "no-cache",
+        },
+      })
+    }
+
+    const data = await fs.readFile(absolutePath)
     return new NextResponse(new Uint8Array(data), {
       headers: {
-        "Content-Type": contentTypeForExt(ext),
+        "Content-Type": contentType,
+        "Accept-Ranges": "bytes",
         "Cache-Control": immutable
           ? "public, max-age=31536000, immutable"
           : "public, max-age=86400, stale-while-revalidate=604800",

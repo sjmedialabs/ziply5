@@ -59,6 +59,7 @@ const adminNav: DashboardNavItem[] = [
       { href: "/admin/offers/bogo-offers", label: "BOGO Offers", icon: Gift },
     ],
   },
+  { href: "/admin/inbox", label: "Inbox", icon: FileText },
   { href: "/admin/abandoned-carts", label: "Abandoned carts", icon: ShoppingBag },
   { href: "/admin/finance", label: "Finance", icon: Wallet },
   { href: "/admin/reports", label: "Sales report", icon: BarChart3 },

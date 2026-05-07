@@ -21,6 +21,10 @@ type AppEnv = {
   STRIPE_SECRET_KEY?: string
   SHIPROCKET_EMAIL?: string
   SHIPROCKET_PASSWORD?: string
+  /** Optional Bearer JWT from Shiprocket auth/login (valid ~10 days). Use instead of email/password. */
+  SHIPROCKET_TOKEN?: string
+  /** Alias for SHIPROCKET_TOKEN if you store the JWT under a different name. */
+  SHIPROCKET_API_KEY?: string
   SHIPROCKET_BASE_URL?: string
   SHIPROCKET_MODE?: string
   SHIPROCKET_WEBHOOK_SECRET?: string
@@ -81,6 +85,8 @@ export const env: AppEnv = {
   STRIPE_SECRET_KEY: process.env.STRIPE_SECRET_KEY,
   SHIPROCKET_EMAIL: process.env.SHIPROCKET_EMAIL,
   SHIPROCKET_PASSWORD: process.env.SHIPROCKET_PASSWORD,
+  SHIPROCKET_TOKEN: process.env.SHIPROCKET_TOKEN,
+  SHIPROCKET_API_KEY: process.env.SHIPROCKET_API_KEY,
   SHIPROCKET_BASE_URL: process.env.SHIPROCKET_BASE_URL,
   SHIPROCKET_MODE: process.env.SHIPROCKET_MODE,
   SHIPROCKET_WEBHOOK_SECRET: process.env.SHIPROCKET_WEBHOOK_SECRET,

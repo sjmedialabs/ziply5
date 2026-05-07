@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import DynamicList from './DynamicList';
 import ImageUploader from './ImageUploader';
+import VideoUploader from './VideoUploader';
 
 interface HeroSlide {
   image: string;
@@ -18,6 +19,7 @@ interface HeroSectionEditorProps {
   value?: {
     title?: string;
     subtitle?: string;
+    videoUrl?: string;
     slides: HeroSlide[];
   };
   onChange: (value: HeroSectionEditorProps['value']) => void;
@@ -40,6 +42,12 @@ export default function HeroSectionEditor({ value = { slides: [] }, onChange }: 
 
   const updateSubtitle = (subtitle: string) => {
     const newValue = { ...localValue, subtitle };
+    setLocalValue(newValue);
+    onChange(newValue);
+  };
+
+  const updateVideoUrl = (videoUrl: string) => {
+    const newValue = { ...localValue, videoUrl };
     setLocalValue(newValue);
     onChange(newValue);
   };
@@ -103,29 +111,39 @@ export default function HeroSectionEditor({ value = { slides: [] }, onChange }: 
         <p className="text-xs text-[#646464] ">Manage carousel slides with images, titles, and subtitles. Reorder with arrows.</p>
       </div>
       
-      {/* <div className="space-y-2">
-        <div>
-          <Label className="text-xs font-semibold text-[#646464] mb-1 block">Global Title (overlay)</Label>
-          <Input
-            value={localValue.title || ''}
-            onChange={(e) => updateTitle(e.target.value)}
-            className="max-w-md h-8 text-sm"
-            placeholder="e.g. Nothing Artificial. Everything Delicious."
-          />
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pb-6 border-b border-[#E8DCC8] mb-6">
+        <VideoUploader 
+          value={localValue.videoUrl}
+          onChange={updateVideoUrl}
+        />
+        
+        <div className="space-y-4">
+          <div>
+            <Label className="text-xs font-semibold text-[#646464] mb-1 block">Global Title (for Scroll Animation)</Label>
+            <Input
+              value={localValue.title || ''}
+              onChange={(e) => updateTitle(e.target.value)}
+              className="h-9 text-sm"
+              placeholder="e.g. Nothing Artificial. Everything Delicious."
+            />
+          </div>
+          <div>
+            <Label className="text-xs font-semibold text-[#646464] mb-1 block">Global Subtitle</Label>
+            <Input
+              value={localValue.subtitle || ''}
+              onChange={(e) => updateSubtitle(e.target.value)}
+              className="h-9 text-sm"
+              placeholder="e.g. Taste the authentic flavors..."
+            />
+          </div>
+          <p className="text-[11px] text-[#9A9A92] italic">
+            Note: Global text is only used when a video is uploaded for the scroll animation.
+          </p>
         </div>
-        <div>
-          <Label className="text-xs font-semibold text-[#646464] mb-1 block">Global Subtitle</Label>
-          <Input
-            value={localValue.subtitle || ''}
-            onChange={(e) => updateSubtitle(e.target.value)}
-            className="max-w-md h-8 text-sm"
-            placeholder="e.g. Taste the authentic flavors of home-cooked meals!"
-          />
-        </div>
-      </div> */}
+      </div>
 
       <DynamicList
-        title="Hero Slides"
+        title="Hero Slides (Slider Mode)"
         items={localValue.slides}
         onChange={updateSlides}
         renderItem={renderSlide}

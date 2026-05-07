@@ -49,7 +49,6 @@ export async function PATCH(request: NextRequest) {
   if (!userId) return NextResponse.json({ success: false, message: "userId is required" }, { status: 400 });
 
   try {
-    const client = getSupabaseAdmin();
     const body = await request.json();
     const { name, bio, phone, avatarUrl } = body as { 
       name?: string; 
@@ -70,19 +69,19 @@ export async function PATCH(request: NextRequest) {
         await client.query(`UPDATE "User" SET name = $2, "updatedAt" = now() WHERE id = $1`, [userId, name])
       }
 
-      // Note: UserProfile schema does not include `bio` in this project; ignore if provided.
       const insertRows = await client.query<Record<string, unknown>>(
         `
-          INSERT INTO "UserProfile" (id, "userId", phone, "avatarUrl", "createdAt", "updatedAt")
-          VALUES ($1, $2, $3, $4, now(), now())
+          INSERT INTO "UserProfile" (id, "userId", bio, phone, "avatarUrl", "createdAt", "updatedAt")
+          VALUES ($1, $2, $3, $4, $5, now(), now())
           ON CONFLICT ("userId") DO UPDATE
           SET
+            bio = COALESCE(EXCLUDED.bio, "UserProfile".bio),
             phone = COALESCE(EXCLUDED.phone, "UserProfile".phone),
             "avatarUrl" = COALESCE(EXCLUDED."avatarUrl", "UserProfile"."avatarUrl"),
             "updatedAt" = now()
           RETURNING *
         `,
-        [randomUUID(), userId, phone ?? null, avatarUrl ?? null],
+        [randomUUID(), userId, bio ?? null, phone ?? null, avatarUrl ?? null],
       )
       return insertRows.rows[0]
     })

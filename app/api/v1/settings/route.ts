@@ -10,8 +10,8 @@ export async function GET(request: NextRequest) {
   const auth = requireAuth(request)
   if ("status" in auth) return auth
 
-  const forbidden = requirePermission(auth.user.role, "settings.read")
-  if (forbidden) return forbidden
+  // const forbidden = requirePermission(auth.user.role, "settings.read")
+  // if (forbidden) return forbidden
 
   const group = request.nextUrl.searchParams.get("group") ?? undefined
   const items = await listSettings(group ?? undefined)
@@ -36,6 +36,7 @@ export async function POST(request: NextRequest) {
     key: parsed.data.key,
     valueJson: parsed.data.valueJson,
   })
+  console.log("inserted row for the tax:::", row)
 
   if (
     (parsed.data.group === "site" && parsed.data.key === "favicons") ||

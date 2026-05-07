@@ -1,189 +1,28 @@
 "use client"
 
-import { useState, useEffect, useMemo } from "react"
-import Image from "next/image"
-import { m, useReducedMotion } from "framer-motion"
+import VideoScrollHero from "./VideoScrollHero"
+import SliderHero from "./SliderHero"
 
-function splitIntoLines(text: string, mode: "title" | "subtitle") {
-  const t = text.trim()
-  if (!t) return []
-  if (t.includes("\n")) {
-    return t
-      .split("\n")
-      .map((l) => l.trim())
-      .filter(Boolean)
+interface HeroProps {
+  cmsData?: {
+    title?: string
+    subtitle?: string
+    videoUrl?: string
+    slides?: any[]
   }
-  const words = t.split(/\s+/).filter(Boolean)
-  if (mode === "title") {
-    if (words.length <= 2) return [words.join(" ")]
-    if (words.length <= 4) return [words.slice(0, 2).join(" "), words.slice(2).join(" ")]
-    return [words.slice(0, 2).join(" "), words.slice(2, 4).join(" "), words.slice(4).join(" ")]
-  }
-  if (words.length <= 4) return [words.join(" ")]
-  return [words.slice(0, 4).join(" "), words.slice(4).join(" ")]
 }
 
-export default function Hero({ cmsData }: { cmsData?: any }) {
-  const [currentSlide, setCurrentSlide] = useState(0)
-  const [startX, setStartX] = useState(0)
-  const [endX, setEndX] = useState(0)
-  const reduceMotion = useReducedMotion()
-
-  const defaultSlides = [
-    { image: "/hero-banner.png", alt: "Hero Image" },
-    { image: "/hero-banner.png", alt: "Hero Image" },
-    { image: "/hero-banner.png", alt: "Hero Image" },
-  ]
-
-  const slides = cmsData?.slides?.length > 0 ? cmsData.slides : defaultSlides
-  const globalTitle = cmsData?.title || "Nothing Artificial.\nEverything Delicious."
-  const globalSubtitle = cmsData?.subtitle || "TASTE THE AUTHENTIC FLAVORS\nOF HOME-COOKED MEALS!"
-
-  const handleTouchStart = (e: React.TouchEvent) => {
-    setStartX(e.targetTouches[0].clientX)
+/**
+ * The Smart Hero Router
+ * Automatically switches between a Smooth Scroll Video Animation
+ * and a standard Image Slider based on CMS content.
+ */
+export default function Hero({ cmsData }: HeroProps) {
+  // If a video URL is provided in the CMS, use the high-end Scroll Animation
+  if (cmsData?.videoUrl) {
+    return <VideoScrollHero videoUrl={cmsData.videoUrl} cmsData={cmsData} />
   }
 
-  const handleTouchMove = (e: React.TouchEvent) => {
-    e.preventDefault()
-    setEndX(e.targetTouches[0].clientX)
-  }
-
-  const handleTouchEnd = () => {
-    const delta = startX - endX
-    if (delta > 75) {
-      setCurrentSlide((prev) => (prev + 1) % slides.length)
-    } else if (delta < -75) {
-      setCurrentSlide((prev) => (prev === 0 ? slides.length - 1 : prev - 1))
-    }
-  }
-
-  useEffect(() => {
-    let rafId: number
-    let nextSlideTime = Date.now() + 4000
-    let isPaused = false
-
-    const tick = () => {
-      const now = Date.now()
-      if (!isPaused && now >= nextSlideTime) {
-        setCurrentSlide((prev) => (prev + 1) % slides.length)
-        nextSlideTime = now + 4000
-      }
-      rafId = requestAnimationFrame(tick)
-    }
-
-    const handleVisibility = () => {
-      isPaused = document.hidden
-    }
-
-    rafId = requestAnimationFrame(tick)
-    document.addEventListener("visibilitychange", handleVisibility)
-
-    return () => {
-      if (rafId) cancelAnimationFrame(rafId)
-      document.removeEventListener("visibilitychange", handleVisibility)
-    }
-  }, [slides.length])
-
-  const currentTitle = slides[currentSlide]?.title || globalTitle
-  const currentSubtitle = slides[currentSlide]?.subtitle || globalSubtitle
-
-  const titleLines = useMemo(
-    () => splitIntoLines(currentTitle, "title"),
-    [currentTitle, currentSlide],
-  )
-  const subtitleLines = useMemo(
-    () => splitIntoLines(currentSubtitle, "subtitle"),
-    [currentSubtitle, currentSlide],
-  )
-
-  const lineMotion = reduceMotion
-    ? {}
-    : {
-        initial: { opacity: 0, y: 18 },
-        animate: { opacity: 1, y: 0 },
-      }
-
-  return (
-    <section className="relative overflow-hidden">
-      <div
-        className="relative h-[450px] md:h-[550px] lg:h-[620px] w-full touch-pan-y"
-        onTouchStart={handleTouchStart}
-        onTouchMove={handleTouchMove}
-        onTouchEnd={handleTouchEnd}
-        onTouchMoveCapture={(e) => handleTouchMove(e)}
-      >
-        <Image
-          src={slides[currentSlide]?.image || slides[currentSlide]}
-          alt={slides[currentSlide]?.alt || "Hero Image"}
-          fill
-          sizes="100vw"
-          className="object-cover w-full h-full"
-          priority
-        />
-
-        <div className="absolute inset-0 flex items-start pt-10 md:pt-14 lg:pt-16">
-          <div className="w-full max-w-7xl mx-auto px-4">
-            <div className="max-w-7xl" key={`hero-copy-${currentSlide}`}>
-              <h1 className="font-heading text-3xl md:text-5xl lg:text-7xl font-extrabold text-primary leading-[1.05]">
-                <span className="block space-y-1 md:space-y-2">
-                  {titleLines.map((line, i) => (
-                    <m.span
-                      key={`t-${i}`}
-                      className="block"
-                      {...lineMotion}
-                      transition={
-                        reduceMotion
-                          ? undefined
-                          : { duration: 0.5, delay: i * 0.1, ease: [0.22, 1, 0.36, 1] }
-                      }
-                    >
-                      {line}
-                    </m.span>
-                  ))}
-                </span>
-              </h1>
-
-              <div className="mt-4 space-y-1 md:space-y-2">
-                {subtitleLines.map((line, i) => (
-                  <m.p
-                    key={`s-${i}`}
-                    className="font-heading text-lg md:text-2xl lg:text-4xl font-extrabold text-primary leading-[1.05] uppercase"
-                    style={{ textShadow: "1px 1px 2px rgba(0,0,0,0.3)" }}
-                    {...lineMotion}
-                    transition={
-                      reduceMotion
-                        ? undefined
-                        : {
-                            duration: 0.48,
-                            delay: 0.18 + i * 0.09,
-                            ease: [0.22, 1, 0.36, 1],
-                          }
-                    }
-                  >
-                    {line}
-                  </m.p>
-                ))}
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div className="absolute bottom-6 left-1/2 -translate-x-1/2 flex gap-2">
-        {slides.map((_: any, dot: number) => (
-          <button
-            key={dot}
-            type="button"
-            aria-label={`Slide ${dot + 1}`}
-            onClick={() => setCurrentSlide(dot)}
-            className={`h-2.5 rounded-full cursor-pointer transition-all duration-300 ${
-              currentSlide === dot
-                ? "w-6 bg-amber-900"
-                : "w-2.5 bg-white/80 border border-amber-900/50"
-            }`}
-          />
-        ))}
-      </div>
-    </section>
-  )
+  // Fallback to the standard Slider if no video is present
+  return <SliderHero cmsData={cmsData} />
 }

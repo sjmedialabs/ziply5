@@ -61,7 +61,25 @@ export type GeneratePickupResponse = {
 }
 
 const DEFAULT_TIMEOUT_MS = 12000
-const mode = ((env.SHIPROCKET_MODE ?? "mock").toLowerCase() as ShiprocketMode)
+
+const normalizeBearer = (value: string) => value.trim().replace(/^Bearer\s+/i, "")
+
+/** JWT from POST …/auth/login; use as Authorization Bearer (see Shiprocket external API docs). */
+export const getStaticShiprocketToken = () => {
+  const raw = env.SHIPROCKET_TOKEN?.trim() || env.SHIPROCKET_API_KEY?.trim()
+  return raw ? normalizeBearer(raw) : ""
+}
+
+const hasLoginCredentials = () => Boolean(env.SHIPROCKET_EMAIL?.trim() && env.SHIPROCKET_PASSWORD)
+
+const resolveShiprocketMode = (): ShiprocketMode => {
+  const explicit = env.SHIPROCKET_MODE?.trim().toLowerCase()
+  if (explicit === "mock" || explicit === "staging" || explicit === "live") return explicit
+  if (hasLoginCredentials() || getStaticShiprocketToken()) return "live"
+  return "mock"
+}
+
+const mode = resolveShiprocketMode()
 const baseUrl = (env.SHIPROCKET_BASE_URL ?? "https://apiv2.shiprocket.in/v1/external").replace(/\/+$/, "")
 
 let tokenCache: TokenCache | null = null
@@ -91,8 +109,10 @@ const shouldUseMock = () => mode === "mock"
 const maskToken = (token: string) => `${token.slice(0, 4)}***${token.slice(-4)}`
 
 const loginShiprocket = async () => {
-  if (!env.SHIPROCKET_EMAIL || !env.SHIPROCKET_PASSWORD) {
-    throw new Error("Missing SHIPROCKET_EMAIL / SHIPROCKET_PASSWORD")
+  if (!hasLoginCredentials()) {
+    throw new Error(
+      "Shiprocket auth: set SHIPROCKET_EMAIL + SHIPROCKET_PASSWORD (API user from Shiprocket panel), or SHIPROCKET_TOKEN / SHIPROCKET_API_KEY with the JWT from POST …/auth/login",
+    )
   }
   const loginUrl = `${baseUrl}/auth/login`
   const res = await withTimeout(
@@ -113,13 +133,15 @@ const loginShiprocket = async () => {
   if (!data.token) throw new Error("Shiprocket auth token missing")
   tokenCache = {
     token: data.token,
-    expiresAtMs: Date.now() + 50 * 60 * 1000,
+    expiresAtMs: Date.now() + 23 * 60 * 60 * 1000,
   }
   return tokenCache.token
 }
 
 export const getShiprocketToken = async () => {
   if (shouldUseMock()) return "mock-token"
+  const staticToken = getStaticShiprocketToken()
+  if (staticToken) return staticToken
   if (tokenCache && tokenCache.expiresAtMs > Date.now()) return tokenCache.token
   return loginShiprocket()
 }
@@ -210,7 +232,7 @@ export const shiprocketClient = {
 export const getShiprocketConfig = () => ({
   mode: shiprocketClient.mode,
   baseUrl: shiprocketClient.baseUrl,
-  hasCredentials: Boolean(env.SHIPROCKET_EMAIL && env.SHIPROCKET_PASSWORD),
+  hasCredentials: Boolean(hasLoginCredentials() || getStaticShiprocketToken()),
   tokenCached: Boolean(tokenCache && tokenCache.expiresAtMs > Date.now()),
   tokenPreview: tokenCache?.token ? maskToken(tokenCache.token) : null,
 })

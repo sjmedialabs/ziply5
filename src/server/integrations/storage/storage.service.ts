@@ -12,6 +12,7 @@ const toPublicUrl = (relativePath: string) => {
 type AllowedMime = "image/jpeg" | "image/png" | "image/webp" | "image/gif"
 
 const MAX_IMAGE_BYTES = Number(process.env.UPLOAD_IMAGE_MAX_BYTES ?? 8 * 1024 * 1024)
+const MAX_VIDEO_BYTES = Number(process.env.UPLOAD_VIDEO_MAX_BYTES ?? 32 * 1024 * 1024)
 const THUMB_WIDTH = Number(process.env.UPLOAD_IMAGE_THUMB_WIDTH ?? 320)
 const MEDIUM_WIDTH = Number(process.env.UPLOAD_IMAGE_MEDIUM_WIDTH ?? 900)
 
@@ -47,6 +48,10 @@ const detectMime = (bytes: Uint8Array): AllowedMime | null => {
     const hdr = String.fromCharCode(...bytes.slice(0, 6))
     if (hdr === "GIF87a" || hdr === "GIF89a") return "image/gif"
   }
+  // Video headers (simple check)
+  if (bytes.length >= 8 && bytes[4] === 0x66 && bytes[5] === 0x74 && bytes[6] === 0x79 && bytes[7] === 0x70) return "video/mp4" as any;
+  if (bytes.length >= 4 && bytes[0] === 0x1a && bytes[1] === 0x45 && bytes[2] === 0xdf && bytes[3] === 0xa3) return "video/webm" as any;
+  
   return null
 }
 
@@ -124,15 +129,27 @@ export const storageService = {
     const safeFolder = sanitizeSegment(input.folder)
     if (!safeFolder) throw new Error("Invalid folder")
     if (!input.buffer?.byteLength) throw new Error("Empty upload")
-    if (input.buffer.byteLength > RAW_UPLOAD_MAX_BYTES) {
-      throw new Error(`File exceeds ${RAW_UPLOAD_MAX_BYTES} bytes`)
-    }
-    let ext = path.extname(input.originalName).toLowerCase()
+    
+    // Check if it's a video to apply a higher limit
     const sniff = detectMime(input.buffer)
+    const isVideo = sniff === ("video/mp4" as any) || sniff === ("video/webm" as any)
+    const limit = isVideo ? MAX_VIDEO_BYTES : RAW_UPLOAD_MAX_BYTES
+    
+    if (input.buffer.byteLength > limit) {
+      throw new Error(`${isVideo ? "Video" : "File"} exceeds ${limit} bytes`)
+    }
+
+    let ext = path.extname(input.originalName).toLowerCase()
+    const rawAllowedExt = new Set([".png", ".jpg", ".jpeg", ".webp", ".gif", ".svg", ".ico", ".mp4", ".webm"])
+
     if (!rawAllowedExt.has(ext)) {
       if (looksLikeIco(input.buffer)) ext = ".ico"
       else if (looksLikeSvg(input.buffer)) ext = ".svg"
-      else if (sniff) ext = extForMime(sniff)
+      else if (sniff) {
+          if (sniff === ("video/mp4" as any)) ext = ".mp4"
+          else if (sniff === ("video/webm" as any)) ext = ".webm"
+          else ext = extForMime(sniff as AllowedMime)
+      }
       else throw new Error("Unsupported file type for raw upload")
     }
     if (ext === ".svg" && !looksLikeSvg(input.buffer)) throw new Error("Invalid SVG")

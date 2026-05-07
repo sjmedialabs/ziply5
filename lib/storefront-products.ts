@@ -25,7 +25,7 @@ export type StorefrontProduct = {
   labels: Array<{ label: string; color: string | null }>
   features: Array<{ title: string; icon: string | null }>
   details: Array<{ title: string; content: string }>
-  sections: Array<{ id: string; title: string; description: string; sortOrder: number; isActive: boolean }>
+  sections: Array<{ id: string; title: string; description: string; sort_order: number; is_ative: boolean }>
   variants: Array<{ id: string; name: string; weight: string; price: number; sku: string; stock: number; isDefault: boolean; discountPercent?: number | null; mrp?: number | null; promotion?: { name: string; kind: string } | null }>
   discountPercent?: number | null
   finalPrice?: number | null
@@ -61,7 +61,7 @@ type ApiProduct = {
   labels?: Array<{ label: string; color: string | null }>
   features?: Array<{ title: string; icon: string | null }>
   details?: Array<{ title: string; content: string }>
-  sections?: Array<{ id: string; title: string; description: string; sortOrder: number; isActive: boolean }>
+  sections?: Array<{ id: string; title: string; description: string; sort_order: number; is_active: boolean }>
   categories?: Array<{ category: { slug: string } }>
 }
 
@@ -120,8 +120,8 @@ export const toStorefrontProduct = (p: ApiProduct): StorefrontProduct => {
   const isVeg = tags.some((t) => t === "veg" || t === "vegetarian")
   const sections =
     (p.sections ?? [])
-      .filter((s) => s.isActive)
-      .sort((a, b) => a.sortOrder - b.sortOrder) ??
+      .filter((s) => s.is_active)
+      .sort((a, b) => a.sort_order - b.sort_order) ??
     []
   const fallbackDetails = p.details ?? []
   const normalizedThumb = normalizeMediaUrl(p.thumbnail)

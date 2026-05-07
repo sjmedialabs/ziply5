@@ -40,7 +40,7 @@ export const pg =
     connectionString,
     max: Number(process.env.PG_POOL_MAX ?? "10"),
     idleTimeoutMillis: Number(process.env.PG_IDLE_TIMEOUT_MS ?? "30000"),
-    connectionTimeoutMillis: Number(process.env.PG_CONN_TIMEOUT_MS ?? "10000"),
+    connectionTimeoutMillis: Number(process.env.PG_CONN_TIMEOUT_MS ?? "30000"),
     query_timeout: Number(process.env.PG_QUERY_TIMEOUT_MS ?? "30000"),
   })
 
@@ -72,4 +72,3 @@ export async function pgTx<T>(fn: (client: import("pg").PoolClient) => Promise<T
     client.release()
   }
 }
-

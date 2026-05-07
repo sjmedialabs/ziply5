@@ -3,7 +3,7 @@
 import BannerSection from "@/components/BannerSection";
 import { getCartItems, setCartItems, type CartItem } from "@/lib/cart"; // utils to manage cart items in localStorage
 import { getFavoriteSlugs, setFavoriteSlugs } from "@/lib/favorites";
-import { ArrowLeft, Heart, Minus, Plus, X } from "lucide-react";
+import { ArrowLeft, Heart, Minus, Plus, ShieldCheck, ShieldHalf, X } from "lucide-react";
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
  import {  toggleFavoriteSlug } from "@/lib/favorites"
@@ -357,11 +357,14 @@ export default function CartPage() {
               </button>
             </Link>
             <div className="my-4 border-t border-white" />
-            <div className="flex flex-row gap-2 items-center">
-            <img src="/assets/cartPage/Symbol.png" alt="" />
-            <p className="mt-4 font-semibold text-xs ">
-              Safe and Secure Payments. Easy Returns. 100% Authentic Products.
-            </p>
+            <div className="flex flex-row gap-2 justify-center items-center">
+                <div className="mt-3">
+                   <ShieldCheck/>
+                </div>
+                 
+                <p className="mt-4 font-semibold text-xs ">
+                  Safe and Secure Payments. Easy Returns. 100% Authentic Products.
+                </p>
             </div>
           </div>
         </div>

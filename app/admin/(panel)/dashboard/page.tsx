@@ -32,16 +32,59 @@ type AdminSummary = {
 
 const money = (n: number) => `Rs.${Number(n || 0).toFixed(2)}`
 
+const AnimatedNumber = ({
+  value,
+  prefix = "",
+  suffix = "",
+}: {
+  value: number
+  prefix?: string
+  suffix?: string
+}) => {
+  const [count, setCount] = useState(0)
+
+  useEffect(() => {
+    let start = 0
+    const duration = 1200
+    const startTime = performance.now()
+
+    const animate = (currentTime: number) => {
+      const elapsed = currentTime - startTime
+      const progress = Math.min(elapsed / duration, 1)
+
+      const current = Math.floor(progress * value)
+
+      setCount(current)
+
+      if (progress < 1) {
+        requestAnimationFrame(animate)
+      }
+    }
+
+    requestAnimationFrame(animate)
+  }, [value])
+
+  return (
+    <span>
+      {prefix}
+      {count.toLocaleString()}
+      {suffix}
+    </span>
+  )
+}
+
 const StatCard = ({
   label,
   value,
   icon: Icon,
   iconTone,
+  isMoney = false,
 }: {
   label: string
-  value: string
+  value: number
   icon: React.ComponentType<{ className?: string }>
   iconTone: "primary" | "accent" | "neutral"
+  isMoney?: boolean
 }) => {
   const tone =
     iconTone === "accent"
@@ -49,15 +92,28 @@ const StatCard = ({
       : iconTone === "neutral"
         ? { icon: "bg-[#FFFBF3] text-[#4A1D1F]" }
         : { icon: "bg-[#FFF3EA] text-[#7B3010]" }
+
   return (
     <ScaleHover className="h-full">
-      <div className="flex h-full items-center gap-3 rounded-2xl border border-[#E8DCC8] bg-white p-4 shadow-sm will-change-transform">
-        <div className={`flex h-10 w-10 items-center justify-center rounded-xl ${tone.icon}`}>
+      <div className="flex h-full items-center gap-3 rounded-2xl border border-[#E8DCC8] bg-white p-4 shadow-sm transition-all duration-300 will-change-transform hover:shadow-md">
+        <div
+          className={`flex h-10 w-10 items-center justify-center rounded-xl ${tone.icon}`}
+        >
           <Icon className="h-5 w-5" />
         </div>
+
         <div>
-          <p className="text-xs font-semibold text-[#7A7A7A]">{label}</p>
-          <p className="mt-0.5 font-melon text-xl font-medium text-[#4A1D1F]">{value}</p>
+          <p className="text-xs font-semibold text-[#7A7A7A]">
+            {label}
+          </p>
+
+          <p className="mt-0.5 font-melon text-xl font-medium text-[#4A1D1F]">
+            <AnimatedNumber
+              value={value}
+              prefix={isMoney ? "₹" : ""}
+              suffix="+"
+            />
+          </p>
         </div>
       </div>
     </ScaleHover>
@@ -108,10 +164,34 @@ export default function AdminDashboardPage() {
         {summary ? (
           <FadeIn>
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-              <StatCard iconTone="neutral" icon={Users} label="Total Customers" value={`${summary.totalCustomers}+`} />
-              <StatCard iconTone="primary" icon={Package} label="Total Products" value={`${summary.totalProducts}+`} />
-              <StatCard iconTone="accent" icon={ShoppingCart} label="Total Orders" value={`${summary.totalOrders}+`} />
-              <StatCard iconTone="primary" icon={IndianRupee} label="Total Sales" value={`${money(summary.totalSales)}+`} />
+              <StatCard
+                iconTone="neutral"
+                icon={Users}
+                label="Total Customers"
+                value={summary.totalCustomers}
+              />
+
+              <StatCard
+                iconTone="primary"
+                icon={Package}
+                label="Total Products"
+                value={summary.totalProducts}
+              />
+
+              <StatCard
+                iconTone="accent"
+                icon={ShoppingCart}
+                label="Total Orders"
+                value={summary.totalOrders}
+              />
+
+              <StatCard
+                iconTone="primary"
+                icon={IndianRupee}
+                label="Total Sales"
+                value={summary.totalSales}
+                isMoney
+              />
             </div>
           </FadeIn>
         ) : loading ? (
