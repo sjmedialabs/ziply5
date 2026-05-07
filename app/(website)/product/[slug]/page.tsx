@@ -355,7 +355,7 @@ export default function ProductPage() {
             <button
               type="button"
               onClick={() => router.push("/products")}
-              className="inline-flex items-center gap-1 rounded-full border border-[#D6D6D6] bg-white px-3 py-1 text-[11px] font-semibold text-[#6B6B6B]"
+              className="inline-flex items-center gap-1 cursor-pointer rounded-full border border-[#D6D6D6] bg-white px-3 py-1 text-[11px] font-semibold text-[#6B6B6B]"
             >
               <ArrowLeft size={14} />
               Back To Products List
@@ -412,8 +412,8 @@ export default function ProductPage() {
                     onClick={() => setSelectedSize(size)}
                     disabled={outOfStock}
                     className={`rounded-md border px-3 py-1 text-xs font-semibold ${selectedSize === size
-                        ? "border-[#A33838] bg-[#A33838] text-white"
-                        : "border-[#D8D8D8] bg-white text-[#696969] hover:border-[#A33838]"
+                      ? "border-[#A33838] bg-[#A33838] text-white"
+                      : "border-[#D8D8D8] bg-white text-[#696969] hover:border-[#A33838]"
                       } disabled:cursor-not-allowed disabled:opacity-40`}
                   >
                     {size}
@@ -442,7 +442,7 @@ export default function ProductPage() {
                     }, nextQty)
                     setQuantity(nextQty)
                   }}
-                  className="h-10 w-9 text-lg font-bold transition hover:bg-[#6A3033]"
+                  className="h-10 w-9 text-lg cursor-pointer font-bold transition hover:bg-[#6A3033]"
                 >
                   -
                 </button>
@@ -463,7 +463,7 @@ export default function ProductPage() {
                     }, nextQty)
                     setQuantity(nextQty)
                   }}
-                  className="h-10 w-9 text-lg font-bold transition hover:bg-[#6A3033]"
+                  className="h-10 w-9 text-lg cursor-pointer font-bold transition hover:bg-[#6A3033]"
                 >
                   +
                 </button>
@@ -488,7 +488,7 @@ export default function ProductPage() {
                   router.push("/cart")
                 }}
                 disabled={allVariantsOutOfStock}
-                className="font-medium font-melon tracking-wide rounded-2xl border border-[#FF8A00] bg-primary flex items-center px-6 py-2.5 text-xl leading-none text-white transition hover:bg-[#e97819]"
+                className="font-medium font-melon cursor-pointer tracking-wide rounded-2xl border border-[#FF8A00] bg-primary flex items-center px-6 py-2.5 text-xl leading-none text-white transition hover:bg-[#e97819]"
               >
                 Buy now
                 <img src="/assets/Productdetails/rightArrow.png" alt="Buy Now" className="inline-block h-4 w-4 ml-2 object-contain" />
@@ -499,7 +499,7 @@ export default function ProductPage() {
                   href={(product as any).amazonLink}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="font-sm font-melon tracking-wide rounded-2xl border border-primary flex items-center px-6 py-2.5 text-xl leading-none text-primary transition hover:bg-[#e68a00]"
+                  className="font-sm font-melon cursor-pointer tracking-wide rounded-2xl border border-primary flex items-center px-6 py-2.5 text-xl leading-none text-primary transition hover:bg-[#e68a00]"
                 >
                   Buy @Amazon
                 </a>
@@ -508,7 +508,7 @@ export default function ProductPage() {
               <button
                 type="button"
                 onClick={(e) => handleToggleFavorite(e, product.slug)}
-                className="flex h-10 w-10 items-center justify-center rounded-md border border-[#E5E5E5] text-xl text-[#4C4C4C] hover:text-[#5A272A]"
+                className="flex h-10 w-10 cursor-pointer items-center justify-center rounded-md border border-[#E5E5E5] text-xl text-[#4C4C4C] hover:text-[#5A272A]"
               >
                 {favorite ? "♥" : "♡"}
               </button>
@@ -589,13 +589,13 @@ export default function ProductPage() {
                   <button
                     type="button"
                     onClick={() => setOpenSection(isOpen ? null : sectionId)}
-                    className="flex w-full items-center justify-between py-5 text-left"
+                    className="flex w-full items-center cursor-pointer justify-between py-5 text-left"
                   >
                     <span className="font-melon text-sm font-light tracking-wide text-[#262626]">
                       {section.title}
                     </span>
 
-                    <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-[#F58B2E] text-sm font-bold text-white">
+                    <span className="inline-flex h-5 w-5 cursor-pointer items-center justify-center rounded-full bg-[#F58B2E] text-sm font-bold text-white">
                       {isOpen ? "-" : "+"}
                     </span>
                   </button>
@@ -670,7 +670,7 @@ export default function ProductPage() {
               <div
                 key={`${item.id}-${item.slug}-${idx}`}
                 onClick={() => router.push(`/product/${item.slug}`)}
-                className="block text-left h-full"
+                className="block text-left h-full cursor-pointer"
               >
                 <article
                   className="group flex flex-col h-full rounded-2xl border-2 border-transparent p-3 transition-all duration-300 hover:border-[#F0E4A3]"
@@ -690,7 +690,7 @@ export default function ProductPage() {
                         <button
                           type="button"
                           onClick={() => setCartItemQuantity(product, Math.max(0, (cartQtyBySlug[product.slug] ?? 0) - 1))}
-                          className="h-6 w-6 rounded text-sm font-light text-[#5A272A] hover:bg-[#f4efec]"
+                          className="h-6 w-6 rounded cursor-pointer text-sm font-light text-[#5A272A] hover:bg-[#f4efec]"
                         >
                           -
                         </button>
@@ -700,7 +700,7 @@ export default function ProductPage() {
                         <button
                           type="button"
                           onClick={() => setCartItemQuantity(product, (cartQtyBySlug[product.slug] ?? 0) + 1)}
-                          className="h-6 w-6 rounded text-sm font-light text-[#5A272A] hover:bg-[#f4efec]"
+                          className="h-6 w-6 rounded text-sm cursor-pointer font-light text-[#5A272A] hover:bg-[#f4efec]"
                         >
                           +
                         </button>
@@ -709,12 +709,12 @@ export default function ProductPage() {
                       <button
                         type="button"
                         onClick={() => setCartItemQuantity(product, 1)}
-                        className="rounded-lg border border-white tracking-wide px-4 py-1.5 text-[12px] font-light text-white hover:bg-primary hover:text-white transition-all "
+                        className="rounded-lg border cursor-pointer border-white tracking-wide px-4 py-1.5 text-[12px] font-light text-white hover:bg-primary hover:text-white transition-all "
                       >
                         Add to Cart
                       </button>
                     )}
-                    <Link href="/checkout" className="rounded-lg bg-primary tracking-wide px-3 py-1.5 text-[12px] font-light text-white hover:bg-[#2d1011]">
+                    <Link href="/checkout" className="rounded-lg bg-primary cursor-pointer tracking-wide px-3 py-1.5 text-[12px] font-light text-white hover:bg-[#2d1011]">
                       Buy Now
                     </Link>
                   </div>
