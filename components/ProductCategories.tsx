@@ -51,8 +51,8 @@ export default function ProductCategories({ cmsData }: { cmsData?: any }) {
           {loading
             ? Array.from({ length: 7 }).map((_, i) => (
               <SwiperSlide key={`cat-skeleton-${i}`}>
-                <div className="bg-white/50 animate-pulse rounded-full overflow-hidden h-75 flex flex-col items-center px-2 shadow-sm border border-white/20">
-                  <div className="w-[100px] h-[100px] md:w-[120px] md:h-[120px] shrink-0 rounded-full overflow-hidden bg-white/40 mt-4 mb-4" />
+                <div className="bg-white/50 animate-pulse rounded-full overflow-hidden h-75 flex flex-col items-center justify-center px-3 shadow-sm border border-white/20">
+                  <div className="w-[100px] h-[100px] md:w-[120px] md:h-[120px] shrink-0 rounded-full overflow-hidden bg-white/40 mb-4" />
                   <div className="h-4 w-24 bg-white/40 rounded mb-2" />
                   <div className="h-3 w-32 bg-white/40 rounded" />
                 </div>
@@ -64,9 +64,9 @@ export default function ProductCategories({ cmsData }: { cmsData?: any }) {
                   href={`/product/${product.slug}`}
                   className="group"
                 >
-                  <div className="card-smooth bg-white rounded-full overflow-hidden h-75 flex flex-col pt-4 pb-6 items-center px-2 shadow-md hover:shadow-lg">
+                  <div className="card-smooth bg-white rounded-full overflow-hidden h-75 flex flex-col items-center justify-center px-3 shadow-md hover:shadow-lg">
 
-                    <div className="w-[100px] h-[100px] md:w-[120px] md:h-[120px] shrink-0 rounded-full overflow-hidden mb-3 bg-white flex items-center justify-center">
+                    <div className="w-[100px] h-[100px] md:w-[120px] md:h-[120px] shrink-0 rounded-full overflow-hidden mb-4 bg-white flex items-center justify-center">
                       <Image
                         src={product.image}
                         alt={product.name}
@@ -75,12 +75,12 @@ export default function ProductCategories({ cmsData }: { cmsData?: any }) {
                         className="object-contain p-2 w-full h-full max-h-full"
                       />
                     </div>
-                    <div className="mb-0 flex flex-col items-stretch w-full px-1">
-                      <h3 className="text-[#6F2C2A] text-center font-semibold text-sm line-clamp-2 min-h-[40px] leading-tight">
+                    <div className="mb-0 flex flex-col items-center w-full px-2">
+                      <h3 className="text-[#6F2C2A] text-center font-semibold text-sm line-clamp-2 min-h-[40px] leading-tight w-full">
                         {product.name}
                       </h3>
 
-                      <p className="text-[#656565] text-[10px] text-center mt-1 line-clamp-2 min-h-[28px]">
+                      <p className="text-[#656565] text-[10px] text-center mt-1 line-clamp-2 min-h-[28px] w-full">
                         {product.description}
                       </p>
                     </div>
