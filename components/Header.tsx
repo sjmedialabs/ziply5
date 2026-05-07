@@ -1,6 +1,7 @@
 "use client"
 
 import Link from "next/link"
+import { usePathname } from "next/navigation"
 import { Menu, X } from "lucide-react"
 import { useState, useRef, useEffect, useCallback, Fragment } from "react"
 import Image from "next/image"
@@ -27,6 +28,7 @@ type ApiProduct = {
 }
 
 export default function Header() {
+  const pathname = usePathname()
   const reduce = useReducedMotion()
   const [menuOpen, setMenuOpen] = useState(false)
   const { searchOpen, setSearchOpen, searchQuery, setSearchQuery, searchResults, handleSearch } = useSearch()
@@ -38,6 +40,7 @@ export default function Header() {
   const [cmsData, setCmsData] = useState<any>(null)
 
   const productRef = useRef<HTMLDivElement>(null)
+  const [productDropdownOpen, setProductDropdownOpen] = useState(false)
   const [arrowLeft, setArrowLeft] = useState(0)
 
   const loadMenuData = useCallback(async () => {
@@ -245,8 +248,9 @@ export default function Header() {
             {/* PRODUCTS WITH DROPDOWN */}
             <div
               ref={productRef}
-              className="relative group flex flex-col items-center"
+              className="relative flex flex-col items-center"
               onMouseEnter={() => {
+                setProductDropdownOpen(true)
                 if (productRef.current) {
                   const rect = productRef.current.getBoundingClientRect()
                   setArrowLeft(rect.left + rect.width / 2)
@@ -255,13 +259,18 @@ export default function Header() {
                   void loadMenuData()
                 }
               }}
+              onMouseLeave={() => setProductDropdownOpen(false)}
             >
-              <Link href="/products" className="font-extrabold text-black hover:text-[#f97316] transition-colors text-[15px]">
+              <Link 
+                href="/products" 
+                onClick={() => setProductDropdownOpen(false)}
+                className="font-extrabold text-black hover:text-[#f97316] transition-colors text-[15px]"
+              >
                 Products
               </Link>
 
               {/* DROPDOWN */}
-              <div className="absolute left-0 top-[calc(100%+16px)] w-[100vw] flex justify-start opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-300">
+              <div className={`absolute left-0 top-[calc(100%+16px)] w-[100vw] flex justify-start ${productDropdownOpen ? "opacity-100 visible" : "opacity-0 invisible"} transition-all duration-300`}>
 
                 <div className="relative w-full max-w-7xl">
 
@@ -287,7 +296,11 @@ export default function Header() {
                             <ul className="space-y-3">
                               {category.products.slice(0, 8).map((product, idx) => (
                                 <li key={product.id}>
-                                  <Link href={`/product/${product.slug}`} className={`${idx === 0 ? "text-orange-400 font-semibold" : "text-white"} hover:underline`}>
+                                  <Link 
+                                    href={`/product/${product.slug}`} 
+                                    onClick={() => setProductDropdownOpen(false)}
+                                    className={`${pathname === `/product/${product.slug}` ? "text-orange-400 font-semibold" : "text-white"} hover:underline`}
+                                  >
                                     {product.name}
                                   </Link>
                                 </li>
