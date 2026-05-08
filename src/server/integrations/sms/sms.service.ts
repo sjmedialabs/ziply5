@@ -3,6 +3,7 @@ import { env } from "@/src/server/core/config/env"
 type SendSmsInput = {
   to: string
   body: string
+  templateId?: string
 }
 
 const sendViaTwilio = async (input: SendSmsInput) => {
@@ -41,7 +42,7 @@ const sendViaMsg91 = async (input: SendSmsInput) => {
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      template_id: env.MSG91_TEMPLATE_ID,
+      template_id: input.templateId ?? env.MSG91_TEMPLATE_ID,
       recipients: [{ mobiles: input.to.replace(/\D/g, ""), message: input.body }],
     }),
   })
@@ -51,8 +52,50 @@ const sendViaMsg91 = async (input: SendSmsInput) => {
   }
 }
 
+const sendViaVyaap = async (input: SendSmsInput) => {
+  if (!env.SMS_USERNAME || !env.SMS_API_KEY || !env.SMS_SENDER_ID) {
+    throw new Error("SMS gateway env missing (USERNAME, API_KEY, or SENDER_ID)")
+  }
+  
+  // Use SMS_BASE_URL or fallback to SMS_API_URL or the hardcoded default
+  const baseUrl = env.SMS_BASE_URL || (process.env as any).SMS_API_URL || "http://sms.vyaapsms.com/api/v2/sms/send"
+  
+  const params = new URLSearchParams({
+    username: env.SMS_USERNAME,
+    apikey: env.SMS_API_KEY,
+    senderid: env.SMS_SENDER_ID,
+    mobile: (() => {
+      const d = input.to.replace(/\D/g, "")
+      if (d.length === 10) return `91${d}`
+      return d
+    })(),
+    message: input.body,
+    ...(input.templateId ? { templateid: input.templateId } : {}),
+  })
+
+  const fullUrl = `${baseUrl}?${params.toString()}`
+  console.log("[sms:vyaap] Sending to:", input.to, "Template:", input.templateId)
+  // console.log("[sms:vyaap] Request URL:", fullUrl) // Masked for security but useful for local debug if enabled
+
+  try {
+    const res = await fetch(fullUrl, {
+      method: "GET",
+    })
+
+    const text = await res.text()
+    console.log("[sms:vyaap] Response:", text)
+
+    if (!res.ok) {
+      throw new Error(`SMS gateway returned ${res.status}: ${text.slice(0, 100)}`)
+    }
+  } catch (error) {
+    console.error("[sms:vyaap] Error:", error)
+    throw error
+  }
+}
+
 const sendMock = async (input: SendSmsInput) => {
-  console.info("[sms:mock]", input.to, input.body)
+  console.info("[sms:mock]", input.to, input.body, input.templateId ? `(template: ${input.templateId})` : "")
 }
 
 export const smsService = {
@@ -60,6 +103,7 @@ export const smsService = {
     const provider = (env.SMS_PROVIDER ?? "mock").toLowerCase()
     if (provider === "twilio") return sendViaTwilio(input)
     if (provider === "msg91") return sendViaMsg91(input)
+    if (provider === "vyaap" || provider === "custom" || provider === "smslogin") return sendViaVyaap(input)
     return sendMock(input)
   },
 }

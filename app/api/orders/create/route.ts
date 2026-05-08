@@ -5,7 +5,12 @@ import { fail, ok } from "@/src/server/core/http/response"
 import { createOrderSchema } from "@/src/server/modules/orders/orders.validator"
 import { createOrderFromCheckout } from "@/src/server/modules/orders/orders.service"
 
+export async function GET() {
+  return ok({ message: "Order creation endpoint is active" })
+}
+
 export async function POST(request: NextRequest) {
+  console.log("POST /api/orders/create started")
   const blocked = checkRateLimit(request, "orders:create", { limit: 15, windowMs: 60_000 })
   if (blocked) return blocked
   console.log("Processing order creation request...")

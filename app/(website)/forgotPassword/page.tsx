@@ -2,91 +2,221 @@
 
 import Link from "next/link";
 import { useState } from "react";
-
-type ForgotResult = { message: string; resetToken?: string };
+import { Shield, Mail, Phone } from "lucide-react";
+import { OtpVerification } from "@/components/otp/OtpVerification";
+import { toast } from "sonner";
 
 export default function ForgotPasswordPage() {
+  const [method, setMethod] = useState<"email" | "mobile">("email");
   const [email, setEmail] = useState("");
-  const [error, setError] = useState("");
-  const [done, setDone] = useState(false);
-  const [devToken, setDevToken] = useState<string | null>(null);
+  const [phone, setPhone] = useState("");
+  const [step, setStep] = useState<"request" | "otp" | "new_password" | "done">("request");
   const [loading, setLoading] = useState(false);
+  const [newPassword, setNewPassword] = useState("");
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSendEmail = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError("");
-    setDevToken(null);
     setLoading(true);
     try {
       const res = await fetch("/api/v1/auth/forgot-password", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: email.trim() }),
+        body: JSON.stringify({ email }),
       });
-      const json = (await res.json()) as { success?: boolean; message?: string; data?: ForgotResult };
-      if (!res.ok || json.success === false) {
-        setError(json.message ?? "Request failed");
-        return;
-      }
-      setDone(true);
-      if (json.data?.resetToken) {
-        setDevToken(json.data.resetToken);
-      }
-    } catch {
-      setError("Network error");
+      if (!res.ok) throw new Error("Request failed");
+      setStep("done");
+      toast.success("Reset link sent to your email");
+    } catch (err: any) {
+      toast.error(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSendOtp = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    try {
+      const res = await fetch("/api/auth/otp/send", {
+        method: "POST",
+        body: JSON.stringify({ mobile: phone, purpose: "RESET_PASSWORD" }),
+      });
+      const data = await res.json();
+      if (!data.success) throw new Error(data.message);
+      setStep("otp");
+      toast.success("Verification code sent to your mobile");
+    } catch (err: any) {
+      toast.error(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleVerifyOtp = async (code: string) => {
+    setStep("new_password");
+    // We'll store the code to send with the new password
+    (window as any)._otpCode = code;
+  };
+
+  const handleResetPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    try {
+      const res = await fetch("/api/auth/otp/verify", {
+        method: "POST",
+        body: JSON.stringify({
+          mobile: phone,
+          code: (window as any)._otpCode,
+          purpose: "RESET_PASSWORD",
+          newPassword,
+        }),
+      });
+      const data = await res.json();
+      if (!data.success) throw new Error(data.message);
+      setStep("done");
+      toast.success("Password reset successfully");
+    } catch (err: any) {
+      toast.error(err.message);
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="relative flex min-h-screen items-center justify-center bg-black/40 px-4">
-      <div className="absolute inset-0 z-0 bg-black/40" />
+    <div className="relative min-h-screen overflow-hidden bg-[#F7F8FB] px-4 py-10">
+      <div className="mx-auto flex w-full max-w-[520px] items-center justify-center">
+        <div className="w-full rounded-3xl bg-white p-6 shadow-[0_18px_60px_rgba(15,23,42,0.10)] ring-1 ring-black/5 md:p-10">
+          <div className="mx-auto mb-5 flex h-14 w-14 items-center justify-center rounded-2xl bg-[#FFC222]/20 text-[#7B3010]">
+            <Shield className="h-7 w-7" />
+          </div>
+          <h1 className="text-center font-melon text-3xl font-bold text-[#111827]">
+            Recover Password
+          </h1>
 
-      <div className="relative z-10 w-full max-w-xl rounded-[40px] bg-[#FFC222] p-4 text-center shadow-xl md:p-10">
-        <h1 className="mb-8 font-melon text-3xl font-bold">Recover password</h1>
-
-        {done ? (
-          <div className="space-y-4 text-left text-sm text-[#4A1D1F]">
-            <p>If an account exists for that email, you will receive reset instructions.</p>
-            {devToken && (
-              <p className="rounded-lg bg-white/80 p-3 font-mono text-xs">
-                Dev mode: reset token returned. Use it on{" "}
-                <Link href={`/resetPassword?token=${encodeURIComponent(devToken)}`} className="font-semibold underline">
-                  reset password
-                </Link>
-                .
+          {step === "done" ? (
+            <div className="mt-8 text-center">
+              <p className="text-sm text-[#6B7280]">
+                Success! You can now log in with your new password.
               </p>
-            )}
-            <Link href="/login" className="inline-block text-sm text-red-600 hover:underline">
-              Back to login
+              <Link
+                href="/login"
+                className="mt-6 inline-block w-full rounded-2xl bg-[#FFC222] py-3 font-semibold text-[#7B3010]"
+              >
+                Go to Login
+              </Link>
+            </div>
+          ) : (
+            <>
+              {step === "request" && (
+                <div className="mt-6 flex gap-2 rounded-2xl bg-[#F3F4F6] p-1">
+                  <button
+                    onClick={() => setMethod("email")}
+                    className={`flex-1 rounded-xl py-2 text-sm font-medium transition ${method === "email" ? "bg-white text-[#111827] shadow-sm" : "text-[#6B7280]"}`}
+                  >
+                    Email
+                  </button>
+                  <button
+                    onClick={() => setMethod("mobile")}
+                    className={`flex-1 rounded-xl py-2 text-sm font-medium transition ${method === "mobile" ? "bg-white text-[#111827] shadow-sm" : "text-[#6B7280]"}`}
+                  >
+                    Mobile
+                  </button>
+                </div>
+              )}
+
+              {step === "request" && method === "email" && (
+                <form className="mt-8 flex flex-col gap-4" onSubmit={handleSendEmail}>
+                  <div className="relative">
+                    <Mail className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-[#9CA3AF]" />
+                    <input
+                      required
+                      type="email"
+                      placeholder="Email Address"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      className="h-12 w-full rounded-2xl border border-[#E5E7EB] bg-white pl-12 pr-4 text-sm outline-none focus:border-[#FFC222]"
+                    />
+                  </div>
+                  <button
+                    type="submit"
+                    disabled={loading}
+                    className="h-12 w-full rounded-2xl bg-[#FFC222] font-semibold text-[#7B3010] shadow-sm transition hover:brightness-95"
+                  >
+                    {loading ? "SENDING..." : "SEND RESET LINK"}
+                  </button>
+                </form>
+              )}
+
+              {step === "request" && method === "mobile" && (
+                <form className="mt-8 flex flex-col gap-4" onSubmit={handleSendOtp}>
+                  <div className="relative">
+                    <Phone className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-[#9CA3AF]" />
+                    <input
+                      required
+                      placeholder="Mobile Number"
+                      value={phone}
+                      onChange={(e) => setPhone(e.target.value)}
+                      className="h-12 w-full rounded-2xl border border-[#E5E7EB] bg-white pl-12 pr-4 text-sm outline-none focus:border-[#FFC222]"
+                    />
+                  </div>
+                  <button
+                    type="submit"
+                    disabled={loading}
+                    className="h-12 w-full rounded-2xl bg-[#FFC222] font-semibold text-[#7B3010] shadow-sm transition hover:brightness-95"
+                  >
+                    {loading ? "SENDING OTP..." : "SEND VERIFICATION CODE"}
+                  </button>
+                </form>
+              )}
+
+              {step === "otp" && (
+                <div className="mt-8">
+                  <OtpVerification
+                    mobile={phone}
+                    onVerify={handleVerifyOtp}
+                    onResend={async () => {
+                      await fetch("/api/auth/otp/send", {
+                        method: "POST",
+                        body: JSON.stringify({ mobile: phone, purpose: "RESET_PASSWORD" }),
+                      });
+                    }}
+                    isLoading={loading}
+                  />
+                </div>
+              )}
+
+              {step === "new_password" && (
+                <form className="mt-8 flex flex-col gap-4" onSubmit={handleResetPassword}>
+                  <div className="relative">
+                    <Shield className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-[#9CA3AF]" />
+                    <input
+                      required
+                      type="password"
+                      placeholder="New Password"
+                      value={newPassword}
+                      onChange={(e) => setNewPassword(e.target.value)}
+                      className="h-12 w-full rounded-2xl border border-[#E5E7EB] bg-white pl-12 pr-4 text-sm outline-none focus:border-[#FFC222]"
+                    />
+                  </div>
+                  <button
+                    type="submit"
+                    disabled={loading}
+                    className="h-12 w-full rounded-2xl bg-[#FFC222] font-semibold text-[#7B3010] shadow-sm transition hover:brightness-95"
+                  >
+                    {loading ? "RESETTING..." : "RESET PASSWORD"}
+                  </button>
+                </form>
+              )}
+            </>
+          )}
+
+          <div className="mt-6 text-center text-sm text-[#6B7280]">
+            Remembered?{" "}
+            <Link href="/login" className="font-semibold text-[#111827] hover:underline">
+              Back to Login
             </Link>
           </div>
-        ) : (
-          <form onSubmit={handleSubmit} className="flex flex-col gap-6">
-            {error && <p className="rounded-lg bg-red-100 px-3 py-2 text-sm text-red-900">{error}</p>}
-            <input
-              type="email"
-              required
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="Email address"
-              className="w-full rounded-full border-2 border-[#7B3010] bg-transparent px-6 py-4 outline-none"
-            />
-
-            <button
-              type="submit"
-              disabled={loading}
-              className="rounded-xl bg-primary py-4 font-semibold tracking-wide text-white shadow-md transition hover:scale-[1.02] disabled:opacity-50"
-            >
-              {loading ? "Sending…" : "Send reset link"}
-            </button>
-
-            <Link href="/login" className="text-sm text-red-500 hover:underline">
-              Back to login
-            </Link>
-          </form>
-        )}
+        </div>
       </div>
     </div>
   );

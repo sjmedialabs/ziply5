@@ -1,6 +1,6 @@
 import { pgQuery, pgTx } from "@/src/server/db/pg"
 import { enqueueEmail } from "@/src/server/modules/notifications/email.service"
-import { smsService } from "@/src/server/integrations/sms/sms.service"
+import { smsService } from "@/src/server/modules/sms/sms.service"
 import crypto from "crypto"
 import { safeString } from "@/src/lib/db/supabaseIntegrity"
 import { renderPlaceholders } from "@/src/server/modules/abandoned-carts/templateRender"

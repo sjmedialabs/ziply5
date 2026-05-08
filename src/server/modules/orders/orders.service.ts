@@ -1,5 +1,7 @@
 import { logActivity } from "@/src/server/modules/activity/activity.service"
 import { emailTemplates, enqueueEmail } from "@/src/server/modules/notifications/email.service"
+import { smsService } from "@/src/server/modules/sms/sms.service"
+import { env } from "@/src/server/core/config/env"
 import { markCartConverted } from "@/src/server/modules/abandoned-carts/recovery.service"
 import {
   appendOrderStatusHistorySupabase,
@@ -471,22 +473,27 @@ export const createOrderFromCheckout = async (input: {
     metadata: { itemCount: lines.length, total },
   })
   console.log("Activity logged for order creation", { orderId: order.id, userId: input.userId ?? null })
-if (input.userId) {
-  console.log("getting user email for order creation", input.userId)
-  const userEmail = await getUserEmailSupabase(input.userId)
-
-  // if (userEmail) {
-  //   try {
-  //     console.log("enqueuing email for order creation", userEmail)
-  //     const mail = emailTemplates.orderPlaced(order.id)
-  //     console.log("email template for order creation", mail)
-  //     await enqueueEmail({ to: userEmail, ...mail })
-  //     console.log("email enqueued for order creation", userEmail)
-  //   } catch {
-  //     // Non-blocking side effect
-  //   }
-  // }
-}
+  console.log(`[Order Service] createOrderFromCheckout: order.status="${order.status}", order.paymentStatus="${order.paymentStatus}", phone="${order.customerPhone}"`)
+  if (order.customerPhone) {
+    const normalizedStatus = String(order.status).toLowerCase()
+    if (normalizedStatus === "confirmed") {
+      console.log(`[Order Service] Triggering ORDER_CONFIRM SMS for new order ${order.id}`)
+      // Send Confirmation SMS
+      await smsService.send({
+        mobile: order.customerPhone,
+        templateKey: "ORDER_CONFIRM",
+        variables: [order.customerName || "Customer", String(order.id)],
+      }).catch(e => console.error("Order confirm SMS failed", e))
+    } else if (String(order.paymentStatus).toUpperCase() === "SUCCESS") {
+      console.log(`[Order Service] Triggering ORDER_PAID SMS for new order ${order.id}`)
+      // Send Payment Success SMS
+      await smsService.send({
+        mobile: order.customerPhone,
+        templateKey: "ORDER_PAID",
+        variables: [String(total), String(order.id)],
+      }).catch(e => console.error("Order payment SMS failed", e))
+    }
+  }
   console.log("Enqueuing outbox event for order.created")
 await enqueueOutboxEvent({
   eventType: "order.created",
@@ -654,10 +661,52 @@ export const updateOrderStatus = async (
     payload: { orderId: id, fromStatus, toStatus: status, reasonCode: options?.reasonCode ?? null },
   }).catch(() => null)
 
+  // SMS Notifications
+  console.log(`[Order Service] Checking SMS for status: "${status}" on order ${order.id}. Customer phone: ${order.customerPhone}`)
+  if (order.customerPhone) {
+    const normalizedStatus = String(status).toLowerCase()
+    if (normalizedStatus === "confirmed") {
+      console.log(`[Order Service] Triggering ORDER_CONFIRM SMS for order ${order.id}`)
+      await smsService.send({
+        mobile: order.customerPhone,
+        templateKey: "ORDER_CONFIRM",
+        variables: [order.customerName || "Customer", String(order.id)],
+      }).catch(e => console.error("Order confirm SMS failed", e))
+    } else if (normalizedStatus === "cancelled") {
+      console.log(`[Order Service] Triggering ORDER_CANCEL SMS for order ${order.id}`)
+      await smsService.send({
+        mobile: order.customerPhone,
+        templateKey: "ORDER_CANCEL",
+        variables: [String(order.id)],
+      }).catch(e => console.error("Order cancel SMS failed", e))
+    }
+  }
+
   const maybeEmail = (order as any).user?.email
   if (maybeEmail) {
-    const mail = emailTemplates.orderStatus(id, status)
     await enqueueEmail({ to: maybeEmail, ...mail }).catch(() => null)
+  }
+
+  const maybePhone = (order as any).customerPhone
+  if (maybePhone) {
+    let smsBody = ""
+    let templateId = ""
+    
+    if (status === "shipped") {
+      smsBody = `Hi, your Ziply5 order #${id} has been shipped. Track your package here: ${env.CDN_BASE_URL}/orders/${id}`
+      templateId = env.SMS_TEMPLATE_ORDER_SHIPPED || ""
+    } else if (status === "delivered") {
+      smsBody = `Hi, your Ziply5 order #${id} has been delivered. We hope you enjoy your delicious meal!`
+      templateId = env.SMS_TEMPLATE_ORDER_DELIVERED || ""
+    }
+
+    if (smsBody) {
+      smsService.send({
+        to: maybePhone,
+        body: smsBody,
+        templateId
+      }).catch(err => console.error("Order status SMS failed", err))
+    }
   }
 
   return order
