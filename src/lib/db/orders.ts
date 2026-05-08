@@ -35,6 +35,28 @@ export type SupabaseOrderRecord = {
   statusHistory: Array<{ toStatus?: string; changedAt?: string | Date | null; [key: string]: unknown }>
   refunds: Array<{ id: string; status?: string; amount?: number }>
   notes?: any[]
+  shiprocketOrderId?: string | null
+  shipmentId?: string | null
+  awbCode?: string | null
+  courierName?: string | null
+  courierCompanyId?: string | null
+  trackingNumber?: string | null
+  trackingUrl?: string | null
+  shippingStatus?: string | null
+  shipmentStatus?: string | null
+  pickupStatus?: string | null
+  shippingCharges?: number | null
+  shippingMethod?: string | null
+  estimatedDeliveryDate?: string | Date | null
+  shiprocketRawResponse?: unknown
+  shipmentCreatedAt?: string | Date | null
+  shipmentSyncedAt?: string | Date | null
+  shipmentDeliveredAt?: string | Date | null
+  lastTrackingSyncAt?: string | Date | null
+  isShipmentCreated?: boolean | null
+  isPickupGenerated?: boolean | null
+  isLabelGenerated?: boolean | null
+  trackingData?: unknown
   [key: string]: unknown
 }
 
@@ -1403,6 +1425,28 @@ export const getOrderByIdSupabaseBasic = async (orderId: string) => {
         customerName: (row.customerName ?? row.customer_name ?? null) as string | null,
         customerPhone: (row.customerPhone ?? row.customer_phone ?? null) as string | null,
         customerAddress: (row.customerAddress ?? row.customer_address ?? null) as string | null,
+        shiprocketOrderId: safeString((row as Record<string, unknown>).shiprocketOrderId ?? (row as Record<string, unknown>).shiprocket_order_id) || null,
+        shipmentId: safeString((row as Record<string, unknown>).shipmentId ?? (row as Record<string, unknown>).shipment_id) || null,
+        awbCode: safeString((row as Record<string, unknown>).awbCode ?? (row as Record<string, unknown>).awb_code) || null,
+        courierName: safeString((row as Record<string, unknown>).courierName ?? (row as Record<string, unknown>).courier_name) || null,
+        courierCompanyId: safeString((row as Record<string, unknown>).courierCompanyId ?? (row as Record<string, unknown>).courier_company_id) || null,
+        trackingNumber: safeString((row as Record<string, unknown>).trackingNumber ?? (row as Record<string, unknown>).tracking_number) || null,
+        trackingUrl: safeString((row as Record<string, unknown>).trackingUrl ?? (row as Record<string, unknown>).tracking_url) || null,
+        shippingStatus: safeString((row as Record<string, unknown>).shippingStatus ?? (row as Record<string, unknown>).shipping_status) || null,
+        shipmentStatus: safeString((row as Record<string, unknown>).shipmentStatus ?? (row as Record<string, unknown>).shipment_status) || null,
+        pickupStatus: safeString((row as Record<string, unknown>).pickupStatus ?? (row as Record<string, unknown>).pickup_status) || null,
+        shippingCharges: (row.shippingCharges ?? row.shipping_charges ?? null) as number | null,
+        shippingMethod: safeString((row as Record<string, unknown>).shippingMethod ?? (row as Record<string, unknown>).shipping_method) || null,
+        estimatedDeliveryDate: (row.estimatedDeliveryDate ?? row.estimated_delivery_date ?? null) as string | Date | null,
+        shiprocketRawResponse: (row.shiprocketRawResponse ?? row.shiprocket_raw_response ?? null) as unknown,
+        shipmentCreatedAt: (row.shipmentCreatedAt ?? row.shipment_created_at ?? null) as string | Date | null,
+        shipmentSyncedAt: (row.shipmentSyncedAt ?? row.shipment_synced_at ?? null) as string | Date | null,
+        shipmentDeliveredAt: (row.shipmentDeliveredAt ?? row.shipment_delivered_at ?? null) as string | Date | null,
+        lastTrackingSyncAt: (row.lastTrackingSyncAt ?? row.last_tracking_sync_at ?? null) as string | Date | null,
+        isShipmentCreated: (row.isShipmentCreated ?? row.is_shipment_created ?? null) as boolean | null,
+        isPickupGenerated: (row.isPickupGenerated ?? row.is_pickup_generated ?? null) as boolean | null,
+        isLabelGenerated: (row.isLabelGenerated ?? row.is_label_generated ?? null) as boolean | null,
+        trackingData: (row.trackingData ?? row.tracking_data ?? null) as unknown,
         createdAt: (row.createdAt ?? row.created_at ?? null) as string | Date | null,
         updatedAt: (row.updatedAt ?? row.updated_at ?? null) as string | Date | null,
         items: hydratedItems,
@@ -1629,6 +1673,53 @@ export const createTransactionSupabase = async (input: {
         const retry = await client.from(table).insert(withId(payload)).select("id").maybeSingle()
         if (!retry.error && retry.data?.id) return safeString((retry.data as any).id)
       }
+    }
+  }
+  return null
+}
+
+export const upsertOrderShipmentSnapshotSupabase = async (
+  orderId: string,
+  input: Partial<{
+    shiprocketOrderId: string | null
+    shipmentId: string | null
+    awbCode: string | null
+    courierName: string | null
+    courierCompanyId: string | null
+    trackingNumber: string | null
+    trackingUrl: string | null
+    shippingStatus: string | null
+    shipmentStatus: string | null
+    pickupStatus: string | null
+    shippingCharges: number | null
+    shippingMethod: string | null
+    estimatedDeliveryDate: Date | null
+    shiprocketRawResponse: unknown
+    shipmentCreatedAt: Date | null
+    shipmentSyncedAt: Date | null
+    shipmentDeliveredAt: Date | null
+    lastTrackingSyncAt: Date | null
+    isShipmentCreated: boolean | null
+    isPickupGenerated: boolean | null
+    isLabelGenerated: boolean | null
+    trackingData: unknown
+  }>,
+) => {
+  const client = getSupabaseAdmin()
+  const now = new Date().toISOString()
+  const payload = {
+    ...input,
+    updatedAt: now,
+  }
+  const snakePayload = camelToSnakeObject(payload)
+  for (const table of ORDER_TABLES) {
+    const attempts = [
+      () => client.from(table).update(payload).eq("id", orderId).select("id").maybeSingle(),
+      () => client.from(table).update(snakePayload).eq("id", orderId).select("id").maybeSingle(),
+    ]
+    for (const run of attempts) {
+      const { data, error } = await run()
+      if (!error && data?.id) return safeString((data as { id?: unknown }).id)
     }
   }
   return null

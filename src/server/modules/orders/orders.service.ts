@@ -32,6 +32,7 @@ import { logger } from "@/lib/logger"
 import { enqueueOutboxEvent } from "@/src/server/modules/integrations/outbox.service"
 import { assertMasterValueExists } from "@/src/server/modules/master/master.service"
 import { syncOrderStatusFromShiprocket } from "@/src/server/modules/integrations/shiprocket.service"
+import { safeSyncOrderShipmentToShiprocket } from "@/src/server/modules/shipping/shiprocket.orders"
 import { getBundlePublicBySlug } from "@/src/server/modules/bundles/bundles.service"
 
 export type OrderLifecycleStatus =
@@ -494,6 +495,9 @@ await enqueueOutboxEvent({
   aggregateId: order.id,
   payload: { orderId: order.id, total, currency: input.currency ?? "INR" },
 }).catch(() => null)
+setImmediate(() => {
+  void safeSyncOrderShipmentToShiprocket(String(order.id), input.userId ?? "system")
+})
   console.log("Outbox event enqueued for order.created")
 await markCartConverted({
   email: input.billingAddress?.email ?? null,

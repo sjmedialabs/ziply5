@@ -1,11 +1,11 @@
 "use client"
 
-import { useMemo } from "react"
 import { useParams, useRouter } from "next/navigation"
 import { useQuery } from "@tanstack/react-query"
 import { Download } from "lucide-react"
 import { toast } from "@/lib/toast"
 import { generateInvoicePDF } from "@/lib/invoice"
+import { TrackingTimeline } from "@/src/components/shipping/tracking-timeline"
 
 type OrderDetail = {
   id: string
@@ -29,9 +29,14 @@ type OrderDetail = {
   }>
   statusHistory: Array<{ toStatus: string; changedAt: string }>
   shipments: Array<{ id: string; carrier: string | null; trackingNo: string | null; shipmentStatus: string; eta?: string | null }>
+  awbCode?: string | null
+  courierName?: string | null
+  trackingNumber?: string | null
+  trackingUrl?: string | null
+  shipmentStatus?: string | null
+  estimatedDeliveryDate?: string | null
+  lastTrackingSyncAt?: string | null
 }
-
-const TRACK_STEPS = ["pending", "confirmed", "shipped", "delivered"] as const
 
 const pretty = (value: string) => value.replaceAll("_", " ").replace(/\b\w/g, (c) => c.toUpperCase())
 
@@ -57,11 +62,22 @@ export default function TrackOrderPage() {
   const order = orderQuery.data
   const firstShipment = order?.shipments?.[0]
 
-  const reached = useMemo(() => {
-    const set = new Set((order?.statusHistory ?? []).map((x) => x.toStatus.toLowerCase()))
-    if (order?.status) set.add(order.status.toLowerCase())
-    return set
-  }, [order])
+  const refreshTracking = async () => {
+    if (!params.id) return
+    const token = window.localStorage.getItem("ziply5_access_token")
+    if (!token) return
+    const res = await fetch(`/api/v1/orders/${params.id}/tracking/refresh`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}` },
+    })
+    const payload = (await res.json()) as { success?: boolean; message?: string }
+    if (!res.ok || payload.success === false) {
+      toast.error("Tracking refresh failed", payload.message ?? "Unable to refresh tracking.")
+      return
+    }
+    toast.success("Tracking refreshed", "Latest shipment status loaded.")
+    await orderQuery.refetch()
+  }
 
   const downloadInvoice = async () => {
     if (!order) return
@@ -127,22 +143,11 @@ export default function TrackOrderPage() {
         <>
           <div className="rounded-xl border border-[#E5E7EB] bg-white p-4">
             <p className="mb-3 text-sm font-semibold text-[#111827]">Delivery Progress</p>
-            <div className="mb-4 h-1 w-full bg-[#E5E7EB]">
-              <div
-                className="h-1 bg-[#16A34A]"
-                style={{
-                  width: `${((TRACK_STEPS.findIndex((s) => s === (order.status.toLowerCase() as any)) + 1) / TRACK_STEPS.length) * 100}%`,
-                }}
-              />
-            </div>
-            <div className="grid grid-cols-4 gap-2 text-center text-xs">
-              {TRACK_STEPS.map((step) => (
-                <div key={step}>
-                  <div className={`mx-auto mb-1 h-5 w-5 rounded-full ${reached.has(step) ? "bg-[#16A34A]" : "bg-[#D1D5DB]"}`} />
-                  <p className={reached.has(step) ? "font-semibold text-[#111827]" : "text-[#6B7280]"}>{pretty(step)}</p>
-                </div>
-              ))}
-            </div>
+            <TrackingTimeline
+              orderStatus={order.status}
+              shipmentStatus={order.shipmentStatus ?? firstShipment?.shipmentStatus ?? null}
+              statusHistory={order.statusHistory}
+            />
           </div>
 
           <div className="rounded-xl border border-[#E5E7EB] bg-white p-4">
@@ -161,10 +166,28 @@ export default function TrackOrderPage() {
             <p className="mb-3 text-sm font-semibold text-[#111827]">Tracking Information</p>
             <div className="grid gap-3 text-sm sm:grid-cols-2">
               <p>Carrier: <span className="font-medium">{firstShipment?.carrier ?? "FedEx"}</span></p>
-              <p>Tracking: <span className="font-medium">{firstShipment?.trackingNo ?? "Pending"}</span></p>
-              <p>Status: <span className="font-medium">{pretty(firstShipment?.shipmentStatus ?? order.status)}</span></p>
-              <p>ETA: <span className="font-medium">{firstShipment?.eta ? new Date(firstShipment.eta).toLocaleDateString("en-GB") : "TBD"}</span></p>
+              <p>Tracking: <span className="font-medium">{order.awbCode ?? order.trackingNumber ?? firstShipment?.trackingNo ?? "Pending"}</span></p>
+              <p>Status: <span className="font-medium">{pretty(order.shipmentStatus ?? firstShipment?.shipmentStatus ?? order.status)}</span></p>
+              <p>ETA: <span className="font-medium">{order.estimatedDeliveryDate ? new Date(order.estimatedDeliveryDate).toLocaleDateString("en-GB") : firstShipment?.eta ? new Date(firstShipment.eta).toLocaleDateString("en-GB") : "TBD"}</span></p>
             </div>
+            {order.trackingUrl ? (
+              <div className="mt-3 flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => window.open(order.trackingUrl!, "_blank", "noopener,noreferrer")}
+                  className="rounded-md border border-[#D1D5DB] px-3 py-1.5 text-xs font-medium text-[#111827] hover:bg-[#F9FAFB]"
+                >
+                  Track on courier portal
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void refreshTracking()}
+                  className="rounded-md border border-[#D1D5DB] px-3 py-1.5 text-xs font-medium text-[#111827] hover:bg-[#F9FAFB]"
+                >
+                  Refresh tracking
+                </button>
+              </div>
+            ) : null}
           </div>
 
           <div className="rounded-xl border border-[#E5E7EB] bg-white p-4">
