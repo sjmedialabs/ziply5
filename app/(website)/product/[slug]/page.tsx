@@ -20,7 +20,7 @@ export default function ProductPage() {
   const [relatedProducts, setRelatedProducts] = useState<StorefrontProduct[]>([])
   const [error, setError] = useState("")
   const [loading, setLoading] = useState(true)
-    const [cartQtyBySlug, setCartQtyBySlug] = useState<Record<string, number>>({})
+  const [cartQtyBySlug, setCartQtyBySlug] = useState<Record<string, number>>({})
   const [quantity, setQuantity] = useState(0)
   const [selectedSize, setSelectedSize] = useState("")
   const [openSection, setOpenSection] = useState<string | null>(null)
@@ -70,8 +70,8 @@ export default function ProductPage() {
           list.success === false
             ? []
             : ((list.data as { items?: unknown[] } | undefined)?.items ?? [])
-                .map((x) => toStorefrontProduct(x as never))
-                .filter((x) => x.id !== item.id)
+              .map((x) => toStorefrontProduct(x as never))
+              .filter((x) => x.id !== item.id)
         setRelatedProducts(rel)
       })
       .catch(() => {
@@ -101,7 +101,7 @@ export default function ProductPage() {
     }
   }, [product?.id])
 
-  console.log("Fetched  Product details are::::",product);
+  console.log("Fetched  Product details are::::", product);
 
   const visibleRelated = useMemo(() => {
     if (relatedProducts.length === 0) return []
@@ -144,14 +144,14 @@ export default function ProductPage() {
 
   useEffect(() => {
     if (!product) return
-        const syncCartQty = () => {
-          const items = getCartItems()
-          const qtyMap = items.reduce<Record<string, number>>((acc, item) => {
-            acc[item.slug] = item.quantity
-            return acc
-          }, {})
-          setCartQtyBySlug(qtyMap)
-        }
+    const syncCartQty = () => {
+      const items = getCartItems()
+      const qtyMap = items.reduce<Record<string, number>>((acc, item) => {
+        acc[item.slug] = item.quantity
+        return acc
+      }, {})
+      setCartQtyBySlug(qtyMap)
+    }
     const syncQty = () => {
       const qty = getCartQuantity(product.id, activeVariant?.id ?? null)
       setQuantity(qty)
@@ -178,13 +178,13 @@ export default function ProductPage() {
       const token = window.localStorage.getItem("ziply5_access_token");
       const userStr = window.localStorage.getItem("ziply5_user");
       const userId = userStr ? JSON.parse(userStr).id : null;
-      
+
       if (token && userId) {
         try {
           const res = await fetch("/api/v1/favorites", {
-            headers: { 
+            headers: {
               Authorization: `Bearer ${token}`,
-              "x-user-id": userId 
+              "x-user-id": userId
             },
           });
           const payload = await res.json();
@@ -230,7 +230,7 @@ export default function ProductPage() {
                 <Skeleton className="h-16 w-16 rounded-md" />
                 <Skeleton className="h-16 w-16 rounded-md" />
               </div>
-            </div> 
+            </div>
             {/* Details skeleton */}
             <div className="space-y-4">
               <Skeleton className="h-8 w-32 rounded-full" />
@@ -318,29 +318,28 @@ export default function ProductPage() {
                 type="button"
                 disabled={galleryImages.length <= 4}
                 onClick={() => setThumbStart((prev) => (prev - 1 + galleryImages.length) % galleryImages.length)}
-                className={`h-8 w-8 items-center justify-center rounded-full border ${galleryImages.length<=4 ? "hidden" : "flex"} border-[#D4D4D4] bg-white text-[#555] disabled:opacity-40`}
+                className={`h-8 w-8 items-center justify-center rounded-full border ${galleryImages.length <= 4 ? "hidden" : "flex"} border-[#D4D4D4] bg-white text-[#555] disabled:opacity-40`}
               >
                 <ChevronLeft size={14} />
               </button>
               <div className="flex items-center gap-1 overflow-x-auto pb-1">
-              {visibleThumbs.map((thumb, idx) => (
-                <button
-                  type="button"
-                  key={`${thumb || "thumb"}-${idx}`}
-                  onClick={() => setSelectedImage(thumb)}
-                  className={`relative h-30 w-30 flex-shrink-0 mt-8 overflow-hidden rounded-md border ${
-                    selectedImage === thumb ? "border-[#50272A]" : "border-[#E0E0E0]"
-                  }`}
-                >
-                  <Image src={thumb || FALLBACK_PRODUCT_IMAGE} alt={`${product.name} preview`} fill className="object-cover" />
-                </button>
-              ))}
+                {visibleThumbs.map((thumb, idx) => (
+                  <button
+                    type="button"
+                    key={`${thumb || "thumb"}-${idx}`}
+                    onClick={() => setSelectedImage(thumb)}
+                    className={`relative h-30 w-30 flex-shrink-0 mt-8 overflow-hidden rounded-md border ${selectedImage === thumb ? "border-[#50272A]" : "border-[#E0E0E0]"
+                      }`}
+                  >
+                    <Image src={thumb || FALLBACK_PRODUCT_IMAGE} alt={`${product.name} preview`} fill className="object-cover" />
+                  </button>
+                ))}
               </div>
               <button
                 type="button"
                 disabled={galleryImages.length <= 4}
                 onClick={() => setThumbStart((prev) => (prev + 1) % galleryImages.length)}
-                className={`flex h-8 w-8 items-center justify-center rounded-full border ${galleryImages.length<=4 ? "hidden" : "flex"} border-[#D4D4D4] bg-white text-[#555] disabled:opacity-40`}
+                className={`flex h-8 w-8 items-center justify-center rounded-full border ${galleryImages.length <= 4 ? "hidden" : "flex"} border-[#D4D4D4] bg-white text-[#555] disabled:opacity-40`}
               >
                 <ChevronRight size={14} />
               </button>
@@ -359,7 +358,7 @@ export default function ProductPage() {
               className="inline-flex items-center gap-1 rounded-full border border-[#D6D6D6] bg-white px-3 py-1 text-[11px] font-semibold text-[#6B6B6B]"
             >
               <ArrowLeft size={14} />
-               Back To Products List
+              Back To Products List
             </button>
 
             <h1 className="font-heading mt-3 text-4xl leading-none text-[#201A1A]">{product.name}</h1>
@@ -367,7 +366,7 @@ export default function ProductPage() {
             <div className="mt-2 flex items-center gap-2">
               <span className="rounded-full bg-[#F0ECE2] px-3 py-1 text-[12px] font-medium text-[#8D8D8D]">{sku}</span>
               <span className="rounded-full bg-[#DFE8D8] px-3 py-1 text-[12px] font-medium text-[#86917B] capitalize">
-                {product.stockStatus?.replace("_", " ")}: 
+                {product.stockStatus?.replace("_", " ")}:
                 {product.productKind === "simple" && product.stock && product?.stock > 0 && (
                   <span className="ml-1">
                     {product?.stock < 5 ? `Hurry up only ${product.stock} left` : `${product.stock} available`}
@@ -377,7 +376,7 @@ export default function ProductPage() {
                   <> {activeVariant.stock <= 5 ? "Hurry, only a few left!" : `${activeVariant.stock} available`}</>
                 )}
               </span>
-              {salePercent && salePercent> 0 && (
+              {salePercent && salePercent > 0 && (
                 <span className="rounded-md bg-[#2E84CF] px-2 py-1 text-[11px] font-semibold text-white">SALE {salePercent}% Off</span>
               )}
               {product.labels.slice(0, 2).map((label, idx) => (
@@ -386,9 +385,8 @@ export default function ProductPage() {
                 </span>
               ))}
               <span
-                className={`rounded-md px-2 py-1 text-[11px] font-semibold text-white ${
-                  product.type === "veg" ? "bg-[#2EA852]" : "bg-[#A32424]"
-                }`}
+                className={`rounded-md px-2 py-1 text-[11px] font-semibold text-white ${product.type === "veg" ? "bg-[#2EA852]" : "bg-[#A32424]"
+                  }`}
               >
                 {product.type === "veg" ? "Vegetarian" : "Non-Vegetarian"}
               </span>
@@ -408,20 +406,20 @@ export default function ProductPage() {
                 const variant = product.variants.find((v) => (v.weight || v.name) === size)
                 const outOfStock = variant ? variant.stock <= 0 : false
                 return (
-                <button
-                  type="button"
-                  key={`${size || "size"}-${idx}`}
-                  onClick={() => setSelectedSize(size)}
-                  disabled={outOfStock}
-                  className={`rounded-md border px-3 py-1 text-xs font-semibold ${
-                    selectedSize === size
-                      ? "border-[#A33838] bg-[#A33838] text-white"
-                      : "border-[#D8D8D8] bg-white text-[#696969] hover:border-[#A33838]"
-                  } disabled:cursor-not-allowed disabled:opacity-40`}
-                >
-                  {size}
-                </button>
-              )})}
+                  <button
+                    type="button"
+                    key={`${size || "size"}-${idx}`}
+                    onClick={() => setSelectedSize(size)}
+                    disabled={outOfStock}
+                    className={`rounded-md border px-3 py-1 text-xs font-semibold ${selectedSize === size
+                        ? "border-[#A33838] bg-[#A33838] text-white"
+                        : "border-[#D8D8D8] bg-white text-[#696969] hover:border-[#A33838]"
+                      } disabled:cursor-not-allowed disabled:opacity-40`}
+                  >
+                    {size}
+                  </button>
+                )
+              })}
             </div>
             {allVariantsOutOfStock && <p className="mt-2 text-sm font-semibold text-red-700">Out of Stock</p>}
 
@@ -515,7 +513,7 @@ export default function ProductPage() {
                 {favorite ? "♥" : "♡"}
               </button>
             </div>
-              {/* box features with image */}
+            {/* box features with image */}
             <div className="mt-8 grid grid-cols-3 gap-4 border-t border-[#DEDEDE] pt-5">
               {(product.features.length ? product.features : [{ title: "Home Made", icon: null }]).map((item, idx) => (
                 <div key={`${item.title || "feature"}-${idx}`} className="flex flex-col items-center gap-2 text-center">
@@ -534,7 +532,7 @@ export default function ProductPage() {
             </div>
           </div>
         </div>
-         {/* <div className="mt-8 xl:hidden grid-cols-6 gap-4 hidden lg:grid border-t border-[#DEDEDE] pt-5">
+        {/* <div className="mt-8 xl:hidden grid-cols-6 gap-4 hidden lg:grid border-t border-[#DEDEDE] pt-5">
               {product?.features?.length  && (product?.features?.map((item) => (
                 <div key={item.title} className="flex flex-col border rounded-2xl py-2 border-[#DEDEDE]] items-center gap-2 text-center">
                   <div className="relative h-10 w-10">
@@ -544,109 +542,109 @@ export default function ProductPage() {
                 </div>
               )))}
             </div> */}
-      <div className="mt-10 border-t border-[#DFDFDF]">
-  {/* Product Details */}
-  {product?.details?.length > 0 &&
-    product.details.map((section: any) => {
-      const sectionId = `detail-${section.id}`
-      const isOpen = openSection === sectionId
-      const content = section.description || section.content
+        <div className="mt-10 border-t border-[#DFDFDF]">
+          {/* Product Details */}
+          {product?.details?.length > 0 &&
+            product.details.map((section: any, idx: number) => {
+              const sectionId = `detail-${section.id || idx}`
+              const isOpen = openSection === sectionId
+              const content = section.description || section.content
 
-      return (
-        <div key={sectionId} className="border-b border-[#DFDFDF]">
-          <button
-            type="button"
-            onClick={() => setOpenSection(isOpen ? null : sectionId)}
-            className="flex w-full items-center justify-between py-5 text-left"
-          >
-            <span className="font-melon text-sm font-light tracking-wide text-[#262626]">
-              {section.title}
-            </span>
+              return (
+                <div key={sectionId} className="border-b border-[#DFDFDF]">
+                  <button
+                    type="button"
+                    onClick={() => setOpenSection(isOpen ? null : sectionId)}
+                    className="flex w-full items-center justify-between py-5 text-left"
+                  >
+                    <span className="font-melon text-sm font-light tracking-wide text-[#262626]">
+                      {section.title}
+                    </span>
 
-            <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-[#F58B2E] text-sm font-bold text-white">
-              {isOpen ? "-" : "+"}
-            </span>
-          </button>
+                    <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-[#F58B2E] text-sm font-bold text-white">
+                      {isOpen ? "-" : "+"}
+                    </span>
+                  </button>
 
-          {isOpen && (
-            <div
-              className="pb-5 pr-10 text-sm leading-6 text-[#606060]"
-              dangerouslySetInnerHTML={{ __html: content }}
-            />
-          )}
+                  {isOpen && (
+                    <div
+                      className="pb-5 pr-10 text-sm leading-6 text-[#606060]"
+                      dangerouslySetInnerHTML={{ __html: content }}
+                    />
+                  )}
+                </div>
+              )
+            })}
+
+          {/* Product Sections */}
+          {(!product?.details || product.details.length === 0) &&
+            product?.sections?.length > 0 &&
+            product.sections.map((section: any, idx: number) => {
+              const sectionId = `section-${section.id || idx}`
+              const isOpen = openSection === sectionId
+              const content = section.description || section.content
+
+              return (
+                <div key={sectionId} className="border-b border-[#DFDFDF]">
+                  <button
+                    type="button"
+                    onClick={() => setOpenSection(isOpen ? null : sectionId)}
+                    className="flex w-full items-center justify-between py-5 text-left"
+                  >
+                    <span className="font-melon text-sm font-light tracking-wide text-[#262626]">
+                      {section.title}
+                    </span>
+
+                    <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-[#F58B2E] text-sm font-bold text-white">
+                      {isOpen ? "-" : "+"}
+                    </span>
+                  </button>
+
+                  {isOpen && (
+                    <div
+                      className="pb-5 pr-10 text-sm leading-6 text-[#606060]"
+                      dangerouslySetInnerHTML={{ __html: content }}
+                    />
+                  )}
+                </div>
+              )
+            })}
+
+          {/* Fallback Description */}
+          {(!product?.details || product.details.length === 0) &&
+            (!product?.sections || product.sections.length === 0) && (
+              <div className="border-b border-[#DFDFDF]">
+                <button
+                  type="button"
+                  onClick={() =>
+                    setOpenSection(
+                      openSection === "description" ? null : "description"
+                    )
+                  }
+                  className="flex w-full items-center justify-between py-5 text-left"
+                >
+                  <span className="font-melon text-sm font-light tracking-wide text-[#262626]">
+                    Description
+                  </span>
+
+                  <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-[#F58B2E] text-sm font-bold text-white">
+                    {openSection === "description" ? "-" : "+"}
+                  </span>
+                </button>
+
+                {openSection === "description" && (
+                  <div
+                    className="pb-5 pr-10 text-sm leading-6 text-[#606060]"
+                    dangerouslySetInnerHTML={{
+                      __html: product.description || "",
+                    }}
+                  />
+                )}
+              </div>
+            )}
         </div>
-      )
-    })}
 
-  {/* Product Sections */}
-  {(!product?.details || product.details.length === 0) &&
-    product?.sections?.length > 0 &&
-    product.sections.map((section: any) => {
-      const sectionId = `section-${section.id}`
-      const isOpen = openSection === sectionId
-      const content = section.description || section.content
-
-      return (
-        <div key={sectionId} className="border-b border-[#DFDFDF]">
-          <button
-            type="button"
-            onClick={() => setOpenSection(isOpen ? null : sectionId)}
-            className="flex w-full items-center justify-between py-5 text-left"
-          >
-            <span className="font-melon text-sm font-light tracking-wide text-[#262626]">
-              {section.title}
-            </span>
-
-            <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-[#F58B2E] text-sm font-bold text-white">
-              {isOpen ? "-" : "+"}
-            </span>
-          </button>
-
-          {isOpen && (
-            <div
-              className="pb-5 pr-10 text-sm leading-6 text-[#606060]"
-              dangerouslySetInnerHTML={{ __html: content }}
-            />
-          )}
-        </div>
-      )
-    })}
-
-  {/* Fallback Description */}
-  {(!product?.details || product.details.length === 0) &&
-    (!product?.sections || product.sections.length === 0) && (
-      <div className="border-b border-[#DFDFDF]">
-        <button
-          type="button"
-          onClick={() =>
-            setOpenSection(
-              openSection === "description" ? null : "description"
-            )
-          }
-          className="flex w-full items-center justify-between py-5 text-left"
-        >
-          <span className="font-melon text-sm font-light tracking-wide text-[#262626]">
-            Description
-          </span>
-
-          <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-[#F58B2E] text-sm font-bold text-white">
-            {openSection === "description" ? "-" : "+"}
-          </span>
-        </button>
-
-        {openSection === "description" && (
-          <div
-            className="pb-5 pr-10 text-sm leading-6 text-[#606060]"
-            dangerouslySetInnerHTML={{
-              __html: product.description || "",
-            }}
-          />
-        )}
-      </div>
-    )}
-</div>
-
-       {reviews.length > 0 && ( <div className="mt-10 rounded-2xl border border-[#E8DCC8] bg-white p-5 sm:p-7">
+        {reviews.length > 0 && (<div className="mt-10 rounded-2xl border border-[#E8DCC8] bg-white p-5 sm:p-7">
           <h2 className="font-heading text-3xl uppercase text-[#4A1E1F]">Customer Reviews</h2>
           {reviews.length === 0 ? (
             <p className="mt-3 text-sm text-[#646464]">No reviews yet.</p>
@@ -685,8 +683,8 @@ export default function ProductPage() {
                   <p className="mt-1 text-center text-[10px] font-semibold uppercase text-white/90">
                     Home style meal | Net wt. {item.weight}
                   </p>
-                   <p className="mt-2 text-sm text-center font-medium text-[#FFF5C5]">Rs. {product.price.toFixed(2)}</p>
-                                    <div className="mt-auto pt-3 flex items-center justify-between gap-2">
+                  <p className="mt-2 text-sm text-center font-medium text-[#FFF5C5]">Rs. {product.price.toFixed(2)}</p>
+                  <div className="mt-auto pt-3 flex items-center justify-between gap-2">
                     {(cartQtyBySlug[product.slug] ?? 0) > 0 ? (
                       <div className="flex items-center rounded-md border border-[#d5c4b8] bg-white/95 px-1 py-0.5">
                         <button
@@ -706,7 +704,7 @@ export default function ProductPage() {
                         >
                           +
                         </button>
-                      </div>  
+                      </div>
                     ) : (
                       <button
                         type="button"
