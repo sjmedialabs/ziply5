@@ -769,14 +769,25 @@ useEffect(() => {
             </p>
             </div>
             {orderError && (
-              <p className="text-center text-sm text-red-600">{orderError}</p>
+              <p className="text-center text-sm text-red-600 mb-4">{orderError}</p>
             )}
+
+            {items.length > 0 && total < 250 && (
+              <div className="rounded-2xl bg-white/60 p-3 text-center border border-red-200/50 mb-2">
+                <p className="text-xs font-medium text-red-700">
+                  Add INR {(250 - total).toFixed(2)} more to place order.
+                  <br />
+                  <span className="text-[10px] opacity-70">(Minimum order: INR 250.00)</span>
+                </p>
+              </div>
+            )}
+
             {/* Button */}
             <button
               type="button"
               onClick={() => void goToPayment()}
-              disabled={placing}
-              className="bg-[#7B3010] shadow-2xl tracking-wide font-medium text-white w-full py-4 rounded-full font-melon disabled:opacity-60"
+              disabled={placing || items.length === 0 || total < 250}
+              className="bg-[#7B3010] shadow-2xl tracking-wide font-medium text-white w-full py-4 rounded-full font-melon disabled:opacity-60 disabled:cursor-not-allowed transition-all"
             >
               {placing ? "Please wait…" : "Place Order →"}
             </button>
