@@ -6,7 +6,7 @@ import { getFavoriteSlugs, setFavoriteSlugs } from "@/lib/favorites";
 import { ArrowLeft, Heart, Minus, Plus, ShieldCheck, ShieldHalf, X } from "lucide-react";
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
- import {  toggleFavoriteSlug } from "@/lib/favorites"
+import { toggleFavoriteSlug } from "@/lib/favorites"
 import { toast } from "@/lib/toast"
 import { useRouter } from "next/navigation";
 import {
@@ -54,7 +54,7 @@ export default function CartPage() {
     persistCart(next);
   };
 
- const handleToggleFavorite = async (e: React.MouseEvent, slug: string,id:any) => {
+  const handleToggleFavorite = async (e: React.MouseEvent, slug: string, id: any) => {
     e.stopPropagation();
     const token = window.localStorage.getItem("ziply5_access_token");
     if (!token) {
@@ -70,7 +70,7 @@ export default function CartPage() {
       toast.info("Removed from favorites", "The product has been removed from your favorites.");
     }
     removeItem(id);
-  
+
   }
 
   const subTotal = cartItems.reduce(
@@ -247,25 +247,25 @@ export default function CartPage() {
                             Rs.{formatMoney(item.price * item.quantity)}
                           </span>
                           <div className="flex items-center gap-2">
-                          <TooltipProvider>
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <button
-                                  className="rounded-full border border-[#D1D5DB] h-8 w-8 flex items-center justify-center text-xs text-[#374151] cursor-pointer"
-                                  onClick={(e) =>
-                                    handleToggleFavorite(e, item.slug, item.id)
-                                  }
-                                  aria-label={`Move ${item.name} to wishlist`}
-                                >
-                                  <Heart size={16} />
-                                </button>
-                              </TooltipTrigger>
+                            <TooltipProvider>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <button
+                                    className="rounded-full border border-[#D1D5DB] h-8 w-8 flex items-center justify-center text-xs text-[#374151] cursor-pointer"
+                                    onClick={(e) =>
+                                      handleToggleFavorite(e, item.slug, item.id)
+                                    }
+                                    aria-label={`Move ${item.name} to wishlist`}
+                                  >
+                                    <Heart size={16} />
+                                  </button>
+                                </TooltipTrigger>
 
-                              <TooltipContent side="top">
-                                Move the product to wishlist
-                              </TooltipContent>
-                            </Tooltip>
-                          </TooltipProvider>
+                                <TooltipContent side="top">
+                                  Move the product to wishlist
+                                </TooltipContent>
+                              </Tooltip>
+                            </TooltipProvider>
                             <button
                               className="flex h-8 w-8 items-center justify-center rounded-full border border-red-400 text-red-500"
                               onClick={() => removeItem(item.id)}
@@ -295,7 +295,7 @@ export default function CartPage() {
             <h3 className="mb-6 text-center font-melon text-xl">
               Order Summary
             </h3>
-            <div className="my-4 border-t border-white" />
+            {/* <div className="my-4 border-t border-white" />
             <div className="mb-6 flex items-center font-melon justify-between">
               <p className="text-sm">Apply Coupons</p>
               <button onClick={applyCoupon} className="rounded-full bg-black px-5 py-2 text-xs text-[#FFC222]">
@@ -308,7 +308,7 @@ export default function CartPage() {
               placeholder="Enter coupon code"
               className="w-full rounded-full border border-black/10 bg-white px-4 py-2 text-sm"
             />
-            {couponError ? <p className="mt-2 text-xs text-red-700">{couponError}</p> : null}
+            {couponError ? <p className="mt-2 text-xs text-red-700">{couponError}</p> : null} */}
             <div className="my-4 border-t border-white" />
             <div className="space-y-3 text-sm text-[#C03621] font-melon">
               <div className="flex justify-between">
@@ -348,23 +348,39 @@ export default function CartPage() {
               </div>
             ) : null}
 
-            <Link href="/checkout">
+            {cartItems.length > 0 && total < 250 && (
+              <div className="mt-4 rounded-2xl bg-white/60 p-3 text-center border border-red-200/50">
+                <p className="text-xs font-medium text-red-700">
+                  Add INR {formatMoney(250 - total)} more to checkout.
+                  <br />
+                  <span className="text-[10px] opacity-70">(Minimum order: INR 250.00)</span>
+                </p>
+              </div>
+            )}
+
+            {cartItems.length > 0 && total >= 250 ? (
+              <Link href="/checkout">
+                <button className="mt-6 w-full rounded-xl bg-primary py-3 font-melon font-medium tracking-wide text-white transition-all hover:bg-primary/90">
+                  Proceed to checkout →
+                </button>
+              </Link>
+            ) : (
               <button
-                className="mt-6 w-full rounded-xl bg-primary py-3 font-melon font-medium tracking-wide text-white"
-                disabled={cartItems.length === 0}
+                className="mt-6 w-full rounded-xl bg-gray-400 py-3 font-melon font-medium tracking-wide text-white opacity-70 cursor-not-allowed transition-all"
+                disabled
               >
                 Proceed to checkout →
               </button>
-            </Link>
+            )}
             <div className="my-4 border-t border-white" />
             <div className="flex flex-row gap-2 justify-center items-center">
-                <div className="mt-3">
-                   <ShieldCheck/>
-                </div>
-                 
-                <p className="mt-4 font-semibold text-xs ">
-                  Safe and Secure Payments. Easy Returns. 100% Authentic Products.
-                </p>
+              <div className="mt-3">
+                <ShieldCheck />
+              </div>
+
+              <p className="mt-4 font-semibold text-xs ">
+                Safe and Secure Payments. Easy Returns. 100% Authentic Products.
+              </p>
             </div>
           </div>
         </div>

@@ -28,6 +28,10 @@ type ApiOrderRow = {
   items: Array<{ id: string; productId: string; quantity: number; product: { name: string } }>
   transactions?: Array<{ status: string }>
   returnRequests?: Array<{ id: string; status: string; productId?: string | null }>
+  shipmentStatus?: string | null
+  courierName?: string | null
+  awbCode?: string | null
+  trackingNumber?: string | null
 }
 
 function ProfilePageContent() {
@@ -886,6 +890,7 @@ function ProfilePageContent() {
                       orders.length === 0 && <p className="text-gray-500">No orders yet.</p>}
                     {authSnapshot.token && authSnapshot.role === "customer" && orders.map((order) => {
                       const paymentStatus = order.paymentStatus ?? (order.transactions?.some((tx) => tx.status === "paid") ? "paid" : "pending")
+                      const shippingStatus = (order.shipmentStatus ?? "pending").toLowerCase()
                       const previewItems = order.items.slice(0, 2)
                       const moreItems = Math.max(order.items.length - 2, 0)
                       return (<div
@@ -899,9 +904,14 @@ function ProfilePageContent() {
                               Order created on {new Date(order.createdAt).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })}
                             </p>
                           </div>
-                          <span className="rounded-full bg-[#FDF0E6] px-2.5 py-1 text-[10px] font-semibold uppercase text-[#7B3010]">
-                            {order.status}
-                          </span>
+                          <div className="flex flex-col items-end gap-1">
+                            <span className="rounded-full bg-[#FDF0E6] px-2.5 py-1 text-[10px] font-semibold uppercase text-[#7B3010]">
+                              {order.status}
+                            </span>
+                            <span className="rounded-full bg-indigo-50 px-2.5 py-1 text-[10px] font-semibold uppercase text-indigo-700">
+                              {shippingStatus.replaceAll("_", " ")}
+                            </span>
+                          </div>
                         </div>
 
                         <div className="mt-3 space-y-1 text-sm text-[#2A1810]">
@@ -913,6 +923,9 @@ function ProfilePageContent() {
 
                         <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
                           <p className="font-semibold text-[#5A272A]">Rs. {Number(order.total).toFixed(2)}</p>
+                          <p className="text-[11px] text-[#646464]">
+                            {order.courierName ?? "Courier TBD"} • AWB {order.awbCode ?? order.trackingNumber ?? "Pending"}
+                          </p>
                           {/* <span className="rounded-full border border-[#E8DCC8] px-2.5 py-1 text-[10px] font-semibold uppercase text-[#4A1D1F]">
                       {paymentStatus}
                     </span> */}
