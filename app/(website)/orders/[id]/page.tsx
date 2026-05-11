@@ -8,6 +8,7 @@ import { useMasterValues } from "@/hooks/useMasterData"
 import { Camera, X, Download } from "lucide-react"
 import { toast } from "@/lib/toast"
 import { generateInvoicePDF } from "@/lib/invoice"
+import { TrackingTimeline } from "@/src/components/shipping/tracking-timeline"
 
 type OrderDetail = {
   id: string
@@ -36,6 +37,13 @@ type OrderDetail = {
   statusHistory: Array<{ toStatus: string; changedAt: string }>
   transactions: Array<{ id: string; status: string; gateway: string; createdAt: string }>
   shipments: Array<{ id: string; carrier: string | null; trackingNo: string | null; shipmentStatus: string; eta?: string | null }>
+  awbCode?: string | null
+  courierName?: string | null
+  trackingNumber?: string | null
+  trackingUrl?: string | null
+  estimatedDeliveryDate?: string | null
+  shipmentStatus?: string | null
+  lastTrackingSyncAt?: string | null
   returnRequests: Array<{
     id: string
     status: string
@@ -418,6 +426,26 @@ export default function OrderDetailPage() {
           {order.status.toLowerCase() !== "delivered" ? (
             <div className="rounded-2xl border border-[#E8DCC8] bg-white p-4 shadow-sm">
               <h2 className="mb-3 text-sm font-semibold uppercase tracking-[0.15em] text-[#4A1D1F]">Shipment Details</h2>
+              <TrackingTimeline
+                orderStatus={order.status}
+                shipmentStatus={order.shipmentStatus ?? order.shipments?.[0]?.shipmentStatus ?? null}
+                statusHistory={order.statusHistory}
+              />
+              <div className="mt-3 grid gap-2 text-xs text-[#646464] sm:grid-cols-2">
+                <p><span className="font-semibold text-[#2A1810]">Courier:</span> {order.courierName ?? order.shipments?.[0]?.carrier ?? "TBD"}</p>
+                <p><span className="font-semibold text-[#2A1810]">AWB:</span> {order.awbCode ?? order.trackingNumber ?? order.shipments?.[0]?.trackingNo ?? "Pending"}</p>
+                <p><span className="font-semibold text-[#2A1810]">Last Sync:</span> {order.lastTrackingSyncAt ? new Date(order.lastTrackingSyncAt).toLocaleString() : "—"}</p>
+                <p><span className="font-semibold text-[#2A1810]">Delivery ETA:</span> {order.estimatedDeliveryDate ? new Date(order.estimatedDeliveryDate).toLocaleDateString("en-GB") : "TBD"}</p>
+              </div>
+              {order.trackingUrl ? (
+                <button
+                  type="button"
+                  onClick={() => window.open(order.trackingUrl!, "_blank", "noopener,noreferrer")}
+                  className="mt-3 rounded-full border border-[#E8DCC8] bg-white px-4 py-2 text-xs font-semibold uppercase text-[#4A1D1F]"
+                >
+                  Track Shipment
+                </button>
+              ) : null}
               {order?.shipments?.length === 0 ? (
                 <p className="text-sm text-[#646464]">Shipment details will appear once dispatched.</p>
               ) : (
