@@ -66,7 +66,7 @@ export const otpService = {
     if (!isMatch) {
       data.attempts += 1
       await redis.set(redisKey, JSON.stringify(data), "KEEPTTL")
-      throw new Error(`Invalid OTP. ${OTP_CONFIG.maxVerifyAttempts - data.attempts} attempts remaining.`)
+      throw new Error(`invalid otp please enter the correct otp`)
     }
 
     // Success

@@ -32,6 +32,7 @@ type SendSmsOptions = {
 
 export const smsService = {
   async send({ mobile, templateKey, variables, body }: SendSmsOptions) {
+    console.log(`[SMS SERVICE ENTRY] Template: ${templateKey}, To: ${mobile}`)
     const config = DLT_CONFIG[templateKey]
     const templateId = config?.id || env[`SMS_TEMPLATE_${templateKey}` as keyof typeof env] as string
     
@@ -133,6 +134,8 @@ export const smsService = {
 
     const res = await fetch(`${baseUrl}?${params.toString()}`, { method: "GET" })
     const text = await res.text()
+
+    console.log(`[SMS Gateway Response] Status: ${res.status}, Body: "${text}"`)
 
     if (!res.ok) {
       throw new Error(`Gateway Error ${res.status}: ${text.slice(0, 100)}`)

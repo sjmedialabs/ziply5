@@ -12,6 +12,7 @@ export default function ForgotPasswordPage() {
   const [phone, setPhone] = useState("");
   const [step, setStep] = useState<"request" | "otp" | "new_password" | "done">("request");
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
   const [newPassword, setNewPassword] = useState("");
 
   const handleSendEmail = async (e: React.FormEvent) => {
@@ -181,6 +182,7 @@ export default function ForgotPasswordPage() {
                       });
                     }}
                     isLoading={loading}
+                    errorMessage={error}
                   />
                 </div>
               )}

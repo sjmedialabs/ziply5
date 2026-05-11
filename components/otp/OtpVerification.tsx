@@ -14,6 +14,7 @@ interface OtpVerificationProps {
   onResend: () => Promise<void>
   isLoading?: boolean
   cooldownSeconds?: number
+  errorMessage?: string
 }
 
 export function OtpVerification({
@@ -21,10 +22,12 @@ export function OtpVerification({
   onVerify,
   onResend,
   isLoading,
+  errorMessage,
   cooldownSeconds = 60,
 }: OtpVerificationProps) {
   const [timeLeft, setTimeLeft] = useState(cooldownSeconds)
   const [code, setCode] = useState("")
+  console.log("Recived prop error message", errorMessage)
 
   useEffect(() => {
     if (timeLeft <= 0) return
@@ -84,6 +87,9 @@ export function OtpVerification({
         >
           {isLoading ? "VERIFYING..." : "VERIFY & PROCEED"}
         </button>
+        {errorMessage && (
+          <p className="text-sm text-red-500">{errorMessage}</p>
+        )}
 
         <button
           onClick={handleResend}

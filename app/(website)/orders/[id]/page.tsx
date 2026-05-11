@@ -342,7 +342,7 @@ export default function OrderDetailPage() {
       <div className="flex items-center justify-between">
         <h1 className="font-melon text-2xl font-bold text-[#4A1D1F]">Order details</h1>
         <div className="flex items-center gap-2">
-          {params.id ? (
+          {params.id && order && order.status.toLowerCase() !== "cancelled" ? (
             <button
               type="button"
               onClick={() => router.push(`/orders/${params.id}/track`)}

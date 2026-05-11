@@ -129,6 +129,7 @@ export default function AuthLoginCard({
       setLoading(false);
     }
   };
+  console.log("error::", error)
 
   return (
     <div className="relative min-h-screen overflow-hidden bg-[#F7F8FB] px-4 py-10">
@@ -205,6 +206,12 @@ export default function AuthLoginCard({
               >
                 {loading ? "LOGGING IN..." : "LOGIN"}
               </button>
+
+              {
+                error && (
+                  <p className="text-center text-sm text-red-500">{error}</p>
+                )
+              }
             </form>
           ) : otpStep === "phone" ? (
             <form className="mt-8 flex flex-col gap-4" onSubmit={handleSendOtp}>
@@ -238,6 +245,7 @@ export default function AuthLoginCard({
                   });
                 }}
                 isLoading={loading}
+                errorMessage={error}
               />
             </div>
           )}

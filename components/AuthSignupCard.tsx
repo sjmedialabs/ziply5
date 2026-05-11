@@ -245,6 +245,7 @@ export default function AuthSignupCard() {
                   });
                 }}
                 isLoading={loading}
+                errorMessage={error}
               />
             </div>
           )}
