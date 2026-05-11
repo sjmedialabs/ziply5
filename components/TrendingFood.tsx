@@ -81,13 +81,13 @@ export default function TrendingFood({ cmsData }: { cmsData?: any }) {
       const token = window.localStorage.getItem("ziply5_access_token");
       const userStr = window.localStorage.getItem("ziply5_user");
       const userId = userStr ? JSON.parse(userStr).id : null;
-      
+
       if (token && userId) {
         try {
           const res = await fetch("/api/v1/favorites", {
-            headers: { 
+            headers: {
               Authorization: `Bearer ${token}`,
-              "x-user-id": userId 
+              "x-user-id": userId
             },
           });
           const payload = await res.json();
@@ -136,7 +136,7 @@ export default function TrendingFood({ cmsData }: { cmsData?: any }) {
   }
 
   const visibleProducts = isLg ? trendingProducts.slice(0, 3) : trendingProducts
-if (trendingProducts.length === 0) return null;
+  if (trendingProducts.length === 0) return null;
   return (
     <section id="trending" className="py-12 md:py-16 lg:py-20">
       <div className="max-w-7xl mx-auto px-4">
@@ -146,13 +146,13 @@ if (trendingProducts.length === 0) return null;
           {visibleProducts.map((product, index) => (
             <div
               key={product.id}
-              className="card-smooth w-full max-w-sm group bg-white rounded-[16px] overflow-hidden 
+              className="card-smooth w-full cursor-pointer max-w-sm group bg-white rounded-[16px] overflow-hidden 
               h-85
               shadow-[0_10px_25px_rgba(0,0,0,0.08)] 
               hover:shadow-[0_15px_35px_rgba(0,0,0,0.12)]
               hover:ring-2 hover:ring-[#EF4444]"
               onClick={() =>
-              router.push(`/product/${product.slug}`)}
+                router.push(`/product/${product.slug}`)}
             >
               {/* FLEX CONTAINER */}
               <div className="flex flex-col h-full">
@@ -165,19 +165,19 @@ if (trendingProducts.length === 0) return null;
                 >
                   {/* veg icon */}
                   <div className="absolute top-2 z-20 right-0 w-20 h-5 rounded-sm flex items-center justify-center">
-                     {
-                  product.tags[0]?.tag?.name &&(
-                    <>
                     {
-                      product.tags[0].tag.name === "veg"?(<span className="absolute top-4 right-0 bg-[#10B981] text-white text-[11px] font-medium px-3 py-1 border border-white rounded-l-sm z-10">
-                    {product.tags[0].tag.name?.charAt(0).toUpperCase() + product.tags[0].tag.name.slice(1)}
-                  </span>):(<span className="absolute top-4 right-0 bg-[#F97316] text-white text-[11px] font-medium px-3 py-1 rounded-l-sm border border-white z-10">
-                    {product.tags[0].tag.name?.charAt(0).toUpperCase() + product.tags[0].tag.name.slice(1)}
-                  </span>)
+                      product.tags[0]?.tag?.name && (
+                        <>
+                          {
+                            product.tags[0].tag.name === "veg" ? (<span className="absolute top-4 right-0 bg-[#10B981] text-white text-[11px] font-medium px-3 py-1 border border-white rounded-l-sm z-10">
+                              {product.tags[0].tag.name?.charAt(0).toUpperCase() + product.tags[0].tag.name.slice(1)}
+                            </span>) : (<span className="absolute top-4 right-0 bg-[#F97316] text-white text-[11px] font-medium px-3 py-1 rounded-l-sm border border-white z-10">
+                              {product.tags[0].tag.name?.charAt(0).toUpperCase() + product.tags[0].tag.name.slice(1)}
+                            </span>)
+                          }
+                        </>
+                      )
                     }
-                    </>
-                  )
-                }
                   </div>
                   <div className="relative h-full w-full transition-transform duration-300 hover:scale-90 ">
                     <Image
@@ -210,7 +210,7 @@ if (trendingProducts.length === 0) return null;
                     <button
                       type="button"
                       onClick={(e) => handleToggleFavorite(e, product.slug)}
-                      className="border-2 border-[#EF4444] px-2.5 py-1 rounded-lg text-[12px] font-medium hover:bg-[#EF4444] hover:text-white transition-colors"
+                      className="border-2 border-[#EF4444] cursor-pointer px-2.5 py-1 rounded-lg text-[12px] font-medium hover:bg-[#EF4444] hover:text-white transition-colors"
                     >
                       {favoriteSlugs.includes(product.slug) ? "♥" : "♡"}
                     </button>
@@ -249,7 +249,7 @@ if (trendingProducts.length === 0) return null;
                               setCartItemQuantity(product, 1);
                             }
                           }}
-                          className="rounded-lg border border-primary tracking-wide px-4 py-1.5 text-[12px] font-light text-primary hover:bg-primary hover:text-white transition-all "
+                          className="rounded-lg border cursor-pointer border-primary tracking-wide px-4 py-1.5 text-[12px] font-light text-primary hover:bg-primary hover:text-white transition-all "
                         >
                           Add to Cart
                         </button>
@@ -266,7 +266,7 @@ if (trendingProducts.length === 0) return null;
                             router.push("/checkout");
                           }
                         }}
-                        className="rounded-md bg-primary px-3 tracking-wide py-1.5 text-[12px] font-light text-white hover:bg-[#3a1517]"
+                        className="rounded-md bg-primary px-3 cursor-pointer tracking-wide py-1.5 text-[12px] font-light text-white hover:bg-[#3a1517]"
                       >
                         Buy Now
                       </button>
@@ -285,11 +285,11 @@ if (trendingProducts.length === 0) return null;
           <div className="w-full max-w-md overflow-hidden rounded-3xl bg-white shadow-2xl" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between bg-primary p-5 text-white">
               <h3 className="font-melon text-lg font-bold uppercase tracking-wider">Select Options</h3>
-              <button onClick={() => setSelectedProduct(null)} className="rounded-full bg-white/20 p-1 hover:bg-white/30 transition-colors">
+              <button onClick={() => setSelectedProduct(null)} className="rounded-full bg-white/20 p-1 cursor-pointer hover:bg-white/30 transition-colors">
                 <X size={20} />
               </button>
             </div>
-            
+
             <div className="p-6">
               <div className="mb-4 flex gap-4">
                 <div className="relative h-20 w-20 shrink-0 rounded-xl bg-gray-100 p-2">
@@ -311,28 +311,28 @@ if (trendingProducts.length === 0) return null;
                         <p className="font-melon text-sm font-bold text-[#4A1D1F]">{v.weight || v.name}</p>
                         <p className="text-sm font-bold text-orange-500">Rs. {v.price.toFixed(2)}</p>
                       </div>
-                      
+
                       <div className="flex items-center gap-3">
                         {qty > 0 ? (
                           <div className="flex items-center rounded-lg border border-orange-200 bg-white px-2 py-1 shadow-sm">
-                            <button onClick={(e) => { e.stopPropagation(); updateVariantQty(selectedProduct, v, qty - 1); }} className="h-6 w-6 font-bold text-primary hover:scale-110 transition-transform">-</button>
+                            <button onClick={(e) => { e.stopPropagation(); updateVariantQty(selectedProduct, v, qty - 1); }} className="h-6 w-6 font-bold text-primary hover:scale-110 cursor-pointer transition-transform">-</button>
                             <span className="min-w-6 text-center text-xs font-bold text-gray-700">{qty}</span>
-                            <button onClick={(e) => { e.stopPropagation(); updateVariantQty(selectedProduct, v, qty + 1); }} className="h-6 w-6 font-bold text-primary hover:scale-110 transition-transform">+</button>
+                            <button onClick={(e) => { e.stopPropagation(); updateVariantQty(selectedProduct, v, qty + 1); }} className="h-6 w-6 font-bold text-primary hover:scale-110 cursor-pointer transition-transform">+</button>
                           </div>
                         ) : (
                           <button
                             onClick={(e) => { e.stopPropagation(); updateVariantQty(selectedProduct, v, 1); }}
-                            className="rounded-full bg-primary px-5 py-1.5 text-[11px] font-bold text-white shadow-md hover:bg-[#3a1517] transition-all"
+                            className="rounded-full bg-primary px-5 cursor-pointer py-1.5 text-[11px] font-bold text-white shadow-md hover:bg-[#3a1517] transition-all"
                           >
                             ADD
                           </button>
 
-            
+
                         )}
                       </div>
                     </div>
 
-                    
+
                   )
                 })}
               </div>
@@ -340,9 +340,10 @@ if (trendingProducts.length === 0) return null;
 
             <div className="border-t border-gray-100 p-5 flex items-center justify-between gap-3 bg-gray-50/50">
               <button
-                onClick={() => {setSelectedProduct(null);
-                router.push("/products");
-              }}
+                onClick={() => {
+                  setSelectedProduct(null);
+                  router.push("/products");
+                }}
                 className="flex-1 rounded-full border-2 cursor-pointer border-primary py-2.5 text-[11px] font-bold uppercase tracking-widest text-primary hover:bg-primary/10 transition-colors"
               >
                 Continue Shopping

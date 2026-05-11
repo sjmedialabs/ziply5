@@ -47,7 +47,7 @@ export default function ContactUsPage() {
                 body: JSON.stringify(data),
             })
             const payload = await res.json()
-            
+
             if (payload.success) {
                 toast.success("Your message has been sent successfully!")
                 reset()
@@ -263,7 +263,7 @@ export default function ContactUsPage() {
                         <button
                             type="submit"
                             disabled={loading}
-                            className="bg-primary text-white px-6 py-2 rounded-md text-sm hover:opacity-90 transition disabled:opacity-50"
+                            className="bg-primary cursor-pointer text-white px-6 py-2 rounded-md text-sm hover:opacity-90 transition disabled:opacity-50"
                         >
                             {loading ? "Sending..." : "Send Message"}
                         </button>

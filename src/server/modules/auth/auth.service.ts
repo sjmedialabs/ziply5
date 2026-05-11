@@ -7,8 +7,9 @@ import {
   signRefreshToken,
   verifyRefreshToken,
 } from "@/src/server/core/security/jwt"
+import { mailService } from "../mail/mail.service"
 import { ROLE_KEYS } from "@/src/server/core/rbac/permissions"
-import { smsService } from "@/src/server/integrations/sms/sms.service"
+import { smsService } from "@/src/server/modules/sms/sms.service"
 import { enqueueEmail, emailTemplates } from "@/src/server/modules/notifications/email.service"
 import { pgQuery, pgTx } from "@/src/server/db/pg"
 
@@ -234,6 +235,11 @@ export const requestPasswordReset = async (email: string) => {
         [crypto.randomUUID(), user.email, tokenHash, new Date(Date.now() + 60 * 60 * 1000)],
       )
     })
+    
+    // Send Email
+    await mailService.sendPasswordResetEmail(user.email, token).catch(e => {
+      console.error("[Auth Service] Failed to send reset email:", e);
+    })
   }
   if (env.PASSWORD_RESET_RETURN_TOKEN && user) {
     return { message: "Reset token issued", resetToken: token }
@@ -305,7 +311,8 @@ export const requestLoginOtp = async (phoneRaw: string) => {
 
   await smsService.send({
     to: phone,
-    body: `Your Ziply5 OTP is ${code}. It expires in ${Math.floor(cfg.ttlSec / 60)} minutes.`,
+    body: `Your OTP is ${code} for Ziply5 login. Please do not share this code with anyone. It is valid for 5 minutes.`,
+    templateId: env.SMS_TEMPLATE_LOGIN_OTP,
   })
 
   const includeOtp = process.env.OTP_RETURN_CODE === "true"
@@ -395,7 +402,16 @@ export const verifyLoginOtp = async (phoneRaw: string, code: string) => {
         `INSERT INTO "UserProfile" (id, "userId", phone, "createdAt", "updatedAt") VALUES ($1,$2,$3, now(), now())`,
         [crypto.randomUUID(), userId, phone],
       )
-      return { userId, email: syntheticEmail, name: `User ${phone.slice(-4)}`, role: ROLE_KEYS.CUSTOMER }
+      const user = { userId, email: syntheticEmail, name: `User ${phone.slice(-4)}`, role: ROLE_KEYS.CUSTOMER }
+      
+      // Send Welcome SMS for new user
+      smsService.send({
+        to: phone,
+        body: `Welcome to Ziply5 ! Your account is created successfully. Username: ${user.name} - Team Ziply5`,
+        templateId: env.SMS_TEMPLATE_WELCOME
+      }).catch(err => console.error("Welcome SMS failed", err))
+
+      return user
     })
   }
 

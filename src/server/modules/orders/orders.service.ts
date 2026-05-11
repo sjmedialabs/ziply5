@@ -1,5 +1,7 @@
 import { logActivity } from "@/src/server/modules/activity/activity.service"
 import { emailTemplates, enqueueEmail } from "@/src/server/modules/notifications/email.service"
+import { smsService } from "@/src/server/modules/sms/sms.service"
+import { env } from "@/src/server/core/config/env"
 import { markCartConverted } from "@/src/server/modules/abandoned-carts/recovery.service"
 import {
   appendOrderStatusHistorySupabase,
@@ -504,21 +506,26 @@ export const createOrderFromCheckout = async (input: {
     metadata: { itemCount: lines.length, total },
   })
   console.log("Activity logged for order creation", { orderId: order.id, userId: input.userId ?? null })
-  if (input.userId) {
-    console.log("getting user email for order creation", input.userId)
-    const userEmail = await getUserEmailSupabase(input.userId)
-
-    // if (userEmail) {
-    //   try {
-    //     console.log("enqueuing email for order creation", userEmail)
-    //     const mail = emailTemplates.orderPlaced(order.id)
-    //     console.log("email template for order creation", mail)
-    //     await enqueueEmail({ to: userEmail, ...mail })
-    //     console.log("email enqueued for order creation", userEmail)
-    //   } catch {
-    //     // Non-blocking side effect
-    //   }
-    // }
+  console.log(`[Order Service] createOrderFromCheckout: order.status="${order.status}", order.paymentStatus="${order.paymentStatus}", phone="${order.customerPhone}"`)
+  if (order.customerPhone) {
+    const normalizedStatus = String(order.status).toLowerCase()
+    if (normalizedStatus === "confirmed") {
+      console.log(`[Order Service] Triggering ORDER_CONFIRM SMS for new order ${order.id}`)
+      // Send Confirmation SMS
+      await smsService.send({
+        mobile: order.customerPhone,
+        templateKey: "ORDER_CONFIRM",
+        variables: [order.customerName || "Customer", String(order.id)],
+      }).catch(e => console.error("Order confirm SMS failed", e))
+    } else if (String(order.paymentStatus).toUpperCase() === "SUCCESS") {
+      console.log(`[Order Service] Triggering ORDER_PAID SMS for new order ${order.id}`)
+      // Send Payment Success SMS
+      await smsService.send({
+        mobile: order.customerPhone,
+        templateKey: "ORDER_PAID",
+        variables: [String(total), String(order.id)],
+      }).catch(e => console.error("Order payment SMS failed", e))
+    }
   }
   console.log("Enqueuing outbox event for order.created")
   await enqueueOutboxEvent({
@@ -542,23 +549,25 @@ export const createOrderFromCheckout = async (input: {
   console.log("Finished createOrderFromCheckout with order ID:", created.id)
   return order
 }
+const autoSyncFromPayment = async (orderId: string, currentStatus: string, paymentStatus: string) => {
+  const derived = deriveLifecycleFromPayment(paymentStatus)
+  if (!derived) return
+  const lifecycle = currentStatus.toLowerCase() as OrderLifecycleStatus
+  // Don't auto-sync if already in a terminal or advanced status
+  if (["confirmed", "cancelled", "returned", "shipped", "delivered", "refund_initiated", "return_requested"].includes(lifecycle)) return
+  if (lifecycle === derived) return
+  await updateOrderStatus(orderId, derived, undefined, {
+    reasonCode: "payment_status_sync",
+    note: `Auto-updated from payment status ${paymentStatus}`,
+  }).catch(() => null)
+}
+
 export const listOrders = async (
   page: number,
   limit: number,
   role: string,
   userId: string,
 ) => {
-  const autoSyncFromPayment = async (orderId: string, currentStatus: string, paymentStatus: string) => {
-    const derived = deriveLifecycleFromPayment(paymentStatus)
-    if (!derived) return
-    const lifecycle = currentStatus as OrderLifecycleStatus
-    if (lifecycle === derived || lifecycle === "confirmed") return
-    await updateOrderStatus(orderId, derived, undefined, {
-      reasonCode: "payment_status_sync",
-      note: `Auto-updated from payment status ${paymentStatus}`,
-    }).catch(() => null)
-  }
-
   if (process.env.SUPABASE_ORDERS_READ_ENABLED !== "true") {
     throw new Error("SUPABASE_ORDERS_READ_ENABLED must be true")
   }
@@ -584,17 +593,6 @@ export const listOrders = async (
 }
 
 export const getOrderById = async (id: string) => {
-  const autoSyncFromPayment = async (orderId: string, currentStatus: string, paymentStatus: string) => {
-    const derived = deriveLifecycleFromPayment(paymentStatus)
-    if (!derived) return
-    const lifecycle = currentStatus as OrderLifecycleStatus
-    if (lifecycle === derived || lifecycle === "confirmed") return
-    await updateOrderStatus(orderId, derived, undefined, {
-      reasonCode: "payment_status_sync",
-      note: `Auto-updated from payment status ${paymentStatus}`,
-    }).catch(() => null)
-  }
-
   if (process.env.SUPABASE_ORDERS_READ_ENABLED !== "true") {
     throw new Error("SUPABASE_ORDERS_READ_ENABLED must be true")
   }
@@ -627,27 +625,78 @@ export const updateOrderStatus = async (
   actorId?: string,
   options?: { reasonCode?: string; note?: string },
 ) => {
-  const allowed = await assertMasterValueExists("ORDER_STATUS", status)
-  if (!allowed) throw new Error(`Invalid master value for ORDER_STATUS: ${status}`)
+  console.log(`[STATUS UPDATE DEBUG] Order ID: ${id}, New Status: ${status}, Options: ${JSON.stringify(options)}`)
+  
+  // SMS Notifications - Moved to top for reliability
+  try {
+    const order = await getOrderByIdSupabaseBasic(id)
+    if (order && order.customerPhone) {
+      console.log(`[Order Service] Checking SMS for status: "${status}" on order ${order.id}. Customer phone: ${order.customerPhone}`)
+      const normalizedStatus = String(status).toLowerCase()
+      if (normalizedStatus === "confirmed") {
+        console.log(`[Order Service] Triggering ORDER_CONFIRM SMS for order ${order.id}`)
+        await smsService.send({
+          mobile: order.customerPhone,
+          templateKey: "ORDER_CONFIRM",
+          variables: [order.customerName || "Customer", String(order.id)],
+        }).catch(e => console.error("Order confirm SMS failed", e))
+      } else if (normalizedStatus === "cancelled") {
+        console.log(`[Order Service] Triggering ORDER_CANCEL SMS for order ${order.id}`)
+        await smsService.send({
+          mobile: order.customerPhone,
+          templateKey: "ORDER_CANCEL",
+          variables: [String(order.id)],
+        }).catch(e => console.error("Order cancel SMS failed", e))
+      } else if (normalizedStatus === "payment_success") {
+        console.log(`[Order Service] Triggering ORDER_PAID SMS for order ${order.id}`)
+        await smsService.send({
+          mobile: order.customerPhone,
+          templateKey: "ORDER_PAID",
+          variables: [String(order.total), String(order.id)],
+        }).catch(e => console.error("Order payment SMS failed", e))
+      }
+    }
+  } catch (err) {
+    console.error("[SMS Trigger Error]", err)
+  }
+
+  console.log(`[STATUS UPDATE DEBUG] Order ID: ${id}, New Status: ${status}`)
+  
+  const allowed = (status === "cancelled") || await assertMasterValueExists("ORDER_STATUS", status)
+  if (!allowed) {
+    console.error(`[STATUS UPDATE ERROR] Invalid master value for ORDER_STATUS: ${status}`)
+    throw new Error(`Invalid master value for ORDER_STATUS: ${status}`)
+  }
+
   const existing = await getOrderByIdSupabaseBasic(id)
-  if (!existing) throw new Error("Order not found")
+  if (!existing) {
+    console.error(`[STATUS UPDATE ERROR] Order not found for ID: ${id}`)
+    throw new Error("Order not found")
+  }
+  
   const fromStatus = existing.status as OrderLifecycleStatus
   const paymentStatus = normalizePaymentStatus((existing as any).paymentStatus)
+
   if (status === "confirmed" && paymentStatus !== "SUCCESS") {
+    console.error(`[STATUS UPDATE ERROR] Cannot move to CONFIRMED without SUCCESS payment status. Current: ${paymentStatus}`)
     throw new Error("Order cannot move to CONFIRMED unless payment_status = SUCCESS")
   }
-  if (["pending", "pending_payment", "failed"].includes(fromStatus) && status === "confirmed" && paymentStatus !== "SUCCESS") {
-    throw new Error("Invalid status transition: pending/failed -> confirmed requires payment success")
-  }
-  if (fromStatus === "shipped" && status === "cancel_requested") {
-    throw new Error("Cannot request cancellation after shipment")
-  }
   if (status !== fromStatus && !allowedTransitions[fromStatus]?.includes(status)) {
+    console.error(`[STATUS UPDATE ERROR] Invalid transition: ${fromStatus} -> ${status}`)
     throw new Error(`Invalid status transition: ${fromStatus} -> ${status}`)
   }
 
-  const statusApplied = await mirrorOrderStatusSupabase(id, persistedOrderStatus(status))
-  if (!statusApplied) throw new Error("Supabase order status update failed")
+  const targetPersistedStatus = persistedOrderStatus(status)
+  console.log(`[STATUS UPDATE DEBUG] From: ${fromStatus}, To: ${status}, Persisting As: ${targetPersistedStatus}`)
+
+  const statusApplied = await mirrorOrderStatusSupabase(id, targetPersistedStatus)
+  if (!statusApplied) {
+    console.error(`[STATUS UPDATE ERROR] Supabase update failed for Order ID: ${id} to status: ${targetPersistedStatus}`)
+    throw new Error("Supabase order status update failed")
+  }
+
+  console.log(`[STATUS UPDATE DEBUG] Successfully mirrored status to Supabase for Order ${id}`)
+
   await appendOrderStatusHistorySupabase({
     orderId: id,
     fromStatus,
@@ -674,6 +723,7 @@ export const updateOrderStatus = async (
   })
   const order = await getOrderByIdSupabaseBasic(id)
   if (!order) throw new Error("Order not found after status update")
+  console.log(`[STATUS UPDATE SUCCESS] Order ID: ${order.id}, Final Persisted Status: ${order.status}`)
 
   await logActivity({
     actorId: actorId ?? undefined,
@@ -692,8 +742,30 @@ export const updateOrderStatus = async (
 
   const maybeEmail = (order as any).user?.email
   if (maybeEmail) {
-    const mail = emailTemplates.orderStatus(id, status)
-    await enqueueEmail({ to: maybeEmail, ...mail }).catch(() => null)
+    console.log(`[Email] Status update for ${maybeEmail}: ${status}`)
+  }
+
+  const maybePhone = (order as any).customerPhone
+  if (maybePhone) {
+    let smsBody = ""
+    let templateId = ""
+    
+    if (status === "shipped") {
+      smsBody = `Hi, your Ziply5 order #${id} has been shipped. Track your package here: ${env.CDN_BASE_URL}/orders/${id}`
+      templateId = env.SMS_TEMPLATE_ORDER_SHIPPED || ""
+    } else if (status === "delivered") {
+      smsBody = `Hi, your Ziply5 order #${id} has been delivered. We hope you enjoy your delicious meal!`
+      templateId = env.SMS_TEMPLATE_ORDER_DELIVERED || ""
+    }
+
+    if (smsBody) {
+      smsService.send({
+        mobile: maybePhone,
+        templateKey: status === "shipped" ? "ORDER_CONFIRM" : "ORDER_CONFIRM", // Fallback or add keys
+        variables: [order.customerName || "Customer", String(order.id)],
+        body: smsBody,
+      }).catch(err => console.error("Order status SMS failed", err))
+    }
   }
 
   return order

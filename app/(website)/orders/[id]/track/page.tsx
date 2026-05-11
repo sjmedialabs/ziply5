@@ -141,6 +141,12 @@ export default function TrackOrderPage() {
 
       {order && (
         <>
+          {order.status.toLowerCase() === "cancelled" && (
+            <div className="mb-4 rounded-xl border border-red-200 bg-red-50 p-4 text-center">
+              <p className="text-sm font-bold text-red-600 uppercase tracking-wide">This order has been cancelled</p>
+              <p className="text-xs text-red-500 mt-1">Tracking information is no longer active for this order.</p>
+            </div>
+          )}
           <div className="rounded-xl border border-[#E5E7EB] bg-white p-4">
             <p className="mb-3 text-sm font-semibold text-[#111827]">Delivery Progress</p>
             <TrackingTimeline
