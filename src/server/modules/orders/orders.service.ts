@@ -284,6 +284,7 @@ export const createOrderFromCheckout = async (input: {
 
   paymentStatus?: string
   paymentId?: string
+  appliedCouponId?: string | null
 }) => {
   const expandedItems: { productId?: string; variantId?: string | null; slug?: string; quantity: number }[] = []
   for (const item of input.items) {
@@ -381,7 +382,7 @@ export const createOrderFromCheckout = async (input: {
   }
 
   let discount = 0
-  let appliedCouponId: string | null = null
+  let appliedCouponId: string | null = input.appliedCouponId ?? null
   if (input.couponCode?.trim()) {
     const validation = await validatePromoCode(input.couponCode.trim(), subtotal, input.userId ?? undefined)
     if (!validation.valid) throw new Error(validation.error)

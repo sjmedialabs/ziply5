@@ -221,7 +221,7 @@ export default function TrackOrderPage() {
             <p className="text-sm font-semibold text-[#111827]">Need help with your order?</p>
             <p className="mt-1 text-xs text-[#6B7280]">Our support team is here to help.</p>
             <div className="mt-3 flex justify-center gap-2">
-              <button onClick={() => router.push("/support")} className="rounded-md border border-[#D1D5DB] px-3 py-1.5 text-xs">
+              <button onClick={() => router.push("/contact")} className="rounded-md border border-[#D1D5DB] px-3 py-1.5 text-xs">
                 Contact Support
               </button>
               <button onClick={() => router.push(`/orders/${order.id}`)} className="rounded-md bg-[#111827] px-3 py-1.5 text-xs text-white">

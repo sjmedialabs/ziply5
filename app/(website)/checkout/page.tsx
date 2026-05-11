@@ -323,6 +323,9 @@ useEffect(() => {
         throw new Error(payload.message ?? "Unable to apply coupon.");
       }
       setCouponDiscount(Number(payload.data.discount));
+      if (payload.data.couponId) {
+        window.localStorage.setItem("ziply5_applied_coupon_id", payload.data.couponId);
+      }
       await recalculateOffers(couponCode.trim());
     } catch (error) {
       setCouponDiscount(0);
@@ -339,6 +342,7 @@ useEffect(() => {
     setCouponCode("");
     try {
       window.localStorage.removeItem("ziply5_coupon_code");
+      window.localStorage.removeItem("ziply5_applied_coupon_id");
     } catch {}
     await recalculateOffers("");
   };

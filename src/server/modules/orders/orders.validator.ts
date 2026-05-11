@@ -37,6 +37,7 @@ export const createOrderSchema = z.object({
 
   paymentStatus: z.enum(["pending", "paid", "failed"]).optional(),
   paymentId: z.string().optional(),
+  appliedCouponId: z.string().nullable().optional(),
 })
 
 export const updateOrderStatusSchema = z.object({

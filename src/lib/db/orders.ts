@@ -32,7 +32,7 @@ export type SupabaseOrderRecord = {
   updatedAt?: string | Date | null
   customerAddress?: string | null
   items: any[]
-  statusHistory: Array<{ toStatus?: string; changedAt?: string | Date | null; [key: string]: unknown }>
+  statusHistory: Array<{ toStatus?: string; changedAt?: string | Date | null;[key: string]: unknown }>
   refunds: Array<{ id: string; status?: string; amount?: number }>
   notes?: any[]
   shiprocketOrderId?: string | null
@@ -57,6 +57,8 @@ export type SupabaseOrderRecord = {
   isPickupGenerated?: boolean | null
   isLabelGenerated?: boolean | null
   trackingData?: unknown
+  appliedCouponId?: string | null
+  coupon?: { id: string; code: string; discountType: string; discountValue: number } | null
   [key: string]: unknown
 }
 
@@ -667,32 +669,23 @@ export const createOrderNoteSupabase = async (input: {
   isInternal: boolean
 }) => {
   const client = getSupabaseAdmin()
+
+  const camel = {
+    orderId: input.orderId,
+    note: input.note,
+    isInternal: input.isInternal,
+    createdById: input.actorId,
+  }
   for (const table of ORDER_NOTE_TABLES) {
-    const camel = {
-      orderId: input.orderId,
-      note: input.note,
-      isInternal: input.isInternal,
-      createdById: input.actorId,
-    }
-    const snake = {
-      order_id: input.orderId,
-      note: input.note,
-      is_internal: input.isInternal,
-      created_by_id: input.actorId,
-    }
-    for (const payload of [camel, snake]) {
-      const inserted = await client.from(table).insert(payload).select("id,isInternal,is_internal").maybeSingle()
-      if (!inserted.error && inserted.data) {
-        const row = inserted.data as Record<string, unknown>
-        return {
-          id: safeString(row.id),
-          isInternal: Boolean(row.isInternal ?? row.is_internal),
-        }
-      }
-      if (inserted.error && shouldRetryWithId(inserted.error.message)) {
-        const retry = await client.from(table).insert(withId(payload)).select("id,isInternal,is_internal").maybeSingle()
-        if (!retry.error && retry.data) {
-          const row = retry.data as Record<string, unknown>
+    for (const payload of [camel]) {
+      const attempts = [
+        () => client.from(table).insert(payload).select("id,isInternal").maybeSingle(),
+        () => client.from(table).insert(withId(payload)).select("id,isInternal").maybeSingle(),
+      ]
+      for (const run of attempts) {
+        const { data, error } = await run()
+        if (!error && data) {
+          const row = data as Record<string, unknown>
           return {
             id: safeString(row.id),
             isInternal: Boolean(row.isInternal ?? row.is_internal),
@@ -1230,6 +1223,7 @@ export const getOrderByIdSupabaseBasic = async (orderId: string) => {
   for (const table of ORDER_TABLES) {
     const { data, error } = await client.from(table).select("*").eq("id", orderId).maybeSingle()
     if (!error && data) {
+      const row = data as Record<string, unknown>
       const itemRows = await fetchRowsByForeignKey(ORDER_ITEM_TABLES, { camel: "orderId", snake: "order_id" }, orderId)
 
       // Hydrate each order item with its related product (id, name, slug, sku, weight).
@@ -1278,32 +1272,47 @@ export const getOrderByIdSupabaseBasic = async (orderId: string) => {
           // Always present so the UI never NPEs on a missing/deleted product.
           product: product
             ? {
-                id: safeString(product.id),
-                name: safeString(product.name) || "Product",
-                slug: safeString(product.slug) || safeString(product.id),
-                sku: safeString(product.sku) || null,
-                weight: safeString(product.weight) || null,
-                thumbnail: safeString(product.thumbnail) || null,
-              }
+              id: safeString(product.id),
+              name: safeString(product.name) || "Product",
+              slug: safeString(product.slug) || safeString(product.id),
+              sku: safeString(product.sku) || null,
+              weight: safeString(product.weight) || null,
+              thumbnail: safeString(product.thumbnail) || null,
+            }
             : {
-                id: productId || "",
-                name: "Deleted product",
-                slug: productId || "",
-                sku: null,
-                weight: null,
-                thumbnail: null,
-              },
+              id: productId || "",
+              name: "Deleted product",
+              slug: productId || "",
+              sku: null,
+              weight: null,
+              thumbnail: null,
+            },
           variant: variant
             ? {
-                id: safeString(variant.id),
-                name: safeString(variant.name) || null,
-                sku: safeString(variant.sku) || null,
-                weight: safeString(variant.weight) || null,
-                price: safeNumber(variant.price, 0),
-              }
+              id: safeString(variant.id),
+              name: safeString(variant.name) || null,
+              sku: safeString(variant.sku) || null,
+              weight: safeString(variant.weight) || null,
+              price: safeNumber(variant.price, 0),
+            }
             : null,
         }
       })
+
+      const appliedCouponId = safeString(row.appliedCouponId ?? row.applied_coupon_id)
+      let coupon: any = null
+      if (appliedCouponId) {
+        const couponRows = await fetchRowsByIds(COUPON_TABLES, "id", [appliedCouponId])
+        const c = couponRows[0]
+        if (c) {
+          coupon = {
+            id: safeString(c.id),
+            code: safeString(c.code),
+            discountType: safeString(c.discountType ?? c.discount_type),
+            discountValue: safeNumber(c.discountValue ?? c.discount_value),
+          }
+        }
+      }
 
       const [transactionRows, noteRows, statusHistoryRows, refundRows, returnRequestRows] = await Promise.all([
         fetchRowsByForeignKey(TRANSACTION_TABLES, { camel: "orderId", snake: "order_id" }, orderId, {
@@ -1337,7 +1346,6 @@ export const getOrderByIdSupabaseBasic = async (orderId: string) => {
         returnRequestItemRows.push(...rows)
       }
 
-      const row = data as Record<string, unknown>
       const userId = safeString(row.userId ?? row.user_id) || null
       let user: Record<string, unknown> | null = null
       if (userId) {
@@ -1456,6 +1464,8 @@ export const getOrderByIdSupabaseBasic = async (orderId: string) => {
         returnRequests,
         notes,
         user,
+        appliedCouponId,
+        coupon,
       } satisfies SupabaseOrderRecord
     }
   }
@@ -1585,9 +1595,9 @@ export const createOrderWithItemsSupabase = async (input: {
     for (const attempt of insertAttempts) {
       const { data, error } = await attempt();
       if (!error && data?.id) {
-         orderId = safeString(data.id);
-         insertedTable = table;
-         break;
+        orderId = safeString(data.id);
+        insertedTable = table;
+        break;
       }
     }
     if (orderId) break;
@@ -1613,25 +1623,25 @@ export const createOrderWithItemsSupabase = async (input: {
     }))
 
     for (const rows of [camelRows, snakeRows]) {
-        const result = await client.from(itemTable).insert(rows)
+      const result = await client.from(itemTable).insert(rows)
 
-        if (!result.error) {
-          inserted = true;
-          break;
-        } else {
-          if (shouldRetryWithId(result.error.message)) {
-            const retry = await client.from(itemTable).insert(rows.map(withId))
-            if (!retry.error) {
-              inserted = true;
-              break;
-            }
+      if (!result.error) {
+        inserted = true;
+        break;
+      } else {
+        if (shouldRetryWithId(result.error.message)) {
+          const retry = await client.from(itemTable).insert(rows.map(withId))
+          if (!retry.error) {
+            inserted = true;
+            break;
           }
         }
+      }
     }
 
     if (inserted) {
-        itemOk = true;
-        break;
+      itemOk = true;
+      break;
     }
   }
 

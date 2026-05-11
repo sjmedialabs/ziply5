@@ -99,6 +99,8 @@ function PaymentPageInner() {
             quantity: Number(i.quantity ?? 1),
           })),
           shipping,
+          couponCode: window.localStorage.getItem("ziply5_coupon_code") || undefined,
+          appliedCouponId: window.localStorage.getItem("ziply5_applied_coupon_id") || null,
           gateway,
 
           billingAddress: {
@@ -233,6 +235,8 @@ const handleCOD = async () => {
     setCartItems([]);
     window.localStorage.removeItem("ziply5_checkout_ref");
     window.localStorage.removeItem("ziply5_final_total");
+    window.localStorage.removeItem("ziply5_coupon_code");
+    window.localStorage.removeItem("ziply5_applied_coupon_id");
 
     setProcessingGateway(null);
 
@@ -414,7 +418,9 @@ const handleOnlinePayment = async () => {
           window.localStorage.removeItem("ziply5_checkout_ref");
           setCartItems([]);
           router.push(`/payment-success?orderId=${orderId}`);
-          window.localStorage.removeItem("ziply5_final_total"); // Clear coupon-adjusted total on successful online payment
+          window.localStorage.removeItem("ziply5_final_total");
+          window.localStorage.removeItem("ziply5_coupon_code");
+          window.localStorage.removeItem("ziply5_applied_coupon_id");
         } catch (error) {
           setProcessingGateway(null)
           setError(error instanceof Error ? error.message : "Payment verification failed")
