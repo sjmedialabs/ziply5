@@ -5,7 +5,7 @@ const ORDER_TABLES = ["Order"]
 const PRODUCT_TABLES = ["Product", "products"]
 const PRODUCT_VARIANT_TABLES = ["ProductVariant", "product_variants"]
 const INVENTORY_ITEM_TABLES = ["InventoryItem", "inventory_items"]
-const COUPON_TABLES = ["Coupon", "coupons"]
+const COUPON_TABLES = ["Coupon", "coupons", "offers_v2"]
 const USER_TABLES = ["User", "users"]
 const SETTING_TABLES = ["Setting", "settings"]
 const TRANSACTION_TABLES = ["Transaction", "transactions"]
@@ -58,6 +58,10 @@ export type SupabaseOrderRecord = {
   isLabelGenerated?: boolean | null
   trackingData?: unknown
   appliedCouponId?: string | null
+  couponCode?: string | null
+  discount?: number | null
+  tax?: number | null
+  shippingCharge?: number | null
   coupon?: { id: string; code: string; discountType: string; discountValue: number } | null
   [key: string]: unknown
 }
@@ -290,17 +294,53 @@ export const getCouponByCodeSupabase = async (code: string): Promise<CouponCheck
       return {
         id: safeString(row.id),
         code: safeString(row.code),
-        active: Boolean(row.active),
+        active: Boolean(row.active) || row.status === "active",
         endsAt: row.endsAt ? new Date(String(row.endsAt)) : row.ends_at ? new Date(String(row.ends_at)) : null,
-        minOrderAmount: row.minOrderAmount == null && row.min_order_amount == null ? null : safeNumber(row.minOrderAmount ?? row.min_order_amount),
-        firstOrderOnly: Boolean(row.firstOrderOnly ?? row.first_order_only),
+        minOrderAmount: row.minOrderAmount == null && row.min_order_amount == null && (row.config_json as any)?.minCartValue == null
+          ? null
+          : safeNumber(row.minOrderAmount ?? row.min_order_amount ?? (row.config_json as any)?.minCartValue),
+        firstOrderOnly: Boolean(row.firstOrderOnly ?? row.first_order_only ?? (row.config_json as any)?.firstOrderOnly),
         usageLimitPerUser:
-          row.usageLimitPerUser == null && row.usage_limit_per_user == null ? null : safeNumber(row.usageLimitPerUser ?? row.usage_limit_per_user),
-        discountType: safeString(row.discountType ?? row.discount_type) === "percentage" ? "percentage" : "flat",
-        discountValue: safeNumber(row.discountValue ?? row.discount_value),
+          row.usageLimitPerUser == null && row.usage_limit_per_user == null && (row.config_json as any)?.usageLimitPerUser == null
+            ? null
+            : safeNumber(row.usageLimitPerUser ?? row.usage_limit_per_user ?? (row.config_json as any)?.usageLimitPerUser),
+        discountType: safeString(row.discountType ?? row.discount_type ?? (row.config_json as any)?.discountType) === "percentage" || (row.config_json as any)?.discountType === "percent" ? "percentage" : "flat",
+        discountValue: safeNumber(row.discountValue ?? row.discount_value ?? (row.config_json as any)?.discountValue),
         maxDiscountAmount:
-          row.maxDiscountAmount == null && row.max_discount_amount == null ? null : safeNumber(row.maxDiscountAmount ?? row.max_discount_amount),
+          row.maxDiscountAmount == null && row.max_discount_amount == null && (row.config_json as any)?.maxDiscountAmount == null
+            ? null
+            : safeNumber(row.maxDiscountAmount ?? row.max_discount_amount ?? (row.config_json as any)?.maxDiscountAmount),
       }
+    }
+  }
+  return null
+}
+
+export const getCouponByIdSupabase = async (id: string): Promise<CouponCheckoutRecord | null> => {
+  const client = getSupabaseAdmin()
+  for (const table of COUPON_TABLES) {
+    const { data, error } = await client.from(table).select("*").eq("id", id).maybeSingle()
+    if (error || !data) continue
+    const row = data as Record<string, unknown>
+    return {
+      id: safeString(row.id),
+      code: safeString(row.code),
+      active: Boolean(row.active) || row.status === "active",
+      endsAt: row.endsAt ? new Date(String(row.endsAt)) : row.ends_at ? new Date(String(row.ends_at)) : null,
+      minOrderAmount: row.minOrderAmount == null && row.min_order_amount == null && (row.config_json as any)?.minCartValue == null
+        ? null
+        : safeNumber(row.minOrderAmount ?? row.min_order_amount ?? (row.config_json as any)?.minCartValue),
+      firstOrderOnly: Boolean(row.firstOrderOnly ?? row.first_order_only ?? (row.config_json as any)?.firstOrderOnly),
+      usageLimitPerUser:
+        row.usageLimitPerUser == null && row.usage_limit_per_user == null && (row.config_json as any)?.usageLimitPerUser == null
+          ? null
+          : safeNumber(row.usageLimitPerUser ?? row.usage_limit_per_user ?? (row.config_json as any)?.usageLimitPerUser),
+      discountType: safeString(row.discountType ?? row.discount_type ?? (row.config_json as any)?.discountType) === "percentage" || (row.config_json as any)?.discountType === "percent" ? "percentage" : "flat",
+      discountValue: safeNumber(row.discountValue ?? row.discount_value ?? (row.config_json as any)?.discountValue),
+      maxDiscountAmount:
+        row.maxDiscountAmount == null && row.max_discount_amount == null && (row.config_json as any)?.maxDiscountAmount == null
+          ? null
+          : safeNumber(row.maxDiscountAmount ?? row.max_discount_amount ?? (row.config_json as any)?.maxDiscountAmount),
     }
   }
   return null
@@ -1266,8 +1306,11 @@ export const getOrderByIdSupabaseBasic = async (orderId: string) => {
           orderId: safeString(rowItem.orderId ?? rowItem.order_id) || orderId,
           productId,
           variantId: variantId || null,
+          sku: safeString(rowItem.sku) || safeString(variant?.sku) || safeString(product?.sku) || null,
           quantity: safeNumber(rowItem.quantity, 0),
           unitPrice: safeNumber(rowItem.unitPrice ?? rowItem.unit_price, 0),
+          subtotal: safeNumber(rowItem.subtotal ?? rowItem.lineTotal ?? rowItem.line_total, 0),
+          tax: safeNumber(rowItem.tax, 0),
           lineTotal: safeNumber(rowItem.lineTotal ?? rowItem.line_total, 0),
           // Always present so the UI never NPEs on a missing/deleted product.
           product: product
@@ -1426,8 +1469,12 @@ export const getOrderByIdSupabaseBasic = async (orderId: string) => {
         paymentStatus: safeString(row.paymentStatus ?? row.payment_status) || "PENDING",
         total: Number(row.total ?? 0),
         subtotal: Number(row.subtotal ?? 0),
+        discount: Number(row.discount ?? 0),
+        tax: Number(row.tax ?? 0),
+        shippingCharge: Number(row.shippingCharge ?? row.shipping_charge ?? row.shipping ?? 0),
         shipping: Number(row.shipping ?? 0),
         currency: safeString(row.currency) || "INR",
+        couponCode: safeString(row.couponCode ?? row.coupon_code) || null,
         paymentMethod: safeString(row.paymentMethod ?? row.payment_method) || null,
         paymentId: safeString(row.paymentId ?? row.payment_id) || null,
         customerName: (row.customerName ?? row.customer_name ?? null) as string | null,
@@ -1594,6 +1641,9 @@ export const createOrderWithItemsSupabase = async (input: {
     ]
     for (const attempt of insertAttempts) {
       const { data, error } = await attempt();
+      if (error) {
+        console.error(`[orders.createOrderWithItemsSupabase] Insert failed for table ${table}:`, error);
+      }
       if (!error && data?.id) {
         orderId = safeString(data.id);
         insertedTable = table;
@@ -1624,6 +1674,7 @@ export const createOrderWithItemsSupabase = async (input: {
 
     for (const rows of [camelRows, snakeRows]) {
       const result = await client.from(itemTable).insert(rows)
+      if (result.error) console.error(`[orders.createOrderWithItemsSupabase] Item insert error table=${itemTable}:`, result.error);
 
       if (!result.error) {
         inserted = true;

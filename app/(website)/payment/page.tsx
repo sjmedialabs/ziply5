@@ -4,6 +4,10 @@ import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useMutation } from "@tanstack/react-query";
 import { getCartItems, setCartItems } from "@/lib/cart";
+import {
+  clearCheckoutStorage,
+  readCheckoutStorage,
+} from "@/lib/ecommerce-order";
 
 declare global {
   interface Window {
@@ -35,10 +39,31 @@ function PaymentPageInner() {
     phone: "",
   });
   const [hasCheckoutBilling, setHasCheckoutBilling] = useState(false);
+  const [hasCheckoutSnapshot, setHasCheckoutSnapshot] = useState(false);
 
   useEffect(() => {
     // Avoid hydration mismatch: cart is client-only (localStorage)
-    setItemsState(getCartItems());
+    const checkout = readCheckoutStorage();
+    if (checkout?.items?.length) {
+      setHasCheckoutSnapshot(true);
+      setItemsState(checkout.items as any);
+      const saved = checkout.billingAddress;
+      if (saved) {
+        setBillingAddress({
+          fullName: saved.fullName ?? "",
+          line1: saved.addressLine1 ?? "",
+          city: saved.city ?? "",
+          state: saved.state ?? "",
+          postalCode: saved.postalCode ?? "",
+          country: saved.country ?? "India",
+          phone: saved.phone ?? "",
+        });
+      }
+      setCouponAdjustedTotal(checkout.total ?? null);
+    } else {
+      setHasCheckoutSnapshot(false);
+      setItemsState(getCartItems());
+    }
   }, []);
 
   const subTotal = items.reduce((sum, item) => sum + item.price * item.quantity, 0);
@@ -95,12 +120,23 @@ function PaymentPageInner() {
         },
         body: JSON.stringify({
           items: items.map((i) => ({
-            slug: i.slug, // REQUIRED
+            productId: i.productId ?? i.slug,
+            variantId: i.variantId ?? null,
+            sku: i.sku ?? null,
             quantity: Number(i.quantity ?? 1),
+            price: Number(i.price ?? 0),
+            subtotal: Number((i.subtotal ?? i.price * i.quantity) ?? 0),
+            tax: Number(i.tax ?? 0),
           })),
-          shipping,
-          couponCode: window.localStorage.getItem("ziply5_coupon_code") || undefined,
-          appliedCouponId: window.localStorage.getItem("ziply5_applied_coupon_id") || null,
+          shippingCharge: shipping,
+          couponCode:
+            readCheckoutStorage()?.coupon?.code ||
+            window.localStorage.getItem("ziply5_coupon_code") ||
+            undefined,
+          couponId:
+            readCheckoutStorage()?.coupon?.couponId ||
+            window.localStorage.getItem("ziply5_applied_coupon_id") ||
+            null,
           gateway,
 
           billingAddress: {
@@ -233,6 +269,7 @@ const handleCOD = async () => {
 
     // ✅ cleanup
     setCartItems([]);
+    clearCheckoutStorage();
     window.localStorage.removeItem("ziply5_checkout_ref");
     window.localStorage.removeItem("ziply5_final_total");
     window.localStorage.removeItem("ziply5_coupon_code");
@@ -417,6 +454,7 @@ const handleOnlinePayment = async () => {
           window.localStorage.removeItem("ziply5_pending_order_id");
           window.localStorage.removeItem("ziply5_checkout_ref");
           setCartItems([]);
+          clearCheckoutStorage();
           router.push(`/payment-success?orderId=${orderId}`);
           window.localStorage.removeItem("ziply5_final_total");
           window.localStorage.removeItem("ziply5_coupon_code");
@@ -466,6 +504,9 @@ const handleOnlinePayment = async () => {
   return (
     <div className="py-24 flex items-center justify-center bg-[#F5F1E6] p-4">
       <div className="w-full max-w-xl bg-white rounded-3xl p-6 shadow-sm border">
+        {!hasCheckoutSnapshot && items.length === 0 ? (
+          <p className="mb-4 text-sm text-red-600">Checkout session missing. Please go back to checkout.</p>
+        ) : null}
         <h2 className="font-melon text-lg mb-6">Billing Address</h2>
 
         {!loggedIn && (
