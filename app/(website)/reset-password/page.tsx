@@ -10,7 +10,7 @@ function ResetPasswordForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const token = searchParams.get("token");
-  
+
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -125,7 +125,7 @@ export default function ResetPasswordPage() {
             <div className="mx-auto mb-6 flex h-16 w-16 items-center justify-center rounded-2xl bg-[#FFC222]/20 text-[#7B3010]">
               <Shield className="h-8 w-8" />
             </div>
-            
+
             <div className="text-center mb-10">
               <h1 className="font-melon text-3xl font-bold text-[#111827]">New Password</h1>
               <p className="mt-2 text-sm text-[#6B7280]">Create a strong password for your account</p>
@@ -136,9 +136,9 @@ export default function ResetPasswordPage() {
             </Suspense>
 
             <div className="mt-10 text-center">
-              <Link href="/login" className="text-sm font-medium text-[#6B7280] hover:text-[#111827] hover:underline">
+              {/* <Link href="/login" className="text-sm font-medium text-[#6B7280] hover:text-[#111827] hover:underline">
                 Back to Login
-              </Link>
+              </Link> */}
             </div>
           </div>
         </div>
