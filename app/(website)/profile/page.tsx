@@ -65,6 +65,8 @@ function ProfilePageContent() {
     quantity: number;
     uploading: boolean;
   }>>({})
+  const [isCancelModalOpen, setIsCancelModalOpen] = useState(false)
+  const [selectedOrderForCancel, setSelectedOrderForCancel] = useState<{ id: string, status: string } | null>(null)
   const getReturnedProductIds = (order: ApiOrderRow) =>
     new Set(
       (order.returnRequests ?? [])
@@ -936,7 +938,10 @@ function ProfilePageContent() {
                             <button
                               type="button"
                               disabled={orderActionBusy === `${order.id}:cancel_request` || orderActionBusy === `${order.id}:cancel_pending`}
-                              onClick={() => void runOrderAction(order.id, order.status.toLowerCase() === "pending" ? "cancel_pending" : "cancel_request")}
+                              onClick={() => {
+                                setSelectedOrderForCancel({ id: order.id, status: order.status })
+                                setIsCancelModalOpen(true)
+                              }}
                               className="rounded-md border border-[#E8DCC8] bg-white px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-[#4A1D1F] disabled:opacity-40"
                             >
                               Cancel Order
@@ -1119,6 +1124,42 @@ function ProfilePageContent() {
                           className="flex-1 rounded-xl bg-primary py-3 text-xs font-bold uppercase tracking-widest text-white shadow-md hover:opacity-90 disabled:opacity-50 transition-all"
                         >
                           {orderActionBusy === `${selectedOrderForReturn.id}:return_request` ? "Submitting..." : "Submit Return Request"}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* CANCEL CONFIRMATION MODAL */}
+              {isCancelModalOpen && selectedOrderForCancel && (
+                <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm" onClick={() => setIsCancelModalOpen(false)}>
+                  <div className="w-full max-w-md rounded-3xl bg-white shadow-2xl overflow-hidden" onClick={(e) => e.stopPropagation()}>
+                    <div className="bg-primary p-5 text-white flex items-center justify-between">
+                      <h3 className="font-melon text-lg font-bold uppercase tracking-wider">Confirm Cancellation</h3>
+                      <button onClick={() => setIsCancelModalOpen(false)} className="rounded-full bg-white/20 p-1 hover:bg-white/30 transition-colors">
+                        <X size={20} />
+                      </button>
+                    </div>
+                    <div className="p-6 text-center">
+                      <p className="text-gray-600 mb-6">Are you sure you want to cancel order #{selectedOrderForCancel.id.slice(0, 8)}? This action cannot be undone.</p>
+                      <div className="flex gap-3">
+                        <button
+                          type="button"
+                          onClick={() => setIsCancelModalOpen(false)}
+                          className="flex-1 rounded-xl border border-gray-200 py-3 text-xs font-bold uppercase tracking-widest text-gray-600 hover:bg-gray-50 transition-all"
+                        >
+                          Go Back
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            void runOrderAction(selectedOrderForCancel.id, selectedOrderForCancel.status.toLowerCase() === "pending" ? "cancel_pending" : "cancel_request")
+                            setIsCancelModalOpen(false)
+                          }}
+                          className="flex-1 rounded-xl bg-red-600 py-3 text-xs font-bold uppercase tracking-widest text-white shadow-md hover:bg-red-700 transition-all"
+                        >
+                          Confirm
                         </button>
                       </div>
                     </div>

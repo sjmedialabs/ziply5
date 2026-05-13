@@ -99,6 +99,7 @@ export default function OrderDetailPage() {
   const [actionBusy, setActionBusy] = useState<string | null>(null)
   const [reviewDrafts, setReviewDrafts] = useState<Record<string, { rating: number; content: string }>>({})
   const [existingReviewedProducts, setExistingReviewedProducts] = useState<Set<string>>(new Set())
+  const [isCancelModalOpen, setIsCancelModalOpen] = useState(false)
   const [reviewBusyByProduct, setReviewBusyByProduct] = useState<Record<string, boolean>>({})
 
   const openReturnModal = () => {
@@ -400,7 +401,7 @@ export default function OrderDetailPage() {
             {(paymentStatus ?? "").toUpperCase() === "SUCCESS" && ["confirmed", "packed"].includes(order.status.toLowerCase()) && !cancelRequested && (
               <button
                 type="button"
-                onClick={() => void runStatusAction("cancel_request")}
+                onClick={() => setIsCancelModalOpen(true)}
                 disabled={actionBusy === "cancel_request"}
                 className="mt-2 rounded-full border border-[#E8DCC8] bg-white px-4 py-2 text-xs font-semibold uppercase text-[#4A1D1F] disabled:opacity-40"
               >
@@ -711,6 +712,41 @@ export default function OrderDetailPage() {
                       className="flex-1 rounded-xl bg-[#7B3010] py-3 text-xs font-bold uppercase tracking-widest text-white shadow-md hover:opacity-90 disabled:opacity-50 transition-all"
                     >
                       {actionBusy === "return_request" ? "Submitting..." : "Submit Return Request"}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+          {isCancelModalOpen && (
+            <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm" onClick={() => setIsCancelModalOpen(false)}>
+              <div className="w-full max-w-md rounded-3xl bg-white shadow-2xl overflow-hidden" onClick={(e) => e.stopPropagation()}>
+                <div className="bg-[#7B3010] p-5 text-white flex items-center justify-between">
+                  <h3 className="font-melon text-lg font-bold uppercase tracking-wider">Confirm Cancellation</h3>
+                  <button onClick={() => setIsCancelModalOpen(false)} className="rounded-full bg-white/20 p-1 hover:bg-white/30 transition-colors">
+                    <X size={20} />
+                  </button>
+                </div>
+                <div className="p-6">
+                  <p className="text-gray-600 mb-6 text-center">Are you sure you want to cancel this order? This action cannot be undone.</p>
+                  <div className="flex gap-3">
+                    <button
+                      type="button"
+                      onClick={() => setIsCancelModalOpen(false)}
+                      className="flex-1 rounded-xl border border-gray-200 py-3 text-xs font-bold uppercase tracking-widest text-gray-600 hover:bg-gray-50 transition-all"
+                    >
+                      Go Back
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        void runStatusAction("cancel_request")
+                        setIsCancelModalOpen(false)
+                      }}
+                      disabled={actionBusy === "cancel_request"}
+                      className="flex-1 rounded-xl bg-red-600 py-3 text-xs font-bold uppercase tracking-widest text-white shadow-md hover:bg-red-700 disabled:opacity-50 transition-all"
+                    >
+                      {actionBusy === "cancel_request" ? "Processing..." : "Confirm Cancellation"}
                     </button>
                   </div>
                 </div>
