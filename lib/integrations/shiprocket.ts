@@ -37,6 +37,9 @@ export type CreateOrderInput = Record<string, unknown>
 export type CreateOrderResponse = {
   order_id?: number
   shipment_id?: number
+  message?: string
+  errors?: unknown
+  [key: string]: unknown
 }
 
 export type AssignAwbInput = {
@@ -61,6 +64,22 @@ export type GeneratePickupResponse = {
 }
 
 const DEFAULT_TIMEOUT_MS = 12000
+
+export class ShiprocketApiError extends Error {
+  status: number
+  body: string
+  endpoint: string
+  isTransient: boolean
+
+  constructor(input: { message: string; status: number; body: string; endpoint: string; isTransient: boolean }) {
+    super(input.message)
+    this.name = "ShiprocketApiError"
+    this.status = input.status
+    this.body = input.body
+    this.endpoint = input.endpoint
+    this.isTransient = input.isTransient
+  }
+}
 
 const normalizeBearer = (value: string) => value.trim().replace(/^Bearer\s+/i, "")
 
@@ -179,7 +198,13 @@ const requestWithAuth = async <T>(
     }
     const raw = await res.text()
     console.error(`[shiprocket] ${method} ${endpoint} failed ${res.status}`, raw.slice(0, 300))
-    throw new Error(`Shiprocket API error (${res.status})`)
+    throw new ShiprocketApiError({
+      message: `Shiprocket API error (${res.status})`,
+      status: res.status,
+      body: raw,
+      endpoint,
+      isTransient: res.status === 429 || res.status >= 500,
+    })
   }
   return (await res.json()) as T
 }

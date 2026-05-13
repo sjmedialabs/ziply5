@@ -43,10 +43,15 @@ export async function POST(request: NextRequest) {
     const order = await createOrderFromCheckout({
       items: parsed.data.items,
       userId,
-      shipping: parsed.data.shipping,
+      shipping: parsed.data.shippingCharge ?? parsed.data.shipping,
       currency: parsed.data.currency,
       couponCode: parsed.data.couponCode,
+      appliedCouponId: parsed.data.couponId ?? parsed.data.appliedCouponId ?? null,
       gateway: parsed.data.gateway,
+      subtotal: parsed.data.subtotal,
+      discount: parsed.data.discount,
+      tax: parsed.data.tax,
+      total: parsed.data.total,
 
       // 🔥 NEW FIELDS
       billingAddress: parsed.data.billingAddress,

@@ -75,6 +75,10 @@
   --sidebar-ring: oklch(0.439 0 0);
 }
 
+button:not(:disabled) {
+  cursor: pointer;
+}
+
 @media (max-width: 1023px) {
   :root {
     --site-header-sticky-offset: 7.5rem;
@@ -149,6 +153,7 @@
   ::view-transition-old(root) {
     animation: premium-fade-out 180ms ease-in both;
   }
+
   ::view-transition-new(root) {
     animation: premium-fade-in 240ms ease-out both;
   }
@@ -159,6 +164,7 @@
     opacity: 0.01;
     transform: translateY(6px);
   }
+
   to {
     opacity: 1;
     transform: translateY(0);
@@ -170,6 +176,7 @@
     opacity: 1;
     transform: translateY(0);
   }
+
   to {
     opacity: 0.01;
     transform: translateY(-4px);
@@ -179,6 +186,7 @@
 .premium-page-enter {
   animation: premium-fade-in 260ms ease-out both;
 }
+
 .premium-page-entered {
   animation: none;
 }
@@ -194,10 +202,12 @@
       transform 160ms ease,
       opacity 160ms ease;
   }
+
   :where(button, a)[aria-disabled="true"],
   :where(button, a):disabled {
     transform: none;
   }
+
   :where(button, a):active {
     transform: translateY(1px);
   }
@@ -356,6 +366,7 @@ body {
       opacity: 0.65;
       transform: translateX(28px);
     }
+
     to {
       opacity: 1;
       transform: translateX(0);
@@ -367,6 +378,7 @@ body {
       opacity: 0.65;
       transform: translateX(-28px);
     }
+
     to {
       opacity: 1;
       transform: translateX(0);
@@ -494,16 +506,19 @@ body {
 
 /* To maintain equal padding for all sections (px-4 sm:px-6 lg:px-8 | py-12 md:py-16 lg:py-20) */
 .section-padding {
-  padding-left: 16px;   /* px-4 */
+  padding-left: 16px;
+  /* px-4 */
   padding-right: 16px;
-  padding-top: 48px;    /* py-12 */
+  padding-top: 48px;
+  /* py-12 */
   padding-bottom: 48px;
 }
 
 /* sm breakpoint (640px and above) */
 @media (min-width: 640px) {
   .section-padding {
-    padding-left: 24px;  /* sm:px-6 */
+    padding-left: 24px;
+    /* sm:px-6 */
     padding-right: 24px;
   }
 }
@@ -511,7 +526,8 @@ body {
 /* md breakpoint (768px and above) */
 @media (min-width: 768px) {
   .section-padding {
-    padding-top: 64px;   /* md:py-16 */
+    padding-top: 64px;
+    /* md:py-16 */
     padding-bottom: 64px;
   }
 }
@@ -519,32 +535,38 @@ body {
 /* lg breakpoint (1024px and above) */
 @media (min-width: 1024px) {
   .section-padding {
-    padding-left: 32px;  /* lg:px-8 */
+    padding-left: 32px;
+    /* lg:px-8 */
     padding-right: 32px;
-    padding-top: 80px;   /* lg:py-20 */
+    padding-top: 80px;
+    /* lg:py-20 */
     padding-bottom: 80px;
   }
 }
 
 /* Reusable inner container: max-w-7xl mx-auto with section-padding horizontal spacing */
 .section-container {
-  max-width: 80rem; /* max-w-7xl = 1280px */
+  max-width: 80rem;
+  /* max-w-7xl = 1280px */
   margin-left: auto;
   margin-right: auto;
-  padding-left: 16px;   /* px-4 */
+  padding-left: 16px;
+  /* px-4 */
   padding-right: 16px;
 }
 
 @media (min-width: 640px) {
   .section-container {
-    padding-left: 24px;  /* sm:px-6 */
+    padding-left: 24px;
+    /* sm:px-6 */
     padding-right: 24px;
   }
 }
 
 @media (min-width: 1024px) {
   .section-container {
-    padding-left: 32px;  /* lg:px-8 */
+    padding-left: 32px;
+    /* lg:px-8 */
     padding-right: 32px;
   }
 }
@@ -1075,6 +1097,7 @@ body {
     padding: 0 32px;
   }
 }
+
 .input {
   @apply w-full px-4 py-3 rounded-xl border border-[#E0E0E0] bg-white outline-none;
 }
