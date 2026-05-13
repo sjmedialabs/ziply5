@@ -31,6 +31,7 @@ function PaymentPageInner() {
   const [items, setItemsState] = useState<ReturnType<typeof getCartItems>>([]);
   const [billingAddress, setBillingAddress] = useState({
     fullName: "",
+    email: "",
     line1: "",
     city: "",
     state: "",
@@ -51,6 +52,7 @@ function PaymentPageInner() {
       if (saved) {
         setBillingAddress({
           fullName: saved.fullName ?? "",
+          email: saved.email ?? "",
           line1: saved.addressLine1 ?? "",
           city: saved.city ?? "",
           state: saved.state ?? "",
@@ -86,6 +88,8 @@ function PaymentPageInner() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           sessionKey,
+          email: billingAddress.email,
+          mobile: billingAddress.phone,
           items,
           total: payableAmount,
           eventType,
@@ -141,6 +145,7 @@ function PaymentPageInner() {
 
           billingAddress: {
             fullName: billingAddress.fullName,
+            email: billingAddress.email,
             line1: billingAddress.line1,
             city: billingAddress.city,
             state: billingAddress.state,
@@ -154,6 +159,7 @@ function PaymentPageInner() {
             gateway === "cod"
               ? undefined
               : `checkout_ref:${checkoutRef}`,
+          sessionKey,
         })
       });
       const json = (await res.json()) as { success?: boolean; message?: string; data?: { id: string } };

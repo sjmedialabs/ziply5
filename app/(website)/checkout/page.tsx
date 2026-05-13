@@ -177,9 +177,48 @@ export default function CheckoutPage() {
         setState(savedCheckout.billingAddress.state ?? "");
         setCity(savedCheckout.billingAddress.city ?? "");
       }
+      
+      // Also restore coupon from checkout storage if available
+      if (savedCheckout.coupon) {
+        if (!couponCode && savedCheckout.coupon.code) {
+          setCouponCode(savedCheckout.coupon.code);
+        }
+        if (!appliedCouponId && savedCheckout.coupon.couponId) {
+          setAppliedCouponId(savedCheckout.coupon.couponId);
+        }
+      }
     }
 
     void loadAddresses();
+
+    const fetchProfile = async () => {
+      const token = window.localStorage.getItem("ziply5_access_token");
+      const userStr = window.localStorage.getItem("ziply5_user");
+      if (!token || !userStr) return;
+      try {
+        const user = JSON.parse(userStr);
+        if (!user?.id) return;
+        const res = await fetch(`/api/v1/profile?userId=${encodeURIComponent(user.id)}`, {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "x-user-id": user.id
+          },
+        });
+        const payload = await res.json();
+        if (payload.success && payload.data) {
+          setBilling((prev) => ({
+            ...prev,
+            email: prev.email || payload.data.email || "",
+            phone: prev.phone || payload.data.profile?.phone || "",
+            firstName: prev.firstName || payload.data.name?.split(" ")[0] || "",
+            lastName: prev.lastName || payload.data.name?.split(" ").slice(1).join(" ") || "",
+          }));
+        }
+      } catch (err) {
+        console.error("Failed to fetch profile in checkout", err);
+      }
+    };
+    fetchProfile();
 
     return () => {
       window.removeEventListener("ziply5:cart-updated", syncCart);
@@ -352,6 +391,7 @@ useEffect(() => {
       setCouponDiscount(Number(payload.data.discount));
       if (payload.data.couponId) {
         window.localStorage.setItem("ziply5_applied_coupon_id", payload.data.couponId);
+        window.localStorage.setItem("ziply5_coupon_code", couponCode.trim());
         setAppliedCouponId(payload.data.couponId);
       }
       await recalculateOffers(couponCode.trim());
@@ -372,6 +412,14 @@ useEffect(() => {
     try {
       window.localStorage.removeItem("ziply5_coupon_code");
       window.localStorage.removeItem("ziply5_applied_coupon_id");
+      window.localStorage.removeItem("ziply5_final_total");
+      
+      // Also update consolidated checkout storage if it exists
+      const savedCheckout = readCheckoutStorage();
+      if (savedCheckout) {
+        savedCheckout.coupon = null;
+        writeCheckoutStorage(savedCheckout);
+      }
     } catch {}
     await recalculateOffers("");
   };
@@ -428,6 +476,8 @@ useEffect(() => {
       window.localStorage.setItem("ziply5_checkout_billing_address", JSON.stringify(payload));
       if (couponApplied) {
         window.localStorage.setItem("ziply5_final_total", total.toString());
+      } else {
+        window.localStorage.removeItem("ziply5_final_total");
       }
       const normalizedAddress: CheckoutAddress = {
         fullName: payload.fullName,

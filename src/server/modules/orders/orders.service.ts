@@ -320,6 +320,7 @@ export const createOrderFromCheckout = async (input: {
 
   paymentStatus?: string
   paymentId?: string
+  sessionKey?: string | null
 }) => {
   if (input.paymentId?.trim()) {
     // For COD, paymentId is not provided initially, so this check should only apply to online payments
@@ -539,6 +540,7 @@ export const createOrderFromCheckout = async (input: {
   })
   console.log("Outbox event enqueued for order.created")
   await markCartConverted({
+    sessionKey: input.sessionKey,
     email: input.billingAddress?.email ?? null,
     mobile: input.billingAddress?.phone ?? null,
     orderId: order.id,
