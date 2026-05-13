@@ -54,16 +54,27 @@ export async function POST(request: NextRequest, ctx: { params: Promise<{ id: st
   try {
     if (parsed.data.action === "cancel_request") {
       const paymentStatus = normalizePaymentStatus(order.paymentStatus)
-      if (paymentStatus !== "SUCCESS") return fail("Only paid orders can be cancelled", 422)
-      if (!["confirmed", "packed"].includes(String(order.status))) return fail("Cannot cancel after shipment", 422)
-      const updated = await updateOrderStatus(order.id, "cancel_requested", auth.user.sub, {
-        reasonCode: "cancel_requested",
-        note: parsed.data.reason ?? "Customer requested cancellation",
-      })
-      if (parsed.data.reason?.trim()) {
-        await setOrderCancelReason(order.id, parsed.data.reason.trim())
+      // Only allow cancellation if not yet shipped
+      if (!["pending", "confirmed", "packed", "admin_approval_pending"].includes(String(order.status))) {
+        return fail("Cannot cancel order after it has been shipped", 422)
       }
-      return ok(updated, "Cancel requested")
+
+      // Perform auto-cancellation
+      const updated = await updateOrderStatus(order.id, "cancelled", auth.user.sub, {
+        reasonCode: "customer_cancelled",
+        note: parsed.data.reason ?? "Customer cancelled order",
+      })
+
+      // If it was already paid, trigger an immediate refund
+      if (paymentStatus === "SUCCESS") {
+        const amount = Number(order.total)
+        const refund = await createRefund(order.id, amount, "Customer auto-cancellation refund")
+        await triggerRazorpayRefund({ refundRecordId: refund.id }).catch(e => {
+          console.error("[Auto-Refund Error] Failed to trigger Razorpay refund", e)
+        })
+      }
+
+      return ok(updated, "Order cancelled successfully")
     }
     if (parsed.data.action === "cancel_pending") {
       await updateOrderStatus(order.id, "cancelled", auth.user.sub, {

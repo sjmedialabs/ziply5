@@ -3,25 +3,9 @@
 import { useState, useEffect, useMemo } from "react"
 import Image from "next/image"
 import { m, useReducedMotion } from "framer-motion"
+import SplitText from "./animations/SplitText"
 
-function splitIntoLines(text: string, mode: "title" | "subtitle") {
-  const t = text.trim()
-  if (!t) return []
-  if (t.includes("\n")) {
-    return t
-      .split("\n")
-      .map((l) => l.trim())
-      .filter(Boolean)
-  }
-  const words = t.split(/\s+/).filter(Boolean)
-  if (mode === "title") {
-    if (words.length <= 2) return [words.join(" ")]
-    if (words.length <= 4) return [words.slice(0, 2).join(" "), words.slice(2).join(" ")]
-    return [words.slice(0, 2).join(" "), words.slice(2, 4).join(" "), words.slice(4).join(" ")]
-  }
-  if (words.length <= 4) return [words.join(" ")]
-  return [words.slice(0, 4).join(" "), words.slice(4).join(" ")]
-}
+
 
 export default function Hero({ cmsData }: { cmsData?: any }) {
   const [currentSlide, setCurrentSlide] = useState(0)
@@ -106,7 +90,7 @@ export default function Hero({ cmsData }: { cmsData?: any }) {
         setCurrentSlide(0)
         // Reset warping state after the warp happens
         setTimeout(() => setIsWarping(false), 50)
-      }, 850) // Wait for the transition to finish
+      }, 3500) // Wait for the transition to finish (matching the 3.5s duration)
       return () => clearTimeout(timer)
     }
   }, [currentSlide, extendedSlides.length])
@@ -114,21 +98,7 @@ export default function Hero({ cmsData }: { cmsData?: any }) {
   const currentTitle = slides[currentSlide % slides.length]?.title || globalTitle
   const currentSubtitle = slides[currentSlide % slides.length]?.subtitle || globalSubtitle
 
-  const titleLines = useMemo(
-    () => splitIntoLines(currentTitle, "title"),
-    [currentTitle, currentSlide],
-  )
-  const subtitleLines = useMemo(
-    () => splitIntoLines(currentSubtitle, "subtitle"),
-    [currentSubtitle, currentSlide],
-  )
 
-  const lineMotion = reduceMotion
-    ? {}
-    : {
-        initial: { opacity: 0, y: 18 },
-        animate: { opacity: 1, y: 0 },
-      }
 
   return (
     <section className="relative overflow-hidden">
@@ -139,71 +109,75 @@ export default function Hero({ cmsData }: { cmsData?: any }) {
         onTouchEnd={handleTouchEnd}
       >
         <div className="relative h-full w-full overflow-hidden">
-          <m.div 
+          <m.div
             className="flex h-full w-full"
             animate={{ x: `-${currentSlide * 100}%` }}
-            transition={isWarping ? { duration: 0 } : { duration: 0.8, ease: [0.32, 0.72, 0, 1] }}
+            transition={isWarping ? { duration: 0 } : { duration: 2.5, ease: [0.32, 0.72, 0, 1] }}
           >
-            {extendedSlides.map((slide: any, idx: number) => (
-              <div key={idx} className="h-full w-full flex-shrink-0 relative">
-                <Image
-                  src={slide?.image || slide}
-                  alt={slide?.alt || `Hero Image ${idx}`}
-                  fill
-                  sizes="100vw"
-                  className="object-cover w-full h-full"
-                  priority={idx === 0}
-                />
-              </div>
-            ))}
+            {extendedSlides.map((slide: any, idx: number) => {
+              const slideTitle = slide?.title || globalTitle;
+              const slideSubtitle = slide?.subtitle || globalSubtitle;
+
+              return (
+                <div key={idx} className="h-full w-full flex-shrink-0 relative">
+                  <Image
+                    src={slide?.image || slide}
+                    alt={slide?.alt || `Hero Image ${idx}`}
+                    fill
+                    sizes="100vw"
+                    className="object-cover w-full h-full"
+                    priority={idx === 0}
+                  />
+
+                  {/* TEXT SLIDING WITH IMAGE */}
+                  <div className="absolute inset-0 z-20 flex items-start pt-32 md:pt-40 lg:pt-1 pointer-events-none">
+                    <div className="w-full max-w-7xl mx-auto px-4 relative h-full">
+                      <m.div
+                        initial={{ opacity: 0, x: 50 }}
+                        animate={{ opacity: currentSlide === idx ? 1 : 0, x: currentSlide === idx ? 0 : 50 }}
+                        transition={isWarping ? { duration: 0 } : { delay: 0.2, duration: 1.8 }}
+                        className="max-w-7xl pt-24 md:pt-20"
+                      >
+                        <h1 className="font-heading text-3xl md:text-5xl lg:text-7xl font-extrabold text-primary leading-[1.05] drop-shadow-lg">
+                          <SplitText
+                            text={(() => {
+                              const title = slideTitle;
+                              if (title.includes("\n")) return title;
+                              const words = title.trim().split(/\s+/);
+                              if (words.length > 3) {
+                                return `${words.slice(0, 2).join(" ")}\n${words.slice(2).join(" ")}`;
+                              }
+                              return title;
+                            })()}
+                            stagger={0.03}
+                          />
+                        </h1>
+                        <div className="mt-4">
+                          <p className="font-heading text-lg md:text-2xl lg:text-4xl font-extrabold leading-snug text-primary uppercase drop-shadow-md whitespace-pre-line">
+                            <SplitText
+                              text={(() => {
+                                const subtitle = slideSubtitle;
+                                if (subtitle.includes("\n")) return subtitle;
+                                const words = subtitle.trim().split(/\s+/);
+                                if (words.length > 3) {
+                                  return `${words.slice(0, 6).join(" ")}\n${words.slice(6).join(" ")}`;
+                                }
+                                return subtitle;
+                              })()}
+                              stagger={0.02}
+                            />
+                          </p>
+                        </div>
+                      </m.div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
           </m.div>
         </div>
 
-        <div className="absolute inset-0 flex items-start pt-10 md:pt-14 lg:pt-16 pointer-events-none">
-          <div className="w-full max-w-7xl mx-auto px-4">
-            <div className="max-w-7xl" key={`hero-copy-${currentSlide % slides.length}`}>
-              <h1 className="font-heading text-3xl md:text-5xl lg:text-7xl font-extrabold text-amber-900 leading-[1.05] drop-shadow-lg">
-                <span className="block space-y-1 md:space-y-2">
-                  {titleLines.map((line, i) => (
-                    <m.span
-                      key={`t-${i}`}
-                      className="block"
-                      {...lineMotion}
-                      transition={
-                        reduceMotion
-                          ? undefined
-                          : { duration: 0.5, delay: i * 0.1, ease: [0.22, 1, 0.36, 1] }
-                      }
-                    >
-                      {line}
-                    </m.span>
-                  ))}
-                </span>
-              </h1>
 
-              <div className="mt-4 space-y-1 md:space-y-2">
-                {subtitleLines.map((line, i) => (
-                  <m.p
-                    key={`s-${i}`}
-                    className="font-heading text-lg md:text-2xl lg:text-4xl font-extrabold text-amber-900 leading-[1.05] uppercase drop-shadow-md"
-                    {...lineMotion}
-                    transition={
-                      reduceMotion
-                        ? undefined
-                        : {
-                            duration: 0.48,
-                            delay: 0.18 + i * 0.09,
-                            ease: [0.22, 1, 0.36, 1],
-                          }
-                    }
-                  >
-                    {line}
-                  </m.p>
-                ))}
-              </div>
-            </div>
-          </div>
-        </div>
       </div>
 
       <div className="absolute bottom-6 left-1/2 -translate-x-1/2 flex gap-2">
@@ -216,11 +190,10 @@ export default function Hero({ cmsData }: { cmsData?: any }) {
               setIsWarping(false)
               setCurrentSlide(dot)
             }}
-            className={`h-2.5 rounded-full cursor-pointer transition-all duration-300 ${
-              currentSlide % slides.length === dot
-                ? "w-6 bg-amber-900"
-                : "w-2.5 bg-white/80 border border-amber-900/50"
-            }`}
+            className={`h-2.5 rounded-full cursor-pointer transition-all duration-300 ${currentSlide % slides.length === dot
+              ? "w-6 bg-amber-900"
+              : "w-2.5 bg-white/80 border border-amber-900/50"
+              }`}
           />
         ))}
       </div>

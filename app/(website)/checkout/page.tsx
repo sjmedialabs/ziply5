@@ -16,6 +16,11 @@ import {
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { authedFetch, authedPost, authedPatch } from "@/lib/dashboard-fetch"; // Utility functions for authenticated API calls
+import {
+  readCheckoutStorage,
+  writeCheckoutStorage,
+  type CheckoutAddress,
+} from "@/lib/ecommerce-order";
 
 type Addr = {
   id: string;
@@ -103,6 +108,7 @@ export default function CheckoutPage() {
   const [offerAdjustedShipping, setOfferAdjustedShipping] = useState<number | null>(null);
   const [offerFinalTotal, setOfferFinalTotal] = useState<number | null>(null);
   const [taxPercentage, setTaxPercentage] = useState(0);
+  const [appliedCouponId, setAppliedCouponId] = useState<string | null>(null);
 
   useEffect(() => {
     fetch("/api/v1/settings?group=TAX")
@@ -152,7 +158,67 @@ export default function CheckoutPage() {
     const savedCoupon = window.localStorage.getItem("ziply5_coupon_code");
     if (savedCoupon && !couponCode) setCouponCode(savedCoupon);
 
+    const savedCouponId = window.localStorage.getItem("ziply5_applied_coupon_id");
+    if (savedCouponId) setAppliedCouponId(savedCouponId);
+
+    const savedCheckout = readCheckoutStorage();
+    if (savedCheckout) {
+      if (savedCheckout.billingAddress) {
+        const [firstName, ...last] = (savedCheckout.billingAddress.fullName || "").split(" ");
+        setBilling((prev) => ({
+          ...prev,
+          firstName: firstName ?? "",
+          lastName: last.join(" "),
+          email: savedCheckout.billingAddress?.email ?? "",
+          line1: savedCheckout.billingAddress?.addressLine1 ?? "",
+          postalCode: savedCheckout.billingAddress?.postalCode ?? "",
+          phone: savedCheckout.billingAddress?.phone ?? "",
+        }));
+        setState(savedCheckout.billingAddress.state ?? "");
+        setCity(savedCheckout.billingAddress.city ?? "");
+      }
+      
+      // Also restore coupon from checkout storage if available
+      if (savedCheckout.coupon) {
+        if (!couponCode && savedCheckout.coupon.code) {
+          setCouponCode(savedCheckout.coupon.code);
+        }
+        if (!appliedCouponId && savedCheckout.coupon.couponId) {
+          setAppliedCouponId(savedCheckout.coupon.couponId);
+        }
+      }
+    }
+
     void loadAddresses();
+
+    const fetchProfile = async () => {
+      const token = window.localStorage.getItem("ziply5_access_token");
+      const userStr = window.localStorage.getItem("ziply5_user");
+      if (!token || !userStr) return;
+      try {
+        const user = JSON.parse(userStr);
+        if (!user?.id) return;
+        const res = await fetch(`/api/v1/profile?userId=${encodeURIComponent(user.id)}`, {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "x-user-id": user.id
+          },
+        });
+        const payload = await res.json();
+        if (payload.success && payload.data) {
+          setBilling((prev) => ({
+            ...prev,
+            email: prev.email || payload.data.email || "",
+            phone: prev.phone || payload.data.profile?.phone || "",
+            firstName: prev.firstName || payload.data.name?.split(" ")[0] || "",
+            lastName: prev.lastName || payload.data.name?.split(" ").slice(1).join(" ") || "",
+          }));
+        }
+      } catch (err) {
+        console.error("Failed to fetch profile in checkout", err);
+      }
+    };
+    fetchProfile();
 
     return () => {
       window.removeEventListener("ziply5:cart-updated", syncCart);
@@ -318,11 +384,16 @@ useEffect(() => {
           })),
         }),
       });
-      const payload = (await response.json()) as { success?: boolean; message?: string; data?: { discount: number } };
+      const payload = (await response.json()) as { success?: boolean; message?: string; data?: { discount: number; couponId?: string } };
       if (!response.ok || !payload.success || !payload.data) {
         throw new Error(payload.message ?? "Unable to apply coupon.");
       }
       setCouponDiscount(Number(payload.data.discount));
+      if (payload.data.couponId) {
+        window.localStorage.setItem("ziply5_applied_coupon_id", payload.data.couponId);
+        window.localStorage.setItem("ziply5_coupon_code", couponCode.trim());
+        setAppliedCouponId(payload.data.couponId);
+      }
       await recalculateOffers(couponCode.trim());
     } catch (error) {
       setCouponDiscount(0);
@@ -337,8 +408,18 @@ useEffect(() => {
     setCouponError("");
     setCouponDiscount(0);
     setCouponCode("");
+    setAppliedCouponId(null);
     try {
       window.localStorage.removeItem("ziply5_coupon_code");
+      window.localStorage.removeItem("ziply5_applied_coupon_id");
+      window.localStorage.removeItem("ziply5_final_total");
+      
+      // Also update consolidated checkout storage if it exists
+      const savedCheckout = readCheckoutStorage();
+      if (savedCheckout) {
+        savedCheckout.coupon = null;
+        writeCheckoutStorage(savedCheckout);
+      }
     } catch {}
     await recalculateOffers("");
   };
@@ -395,7 +476,57 @@ useEffect(() => {
       window.localStorage.setItem("ziply5_checkout_billing_address", JSON.stringify(payload));
       if (couponApplied) {
         window.localStorage.setItem("ziply5_final_total", total.toString());
+      } else {
+        window.localStorage.removeItem("ziply5_final_total");
       }
+      const normalizedAddress: CheckoutAddress = {
+        fullName: payload.fullName,
+        phone: payload.phone ?? "",
+        email: payload.email ?? "",
+        addressLine1: payload.line1,
+        addressLine2: "",
+        city: payload.city,
+        state: payload.state,
+        country: payload.country,
+        postalCode: payload.postalCode,
+      };
+      writeCheckoutStorage({
+        items: validatedItems.map((item) => ({
+          id: item.id,
+          productId: item.productId || item.slug,
+          variantId: item.variantId ?? null,
+          sku: item.sku ?? null,
+          slug: item.slug,
+          name: item.productName || item.name,
+          variantLabel: item.weight || "",
+          image: item.image,
+          price: item.price,
+          comparePrice: item.basePrice ?? item.price,
+          quantity: item.quantity,
+          subtotal: Number((item.price * item.quantity).toFixed(2)),
+          tax: Number((item.price * item.quantity * (taxPercentage / 100)).toFixed(2)),
+          stock: item.stock ?? null,
+          weight: item.weight,
+        })),
+        shippingAddress: normalizedAddress,
+        billingAddress: normalizedAddress,
+        selectedShippingMethod: "standard",
+        coupon: couponApplied
+          ? {
+              couponId: appliedCouponId || window.localStorage.getItem("ziply5_applied_coupon_id"),
+              code: couponCode.trim(),
+              discountType: "flat",
+              discountValue: couponDiscount,
+              appliedDiscount: offerTotalDiscount,
+            }
+          : null,
+        subtotal: Number(subTotal.toFixed(2)),
+        discount: Number(offerTotalDiscount.toFixed(2)),
+        tax: Number(taxAmount.toFixed(2)),
+        shippingCharge: Number((offerAdjustedShipping ?? shipping).toFixed(2)),
+        total: Number(total.toFixed(2)),
+        updatedAt: new Date().toISOString(),
+      });
       const token =
         typeof window !== "undefined" ? window.localStorage.getItem("ziply5_access_token") : null;
       if (!token) {
@@ -688,14 +819,25 @@ useEffect(() => {
             </p>
             </div>
             {orderError && (
-              <p className="text-center text-sm text-red-600">{orderError}</p>
+              <p className="text-center text-sm text-red-600 mb-4">{orderError}</p>
             )}
+
+            {items.length > 0 && total < 250 && (
+              <div className="rounded-2xl bg-white/60 p-3 text-center border border-red-200/50 mb-2">
+                <p className="text-xs font-medium text-red-700">
+                  Add INR {(250 - total).toFixed(2)} more to place order.
+                  <br />
+                  <span className="text-[10px] opacity-70">(Minimum order: INR 250.00)</span>
+                </p>
+              </div>
+            )}
+
             {/* Button */}
             <button
               type="button"
               onClick={() => void goToPayment()}
-              disabled={placing}
-              className="bg-[#7B3010] shadow-2xl tracking-wide font-medium text-white w-full py-4 rounded-full font-melon disabled:opacity-60"
+              disabled={placing || items.length === 0 || total < 250}
+              className="bg-[#7B3010] shadow-2xl tracking-wide font-medium text-white w-full py-4 rounded-full font-melon disabled:opacity-60 disabled:cursor-not-allowed transition-all"
             >
               {placing ? "Please wait…" : "Place Order →"}
             </button>

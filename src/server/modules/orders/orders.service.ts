@@ -1,5 +1,7 @@
 import { logActivity } from "@/src/server/modules/activity/activity.service"
 import { emailTemplates, enqueueEmail } from "@/src/server/modules/notifications/email.service"
+import { smsService } from "@/src/server/modules/sms/sms.service"
+import { env } from "@/src/server/core/config/env"
 import { markCartConverted } from "@/src/server/modules/abandoned-carts/recovery.service"
 import {
   appendOrderStatusHistorySupabase,
@@ -13,6 +15,7 @@ import {
   getCodSettlementSupabase,
   getCheckoutProductsSupabase,
   getCouponByCodeSupabase,
+  getCouponByIdSupabase,
   getOrderByIdSupabaseBasic,
   getOrderAutoApproveSettingSupabase,
   getOrderWithOpsRelationsSupabase,
@@ -32,7 +35,7 @@ import { logger } from "@/lib/logger"
 import { enqueueOutboxEvent } from "@/src/server/modules/integrations/outbox.service"
 import { assertMasterValueExists } from "@/src/server/modules/master/master.service"
 import { syncOrderStatusFromShiprocket } from "@/src/server/modules/integrations/shiprocket.service"
-import { getBundlePublicBySlug } from "@/src/server/modules/bundles/bundles.service"
+import { safeSyncOrderShipmentToShiprocket } from "@/src/server/modules/shipping/shiprocket.orders"
 
 export type OrderLifecycleStatus =
   | "pending"
@@ -231,21 +234,50 @@ const getInitialLifecycleStatus = (gateway: string, paymentStatus?: string | nul
 
 const shouldAutoSyncOrders = () => process.env.ORDER_AUTO_SYNC_ENABLED === "true"
 
-export async function validatePromoCode(code: string, subtotal: number, userId?: string) {
-  const coupon = await getCouponByCodeSupabase(code)
-  if (!coupon || !coupon.active || (coupon.endsAt && new Date() > coupon.endsAt) ||
-    (coupon.minOrderAmount && subtotal < Number(coupon.minOrderAmount))) {
-    return { valid: false, error: 'Invalid, expired, or not eligible for this order amount' };
+export async function validatePromoCode(input: { code?: string, id?: string }, subtotal: number, userId?: string) {
+  let coupon = null;
+  if (input.id) {
+    coupon = await getCouponByIdSupabase(input.id);
+  } else if (input.code) {
+    coupon = await getCouponByCodeSupabase(input.code);
+  }
+
+  console.log(`[orders.service.validatePromoCode] Validating ${input.id ? `id=${input.id}` : `code=${input.code}`} for subtotal=${subtotal}, userId=${userId}`);
+
+  if (!coupon) {
+    console.log(`[orders.service.validatePromoCode] Coupon not found`);
+    return { valid: false, error: 'Coupon not found' };
+  }
+
+  if (!coupon.active) {
+    console.log(`[orders.service.validatePromoCode] Coupon is inactive`);
+    return { valid: false, error: 'This coupon is no longer active' };
+  }
+
+  if (coupon.endsAt && new Date() > coupon.endsAt) {
+    console.log(`[orders.service.validatePromoCode] Coupon expired at ${coupon.endsAt}`);
+    return { valid: false, error: 'This coupon has expired' };
+  }
+
+  if (coupon.minOrderAmount && subtotal < Number(coupon.minOrderAmount)) {
+    console.log(`[orders.service.validatePromoCode] Subtotal ${subtotal} is less than minOrderAmount ${coupon.minOrderAmount}`);
+    return { valid: false, error: `Minimum order amount for this coupon is ₹${coupon.minOrderAmount}` };
   }
 
   if (coupon.firstOrderOnly && userId) {
     const priorOrders = await countNonCancelledOrdersByUserSupabase(userId)
-    if (priorOrders > 0) return { valid: false, error: 'This promo code is for first-time orders only' };
+    if (priorOrders > 0) {
+      console.log(`[orders.service.validatePromoCode] User ${userId} has prior orders, coupon is first-order only`);
+      return { valid: false, error: 'This promo code is for first-time orders only' };
+    }
   }
 
   if (coupon.usageLimitPerUser && userId) {
     const userUsages = await countCouponUsageByUserSupabase({ userId, couponId: coupon.id })
-    if (userUsages >= coupon.usageLimitPerUser) return { valid: false, error: 'Usage limit reached for this promo code' };
+    if (userUsages >= coupon.usageLimitPerUser) {
+      console.log(`[orders.service.validatePromoCode] User ${userId} reached usage limit ${coupon.usageLimitPerUser}`);
+      return { valid: false, error: 'Usage limit reached for this promo code' };
+    }
   }
 
   const discount = coupon.discountType === 'percentage'
@@ -262,12 +294,17 @@ export async function validatePromoCode(code: string, subtotal: number, userId?:
 }
 
 export const createOrderFromCheckout = async (input: {
-  items: { productId?: string; variantId?: string | null; slug?: string; quantity: number }[]
+  items: { productId: string; variantId?: string | null; sku?: string | null; quantity: number; price?: number; subtotal?: number; tax?: number }[]
   userId?: string | null
   shipping?: number
   currency?: string
   couponCode?: string
   gateway: string
+  subtotal?: number
+  discount?: number
+  tax?: number
+  total?: number
+  appliedCouponId?: string | null
 
   // 🔥 ADD THIS
   billingAddress?: {
@@ -283,30 +320,8 @@ export const createOrderFromCheckout = async (input: {
 
   paymentStatus?: string
   paymentId?: string
+  sessionKey?: string | null
 }) => {
-  const expandedItems: { productId?: string; variantId?: string | null; slug?: string; quantity: number }[] = []
-  for (const item of input.items) {
-    if (item.productId || !item.slug) {
-      expandedItems.push(item)
-      continue
-    }
-    const combo = await getBundlePublicBySlug(item.slug)
-    if (!combo || !(combo as any).products?.length) {
-      expandedItems.push(item)
-      continue
-    }
-    const comboProducts = (combo as any).products as Array<{ productId: string; price: number }>
-    for (const cp of comboProducts) {
-      expandedItems.push({
-        productId: cp.productId,
-        quantity: Math.max(1, Number(item.quantity || 1)),
-        variantId: null,
-        slug: undefined,
-      })
-    }
-  }
-  input.items = expandedItems
-
   if (input.paymentId?.trim()) {
     // For COD, paymentId is not provided initially, so this check should only apply to online payments
     // or if a paymentId is explicitly passed for a retry.
@@ -315,45 +330,44 @@ export const createOrderFromCheckout = async (input: {
     // If it's a COD order, we don't expect a paymentId to find an existing order.
     // If it's an online payment and paymentId is present, check for existing order.
     if (!isCod) {
-    const existingId = await findOrderByPaymentRefSupabase({
-      paymentId: input.paymentId.trim(),
-      userId: input.userId ?? null,
-    })
-    if (existingId) {
-      const existing = await getOrderByIdSupabaseBasic(existingId)
-      if (existing) return existing
-    }
+      const existingId = await findOrderByPaymentRefSupabase({
+        paymentId: input.paymentId.trim(),
+        userId: input.userId ?? null,
+      })
+      if (existingId) {
+        const existing = await getOrderByIdSupabaseBasic(existingId)
+        if (existing) return existing
+      }
     }
   }
 
   const initialLifecycleStatus = getInitialLifecycleStatus(input.gateway, input.paymentStatus)
   const initialPersistedStatus = persistedOrderStatus(initialLifecycleStatus)
   const shipping = input.shipping ?? 0
-  const slugs = [...new Set(input.items.map((i) => i.slug).filter(Boolean))] as string[]
-  const productIds = [...new Set(input.items.map((i) => i.productId).filter(Boolean))] as string[]
-  const products = await getCheckoutProductsSupabase({ slugs, productIds })
-  const bySlug = Object.fromEntries(products.map((p) => [p.slug, p]))
+  const productIds = [...new Set(input.items.map((i) => i.productId).filter(Boolean))]
+  const products = await getCheckoutProductsSupabase({ slugs: [], productIds })
   const byId = Object.fromEntries(products.map((p) => [p.id, p]))
   const missingRefs = input.items
-    .map((line) => (line.productId ? line.productId : line.slug ?? ""))
+    .map((line) => line.productId)
     .filter((ref) => {
       if (!ref) return false
       return lineIsMissing(ref)
     })
 
   function lineIsMissing(ref: string) {
-    return !(byId[ref] || bySlug[ref])
+    return !byId[ref]
   }
   if (missingRefs.length > 0) {
     throw new Error(`Products not available: ${missingRefs.join(", ")}`)
   }
 
   let subtotal = 0
-  const lines: { productId: string; variantId?: string | null; quantity: number; unitPrice: number; lineTotal: number }[] = []
+  let taxTotal = 0
+  const lines: { productId: string; variantId?: string | null; sku?: string | null; quantity: number; unitPrice: number; lineTotal: number; tax: number }[] = []
 
   for (const line of input.items) {
-    const p = line.productId ? byId[line.productId] : bySlug[line.slug ?? ""]
-    if (!p) throw new Error(`Product not available: ${line.slug ?? line.productId ?? "unknown"}`)
+    const p = byId[line.productId]
+    if (!p) throw new Error(`Product not available: ${line.productId ?? "unknown"}`)
 
     const variantId = line.variantId ?? null
     let unit = Number(p.price)
@@ -368,58 +382,80 @@ export const createOrderFromCheckout = async (input: {
       }
       unit = Number(chosen.price)
     }
-    const lineTotal = unit * line.quantity
+    const lineTotal = Number((unit * line.quantity).toFixed(2))
+    const lineTax = Math.max(0, Number(line.tax ?? 0))
     lines.push({
       productId: p.id,
       variantId,
+      sku: line.sku ?? null,
       quantity: line.quantity,
       unitPrice: unit,
       lineTotal,
+      tax: lineTax,
     })
     subtotal += lineTotal
+    taxTotal += lineTax
   }
 
-  let discount = 0
-  let appliedCouponId: string | null = null
-  if (input.couponCode?.trim()) {
-    const validation = await validatePromoCode(input.couponCode.trim(), subtotal, input.userId ?? undefined)
+  let discount = Math.max(0, Number(input.discount ?? 0))
+  let appliedCouponId: string | null = input.appliedCouponId ?? null
+
+  if (appliedCouponId || input.couponCode?.trim()) {
+    const validation = await validatePromoCode(
+      { id: appliedCouponId ?? undefined, code: input.couponCode?.trim() },
+      subtotal,
+      input.userId ?? undefined
+    )
     if (!validation.valid) throw new Error(validation.error)
-    discount = validation.discountAmount ?? 0
+    discount = Number(validation.discountAmount ?? 0)
     appliedCouponId = validation.appliedCouponId ?? null
   }
 
-  const total = Math.max(subtotal + shipping - discount, 0)
+  const total = Math.max(subtotal + shipping + taxTotal - discount, 0)
 
   await reserveInventorySupabase(lines.map((line) => ({ productId: line.productId, variantId: line.variantId, quantity: line.quantity })))
 
+  const orderData = {
+    userId: input.userId ?? null,
+    customerName: input.billingAddress?.fullName ?? null,
+    customerPhone: input.billingAddress?.phone ?? null,
+    customerAddress: input.billingAddress
+      ? `${input.billingAddress.line1}, ${input.billingAddress.city}, ${input.billingAddress.state}, ${input.billingAddress.postalCode}, ${input.billingAddress.country}`
+      : null,
+    paymentStatus: normalizePaymentStatus(input.paymentStatus),
+    paymentId: input.paymentId ?? null,
+    paymentMethod: input.gateway,
+    status: initialPersistedStatus,
+    currency: input.currency ?? "INR",
+    appliedCouponId,
+    couponCode: input.couponCode?.trim() || null,
+    subtotal,
+    discount,
+    tax: taxTotal,
+    shippingCharge: shipping,
+    shipping, // Keeping both for backward/forward compatibility
+    total,
+  };
+
+  const itemRows = lines.map((l) => ({
+    productId: l.productId,
+    variantId: l.variantId ?? null,
+    sku: l.sku ?? null,
+    quantity: l.quantity,
+    unitPrice: l.unitPrice,
+    subtotal: l.lineTotal,
+    tax: l.tax,
+    lineTotal: l.lineTotal,
+  }));
+
+  console.log("[orders.service] Attempting to create order with Supabase payload:", JSON.stringify({ orderData, itemCount: itemRows.length }, null, 2));
+
   const created = await createOrderWithItemsSupabase({
-    orderData: {
-      userId: input.userId ?? null,
-      customerName: input.billingAddress?.fullName ?? null,
-      customerPhone: input.billingAddress?.phone ?? null,
-      customerAddress: input.billingAddress
-        ? `${input.billingAddress.line1}, ${input.billingAddress.city}, ${input.billingAddress.state}, ${input.billingAddress.postalCode}, ${input.billingAddress.country}`
-        : null,
-      paymentStatus: normalizePaymentStatus(input.paymentStatus),
-      paymentId: input.paymentId ?? null,
-      paymentMethod: input.gateway,
-      status: initialPersistedStatus,
-      currency: input.currency ?? "INR",
-      appliedCouponId,
-      subtotal,
-      shipping,
-      total,
-    },
-    itemRows: lines.map((l) => ({
-      productId: l.productId,
-      variantId: l.variantId ?? null,
-      quantity: l.quantity,
-      unitPrice: l.unitPrice,
-      lineTotal: l.lineTotal,
-    })),
+    orderData,
+    itemRows,
   })
   if (!created?.id) throw new Error("Unable to create order via Supabase")
-       console.log("Creating order with data:")
+  console.log("Creating order with data:")
   await appendOrderStatusHistorySupabase({
     orderId: created.id,
     fromStatus: initialLifecycleStatus,
@@ -436,7 +472,7 @@ export const createOrderFromCheckout = async (input: {
   }).catch(() => null)
   const order = await getOrderByIdSupabaseBasic(created.id)
   if (!order) throw new Error("Unable to hydrate created order via Supabase")
-       console.log("Created order with ID:", created.id)
+  console.log("Created order with ID:", created.id)
   const transactionStatus = input.paymentStatus === "paid" ? "paid" : input.paymentStatus === "failed" ? "failed" : "pending"
   console.log("Recording initial transaction with status:", transactionStatus)
   await createTransactionSupabase({
@@ -458,7 +494,7 @@ export const createOrderFromCheckout = async (input: {
     if (isPaymentSuccessful && String(order.status ?? "").toLowerCase() === "pending") {
       const confirmed = await mirrorOrderStatusSupabase(String(order.id), "confirmed")
       if (confirmed) {
-        ;(order as Record<string, unknown>).status = "confirmed"
+        ; (order as Record<string, unknown>).status = "confirmed"
       }
     }
   }
@@ -471,58 +507,69 @@ export const createOrderFromCheckout = async (input: {
     metadata: { itemCount: lines.length, total },
   })
   console.log("Activity logged for order creation", { orderId: order.id, userId: input.userId ?? null })
-if (input.userId) {
-  console.log("getting user email for order creation", input.userId)
-  const userEmail = await getUserEmailSupabase(input.userId)
-
-  // if (userEmail) {
-  //   try {
-  //     console.log("enqueuing email for order creation", userEmail)
-  //     const mail = emailTemplates.orderPlaced(order.id)
-  //     console.log("email template for order creation", mail)
-  //     await enqueueEmail({ to: userEmail, ...mail })
-  //     console.log("email enqueued for order creation", userEmail)
-  //   } catch {
-  //     // Non-blocking side effect
-  //   }
-  // }
-}
+  console.log(`[Order Service] createOrderFromCheckout: order.status="${order.status}", order.paymentStatus="${order.paymentStatus}", phone="${order.customerPhone}"`)
+  if (order.customerPhone) {
+    const normalizedStatus = String(order.status).toLowerCase()
+    if (normalizedStatus === "confirmed") {
+      console.log(`[Order Service] Triggering ORDER_CONFIRM SMS for new order ${order.id}`)
+      // Send Confirmation SMS
+      await smsService.send({
+        mobile: order.customerPhone,
+        templateKey: "ORDER_CONFIRM",
+        variables: [order.customerName || "Customer", String(order.id)],
+      }).catch(e => console.error("Order confirm SMS failed", e))
+    } else if (String(order.paymentStatus).toUpperCase() === "SUCCESS") {
+      console.log(`[Order Service] Triggering ORDER_PAID SMS for new order ${order.id}`)
+      // Send Payment Success SMS
+      await smsService.send({
+        mobile: order.customerPhone,
+        templateKey: "ORDER_PAID",
+        variables: [String(total), String(order.id)],
+      }).catch(e => console.error("Order payment SMS failed", e))
+    }
+  }
   console.log("Enqueuing outbox event for order.created")
-await enqueueOutboxEvent({
-  eventType: "order.created",
-  aggregateType: "order",
-  aggregateId: order.id,
-  payload: { orderId: order.id, total, currency: input.currency ?? "INR" },
-}).catch(() => null)
+  await enqueueOutboxEvent({
+    eventType: "order.created",
+    aggregateType: "order",
+    aggregateId: order.id,
+    payload: { orderId: order.id, total, currency: input.currency ?? "INR" },
+  }).catch(() => null)
+  setImmediate(() => {
+    void safeSyncOrderShipmentToShiprocket(String(order.id), input.userId ?? "system")
+  })
   console.log("Outbox event enqueued for order.created")
-await markCartConverted({
-  email: input.billingAddress?.email ?? null,
-  mobile: input.billingAddress?.phone ?? null,
-  orderId: order.id,
-  revenue: total,
-  channel: "checkout",
-}).catch(() => null)
+  await markCartConverted({
+    sessionKey: input.sessionKey,
+    email: input.billingAddress?.email ?? null,
+    mobile: input.billingAddress?.phone ?? null,
+    orderId: order.id,
+    revenue: total,
+    channel: "checkout",
+  }).catch(() => null)
 
   console.log("Finished createOrderFromCheckout with order ID:", created.id)
-return order
+  return order
 }
+const autoSyncFromPayment = async (orderId: string, currentStatus: string, paymentStatus: string) => {
+  const derived = deriveLifecycleFromPayment(paymentStatus)
+  if (!derived) return
+  const lifecycle = currentStatus.toLowerCase() as OrderLifecycleStatus
+  // Don't auto-sync if already in a terminal or advanced status
+  if (["confirmed", "cancelled", "returned", "shipped", "delivered", "refund_initiated", "return_requested"].includes(lifecycle)) return
+  if (lifecycle === derived) return
+  await updateOrderStatus(orderId, derived, undefined, {
+    reasonCode: "payment_status_sync",
+    note: `Auto-updated from payment status ${paymentStatus}`,
+  }).catch(() => null)
+}
+
 export const listOrders = async (
   page: number,
   limit: number,
   role: string,
   userId: string,
 ) => {
-  const autoSyncFromPayment = async (orderId: string, currentStatus: string, paymentStatus: string) => {
-    const derived = deriveLifecycleFromPayment(paymentStatus)
-    if (!derived) return
-    const lifecycle = currentStatus as OrderLifecycleStatus
-    if (lifecycle === derived || lifecycle === "confirmed") return
-    await updateOrderStatus(orderId, derived, undefined, {
-      reasonCode: "payment_status_sync",
-      note: `Auto-updated from payment status ${paymentStatus}`,
-    }).catch(() => null)
-  }
-
   if (process.env.SUPABASE_ORDERS_READ_ENABLED !== "true") {
     throw new Error("SUPABASE_ORDERS_READ_ENABLED must be true")
   }
@@ -548,17 +595,6 @@ export const listOrders = async (
 }
 
 export const getOrderById = async (id: string) => {
-  const autoSyncFromPayment = async (orderId: string, currentStatus: string, paymentStatus: string) => {
-    const derived = deriveLifecycleFromPayment(paymentStatus)
-    if (!derived) return
-    const lifecycle = currentStatus as OrderLifecycleStatus
-    if (lifecycle === derived || lifecycle === "confirmed") return
-    await updateOrderStatus(orderId, derived, undefined, {
-      reasonCode: "payment_status_sync",
-      note: `Auto-updated from payment status ${paymentStatus}`,
-    }).catch(() => null)
-  }
-
   if (process.env.SUPABASE_ORDERS_READ_ENABLED !== "true") {
     throw new Error("SUPABASE_ORDERS_READ_ENABLED must be true")
   }
@@ -591,27 +627,78 @@ export const updateOrderStatus = async (
   actorId?: string,
   options?: { reasonCode?: string; note?: string },
 ) => {
-  const allowed = await assertMasterValueExists("ORDER_STATUS", status)
-  if (!allowed) throw new Error(`Invalid master value for ORDER_STATUS: ${status}`)
+  console.log(`[STATUS UPDATE DEBUG] Order ID: ${id}, New Status: ${status}, Options: ${JSON.stringify(options)}`)
+  
+  // SMS Notifications - Moved to top for reliability
+  try {
+    const order = await getOrderByIdSupabaseBasic(id)
+    if (order && order.customerPhone) {
+      console.log(`[Order Service] Checking SMS for status: "${status}" on order ${order.id}. Customer phone: ${order.customerPhone}`)
+      const normalizedStatus = String(status).toLowerCase()
+      if (normalizedStatus === "confirmed") {
+        console.log(`[Order Service] Triggering ORDER_CONFIRM SMS for order ${order.id}`)
+        await smsService.send({
+          mobile: order.customerPhone,
+          templateKey: "ORDER_CONFIRM",
+          variables: [order.customerName || "Customer", String(order.id)],
+        }).catch(e => console.error("Order confirm SMS failed", e))
+      } else if (normalizedStatus === "cancelled") {
+        console.log(`[Order Service] Triggering ORDER_CANCEL SMS for order ${order.id}`)
+        await smsService.send({
+          mobile: order.customerPhone,
+          templateKey: "ORDER_CANCEL",
+          variables: [String(order.id)],
+        }).catch(e => console.error("Order cancel SMS failed", e))
+      } else if (normalizedStatus === "payment_success") {
+        console.log(`[Order Service] Triggering ORDER_PAID SMS for order ${order.id}`)
+        await smsService.send({
+          mobile: order.customerPhone,
+          templateKey: "ORDER_PAID",
+          variables: [String(order.total), String(order.id)],
+        }).catch(e => console.error("Order payment SMS failed", e))
+      }
+    }
+  } catch (err) {
+    console.error("[SMS Trigger Error]", err)
+  }
+
+  console.log(`[STATUS UPDATE DEBUG] Order ID: ${id}, New Status: ${status}`)
+  
+  const allowed = (status === "cancelled") || await assertMasterValueExists("ORDER_STATUS", status)
+  if (!allowed) {
+    console.error(`[STATUS UPDATE ERROR] Invalid master value for ORDER_STATUS: ${status}`)
+    throw new Error(`Invalid master value for ORDER_STATUS: ${status}`)
+  }
+
   const existing = await getOrderByIdSupabaseBasic(id)
-  if (!existing) throw new Error("Order not found")
+  if (!existing) {
+    console.error(`[STATUS UPDATE ERROR] Order not found for ID: ${id}`)
+    throw new Error("Order not found")
+  }
+  
   const fromStatus = existing.status as OrderLifecycleStatus
   const paymentStatus = normalizePaymentStatus((existing as any).paymentStatus)
+
   if (status === "confirmed" && paymentStatus !== "SUCCESS") {
+    console.error(`[STATUS UPDATE ERROR] Cannot move to CONFIRMED without SUCCESS payment status. Current: ${paymentStatus}`)
     throw new Error("Order cannot move to CONFIRMED unless payment_status = SUCCESS")
   }
-  if (["pending", "pending_payment", "failed"].includes(fromStatus) && status === "confirmed" && paymentStatus !== "SUCCESS") {
-    throw new Error("Invalid status transition: pending/failed -> confirmed requires payment success")
-  }
-  if (fromStatus === "shipped" && status === "cancel_requested") {
-    throw new Error("Cannot request cancellation after shipment")
-  }
   if (status !== fromStatus && !allowedTransitions[fromStatus]?.includes(status)) {
+    console.error(`[STATUS UPDATE ERROR] Invalid transition: ${fromStatus} -> ${status}`)
     throw new Error(`Invalid status transition: ${fromStatus} -> ${status}`)
   }
 
-  const statusApplied = await mirrorOrderStatusSupabase(id, persistedOrderStatus(status))
-  if (!statusApplied) throw new Error("Supabase order status update failed")
+  const targetPersistedStatus = persistedOrderStatus(status)
+  console.log(`[STATUS UPDATE DEBUG] From: ${fromStatus}, To: ${status}, Persisting As: ${targetPersistedStatus}`)
+
+  const statusApplied = await mirrorOrderStatusSupabase(id, targetPersistedStatus)
+  if (!statusApplied) {
+    console.error(`[STATUS UPDATE ERROR] Supabase update failed for Order ID: ${id} to status: ${targetPersistedStatus}`)
+    throw new Error("Supabase order status update failed")
+  }
+
+  console.log(`[STATUS UPDATE DEBUG] Successfully mirrored status to Supabase for Order ${id}`)
+
   await appendOrderStatusHistorySupabase({
     orderId: id,
     fromStatus,
@@ -638,6 +725,7 @@ export const updateOrderStatus = async (
   })
   const order = await getOrderByIdSupabaseBasic(id)
   if (!order) throw new Error("Order not found after status update")
+  console.log(`[STATUS UPDATE SUCCESS] Order ID: ${order.id}, Final Persisted Status: ${order.status}`)
 
   await logActivity({
     actorId: actorId ?? undefined,
@@ -656,8 +744,30 @@ export const updateOrderStatus = async (
 
   const maybeEmail = (order as any).user?.email
   if (maybeEmail) {
-    const mail = emailTemplates.orderStatus(id, status)
-    await enqueueEmail({ to: maybeEmail, ...mail }).catch(() => null)
+    console.log(`[Email] Status update for ${maybeEmail}: ${status}`)
+  }
+
+  const maybePhone = (order as any).customerPhone
+  if (maybePhone) {
+    let smsBody = ""
+    let templateId = ""
+    
+    if (status === "shipped") {
+      smsBody = `Hi, your Ziply5 order #${id} has been shipped. Track your package here: ${env.CDN_BASE_URL}/orders/${id}`
+      templateId = env.SMS_TEMPLATE_ORDER_SHIPPED || ""
+    } else if (status === "delivered") {
+      smsBody = `Hi, your Ziply5 order #${id} has been delivered. We hope you enjoy your delicious meal!`
+      templateId = env.SMS_TEMPLATE_ORDER_DELIVERED || ""
+    }
+
+    if (smsBody) {
+      smsService.send({
+        mobile: maybePhone,
+        templateKey: status === "shipped" ? "ORDER_CONFIRM" : "ORDER_CONFIRM", // Fallback or add keys
+        variables: [order.customerName || "Customer", String(order.id)],
+        body: smsBody,
+      }).catch(err => console.error("Order status SMS failed", err))
+    }
   }
 
   return order

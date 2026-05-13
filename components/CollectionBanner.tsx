@@ -207,7 +207,7 @@ export default function CollectionBanner({ cmsData }: { cmsData?: any }) {
                   aria-label="Previous product"
                   onClick={goPrev}
                   disabled={n <= 1}
-                  className="collection-banner-prev absolute left-2/5 lg:left-88 lg:right-0 -translate-y-1/2 -bottom-15 lg:top-2/5 z-10 w-9 h-9 border-2 border-primary rounded-full shadow flex items-center justify-center transition-transform duration-300 hover:scale-105 disabled:opacity-40 disabled:pointer-events-none"
+                  className="collection-banner-prev cursor-pointer absolute left-2/5 lg:left-88 lg:right-0 -translate-y-1/2 -bottom-15 lg:top-2/5 z-10 w-9 h-9 border-2 border-primary rounded-full shadow flex items-center justify-center transition-transform duration-300 hover:scale-105 disabled:opacity-40 disabled:pointer-events-none"
                 >
                   <svg className="w-4 h-4 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
@@ -219,7 +219,7 @@ export default function CollectionBanner({ cmsData }: { cmsData?: any }) {
                   aria-label="Next product"
                   onClick={goNext}
                   disabled={n <= 1}
-                  className="collection-banner-next absolute right-2/5 lg:right-0 -translate-y-1/2 -bottom-15 lg:top-1/2 z-10 w-9 h-9 border-2 border-primary rounded-full shadow flex items-center justify-center transition-transform duration-300 hover:scale-105 disabled:opacity-40 disabled:pointer-events-none"
+                  className="collection-banner-next cursor-pointer absolute right-2/5 lg:right-0 -translate-y-1/2 -bottom-15 lg:top-1/2 z-10 w-9 h-9 border-2 border-primary rounded-full shadow flex items-center justify-center transition-transform duration-300 hover:scale-105 disabled:opacity-40 disabled:pointer-events-none"
                 >
                   <svg className="w-4 h-4 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />

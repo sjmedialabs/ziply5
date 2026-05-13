@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, useMemo } from "react"
 import { m, useScroll, useSpring, useTransform, useMotionValueEvent, AnimatePresence } from "framer-motion"
+import SplitText from "./animations/SplitText"
 
 interface VideoScrollHeroProps {
   videoUrl: string
@@ -251,11 +252,13 @@ export default function VideoScrollHero({ videoUrl, cmsData }: VideoScrollHeroPr
   // Added a 0.1 dead zone so the text doesn't "jump" or "lift" immediately
   const titleOpacity = useTransform(smoothProgress, [0, 0.1, 0.25], [1, 1, 0])
   const titleY = useTransform(smoothProgress, [0, 0.1, 0.3], [0, 0, -50])
+  const titleX = useTransform(smoothProgress, [0, 0.1, 0.3], [0, 0, -100])
   const subTitleOpacity = useTransform(smoothProgress, [0.05, 0.15, 0.25], [0, 1, 0])
+  const subTitleX = useTransform(smoothProgress, [0.05, 0.15, 0.3], [0, 0, -50])
   const finalTitleOpacity = useTransform(smoothProgress, [0.8, 0.9, 1], [0, 1, 1])
 
   return (
-    <div ref={containerRef} className="relative h-[130vh] bg-black -mt-[110px] md:-mt-[130px]">
+    <div ref={containerRef} className="relative h-[400vh] bg-black -mt-[110px] md:-mt-[130px]">
       <div className="sticky top-0 h-screen w-full overflow-hidden bg-[#fafaf9]">
         {/* 
             BACKGROUND LOADING LOGIC:
@@ -291,6 +294,48 @@ export default function VideoScrollHero({ videoUrl, cmsData }: VideoScrollHeroPr
                       alt={`Ziply5 Slide ${idx}`}
                       className="w-full h-full object-cover"
                     />
+                    {/* TEXT SLIDING WITH IMAGE */}
+                    <div className="absolute inset-0 z-20 flex items-start pt-32 md:pt-40 lg:pt-20 pointer-events-none">
+                      <div className="w-full max-w-7xl mx-auto px-4 relative h-full">
+                        <m.div
+                          initial={{ opacity: 0, x: 50 }}
+                          animate={{ opacity: 1, x: 0 }}
+                          transition={isWarping ? { duration: 0 } : { delay: 0.2, duration: 0.8 }}
+                          className="max-w-7xl pt-24 md:pt-20"
+                        >
+                          <h1 className="font-heading text-3xl md:text-5xl lg:text-7xl font-extrabold text-primary leading-[1.05] whitespace-pre-line drop-shadow-lg">
+                            <SplitText
+                              text={(() => {
+                                const title = slide?.title || cmsData?.title || "Nothing Artificial.\nEverything Delicious.";
+                                if (title.includes("\n")) return title;
+                                const words = title.trim().split(/\s+/);
+                                if (words.length > 3) {
+                                  return `${words.slice(0, 2).join(" ")}\n${words.slice(2).join(" ")}`;
+                                }
+                                return title;
+                              })()}
+                              stagger={0.03}
+                            />
+                          </h1>
+                          <div className="mt-4">
+                            <p className="font-heading text-lg md:text-2xl lg:text-4xl font-extrabold leading-snug text-primary uppercase drop-shadow-md whitespace-pre-line">
+                              <SplitText
+                                text={(() => {
+                                  const subtitle = slide?.subtitle || cmsData?.subtitle || "Taste the authentic flavors\nof home-cooked meals!";
+                                  if (subtitle.includes("\n")) return subtitle;
+                                  const words = subtitle.trim().split(/\s+/);
+                                  if (words.length > 3) {
+                                    return `${words.slice(0, 6).join(" ")}\n${words.slice(6).join(" ")}`;
+                                  }
+                                  return subtitle;
+                                })()}
+                                stagger={0.02}
+                              />
+                            </p>
+                          </div>
+                        </m.div>
+                      </div>
+                    </div>
                   </div>
                 ))}
               </m.div>
@@ -311,36 +356,50 @@ export default function VideoScrollHero({ videoUrl, cmsData }: VideoScrollHeroPr
 
         <div className="absolute inset-0 z-20 flex items-start pt-32 md:pt-40 lg:pt-20 pointer-events-none">
           <div className="w-full max-w-7xl mx-auto px-4 relative h-full">
-            <m.div
-              style={{
-                opacity: isExtracting ? 1 : titleOpacity,
-                y: isExtracting ? 0 : titleY
-              }}
-              className="max-w-7xl pt-24 md:pt-20"
-            >
-              <h1 className="font-heading text-3xl md:text-5xl lg:text-7xl font-extrabold text-primary leading-[1.05] whitespace-pre-line drop-shadow-lg">
-                {(() => {
-                  const title = (isExtracting ? (slides[currentSlide % slides.length]?.title || cmsData?.title) : cmsData?.title) || "Nothing Artificial.\nEverything Delicious.";
-                  const words = title.trim().split(/\s+/);
-                  if (words.length > 2) {
-                    return `${words.slice(0, 2).join(" ")}\n${words.slice(2).join(" ")}`;
-                  }
-                  return title;
-                })()}
-              </h1>
-              <div className="mt-4">
-                <p className="font-heading text-lg md:text-2xl lg:text-4xl font-extrabold leading-snug text-primary uppercase drop-shadow-md whitespace-pre-line">
-                  {(() => {
-                    const subtitle = (isExtracting ? (slides[currentSlide % slides.length]?.subtitle || cmsData?.subtitle) : cmsData?.subtitle) || "Taste the authentic flavors\nof home-cooked meals!";
-                    const words = subtitle.trim().split(/\s+/);
-                    if (words.length > 3) {
-                      return `${words.slice(0, 3).join(" ")}\n${words.slice(3).join(" ")}`;
-                    }
-                    return subtitle;
-                  })()}
-                </p>
-              </div>
-            </m.div>
+            {!isExtracting && (
+              <m.div
+                style={{
+                  opacity: titleOpacity,
+                  y: titleY,
+                  x: titleX
+                }}
+                className="max-w-7xl pt-24 md:pt-20"
+              >
+                <h1 className="font-heading text-3xl md:text-5xl lg:text-7xl font-extrabold text-primary leading-[1.05] whitespace-pre-line drop-shadow-lg">
+                  <SplitText
+                    text={(() => {
+                      const title = cmsData?.title || "Nothing Artificial.\nEverything Delicious.";
+                      if (title.includes("\n")) return title;
+                      const words = title.trim().split(/\s+/);
+                      if (words.length > 3) {
+                        return `${words.slice(0, 3).join(" ")}\n${words.slice(3).join(" ")}`;
+                      }
+                      return title;
+                    })()}
+                    stagger={0.03}
+                  />
+                </h1>
+                <m.div
+                  style={{ x: subTitleX }}
+                  className="mt-4"
+                >
+                  <p className="font-heading text-lg md:text-2xl lg:text-4xl font-extrabold leading-snug text-primary uppercase drop-shadow-md whitespace-pre-line">
+                    <SplitText
+                      text={(() => {
+                        const subtitle = cmsData?.subtitle || "Taste the authentic flavors\nof home-cooked meals!";
+                        if (subtitle.includes("\n")) return subtitle;
+                        const words = subtitle.trim().split(/\s+/);
+                        if (words.length > 3) {
+                          return `${words.slice(0, 3).join(" ")}\n${words.slice(3).join(" ")}`;
+                        }
+                        return subtitle;
+                      })()}
+                      stagger={0.02}
+                    />
+                  </p>
+                </m.div>
+              </m.div>
+            )}
           </div>
         </div>
         <div className="absolute inset-0 bg-black/20 pointer-events-none" />

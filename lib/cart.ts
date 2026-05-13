@@ -1,4 +1,10 @@
 import { type StorefrontProduct } from "./storefront-products"
+import {
+  computeItemTotals,
+  readCartStorage,
+  writeCartStorage,
+  type CartItemNormalized,
+} from "./ecommerce-order"
 
 export type CartItem = {
   id: string
@@ -6,7 +12,13 @@ export type CartItem = {
   variantId?: string | null
   slug: string
   name: string
+  variantLabel?: string
+  variantOptions?: string[]
   price: number
+  comparePrice?: number
+  subtotal?: number
+  tax?: number
+  stock?: number | null
   image: string
   weight: string
   sku?: string
@@ -15,46 +27,64 @@ export type CartItem = {
   quantity: number
 }
 
-const CART_KEY = "ziply5-cart"
-
 const emitCartUpdated = () => {
   if (typeof window === "undefined") return
   window.dispatchEvent(new CustomEvent("ziply5:cart-updated"))
 }
 
 export const getCartItems = (): CartItem[] => {
-  if (typeof window === "undefined") return []
-  try {
-    const parsed = JSON.parse(window.localStorage.getItem(CART_KEY) || "[]")
-    if (!Array.isArray(parsed)) return []
-    return parsed.map((item) => {
-      const slug = String(item?.slug ?? "")
-      const productId = item?.productId ? String(item.productId) : undefined
-      const variantId = item?.variantId ? String(item.variantId) : null
-      const id = String(item?.id ?? `${productId ?? slug}:${variantId ?? "default"}`)
-      return {
-        id,
-        productId,
-        variantId,
-        slug,
-        name: String(item?.name ?? ""),
-        price: Number(item?.price ?? 0),
-        image: String(item?.image ?? ""),
-        weight: String(item?.weight ?? ""),
-        sku: item?.sku ? String(item.sku) : undefined,
-        basePrice: item?.basePrice ? Number(item.basePrice) : undefined,
-        discountPercent: item?.discountPercent ? Number(item.discountPercent) : undefined,
-        quantity: Math.max(0, Number(item?.quantity ?? 0)),
-      } satisfies CartItem
-    }).filter((item) => item.quantity > 0 && (item.slug || item.productId))
-  } catch {
-    return []
-  }
+  const items = readCartStorage()
+  return items.map((item) => ({
+    id: item.id,
+    productId: item.productId,
+    variantId: item.variantId,
+    slug: item.slug ?? "",
+    name: item.name,
+    variantLabel: item.variantLabel,
+    variantOptions: item.variantOptions,
+    price: item.price,
+    comparePrice: item.comparePrice,
+    quantity: item.quantity,
+    subtotal: item.subtotal,
+    tax: item.tax,
+    stock: item.stock,
+    image: item.image,
+    weight: item.weight ?? item.variantLabel ?? "",
+    sku: item.sku ?? undefined,
+  }))
 }
 
 export const setCartItems = (items: CartItem[]) => {
   if (typeof window === "undefined") return
-  window.localStorage.setItem(CART_KEY, JSON.stringify(items))
+  const normalized: CartItemNormalized[] = items
+    .filter((item) => item.productId)
+    .map((item) => {
+      const totals = computeItemTotals({
+        price: item.price,
+        quantity: item.quantity,
+        explicitTax: item.tax,
+      })
+      const variantId = item.variantId ?? null
+      return {
+        id: `${item.productId}:${variantId ?? "default"}`,
+        productId: item.productId,
+        variantId,
+        sku: item.sku ?? null,
+        slug: item.slug,
+        name: item.name,
+        variantLabel: item.variantLabel ?? item.weight ?? "",
+        variantOptions: item.variantOptions,
+        image: item.image,
+        price: item.price,
+        comparePrice: item.comparePrice ?? item.basePrice ?? item.price,
+        quantity: Math.max(1, item.quantity),
+        subtotal: item.subtotal ?? totals.subtotal,
+        tax: item.tax ?? totals.tax,
+        stock: item.stock ?? null,
+        weight: item.weight,
+      }
+    })
+  writeCartStorage(normalized)
   emitCartUpdated()
 }
 
@@ -66,7 +96,12 @@ type CartProductInput = {
   variantId?: string | null
   slug: string
   name: string
+  variantLabel?: string
+  variantOptions?: string[]
   price: number
+  comparePrice?: number
+  tax?: number
+  stock?: number | null
   image: string
   weight: string
   sku?: string
@@ -79,12 +114,6 @@ const getCartKey = (product: CartProductInput) => {
   return `${base}:${product.variantId ?? "default"}`
 }
 export const addToCart = (product: CartProductInput, quantity = 1) => {
-  // 🚨 Prevent invalid cart data
-  if (product.variantId === undefined) {
-    console.error("variantId is missing. This may break checkout.");
-    return;
-  }
-
   const existing = getCartItems()
   const key = getCartKey(product)
   const index = existing.findIndex((item) => item.id === key)
@@ -92,11 +121,16 @@ export const addToCart = (product: CartProductInput, quantity = 1) => {
   if (index === -1) {
     existing.push({
       id: key,
-      productId: product.productId || product.id,
+      productId: product.productId || product.id || product.slug,
       variantId: product.variantId ?? null,
       slug: product.slug,
       name: product.name,
+      variantLabel: product.variantLabel ?? product.weight,
+      variantOptions: product.variantOptions,
       price: product.price,
+      comparePrice: product.comparePrice ?? product.basePrice ?? product.price,
+      tax: product.tax ?? 0,
+      stock: product.stock ?? null,
       image: product.image,
       weight: product.weight,
       sku: product.sku,
@@ -136,11 +170,16 @@ export const setCartItemQuantity = (product: CartProductInput, quantity: number)
   if (index === -1 && nextQuantity > 0) {
     existing.push({
       id: key,
-      productId: product.productId || product.id,
+      productId: product.productId || product.id || product.slug,
       variantId: product.variantId ?? null,
       slug: product.slug,
       name: product.name,
+      variantLabel: product.variantLabel ?? product.weight,
+      variantOptions: product.variantOptions,
       price: product.price,
+      comparePrice: product.comparePrice ?? product.basePrice ?? product.price,
+      tax: product.tax ?? 0,
+      stock: product.stock ?? null,
       image: product.image,
       weight: product.weight,
       sku: product.sku,

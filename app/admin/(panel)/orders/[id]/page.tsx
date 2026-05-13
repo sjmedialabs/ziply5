@@ -4,6 +4,7 @@ import { useEffect, useState } from "react"
 import { useParams, useRouter } from "next/navigation"
 import { authedFetch, authedPost } from "@/lib/dashboard-fetch"
 import { Button } from "@/components/ui/button"
+import { TrackingTimeline } from "@/src/components/shipping/tracking-timeline"
 
 type OrderDetail = {
   id: string
@@ -23,7 +24,14 @@ type OrderDetail = {
   statusHistory?: Array<{ toStatus: string; changedAt: string; notes?: string | null; reasonCode?: string | null; changedById?: string | null }>
   notes?: Array<{ id: string; note: string; isInternal: boolean; createdAt: string }>
   user?: { id: string; name: string; email: string }
-  shipments?: Array<{ id: string; carrier: string | null; trackingNo: string | null; shipmentStatus: string }>
+  shipments?: Array<{ id: string; carrier: string | null; trackingNo: string | null; shipmentStatus: string; awbCode?: string | null; trackingUrl?: string | null; pickupStatus?: string | null }>
+  awbCode?: string | null
+  courierName?: string | null
+  trackingNumber?: string | null
+  trackingUrl?: string | null
+  shipmentStatus?: string | null
+  estimatedDeliveryDate?: string | null
+  lastTrackingSyncAt?: string | null
   returnRequests?: Array<{ id: string; status: string; reason: string | null }>
   refunds?: Array<{ id: string; status: string; amount: string | number }>
   paymentStatus?: string | null
@@ -95,7 +103,17 @@ export default function AdminOrderDetailPage() {
     }
   }
 
-  const runShiprocketAction = async (action: "serviceability" | "create_shipment" | "assign_awb" | "generate_pickup") => {
+  const runShiprocketAction = async (
+    action:
+      | "serviceability"
+      | "create_shipment"
+      | "assign_awb"
+      | "generate_pickup"
+      | "retry_shipment_sync"
+      | "refresh_tracking"
+      | "regenerate_tracking_data"
+      | "repair_shipment_state",
+  ) => {
     if (!params.id) return
     setShiprocketBusy(action)
     setError("")
@@ -344,8 +362,51 @@ export default function AdminOrderDetailPage() {
                 >
                   {shiprocketBusy === "generate_pickup" ? "Generating..." : "Generate Pickup"}
                 </button>
+                <button
+                  type="button"
+                  disabled={shiprocketBusy === "retry_shipment_sync"}
+                  onClick={() => void runShiprocketAction("retry_shipment_sync")}
+                  className="rounded-lg border border-[#E8DCC8] bg-white px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-[#4A1D1F] hover:bg-[#FFFBF3] disabled:opacity-40"
+                >
+                  {shiprocketBusy === "retry_shipment_sync" ? "Retrying..." : "Retry Shipment Sync"}
+                </button>
+                <button
+                  type="button"
+                  disabled={shiprocketBusy === "refresh_tracking" || !order.shipments?.length}
+                  onClick={() => void runShiprocketAction("refresh_tracking")}
+                  className="rounded-lg border border-[#E8DCC8] bg-white px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-[#4A1D1F] hover:bg-[#FFFBF3] disabled:opacity-40"
+                >
+                  {shiprocketBusy === "refresh_tracking" ? "Refreshing..." : "Refresh Tracking"}
+                </button>
+                <button
+                  type="button"
+                  disabled={shiprocketBusy === "regenerate_tracking_data" || !order.shipments?.length}
+                  onClick={() => void runShiprocketAction("regenerate_tracking_data")}
+                  className="rounded-lg border border-[#E8DCC8] bg-white px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-[#4A1D1F] hover:bg-[#FFFBF3] disabled:opacity-40"
+                >
+                  {shiprocketBusy === "regenerate_tracking_data" ? "Working..." : "Regenerate Tracking Data"}
+                </button>
+                <button
+                  type="button"
+                  disabled={shiprocketBusy === "repair_shipment_state"}
+                  onClick={() => void runShiprocketAction("repair_shipment_state")}
+                  className="rounded-lg border border-[#E8DCC8] bg-white px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-[#4A1D1F] hover:bg-[#FFFBF3] disabled:opacity-40"
+                >
+                  {shiprocketBusy === "repair_shipment_state" ? "Repairing..." : "Repair Shipment State"}
+                </button>
               </div>
               {serviceabilitySummary && <p className="mb-3 rounded-lg bg-[#FFFBF3] px-3 py-2 text-xs text-[#646464]">{serviceabilitySummary}</p>}
+              <TrackingTimeline
+                orderStatus={order.status}
+                shipmentStatus={order.shipmentStatus ?? order.shipments?.[0]?.shipmentStatus ?? null}
+                statusHistory={order.statusHistory}
+              />
+              <div className="mt-3 grid gap-1 text-xs text-[#646464]">
+                <p><span className="font-semibold text-[#2A1810]">Courier:</span> {order.courierName ?? order.shipments?.[0]?.carrier ?? "—"}</p>
+                <p><span className="font-semibold text-[#2A1810]">AWB:</span> {order.awbCode ?? order.trackingNumber ?? order.shipments?.[0]?.trackingNo ?? "—"}</p>
+                <p><span className="font-semibold text-[#2A1810]">Last Tracking Sync:</span> {order.lastTrackingSyncAt ? new Date(order.lastTrackingSyncAt).toLocaleString() : "—"}</p>
+                <p><span className="font-semibold text-[#2A1810]">ETA:</span> {order.estimatedDeliveryDate ? new Date(order.estimatedDeliveryDate).toLocaleDateString() : "—"}</p>
+              </div>
               {!order.shipments?.length ? (
                 <p className="text-sm text-[#646464]">No shipment records found yet.</p>
               ) : (

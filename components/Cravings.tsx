@@ -21,7 +21,7 @@ export default function Cravings() {
 
         <div className="flex gap-4 overflow-x-auto pb-4 scrollbar-hide" style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}>
           {cravingsGallery.map((item) => (
-            <div key={item.id} className="flex-shrink-0 w-48 md:w-56 group cursor-pointer">
+            <div key={item.id} className="flex-shrink-0 w-48 md:w-56 group">
               <div className="relative h-64 md:h-72 rounded-2xl overflow-hidden shadow-lg transform group-hover:scale-105 transition-transform duration-300">
                 <Image src={item.image} alt={item.title} fill className="object-cover" />
                 <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />

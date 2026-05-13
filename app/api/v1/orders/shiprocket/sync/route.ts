@@ -3,12 +3,13 @@ import { z } from "zod"
 import { fail, ok } from "@/src/server/core/http/response"
 import { requireAuth } from "@/src/server/middleware/auth"
 import { requirePermission } from "@/src/server/middleware/rbac"
-import { syncBulkOrders } from "@/src/server/modules/integrations/shiprocket-order.service"
+import { syncBulkShiprocketOrders } from "@/src/server/modules/shipping/shiprocket.orders"
 
 const schema = z.object({
   orderIds: z.array(z.string().min(1)).min(1),
   generatePickup: z.boolean().optional(),
   retryFailedOnly: z.boolean().optional(),
+  forceResync: z.boolean().optional(),
 })
 
 export async function POST(request: NextRequest) {
@@ -21,9 +22,10 @@ export async function POST(request: NextRequest) {
   if (!parsed.success) return fail("Validation failed", 422, parsed.error.flatten())
 
   try {
-    const data = await syncBulkOrders(parsed.data.orderIds, auth.user.sub, {
+    const data = await syncBulkShiprocketOrders(parsed.data.orderIds, auth.user.sub, {
       generatePickup: parsed.data.generatePickup !== false,
       retryFailedOnly: parsed.data.retryFailedOnly === true,
+      forceResync: parsed.data.forceResync === true,
     })
     return ok(data, "Bulk Shiprocket sync completed")
   } catch (error) {

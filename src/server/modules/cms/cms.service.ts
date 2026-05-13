@@ -2,14 +2,17 @@ import crypto from "node:crypto"
 import { pgQuery, pgTx } from "@/src/server/db/pg"
 
 export const listCmsPages = async () => {
-  const pages = await pgQuery<Array<{ id: string; slug: string; title: string; status: string; updatedAt: Date }>>(
-    `SELECT id, slug, title,"metaTitle", "metaDescription", status, "updatedAt" FROM "CmsPage" ORDER BY "updatedAt" DESC`,
+  const pages = await pgQuery<{ id: string; slug: string; title: string; status: string; updatedAt: Date; sectionCount: number }>(
+    `
+      SELECT p.id, p.slug, p.title, p."metaTitle", p."metaDescription", p.status, p."updatedAt",
+             COUNT(s.id)::int as "sectionCount"
+      FROM "CmsPage" p
+      LEFT JOIN "CmsSection" s ON p.id = s."pageId"
+      GROUP BY p.id
+      ORDER BY p."updatedAt" DESC
+    `,
   )
-  const counts = await pgQuery<Array<{ pageId: string; count: number }>>(
-    `SELECT "pageId" as "pageId", COUNT(*)::int as count FROM "CmsSection" GROUP BY "pageId"`,
-  )
-  const byId = new Map(counts.map((c) => [c.pageId, c.count]))
-  return pages.map((p: any) => ({ ...p, _count: { sections: byId.get(p.id) ?? 0 } }))
+  return pages.map((p) => ({ ...p, _count: { sections: p.sectionCount } }))
 }
 
 export const getCmsPageBySlug = async (slug: string) => {
