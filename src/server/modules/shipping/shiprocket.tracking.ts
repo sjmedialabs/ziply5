@@ -12,21 +12,42 @@ const trackingConsole = (step: string, details?: unknown) => {
   console.log(`[shiprocket][${step}]`, details)
 }
 
-type TrackingPayload = {
-  tracking_data?: {
-    track_status?: number
-    shipment_status?: number
-    shipment_track?: Array<Record<string, unknown>>
-    shipment_track_activities?: Array<Record<string, unknown>>
-    track_url?: string
-    etd?: string
-    [key: string]: unknown
+const isRecord = (v: unknown): v is Record<string, unknown> =>
+  Boolean(v && typeof v === "object" && !Array.isArray(v))
+
+/**
+ * Normalize nested Shiprocket tracking payloads (data / response / tracking_data).
+ */
+const unwrapTrackingPayload = (payload: unknown): Record<string, unknown> => {
+  if (!isRecord(payload)) return {}
+  if (payload.tracking_data && isRecord(payload.tracking_data)) return payload
+  const data = payload.data
+  if (isRecord(data)) {
+    if (data.tracking_data && isRecord(data.tracking_data)) {
+      return { ...payload, tracking_data: data.tracking_data }
+    }
+    const inner = data.data
+    if (isRecord(inner) && inner.tracking_data && isRecord(inner.tracking_data)) {
+      return { ...payload, tracking_data: inner.tracking_data }
+    }
   }
-  [key: string]: unknown
+  const resp = payload.response
+  if (isRecord(resp)) return unwrapTrackingPayload(resp)
+  const nestedPayload = payload.payload
+  if (isRecord(nestedPayload)) return unwrapTrackingPayload(nestedPayload)
+  return payload
 }
 
-const ACTIVE_SHIPMENT_STATUSES = new Set(["awb_assigned", "picked_up", "in_transit", "out_for_delivery"])
-const TERMINAL_SHIPMENT_STATUSES = new Set(["delivered", "cancelled", "rto_delivered"])
+const TERMINAL_SHIPMENT_STATUSES = new Set([
+  "delivered",
+  "cancelled",
+  "rto_delivered",
+  "rto",
+  "returned",
+  "lost",
+  "destroyed",
+  "failed",
+])
 
 const normalizeStatus = (value?: string | null) => String(value ?? "").trim().toLowerCase().replace(/\s+/g, "_")
 
@@ -41,31 +62,66 @@ export const mapShiprocketToInternalStatus = (shiprocketStatus?: string | null) 
   return "PROCESSING"
 }
 
-const parseTrackingResponse = (payload: TrackingPayload) => {
-  const track = payload.tracking_data ?? {}
-  const latest = Array.isArray(track.shipment_track) ? (track.shipment_track[0] ?? {}) : {}
-  const status = String(latest.current_status ?? latest.shipment_status ?? "")
-  const statusCode = Number(latest.current_status_id ?? latest.shipment_status_id ?? track.shipment_status ?? 0)
-  const courierName = String(latest.courier_name ?? "")
-  const awbCode = String(latest.awb_code ?? "")
+type ParsedTracking = {
+  shiprocketStatus: string
+  statusCode: number | null
+  courierName: string | null
+  awbCode: string | null
+  trackUrl: string | null
+  etd: string | null
+  pickupStatus: string | null
+  currentStatus: string | null
+  activities: Array<Record<string, unknown>>
+  raw: unknown
+  trackSection: Record<string, unknown>
+}
+
+const parseTrackingResponse = (payloadRaw: unknown): ParsedTracking => {
+  const root = unwrapTrackingPayload(payloadRaw)
+  const track = (isRecord(root.tracking_data) ? root.tracking_data : root) as Record<string, unknown>
+  const shipmentTrack = Array.isArray(track.shipment_track)
+    ? (track.shipment_track as Array<Record<string, unknown>>)
+    : []
+  const latest = shipmentTrack[0] ?? {}
+  const shiprocketStatus = String(
+    latest.current_status ?? latest.shipment_status ?? track.shipment_status ?? track.track_status ?? "",
+  )
+  const statusCodeRaw = Number(
+    latest.current_status_id ?? latest.shipment_status_id ?? track.track_status ?? track.shipment_status ?? 0,
+  )
+  const statusCode = Number.isFinite(statusCodeRaw) && statusCodeRaw !== 0 ? statusCodeRaw : null
+  const courierName = String(latest.courier_name ?? track.courier_name ?? "") || null
+  const awbFromLatest = String(latest.awb_code ?? "") || null
+  const awbFromTrack = String(track.awb_code ?? track.awb ?? "") || null
+  const awbCode = awbFromLatest || awbFromTrack
   const trackUrl = track.track_url ? String(track.track_url) : null
-  const etd = track.etd ? String(track.etd) : latest.edd ? String(latest.edd) : null
-  const activities = Array.isArray(track.shipment_track_activities) ? track.shipment_track_activities : []
-  const parsed = {
-    status,
-    statusCode: Number.isFinite(statusCode) ? statusCode : null,
-    courierName: courierName || null,
-    awbCode: awbCode || null,
+  const etd =
+    (track.etd ? String(track.etd) : null) ??
+    (latest.edd ? String(latest.edd) : null) ??
+    (latest.etd ? String(latest.etd) : null)
+  const activities = Array.isArray(track.shipment_track_activities)
+    ? (track.shipment_track_activities as Array<Record<string, unknown>>)
+    : []
+  const pickupStatus = track.pickup_status ? String(track.pickup_status) : null
+  const currentStatus = shiprocketStatus || null
+  const parsed: ParsedTracking = {
+    shiprocketStatus,
+    statusCode,
+    courierName,
+    awbCode,
     trackUrl,
     etd,
+    pickupStatus,
+    currentStatus,
     activities,
-    raw: payload,
+    raw: payloadRaw,
+    trackSection: track,
   }
   trackingConsole("tracking.parse.response", parsed)
   return parsed
 }
 
-const fetchTrackingByAwb = async (awbCode: string): Promise<TrackingPayload> => {
+const fetchTrackingByAwb = async (awbCode: string): Promise<unknown> => {
   trackingConsole("tracking.fetch.start", { awbCode })
   const token = await getShiprocketToken()
   const baseUrl = (process.env.SHIPROCKET_BASE_URL ?? "https://apiv2.shiprocket.in/v1/external").replace(/\/+$/, "")
@@ -82,7 +138,7 @@ const fetchTrackingByAwb = async (awbCode: string): Promise<TrackingPayload> => 
     throw new Error(`Tracking API failed (${res.status}): ${rawText.slice(0, 500)}`)
   }
   try {
-    const parsed = JSON.parse(rawText) as TrackingPayload
+    const parsed = JSON.parse(rawText) as unknown
     trackingConsole("tracking.fetch.raw_response", { awbCode, response: parsed })
     return parsed
   } catch {
@@ -118,20 +174,23 @@ const upsertTrackingEvents = async (shipmentId: string, awbCode: string, activit
         JSON.stringify(activity ?? {}),
       ],
     )
-    trackingConsole("tracking.events.upsert.item", {
-      shipmentId,
-      awbCode,
-      status: status || null,
-      statusCode,
-      activityDate: activityDate ? activityDate.toISOString() : null,
-    })
   }
   trackingConsole("tracking.events.upsert.done", { shipmentId, awbCode })
 }
 
+const isTerminalCombined = (shippingStatus: string | null, shipmentStatus: string | null) => {
+  const blob = `${normalizeStatus(shippingStatus)} ${normalizeStatus(shipmentStatus)}`
+  if (!blob.trim()) return false
+  for (const term of TERMINAL_SHIPMENT_STATUSES) {
+    if (blob.includes(term)) return true
+  }
+  if (blob.includes("deliver") && blob.includes("delivered")) return true
+  return false
+}
+
 export const syncShipmentTrackingByAwb = async (awbCode: string) => {
   trackingConsole("tracking.sync_by_awb.start", { awbCode })
-  logger.info("shiprocket.tracking.sync.started", { awbCode })
+  logger.info("shiprocket.sync.start", { awbCode, mode: "tracking_by_awb" })
   const shipmentRows = await pgQuery<Array<{ id: string; orderId: string; shipmentNo: string | null }>>(
     `SELECT id, "orderId", "shipmentNo" FROM "Shipment" WHERE "trackingNo" = $1 OR "awbCode" = $1 ORDER BY "createdAt" DESC LIMIT 1`,
     [awbCode],
@@ -141,35 +200,42 @@ export const syncShipmentTrackingByAwb = async (awbCode: string) => {
   trackingConsole("tracking.sync_by_awb.shipment_lookup", { awbCode, shipment })
   const rawTracking = await fetchTrackingByAwb(awbCode)
   const parsed = parseTrackingResponse(rawTracking)
-  const internalStatus = mapShiprocketToInternalStatus(parsed.status)
-  trackingConsole("tracking.sync_by_awb.mapped_status", { awbCode, shiprocketStatus: parsed.status, internalStatus })
+  const internalStatus = mapShiprocketToInternalStatus(parsed.shiprocketStatus)
+  const etdDate = parsed.etd ? new Date(parsed.etd) : null
+  const etdValid = etdDate && !Number.isNaN(etdDate.getTime()) ? etdDate : null
+  trackingConsole("tracking.sync_by_awb.mapped_status", { awbCode, shiprocketStatus: parsed.shiprocketStatus, internalStatus })
   await pgTx(async (tx) => {
     await tx.query(
       `
       UPDATE "Shipment"
-      SET "currentStatus"=$2,
-          "currentStatusId"=$3,
-          "trackingUrl"=COALESCE($4,"trackingUrl"),
-          "estimatedDeliveryDate"=COALESCE($5::timestamptz,"estimatedDeliveryDate"),
-          "courierName"=COALESCE($6,"courierName"),
-          "trackingRawResponse"=$7::jsonb,
-          "rawShiprocketResponse"=$7::jsonb,
+      SET "shippingStatus"=$2,
+          "shipmentStatus"=COALESCE(NULLIF(trim($3), ''), $2),
+          "shippingStatusCode"=$4,
+          "currentStatus"=COALESCE(NULLIF(trim($5), ''), $2),
+          "trackingUrl"=COALESCE($6,"trackingUrl"),
+          "courierName"=COALESCE($7,"courierName"),
+          "pickupStatus"=COALESCE($8,"pickupStatus"),
+          "trackingData"=$9::jsonb,
+          "rawShiprocketResponse"=$10::jsonb,
           "lastTrackingSyncAt"=now(),
-          "shippingStatus"=$8,
-          "shipmentStatus"=$8,
-          "deliveredDate"=CASE WHEN $8='DELIVERED' THEN now() ELSE "deliveredDate" END,
+          "estimatedDeliveryDate"=COALESCE($11,"estimatedDeliveryDate"),
+          "deliveredAt"=CASE WHEN $2='DELIVERED' THEN COALESCE("deliveredAt", now()) ELSE "deliveredAt" END,
+          "deliveredDate"=CASE WHEN $2='DELIVERED' THEN COALESCE("deliveredDate", now()) ELSE "deliveredDate" END,
           "updatedAt"=now()
       WHERE id=$1
       `,
       [
         shipment.id,
-        parsed.status || null,
-        parsed.statusCode,
-        parsed.trackUrl,
-        parsed.etd,
-        parsed.courierName,
-        JSON.stringify(parsed.raw),
         internalStatus,
+        parsed.shiprocketStatus,
+        parsed.statusCode,
+        parsed.currentStatus,
+        parsed.trackUrl,
+        parsed.courierName,
+        parsed.pickupStatus,
+        JSON.stringify(parsed.trackSection ?? {}),
+        JSON.stringify(parsed.raw ?? {}),
+        etdValid,
       ],
     )
   })
@@ -177,23 +243,35 @@ export const syncShipmentTrackingByAwb = async (awbCode: string) => {
     orderId: shipment.orderId,
     shipmentId: shipment.id,
     awbCode,
-    currentStatus: parsed.status,
+    currentStatus: parsed.shiprocketStatus,
     statusCode: parsed.statusCode,
     trackingUrl: parsed.trackUrl,
   })
   await upsertTrackingEvents(shipment.id, awbCode, parsed.activities)
-  await upsertOrderShipmentSnapshotSupabase(shipment.orderId, {
+
+  const orderPatch: Parameters<typeof upsertOrderShipmentSnapshotSupabase>[1] = {
     awbCode,
     trackingNumber: awbCode,
     courierName: parsed.courierName ?? null,
     trackingUrl: parsed.trackUrl,
-    estimatedDeliveryDate: parsed.etd ? new Date(parsed.etd) : null,
+    estimatedDeliveryDate: etdValid,
     shippingStatus: internalStatus,
-    shipmentStatus: internalStatus,
+    shipmentStatus: parsed.shiprocketStatus || internalStatus,
+    pickupStatus: parsed.pickupStatus,
     lastTrackingSyncAt: new Date(),
-    shipmentDeliveredAt: internalStatus === "DELIVERED" ? new Date() : null,
-    trackingData: parsed.raw,
+    trackingData: parsed.trackSection,
     shiprocketRawResponse: parsed.raw,
+    shippingStatusCode: parsed.statusCode,
+  }
+  if (internalStatus === "DELIVERED") {
+    orderPatch.shipmentDeliveredAt = new Date()
+  }
+  await upsertOrderShipmentSnapshotSupabase(shipment.orderId, orderPatch)
+  logger.info("shiprocket.snapshot.persisted", {
+    orderId: shipment.orderId,
+    shipmentId: shipment.id,
+    awbCode,
+    shippingStatus: internalStatus,
   })
   trackingConsole("tracking.sync_by_awb.order_snapshot_updated", {
     orderId: shipment.orderId,
@@ -202,7 +280,14 @@ export const syncShipmentTrackingByAwb = async (awbCode: string) => {
     trackingUrl: parsed.trackUrl,
     etd: parsed.etd,
   })
-  logger.info("shiprocket.tracking.sync.success", {
+  logger.info("shiprocket.sync.success", {
+    orderId: shipment.orderId,
+    shipmentId: shipment.id,
+    awbCode,
+    shippingStatus: internalStatus,
+    mode: "tracking_by_awb",
+  })
+  logger.info("shiprocket.tracking.updated", {
     orderId: shipment.orderId,
     shipmentId: shipment.id,
     awbCode,
@@ -222,7 +307,7 @@ export const syncShipmentTrackingByAwb = async (awbCode: string) => {
 
 export const syncShipmentTracking = async (orderId: string) => {
   trackingConsole("tracking.sync_by_order.start", { orderId })
-  logger.info("shiprocket.tracking.sync.started", { orderId })
+  logger.info("shiprocket.sync.start", { orderId, mode: "tracking_by_order" })
   const shipmentRows = await pgQuery<Array<{ id: string; trackingNo: string | null; awbCode: string | null }>>(
     `SELECT id, "trackingNo", "awbCode" FROM "Shipment" WHERE "orderId" = $1 ORDER BY "createdAt" DESC LIMIT 1`,
     [orderId],
@@ -236,41 +321,57 @@ export const syncShipmentTracking = async (orderId: string) => {
   return syncShipmentTrackingByAwb(awbCode)
 }
 
+/** Public alias: refresh tracking timeline + snapshots for an order. */
+export const refreshShipmentTracking = async (orderId: string) => syncShipmentTracking(orderId)
+
 export const syncAllActiveShipments = async () => {
   trackingConsole("tracking.sync_all.start")
-  const rows = await pgQuery<Array<{ orderId: string; trackingNo: string | null; awbCode: string | null; shippingStatus: string | null; shipmentStatus: string | null }>>(
+  logger.info("shiprocket.sync.start", { mode: "cron_active_shipments" })
+  const rows = await pgQuery<
+    Array<{
+      orderId: string
+      trackingNo: string | null
+      awbCode: string | null
+      shippingStatus: string | null
+      shipmentStatus: string | null
+    }>
+  >(
     `
-    SELECT DISTINCT ON ("orderId")
-      "orderId","trackingNo","awbCode","shippingStatus","shipmentStatus"
-    FROM "Shipment"
-    WHERE COALESCE("trackingNo","awbCode") IS NOT NULL
-    ORDER BY "orderId","createdAt" DESC
+    SELECT DISTINCT ON (s."orderId")
+      s."orderId",
+      s."trackingNo",
+      s."awbCode",
+      s."shippingStatus",
+      s."shipmentStatus"
+    FROM "Shipment" s
+    WHERE COALESCE(s."trackingNo", s."awbCode") IS NOT NULL
+    ORDER BY s."orderId", s."createdAt" DESC
     `,
     [],
   )
   const results: Array<{ orderId: string; status: "synced" | "skipped" | "failed"; reason?: string }> = []
   for (const row of rows) {
     trackingConsole("tracking.sync_all.row", row)
-    const normalized = normalizeStatus(row.shippingStatus ?? row.shipmentStatus ?? "")
-    if (TERMINAL_SHIPMENT_STATUSES.has(normalized)) {
+    const awb = row.trackingNo ?? row.awbCode ?? ""
+    if (!awb.trim()) {
+      results.push({ orderId: row.orderId, status: "skipped", reason: "no_awb" })
+      continue
+    }
+    if (isTerminalCombined(row.shippingStatus, row.shipmentStatus)) {
       results.push({ orderId: row.orderId, status: "skipped", reason: "terminal_status" })
       trackingConsole("tracking.sync_all.skipped_terminal", { orderId: row.orderId })
       continue
     }
-    if (normalized && !ACTIVE_SHIPMENT_STATUSES.has(normalized)) {
-      results.push({ orderId: row.orderId, status: "skipped", reason: "inactive_status" })
-      trackingConsole("tracking.sync_all.skipped_inactive", { orderId: row.orderId, normalized })
-      continue
-    }
     try {
-      await syncShipmentTrackingByAwb(row.trackingNo ?? row.awbCode ?? "")
+      await syncShipmentTrackingByAwb(awb)
       results.push({ orderId: row.orderId, status: "synced" })
-      trackingConsole("tracking.sync_all.synced", { orderId: row.orderId, awbCode: row.trackingNo ?? row.awbCode ?? null })
+      trackingConsole("tracking.sync_all.synced", { orderId: row.orderId, awbCode: awb })
     } catch (error) {
-      logger.error("shiprocket.tracking.sync.failed", {
+      logger.error("shiprocket.sync.failed", {
         orderId: row.orderId,
-        awbCode: row.trackingNo ?? row.awbCode ?? null,
+        awbCode: awb,
         reason: error instanceof Error ? error.message : "unknown",
+        mode: "cron_active_shipments",
       })
       results.push({
         orderId: row.orderId,
@@ -279,7 +380,7 @@ export const syncAllActiveShipments = async () => {
       })
       trackingConsole("tracking.sync_all.failed", {
         orderId: row.orderId,
-        awbCode: row.trackingNo ?? row.awbCode ?? null,
+        awbCode: awb,
         reason: error instanceof Error ? error.message : "unknown",
       })
     }
@@ -291,6 +392,7 @@ export const syncAllActiveShipments = async () => {
     failed: results.filter((r) => r.status === "failed").length,
     results,
   }
+  logger.info("shiprocket.sync.success", { mode: "cron_active_shipments", ...output })
   trackingConsole("tracking.sync_all.done", output)
   return output
 }

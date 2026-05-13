@@ -12,7 +12,6 @@ import {
   upsertPaidTransactionSupabase,
 } from "@/src/lib/db/orders"
 import { getSupabaseAdmin } from "@/src/lib/supabase/admin"
-import { safeSyncOrderShipmentToShiprocket } from "@/src/server/modules/shipping/shiprocket.orders"
 
 const getOrderById = async (orderId: string) => {
   const client = getSupabaseAdmin()
@@ -28,36 +27,6 @@ const getOrderById = async (orderId: string) => {
   }
 
   return data
-}
-
-const triggerShiprocketAutoSyncFromPayment = async (orderId: string) => {
-  console.log("[shiprocket][auto_sync.triggered]", { orderId, source: "payment_callback" })
-  try {
-    const result = await safeSyncOrderShipmentToShiprocket(orderId, "system")
-    if (result.status === "skipped") {
-      console.log("[shiprocket][auto_sync.skipped]", {
-        orderId,
-        source: "payment_callback",
-        reason: (result as { reason?: string }).reason ?? "skipped",
-      })
-      return
-    }
-    if (result.status === "failed") {
-      console.error("[shiprocket][auto_sync.failed]", {
-        orderId,
-        source: "payment_callback",
-        reason: (result as { reason?: string }).reason ?? "failed",
-      })
-      return
-    }
-    console.log("[shiprocket][auto_sync.success]", { orderId, source: "payment_callback" })
-  } catch (error) {
-    console.error("[shiprocket][auto_sync.failed]", {
-      orderId,
-      source: "payment_callback",
-      reason: error instanceof Error ? error.message : "unknown",
-    })
-  }
 }
 
 export type PaymentProvider = "razorpay" | "stripe" | "mock"
@@ -268,7 +237,6 @@ export const verifyRazorpayPayment = async (input: {
     reasonCode: "payment_success",
     note: "Order confirmed after successful payment",
   })
-  await triggerShiprocketAutoSyncFromPayment(input.orderId)
 
   return { verified: true, orderId: input.orderId, transactionId: txId }
 }
@@ -467,7 +435,6 @@ export const processWebhookEvent = async (
       reasonCode: "webhook_payment_captured",
       note: "Order confirmed after webhook payment capture",
     }).catch(() => null)
-    await triggerShiprocketAutoSyncFromPayment(orderId).catch(() => null)
   } else if (type === "payment.failed") {
     await updateOrderStatus(orderId, "failed", undefined, {
       reasonCode: "payment_failed",

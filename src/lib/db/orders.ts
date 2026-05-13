@@ -57,6 +57,10 @@ export type SupabaseOrderRecord = {
   isPickupGenerated?: boolean | null
   isLabelGenerated?: boolean | null
   trackingData?: unknown
+  shippingStatusCode?: number | null
+  awbAssignedAt?: string | Date | null
+  labelUrl?: string | null
+  pickupGeneratedAt?: string | Date | null
   appliedCouponId?: string | null
   couponCode?: string | null
   discount?: number | null
@@ -1762,6 +1766,10 @@ export const upsertOrderShipmentSnapshotSupabase = async (
     isPickupGenerated: boolean | null
     isLabelGenerated: boolean | null
     trackingData: unknown
+    shippingStatusCode: number | null
+    awbAssignedAt: Date | null
+    labelUrl: string | null
+    pickupGeneratedAt: Date | null
   }>,
 ) => {
   const client = getSupabaseAdmin()

@@ -259,7 +259,7 @@ const latestLifecycleStatus = (order: { status?: string | null; statusHistory?: 
 const triggerShiprocketAutoSync = async (input: {
   orderId: string
   actorId?: string
-  source: "order_created" | "payment_callback" | "status_confirmed"
+  source: "order_created" | "status_confirmed"
 }) => {
   const actorId = input.actorId ?? "system"
   console.log("[shiprocket][auto_sync.triggered]", {
@@ -766,6 +766,17 @@ export const createOrderFromCheckout = async (input: {
     payload: { orderId: order.id, total, currency: input.currency ?? "INR" },
   }).catch(() => null)
   setImmediate(() => {
+    const gatewayLower = input.gateway.trim().toLowerCase()
+    const pay = normalizePaymentStatus(input.paymentStatus)
+    if (gatewayLower !== "cod" && pay !== "SUCCESS") {
+      console.log("[shiprocket][auto_sync.skip_order_created]", {
+        orderId: String(order.id),
+        gateway: gatewayLower,
+        paymentStatus: pay,
+        reason: "prepaid_not_paid_yet",
+      })
+      return
+    }
     void triggerShiprocketAutoSync({
       orderId: String(order.id),
       actorId: input.userId ?? "system",

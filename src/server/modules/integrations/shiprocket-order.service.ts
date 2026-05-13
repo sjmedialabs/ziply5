@@ -130,7 +130,10 @@ const detectSyncStage = (input: {
   const hasShipmentRef = hasText(input.shipmentId)
   const hasAwb = hasText(input.awbCode)
   const pickup = String(input.pickupStatus ?? "").toLowerCase()
-  const pickupGenerated = Boolean(pickup && !["", "pending", "pickup_pending", "ready_to_ship"].includes(pickup))
+  const pickupGenerated = Boolean(
+    pickup &&
+    !["", "pending", "pickup_pending", "ready_to_ship", "awb_assigned", "1", "awb assigned"].includes(pickup)
+  )
 
   if (!input.shipmentRowExists && !hasShipmentRef) return "NO_SHIPMENT" as const
   if ((input.shipmentRowExists || hasShipmentRef) && !hasAwb) return "AWB_PENDING" as const
@@ -149,8 +152,9 @@ const fetchLatestSyncState = async (orderId: string) => {
       pickupStatus: string | null
       shippingStatus: string | null
       shipmentStatus: string | null
+      shippingStatusCode: number | null
     }>
-  >(`SELECT id, "shipmentId", "awbCode", "isShipmentCreated", "pickupStatus", "shippingStatus", "shipmentStatus" FROM "Order" WHERE id = $1 LIMIT 1`, [orderId])
+  >(`SELECT id, "shipmentId", "awbCode", "isShipmentCreated", "pickupStatus", "shippingStatus", "shipmentStatus", "shippingStatusCode" FROM "Order" WHERE id = $1 LIMIT 1`, [orderId])
   const shipmentRows = await pgQuery<
     Array<{
       id: string
@@ -159,9 +163,10 @@ const fetchLatestSyncState = async (orderId: string) => {
       shipmentStatus: string | null
       pickupStatus: string | null
       awbCode: string | null
+      shippingStatusCode: number | null
     }>
   >(
-    `SELECT id, "shipmentNo", "trackingNo", "shipmentStatus", "pickupStatus", "awbCode" FROM "Shipment" WHERE "orderId" = $1 ORDER BY "createdAt" DESC LIMIT 1`,
+    `SELECT id, "shipmentNo", "trackingNo", "shipmentStatus", "pickupStatus", "awbCode", "shippingStatusCode" FROM "Shipment" WHERE "orderId" = $1 ORDER BY "createdAt" DESC LIMIT 1`,
     [orderId],
   )
   const order = orderRows[0] ?? null
@@ -170,7 +175,14 @@ const fetchLatestSyncState = async (orderId: string) => {
     shipmentRowExists: Boolean(shipment),
     shipmentId: order?.shipmentId ?? shipment?.shipmentNo ?? null,
     awbCode: order?.awbCode ?? shipment?.trackingNo ?? shipment?.awbCode ?? null,
-    pickupStatus: order?.pickupStatus ?? shipment?.pickupStatus ?? shipment?.shipmentStatus ?? null,
+    pickupStatus:
+      order?.pickupStatus ??
+      shipment?.pickupStatus ??
+      order?.shipmentStatus ??
+      shipment?.shipmentStatus ??
+      String(order?.shippingStatusCode ?? "") ??
+      String(shipment?.shippingStatusCode ?? "") ??
+      null,
   })
   return { order, shipment, stage }
 }
@@ -269,6 +281,25 @@ const extractAwbAssignmentData = (response: unknown) => {
     "payload.tracking_url",
     "payload.trackingUrl",
   ]
+  const eddPaths = [
+    "response.data.estimated_delivery_date",
+    "response.data.edd",
+    "response.estimated_delivery_date",
+    "response.edd",
+    "data.estimated_delivery_date",
+    "data.edd",
+    "estimated_delivery_date",
+    "edd",
+    "payload.estimated_delivery_date",
+    "payload.edd",
+  ]
+  const routingPaths = ["response.data.routing_code", "data.routing_code", "routing_code"]
+  const rtoRoutingPaths = ["response.data.rto_routing_code", "data.rto_routing_code", "rto_routing_code"]
+  const transporterNamePaths = ["response.data.transporter_name", "data.transporter_name", "transporter_name"]
+  const transporterIdPaths = ["response.data.transporter_id", "data.transporter_id", "transporter_id"]
+  const appliedWeightPaths = ["response.data.applied_weight", "data.applied_weight", "applied_weight"]
+  const assignedDateTimePaths = ["response.data.assigned_date_time", "data.assigned_date_time", "assigned_date_time"]
+
   const findFirstWithPath = (paths: string[]) => {
     for (const path of paths) {
       const value = asText(getByPath(response, path))
@@ -280,8 +311,16 @@ const extractAwbAssignmentData = (response: unknown) => {
   const courierName = findFirstWithPath(courierNamePaths)
   const courierCompanyId = findFirstWithPath(courierCompanyPaths)
   const trackingUrl = findFirstWithPath(trackingPaths)
+  const edd = findFirstWithPath(eddPaths)
   const shipmentId = findFirstWithPath(shipmentIdPaths)
   const orderId = findFirstWithPath(orderIdPaths)
+  const routingCode = findFirstWithPath(routingPaths)
+  const rtoRoutingCode = findFirstWithPath(rtoRoutingPaths)
+  const transporterName = findFirstWithPath(transporterNamePaths)
+  const transporterId = findFirstWithPath(transporterIdPaths)
+  const appliedWeight = findFirstWithPath(appliedWeightPaths)
+  const assignedDateTime = findFirstWithPath(assignedDateTimePaths)
+
   const assignStatusRaw = getByPath(response, "awb_assign_status")
   const awbAssignStatus = typeof assignStatusRaw === "number" ? assignStatusRaw : Number(assignStatusRaw ?? 0)
   const isAssigned = awbAssignStatus === 1 && Boolean(awb.value)
@@ -290,8 +329,15 @@ const extractAwbAssignmentData = (response: unknown) => {
     courierName: courierName.value,
     courierCompanyId: courierCompanyId.value,
     trackingUrl: trackingUrl.value,
+    estimatedDeliveryDate: edd.value,
     shipmentId: shipmentId.value,
     orderId: orderId.value,
+    routingCode: routingCode.value,
+    rtoRoutingCode: rtoRoutingCode.value,
+    transporterName: transporterName.value,
+    transporterId: transporterId.value,
+    appliedWeight: appliedWeight.value,
+    assignedDateTime: assignedDateTime.value,
     awbAssignStatus: Number.isFinite(awbAssignStatus) ? awbAssignStatus : 0,
     isAssigned,
     extractionPath: {
@@ -299,8 +345,15 @@ const extractAwbAssignmentData = (response: unknown) => {
       courierName: courierName.path,
       courierCompanyId: courierCompanyId.path,
       trackingUrl: trackingUrl.path,
+      estimatedDeliveryDate: edd.path,
       shipmentId: shipmentId.path,
       orderId: orderId.path,
+      routingCode: routingCode.path,
+      rtoRoutingCode: rtoRoutingCode.path,
+      transporterName: transporterName.path,
+      transporterId: transporterId.path,
+      appliedWeight: appliedWeight.path,
+      assignedDateTime: assignedDateTime.path,
     },
     normalized: {
       awbCode: awb.value,
@@ -309,6 +362,13 @@ const extractAwbAssignmentData = (response: unknown) => {
       shipmentId: shipmentId.value,
       orderId: orderId.value,
       trackingUrl: trackingUrl.value,
+      estimatedDeliveryDate: edd.value,
+      routingCode: routingCode.value,
+      rtoRoutingCode: rtoRoutingCode.value,
+      transporterName: transporterName.value,
+      transporterId: transporterId.value,
+      appliedWeight: appliedWeight.value,
+      assignedDateTime: assignedDateTime.value,
     },
   }
 }
@@ -492,17 +552,41 @@ const persistExtendedShipmentFields = async (
     shiprocketShipmentId: string
     awbCode: string
     courierId: string
+    courierName: string
+    courierCompanyId: string
     pickupStatus: string
     trackingUrl: string
     shippingLabelUrl: string
     manifestUrl: string
+    pickupGeneratedAt: Date
+    estimatedDeliveryDate: Date
     lastSyncAt: Date
+    lastTrackingSyncAt: Date
+    routingCode: string
+    rtoRoutingCode: string
+    transporterName: string
+    transporterId: string
+    appliedWeight: number
+    assignedDateTime: Date
+    trackingNo: string
+    shipmentStatus: string
+    shippingStatus: string
+    shippingStatusCode: number
+    currentStatus: string
+    currentStatusId: number
+    freightCharges: number
+    awbAssignedAt: Date
+    invoiceNo: string
+    labelUrl: string
+    isPickupGenerated: boolean
+    rawShiprocketResponse: unknown
+    trackingData: unknown
   }>,
 ) => {
   const sets: string[] = []
-  const values: Array<string | Date> = []
-  const add = (column: string, value?: string | Date) => {
-    if (value == null) return
+  const values: Array<string | number | Date | boolean | null> = []
+  const add = (column: string, value?: string | number | Date | boolean | null) => {
+    if (value === undefined) return
     values.push(value)
     sets.push(`"${column}" = $${values.length}`)
   }
@@ -510,11 +594,41 @@ const persistExtendedShipmentFields = async (
   add("shiprocketShipmentId", data.shiprocketShipmentId)
   add("awbCode", data.awbCode)
   add("courierId", data.courierId)
+  add("courierName", data.courierName)
+  add("courierCompanyId", data.courierCompanyId)
   add("pickupStatus", data.pickupStatus)
   add("trackingUrl", data.trackingUrl)
   add("shippingLabelUrl", data.shippingLabelUrl)
   add("manifestUrl", data.manifestUrl)
+  add("pickupGeneratedAt", data.pickupGeneratedAt)
   add("lastSyncAt", data.lastSyncAt)
+  add("lastTrackingSyncAt", data.lastTrackingSyncAt)
+  add("routingCode", data.routingCode)
+  add("rtoRoutingCode", data.rtoRoutingCode)
+  add("transporterName", data.transporterName)
+  add("transporterId", data.transporterId)
+  add("appliedWeight", data.appliedWeight)
+  add("assignedDateTime", data.assignedDateTime)
+  add("trackingNo", data.trackingNo)
+  add("shipmentStatus", data.shipmentStatus)
+  add("shippingStatus", data.shippingStatus)
+  add("shippingStatusCode", data.shippingStatusCode)
+  add("currentStatus", data.currentStatus)
+  add("currentStatusId", data.currentStatusId)
+  add("freightCharges", data.freightCharges)
+  add("awbAssignedAt", data.awbAssignedAt)
+  add("estimatedDeliveryDate", data.estimatedDeliveryDate)
+  add("invoiceNo", data.invoiceNo)
+  add("labelUrl", data.labelUrl)
+  add("isPickupGenerated", data.isPickupGenerated)
+  if (data.rawShiprocketResponse !== undefined) {
+    values.push(JSON.stringify(data.rawShiprocketResponse))
+    sets.push(`"rawShiprocketResponse" = $${values.length}::jsonb`)
+  }
+  if (data.trackingData !== undefined) {
+    values.push(JSON.stringify(data.trackingData))
+    sets.push(`"trackingData" = $${values.length}::jsonb`)
+  }
   if (sets.length === 0) return
   values.push(shipmentId)
   const shipmentIdPos = values.length
@@ -879,6 +993,7 @@ export const createShiprocketShipmentForOrder = async (orderId: string, actorId:
     shiprocketOrderId: extracted.shiprocketOrderId ?? undefined,
     shiprocketShipmentId: extracted.shipmentId ? String(extracted.shipmentId) : undefined,
     awbCode: extracted.awbCode ?? undefined,
+    trackingNo: extracted.awbCode ?? undefined,
     trackingUrl: extracted.trackingUrl ?? undefined,
     courierId: extracted.courierCompanyId ?? (bestCourier?.courier_company_id ? String(bestCourier.courier_company_id) : undefined),
     lastSyncAt: new Date(),
@@ -956,6 +1071,9 @@ export const assignAwbForOrderShipment = async (orderId: string, actorId: string
     await addOrderNote(orderId, "AWB assignment pending from Shiprocket. Shipment created and saved; retry AWB sync.", actorId)
     return { shipmentUpdated: false, reason: "AWB assignment pending", shipment, awb, parsedAwb }
   }
+
+  const estimatedDeliveryDate = parsedAwb.estimatedDeliveryDate ? new Date(parsedAwb.estimatedDeliveryDate) : null
+
   const freightChargesRaw =
     (awb as Record<string, unknown>).response && typeof (awb as Record<string, unknown>).response === "object"
       ? Number((((awb as Record<string, unknown>).response as Record<string, unknown>).data as Record<string, unknown> | undefined)?.freight_charges ?? 0)
@@ -965,6 +1083,8 @@ export const assignAwbForOrderShipment = async (orderId: string, actorId: string
   const shippingStatusCodeValue = parsedAwb.isAssigned ? 1 : 0
   const awbUpdateSql = `UPDATE "Shipment"
      SET "trackingNo"=$2,
+         "trackingNumber"=$2,
+         "awbCode"=$2,
          carrier=COALESCE($3, carrier),
          "shipmentStatus"='ready_to_ship',
          "courierName"=COALESCE($3, "courierName"),
@@ -972,8 +1092,14 @@ export const assignAwbForOrderShipment = async (orderId: string, actorId: string
          "freightCharges"=COALESCE($5, "freightCharges"),
          "shippingStatus"=$6,
          "shippingStatusCode"=$7,
+         "routingCode"=$8,
+         "rtoRoutingCode"=$9,
+         "transporterName"=$10,
+         "transporterId"=$11,
+         "appliedWeight"=$12,
+         "assignedDateTime"=$13,
          "awbAssignedAt"=now(),
-         "rawShiprocketResponse"=$8::jsonb,
+         "rawShiprocketResponse"=$14::jsonb,
          "updatedAt"=now()
      WHERE id=$1
      RETURNING *`
@@ -985,6 +1111,12 @@ export const assignAwbForOrderShipment = async (orderId: string, actorId: string
     normalizeNullableSqlValue(freightChargesValue),
     normalizeNullableSqlValue(shippingStatusValue),
     normalizeNullableSqlValue(shippingStatusCodeValue),
+    normalizeNullableSqlValue(parsedAwb.routingCode),
+    normalizeNullableSqlValue(parsedAwb.rtoRoutingCode),
+    normalizeNullableSqlValue(parsedAwb.transporterName),
+    normalizeNullableSqlValue(parsedAwb.transporterId),
+    normalizeNullableSqlValue(parsedAwb.appliedWeight ? Number(parsedAwb.appliedWeight) : null),
+    normalizeNullableSqlValue(parsedAwb.assignedDateTime ? new Date(parsedAwb.assignedDateTime) : null),
     normalizeNullableSqlValue(JSON.stringify(awb ?? {})),
   ]
   shipmentLog("info", "awb.assign.db_query", {
@@ -1018,12 +1150,25 @@ export const assignAwbForOrderShipment = async (orderId: string, actorId: string
   })
   await persistExtendedShipmentFields(updated.id, {
     awbCode: parsedAwb.awbCode,
+    trackingNo: parsedAwb.awbCode,
     courierId: parsedAwb.courierCompanyId ?? undefined,
     trackingUrl: parsedAwb.trackingUrl ?? undefined,
+    estimatedDeliveryDate: estimatedDeliveryDate ?? undefined,
+    routingCode: parsedAwb.routingCode ?? undefined,
+    rtoRoutingCode: parsedAwb.rtoRoutingCode ?? undefined,
+    transporterName: parsedAwb.transporterName ?? undefined,
+    transporterId: parsedAwb.transporterId ?? undefined,
+    appliedWeight: parsedAwb.appliedWeight ? Number(parsedAwb.appliedWeight) : undefined,
+    assignedDateTime: parsedAwb.assignedDateTime ? new Date(parsedAwb.assignedDateTime) : undefined,
     lastSyncAt: new Date(),
   })
   shipmentConsole("awb.assign.persist_extended_success", { orderId, shipmentId: updated.id, awbCode: parsedAwb.awbCode })
   await addOrderNote(orderId, `AWB assigned (${parsedAwb.awbCode})`, actorId)
+  logger.info("shiprocket.awb.assigned", {
+    orderId,
+    shipmentId: shipment.id,
+    awbCode: parsedAwb.awbCode,
+  })
   logger.info("awb.assigned", {
     orderId,
     shipmentId: shipment.id,
@@ -1050,24 +1195,48 @@ export const generatePickupForOrderShipment = async (orderId: string, actorId: s
   const shipment = rows[0]
   if (!shipment) throw new Error("Shipment not found")
   const shipmentId = Number(shipment.shipmentNo ?? 0)
-  if (!Number.isFinite(shipmentId) || shipmentId <= 0) throw new Error("Invalid shipment id for pickup")
-  const pickup = await shiprocketClient.generatePickup({ shipment_id: shipmentId })
+  console.log(`[shiprocket][pickup.debug] Attempting pickup for shipmentId=${shipmentId}, DB id=${shipment.id}`)
+  if (!Number.isFinite(shipmentId) || shipmentId <= 0) {
+    console.error(`[shiprocket][pickup.error] Invalid shipment id: "${shipment.shipmentNo}"`)
+    throw new Error("Invalid shipment id for pickup")
+  }
+  const pickup = await shiprocketClient.generatePickup({ shipment_id: shipmentId }).catch(err => {
+    console.error(`[shiprocket][pickup.error] Shiprocket API failed:`, err)
+    throw err
+  })
+  console.log(`[shiprocket][pickup.success] Raw Response:`, JSON.stringify(pickup, null, 2))
   shipmentConsole("pickup.generate.raw_response", { orderId, shipmentId: shipment.id, response: pickup })
+
+  const pickupDateRaw =
+    asText(getByPath(pickup, "pickup_scheduled_date")) ??
+    asText(getByPath(pickup, "response.data.pickup_scheduled_date")) ??
+    asText(getByPath(pickup, "data.pickup_scheduled_date")) ??
+    null
+  console.log(`[shiprocket][pickup.debug] Extracted pickupDateRaw: ${pickupDateRaw}`)
+  const pickupDate = pickupDateRaw ? new Date(pickupDateRaw) : null
+
   const updatedRows = await pgQuery(
-    `UPDATE "Shipment" SET "shipmentStatus"=$2, "updatedAt"=now() WHERE id=$1 RETURNING *`,
-    [shipment.id, pickup.pickup_status ?? "pickup_requested"],
+    `UPDATE "Shipment" SET "shipmentStatus"=$2, "pickupGeneratedAt"=$3, "updatedAt"=now() WHERE id=$1 RETURNING *`,
+    [shipment.id, pickup.pickup_status ?? "pickup_requested", pickupDate],
   )
   const updated = updatedRows[0]
   shipmentConsole("pickup.generate.db_updated", {
     orderId,
     shipmentId: updated?.id ?? shipment.id,
     pickupStatus: pickup.pickup_status ?? "scheduled",
+    pickupGeneratedAt: pickupDate,
   })
   await persistExtendedShipmentFields(updated.id, {
     pickupStatus: pickup.pickup_status ?? "scheduled",
+    pickupGeneratedAt: pickupDate ?? undefined,
     lastSyncAt: new Date(),
   })
   await addOrderNote(orderId, `Pickup generated (${pickup.pickup_status ?? "scheduled"})`, actorId)
+  logger.info("shiprocket.pickup.generated", {
+    orderId,
+    shipmentId: updated?.id ?? shipment.id,
+    pickupStatus: pickup.pickup_status ?? "scheduled",
+  })
   return { shipment: updated, pickup }
 }
 
@@ -1087,8 +1256,9 @@ const getOrderSyncEligibility = async (orderId: string) => {
       customerPhone: string | null
       userEmail: string | null
       items: unknown
-      statusHistory: unknown
-      shipments: unknown
+      latestLifecycleToStatus: string | null
+      txPaid: boolean
+      shipmentRowCount: number
     }>
   >(
     `
@@ -1101,18 +1271,20 @@ const getOrderSyncEligibility = async (orderId: string) => {
           INNER JOIN "Product" p ON p.id = oi."productId"
           WHERE oi."orderId" = o.id
         ), '[]'::jsonb) as items,
-        COALESCE((
-          SELECT jsonb_agg(jsonb_build_object('toStatus', h."toStatus", 'changedAt', h."changedAt") ORDER BY h."changedAt" DESC)
+        (
+          SELECT h."toStatus"
           FROM "OrderStatusHistory" h
           WHERE h."orderId" = o.id
+          ORDER BY h."changedAt" DESC NULLS LAST
           LIMIT 1
-        ), '[]'::jsonb) as "statusHistory",
-        COALESCE((
-          SELECT jsonb_agg(jsonb_build_object('id', s.id, 'createdAt', s."createdAt") ORDER BY s."createdAt" DESC)
-          FROM "Shipment" s
-          WHERE s."orderId" = o.id
-          LIMIT 1
-        ), '[]'::jsonb) as shipments
+        ) AS "latestLifecycleToStatus",
+        EXISTS (
+          SELECT 1
+          FROM "Transaction" t
+          WHERE t."orderId" = o.id
+            AND upper(trim(coalesce(t.status::text, ''))) IN ('PAID', 'SUCCESS', 'CAPTURED', 'COMPLETED')
+        ) AS "txPaid",
+        (SELECT COUNT(*)::int FROM "Shipment" s WHERE s."orderId" = o.id) AS "shipmentRowCount"
       FROM "Order" o
       LEFT JOIN "User" u ON u.id = o."userId"
       WHERE o.id = $1
@@ -1122,10 +1294,9 @@ const getOrderSyncEligibility = async (orderId: string) => {
   )
   const order = rows[0] as any
   if (!order) return { eligible: false as const, reason: "Order not found" }
-  const statusHistory = Array.isArray(order.statusHistory) ? (order.statusHistory as any[]) : []
-  const shipments = Array.isArray(order.shipments) ? (order.shipments as any[]) : []
+  const shipmentCount = Number(order.shipmentRowCount ?? 0)
   const items = Array.isArray(order.items) ? (order.items as any[]) : []
-  const latest = (statusHistory[0]?.toStatus ?? order.status ?? "").toLowerCase()
+  const latest = String(order.latestLifecycleToStatus ?? order.status ?? "").toLowerCase()
   const payment = (order.paymentStatus ?? "").toUpperCase()
   const paymentMethod = (order.paymentMethod ?? "").toLowerCase()
   const parsedAddress = parseAddressParts(order.customerAddress)
@@ -1155,7 +1326,7 @@ const getOrderSyncEligibility = async (orderId: string) => {
       shipmentId: order.shipmentId ?? null,
       awbCode: order.awbCode ?? null,
       isShipmentCreated: order.isShipmentCreated ?? null,
-      shipmentRows: shipments.length,
+      shipmentRows: shipmentCount,
       itemsCount: items.length,
     },
   })
@@ -1180,10 +1351,10 @@ const getOrderSyncEligibility = async (orderId: string) => {
   if (isShipmentFullySynced(order)) {
     return { eligible: false as const, reason: "shipment already exists" }
   }
-  if (shipments.length > 0 && !isShipmentFullySynced(order)) {
+  if (shipmentCount > 0 && !isShipmentFullySynced(order)) {
     shipmentLog("warn", "sync.partial_state_detected", {
       orderId,
-      shipmentRows: shipments.length,
+      shipmentRows: shipmentCount,
       shipmentId: order.shipmentId ?? null,
       awbCode: order.awbCode ?? null,
       isShipmentCreated: order.isShipmentCreated ?? null,
@@ -1216,7 +1387,7 @@ const getOrderSyncEligibility = async (orderId: string) => {
   }
   const accepted = ["confirmed", "packed", "shipped"].includes(latest)
   if (!accepted) return { eligible: false as const, reason: "order not confirmed" }
-  const paidOrCodApproved = payment === "SUCCESS" || paymentMethod === "cod"
+  const paidOrCodApproved = payment === "SUCCESS" || paymentMethod === "cod" || order.txPaid === true
   if (!paidOrCodApproved) return { eligible: false as const, reason: "invalid payment state" }
   return { eligible: true as const, order }
 }
@@ -1348,6 +1519,7 @@ export const syncOrderToShiprocket = async (orderId: string, actorId: string, op
     }
 
     if (options?.generatePickup !== false && current.stage === "PICKUP_PENDING") {
+      console.log(`[shiprocket][sync.lifecycle] Stage: PICKUP_PENDING, generating pickup for order ${orderId}`)
       stageTrace.push({ stage: current.stage, action: "generate_pickup" })
       shipmentLog("info", "sync.stage.continuing", { orderId, currentStage: current.stage, nextStage: "generate_pickup" })
       shipmentConsole("sync.stage.continuing", { orderId, currentStage: current.stage, nextStage: "generate_pickup" })
