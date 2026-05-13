@@ -344,6 +344,14 @@ type ExtractedShipmentData = {
   partialSuccess: boolean
 }
 
+type ShiprocketOrderItem = {
+  orderItemId: string
+  quantity: number
+  name: string
+  sku: string
+  sellingPrice: number
+}
+
 const getByPath = (input: unknown, path: string): unknown => {
   const parts = path.split(".")
   let cursor: unknown = input
@@ -668,7 +676,7 @@ export const createShiprocketShipmentForOrder = async (orderId: string, actorId:
   }
   const bestCourier = [...response.available_couriers].sort((a, b) => a.rate - b.rate)[0]
   const parsedAddress = parseAddressParts(order.customerAddress)
-  const orderItems = (Array.isArray(order.items) ? order.items : [])
+  const orderItems: ShiprocketOrderItem[] = (Array.isArray(order.items) ? order.items : [])
     .map((item: any) => ({
       orderItemId: item.id,
       quantity: Number(item.quantity ?? 0),
@@ -676,7 +684,7 @@ export const createShiprocketShipmentForOrder = async (orderId: string, actorId:
       sku: String(item.product?.sku ?? item.product?.slug ?? `sku-${item.id}`),
       sellingPrice: Number(item.unitPrice ?? 0),
     }))
-    .filter((item) => item.quantity > 0)
+    .filter((item: ShiprocketOrderItem) => item.quantity > 0)
   if (!orderItems.length) {
     shipmentConsole("shipment.create.no_items", { orderId })
     shipmentLog("warn", "shipment.skipped", { orderId, skippedReason: "no_order_items" })
@@ -870,7 +878,6 @@ export const createShiprocketShipmentForOrder = async (orderId: string, actorId:
   await persistExtendedShipmentFields(shipment.id, {
     shiprocketOrderId: extracted.shiprocketOrderId ?? undefined,
     shiprocketShipmentId: extracted.shipmentId ? String(extracted.shipmentId) : undefined,
-    courierId: bestCourier?.courier_company_id ? String(bestCourier.courier_company_id) : undefined,
     awbCode: extracted.awbCode ?? undefined,
     trackingUrl: extracted.trackingUrl ?? undefined,
     courierId: extracted.courierCompanyId ?? (bestCourier?.courier_company_id ? String(bestCourier.courier_company_id) : undefined),
@@ -1340,7 +1347,7 @@ export const syncOrderToShiprocket = async (orderId: string, actorId: string, op
       }
     }
 
-    if (options?.generatePickup !== false && (current.stage === "PICKUP_PENDING" || current.stage === "AWB_ASSIGNED")) {
+    if (options?.generatePickup !== false && current.stage === "PICKUP_PENDING") {
       stageTrace.push({ stage: current.stage, action: "generate_pickup" })
       shipmentLog("info", "sync.stage.continuing", { orderId, currentStage: current.stage, nextStage: "generate_pickup" })
       shipmentConsole("sync.stage.continuing", { orderId, currentStage: current.stage, nextStage: "generate_pickup" })

@@ -46,6 +46,7 @@ export async function POST(request: NextRequest, ctx: { params: Promise<{ id: st
 
   const order = await getOrderById(id)
   if (!order) return fail("Order not found", 404)
+  const lifecycleStatus = String(order.statusHistory?.[0]?.toStatus ?? order.status ?? "").toLowerCase()
   const isAdmin = ["admin", "super_admin"].includes(auth.user.role)
   if (!isAdmin && order.userId !== auth.user.sub) {
     return fail("Forbidden", 403)
@@ -55,7 +56,7 @@ export async function POST(request: NextRequest, ctx: { params: Promise<{ id: st
     if (parsed.data.action === "cancel_request") {
       const paymentStatus = normalizePaymentStatus(order.paymentStatus)
       // Only allow cancellation if not yet shipped
-      if (!["pending", "confirmed", "packed", "admin_approval_pending"].includes(String(order.status))) {
+      if (!["pending", "pending_payment", "payment_success", "confirmed", "packed", "admin_approval_pending"].includes(lifecycleStatus)) {
         return fail("Cannot cancel order after it has been shipped", 422)
       }
 
@@ -85,7 +86,7 @@ export async function POST(request: NextRequest, ctx: { params: Promise<{ id: st
       return ok({ id: order.id }, "Pending order cancelled")
     }
     if (parsed.data.action === "return_request") {
-      if (String(order.status) !== "delivered") return fail("Return is allowed only for delivered orders", 422)
+      if (lifecycleStatus !== "delivered") return fail("Return is allowed only for delivered orders", 422)
       const deliveredAt = order.statusHistory.find((entry) => entry.toStatus === "delivered")?.changedAt ?? order.updatedAt ?? new Date()
       const returnWindowDays = Number(env.RETURN_WINDOW_DAYS ?? "7")
       const elapsedDays = (Date.now() - new Date(deliveredAt).getTime()) / (1000 * 60 * 60 * 24)

@@ -1,10 +1,9 @@
 import crypto, { randomUUID } from "node:crypto"
 import Stripe from "stripe"
 import { env } from "@/src/server/core/config/env"
-import { isAutoApproveOrdersEnabled, updateOrderStatus } from "@/src/server/modules/orders/orders.service"
+import { updateOrderStatus } from "@/src/server/modules/orders/orders.service"
 import {
   markOrderPaymentSuccessSupabase,
-  mirrorOrderStatusSupabase,
   setOrderRefundAndPaymentStatusSupabase,
   setTransactionRefundIdSupabase,
   upsertPendingTransactionSupabase,
@@ -13,6 +12,7 @@ import {
   upsertPaidTransactionSupabase,
 } from "@/src/lib/db/orders"
 import { getSupabaseAdmin } from "@/src/lib/supabase/admin"
+import { safeSyncOrderShipmentToShiprocket } from "@/src/server/modules/shipping/shiprocket.orders"
 
 const getOrderById = async (orderId: string) => {
   const client = getSupabaseAdmin()
@@ -28,6 +28,36 @@ const getOrderById = async (orderId: string) => {
   }
 
   return data
+}
+
+const triggerShiprocketAutoSyncFromPayment = async (orderId: string) => {
+  console.log("[shiprocket][auto_sync.triggered]", { orderId, source: "payment_callback" })
+  try {
+    const result = await safeSyncOrderShipmentToShiprocket(orderId, "system")
+    if (result.status === "skipped") {
+      console.log("[shiprocket][auto_sync.skipped]", {
+        orderId,
+        source: "payment_callback",
+        reason: (result as { reason?: string }).reason ?? "skipped",
+      })
+      return
+    }
+    if (result.status === "failed") {
+      console.error("[shiprocket][auto_sync.failed]", {
+        orderId,
+        source: "payment_callback",
+        reason: (result as { reason?: string }).reason ?? "failed",
+      })
+      return
+    }
+    console.log("[shiprocket][auto_sync.success]", { orderId, source: "payment_callback" })
+  } catch (error) {
+    console.error("[shiprocket][auto_sync.failed]", {
+      orderId,
+      source: "payment_callback",
+      reason: error instanceof Error ? error.message : "unknown",
+    })
+  }
 }
 
 export type PaymentProvider = "razorpay" | "stripe" | "mock"
@@ -149,7 +179,12 @@ const createStripeIntent = async (input: { orderId: string; amount: number; curr
   }
 }
 
-export const createPaymentIntent = async (input) => {
+export const createPaymentIntent = async (input: {
+  orderId: string
+  provider?: string
+  actorRole: string
+  actorUserId: string
+}) => {
   const provider = normalizeProvider(input.provider)
 
   const order = await getOrderById(input.orderId)
@@ -228,14 +263,12 @@ export const verifyRazorpayPayment = async (input: {
   await updateOrderStatus(input.orderId, "payment_success", undefined, {
     reasonCode: "payment_success",
     note: "Razorpay payment signature verified",
-  }).catch(() => null)
+  })
   await updateOrderStatus(input.orderId, "confirmed", undefined, {
     reasonCode: "payment_success",
     note: "Order confirmed after successful payment",
-  }).catch(() => null)
-
-  const mirrored = await mirrorOrderStatusSupabase(input.orderId, "confirmed")
-  if (!mirrored) throw new Error("Supabase verify payment order status mirror failed")
+  })
+  await triggerShiprocketAutoSyncFromPayment(input.orderId)
 
   return { verified: true, orderId: input.orderId, transactionId: txId }
 }
@@ -430,16 +463,11 @@ export const processWebhookEvent = async (
       reasonCode: "webhook_payment_captured",
       note: "Payment captured by webhook",
     }).catch(() => null)
-    await updateOrderStatus(orderId, "admin_approval_pending", undefined, {
+    await updateOrderStatus(orderId, "confirmed", undefined, {
       reasonCode: "webhook_payment_captured",
-      note: "Awaiting admin approval",
+      note: "Order confirmed after webhook payment capture",
     }).catch(() => null)
-    if (await isAutoApproveOrdersEnabled()) {
-      await updateOrderStatus(orderId, "confirmed", undefined, {
-        reasonCode: "auto_approve_orders",
-        note: "Order auto-approved by setting",
-      }).catch(() => null)
-    }
+    await triggerShiprocketAutoSyncFromPayment(orderId).catch(() => null)
   } else if (type === "payment.failed") {
     await updateOrderStatus(orderId, "failed", undefined, {
       reasonCode: "payment_failed",

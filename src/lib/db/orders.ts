@@ -934,34 +934,32 @@ export const appendOrderStatusHistorySupabase = async (input: {
   reasonCode?: string | null
 }) => {
   const client = getSupabaseAdmin()
-  const statusUpdated = await mirrorOrderStatusSupabase(input.orderId, input.toStatus)
-  if (!statusUpdated) return false
   for (const table of ORDER_STATUS_HISTORY_TABLES) {
     const attempts = [
       () =>
         client
           .from(table)
-          .insert({
+          .insert(withId({
             orderId: input.orderId,
             fromStatus: input.fromStatus,
             toStatus: input.toStatus,
             notes: input.notes,
             changedById: input.changedById,
             reasonCode: input.reasonCode ?? null,
-          })
+          }))
           .select("id")
           .single(),
       () =>
         client
           .from(table)
-          .insert({
+          .insert(withId({
             order_id: input.orderId,
             from_status: input.fromStatus,
             to_status: input.toStatus,
             notes: input.notes,
             changed_by_id: input.changedById,
             reason_code: input.reasonCode ?? null,
-          })
+          }))
           .select("id")
           .single(),
     ]

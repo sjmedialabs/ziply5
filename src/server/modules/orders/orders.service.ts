@@ -36,6 +36,7 @@ import { enqueueOutboxEvent } from "@/src/server/modules/integrations/outbox.ser
 import { assertMasterValueExists } from "@/src/server/modules/master/master.service"
 import { syncOrderStatusFromShiprocket } from "@/src/server/modules/integrations/shiprocket.service"
 import { safeSyncOrderShipmentToShiprocket } from "@/src/server/modules/shipping/shiprocket.orders"
+import { pgQuery } from "@/src/server/db/pg"
 
 export type OrderLifecycleStatus =
   | "pending"
@@ -56,10 +57,10 @@ export type OrderLifecycleStatus =
 
 const allowedTransitions: Record<OrderLifecycleStatus, OrderLifecycleStatus[]> = {
   pending_payment: ["payment_success", "failed"],
-  payment_success: ["admin_approval_pending"],
+  payment_success: ["admin_approval_pending", "confirmed"],
   admin_approval_pending: ["confirmed", "cancelled"],
   failed: ["payment_success"],
-  pending: ["confirmed", "cancelled"],
+  pending: ["payment_success", "confirmed", "cancelled"],
   confirmed: ["packed", "cancel_requested", "cancelled"],
   packed: ["shipped", "cancel_requested", "cancelled"],
   shipped: ["delivered", "returned"],
@@ -71,6 +72,24 @@ const allowedTransitions: Record<OrderLifecycleStatus, OrderLifecycleStatus[]> =
   refund_initiated: ["returned"],
   cancelled: [],
 }
+
+const internalOrderLifecycleStatuses = new Set<OrderLifecycleStatus>([
+  "pending",
+  "pending_payment",
+  "payment_success",
+  "admin_approval_pending",
+  "failed",
+  "confirmed",
+  "packed",
+  "shipped",
+  "delivered",
+  "cancel_requested",
+  "returned",
+  "return_requested",
+  "return_approved",
+  "refund_initiated",
+  "cancelled",
+])
 
 const persistedOrderStatus = (status: OrderLifecycleStatus): "pending" | "confirmed" | "shipped" | "delivered" | "cancelled" => {
   if (status === "pending_payment" || status === "payment_success" || status === "admin_approval_pending" || status === "failed") return "pending"
@@ -110,7 +129,7 @@ const deriveEffectivePaymentStatus = (order: { paymentStatus?: string | null; tr
 }
 
 const deriveLifecycleFromPayment = (status: string) => {
-  if (status === "SUCCESS") return "admin_approval_pending" as const
+  if (status === "SUCCESS") return "confirmed" as const
   if (status === "FAILED") return "failed" as const
   return null
 }
@@ -234,6 +253,204 @@ const getInitialLifecycleStatus = (gateway: string, paymentStatus?: string | nul
 
 const shouldAutoSyncOrders = () => process.env.ORDER_AUTO_SYNC_ENABLED === "true"
 
+const latestLifecycleStatus = (order: { status?: string | null; statusHistory?: Array<{ toStatus?: string | null }> }) =>
+  (((order.statusHistory ?? [])[0]?.toStatus ?? order.status ?? "pending") as OrderLifecycleStatus)
+
+const triggerShiprocketAutoSync = async (input: {
+  orderId: string
+  actorId?: string
+  source: "order_created" | "payment_callback" | "status_confirmed"
+}) => {
+  const actorId = input.actorId ?? "system"
+  console.log("[shiprocket][auto_sync.triggered]", {
+    orderId: input.orderId,
+    actorId,
+    source: input.source,
+  })
+  try {
+    const result = await safeSyncOrderShipmentToShiprocket(input.orderId, actorId)
+    if (result.status === "skipped") {
+      console.log("[shiprocket][auto_sync.skipped]", {
+        orderId: input.orderId,
+        source: input.source,
+        reason: (result as { reason?: string }).reason ?? "skipped",
+        skippedReason: (result as { skippedReason?: string }).skippedReason ?? "unknown",
+      })
+      return
+    }
+    if (result.status === "failed") {
+      console.error("[shiprocket][auto_sync.failed]", {
+        orderId: input.orderId,
+        source: input.source,
+        reason: (result as { reason?: string }).reason ?? "failed",
+      })
+      return
+    }
+    console.log("[shiprocket][auto_sync.success]", {
+      orderId: input.orderId,
+      source: input.source,
+      status: result.status,
+    })
+  } catch (error) {
+    console.error("[shiprocket][auto_sync.failed]", {
+      orderId: input.orderId,
+      source: input.source,
+      reason: error instanceof Error ? error.message : "unknown",
+    })
+  }
+}
+
+type ComboChildResolved = {
+  productId: string
+  variantId: string | null
+  unitPrice: number
+  stock: number
+}
+
+const resolveComboChildrenForCheckout = async (input: {
+  comboRef: string
+  quantity: number
+  comboUnitPriceHint: number
+}) => {
+  const bundleRows = await pgQuery<Array<{ id: string; slug: string; isActive: boolean }>>(
+    `SELECT id, slug, "isActive" as "isActive" FROM "Bundle" WHERE id = $1 OR slug = $1 LIMIT 1`,
+    [input.comboRef],
+  )
+  const bundle = bundleRows[0]
+  if (!bundle || bundle.isActive !== true) {
+    throw new Error("Combo product is no longer available.")
+  }
+  const childRows = await pgQuery<
+    Array<{
+      productId: string
+      productName: string
+      productStatus: string
+      productIsActive: boolean | null
+      variantId: string | null
+      variantPrice: number | null
+      variantStock: number | null
+      variantName: string | null
+      variantIsDefault: boolean | null
+      productPrice: number | null
+      productTotalStock: number | null
+    }>
+  >(
+    `
+      SELECT
+        bp."productId" as "productId",
+        p.name as "productName",
+        p.status as "productStatus",
+        p."isActive" as "productIsActive",
+        pv.id as "variantId",
+        pv.price as "variantPrice",
+        pv.stock as "variantStock",
+        pv.name as "variantName",
+        pv."isDefault" as "variantIsDefault",
+        p.price as "productPrice",
+        p."totalStock" as "productTotalStock"
+      FROM "BundleProduct" bp
+      LEFT JOIN "Product" p ON p.id = bp."productId"
+      LEFT JOIN "ProductVariant" pv ON pv."productId" = p.id
+      WHERE bp."bundleId" = $1
+      ORDER BY bp."createdAt" ASC, COALESCE(pv."isDefault", false) DESC, pv."createdAt" ASC
+    `,
+    [bundle.id],
+  )
+  const grouped = new Map<string, typeof childRows>()
+  for (const row of childRows) {
+    const key = String(row.productId ?? "").trim()
+    if (!key) continue
+    const list = grouped.get(key) ?? []
+    list.push(row)
+    grouped.set(key, list)
+  }
+  const childProductIds = [...grouped.keys()]
+  if (childProductIds.length < 1 || childProductIds.length > 3) {
+    console.error("[combo][validation.failed]", {
+      comboId: bundle.id,
+      comboSlug: bundle.slug,
+      childProductIds,
+      reason: "combo_child_count_invalid",
+    })
+    throw new Error("Combo product is no longer available.")
+  }
+  const children: ComboChildResolved[] = []
+  const stockCaps: number[] = []
+  for (const productId of childProductIds) {
+    const rows = grouped.get(productId) ?? []
+    const first = rows[0]
+    if (!first) throw new Error("One of the combo products is unavailable.")
+    if (!first.productName) {
+      console.error("[combo][validation.failed]", { comboId: bundle.id, productId, reason: "product_deleted_or_missing" })
+      throw new Error("Product has been removed.")
+    }
+    const productStatus = String(first.productStatus ?? "").toLowerCase()
+    if (productStatus !== "published" || first.productIsActive === false) {
+      console.error("[combo][validation.failed]", { comboId: bundle.id, productId, reason: "product_inactive" })
+      throw new Error("One of the combo products is unavailable.")
+    }
+    const validVariants = rows.filter(
+      (row) => Boolean(row.variantId) && Number(row.variantStock ?? 0) > 0,
+    )
+    if (validVariants.length > 0) {
+      const chosen = validVariants.find((v) => v.variantIsDefault) ?? validVariants[0]
+      const available = Math.floor(Number(chosen.variantStock ?? 0))
+      if (available <= 0) {
+        throw new Error("Product is out of stock.")
+      }
+      children.push({
+        productId,
+        variantId: chosen.variantId,
+        unitPrice: Number(chosen.variantPrice ?? 0),
+        stock: available,
+      })
+      stockCaps.push(available)
+      continue
+    }
+    const variantStock = Math.floor(Number(first.variantStock ?? 0))
+    const productTotalStock = Math.floor(Number(first.productTotalStock ?? 0))
+    const fallbackStock = variantStock > 0 ? variantStock : productTotalStock
+    const productPrice = Number(first.productPrice ?? 0)
+    if (fallbackStock <= 0) {
+      console.error("[combo][validation.failed]", { comboId: bundle.id, productId, reason: "no_variant_stock" })
+      throw new Error("Selected variant is unavailable.")
+    }
+    children.push({
+      productId,
+      variantId: null,
+      unitPrice: productPrice,
+      stock: fallbackStock,
+    })
+    stockCaps.push(fallbackStock)
+  }
+  const maxComboQty = Math.min(...stockCaps)
+  if (!Number.isFinite(maxComboQty) || maxComboQty <= 0 || maxComboQty < input.quantity) {
+    console.error("[combo][validation.failed]", {
+      comboId: bundle.id,
+      comboSlug: bundle.slug,
+      requestedQty: input.quantity,
+      maxComboQty,
+      childProductIds,
+      reason: "combo_insufficient_stock",
+    })
+    throw new Error("Combo product is no longer available.")
+  }
+  const comboUnit = Math.max(0, Number(input.comboUnitPriceHint ?? 0))
+  if (children.length > 0 && comboUnit > 0) {
+    const even = Number((comboUnit / children.length).toFixed(2))
+    let allocated = 0
+    for (let idx = 0; idx < children.length; idx += 1) {
+      if (idx === children.length - 1) {
+        children[idx].unitPrice = Number((comboUnit - allocated).toFixed(2))
+      } else {
+        children[idx].unitPrice = even
+        allocated += even
+      }
+    }
+  }
+  return { bundleId: bundle.id, bundleSlug: bundle.slug, children, maxComboQty }
+}
+
 export async function validatePromoCode(input: { code?: string, id?: string }, subtotal: number, userId?: string) {
   let coupon = null;
   if (input.id) {
@@ -347,27 +564,36 @@ export const createOrderFromCheckout = async (input: {
   const productIds = [...new Set(input.items.map((i) => i.productId).filter(Boolean))]
   const products = await getCheckoutProductsSupabase({ slugs: [], productIds })
   const byId = Object.fromEntries(products.map((p) => [p.id, p]))
-  const missingRefs = input.items
-    .map((line) => line.productId)
-    .filter((ref) => {
-      if (!ref) return false
-      return lineIsMissing(ref)
-    })
-
-  function lineIsMissing(ref: string) {
-    return !byId[ref]
-  }
-  if (missingRefs.length > 0) {
-    throw new Error(`Products not available: ${missingRefs.join(", ")}`)
-  }
-
   let subtotal = 0
   let taxTotal = 0
   const lines: { productId: string; variantId?: string | null; sku?: string | null; quantity: number; unitPrice: number; lineTotal: number; tax: number }[] = []
 
   for (const line of input.items) {
     const p = byId[line.productId]
-    if (!p) throw new Error(`Product not available: ${line.productId ?? "unknown"}`)
+    if (!p) {
+      const combo = await resolveComboChildrenForCheckout({
+        comboRef: line.productId,
+        quantity: line.quantity,
+        comboUnitPriceHint: Number(line.price ?? 0),
+      }).catch(() => null)
+      if (!combo) {
+        throw new Error(`Product has been removed.`)
+      }
+      for (const child of combo.children) {
+        const lineTotal = Number((child.unitPrice * line.quantity).toFixed(2))
+        lines.push({
+          productId: child.productId,
+          variantId: child.variantId,
+          sku: line.sku ?? null,
+          quantity: line.quantity,
+          unitPrice: child.unitPrice,
+          lineTotal,
+          tax: 0,
+        })
+        subtotal += lineTotal
+      }
+      continue
+    }
 
     const variantId = line.variantId ?? null
     let unit = Number(p.price)
@@ -378,7 +604,7 @@ export const createOrderFromCheckout = async (input: {
         throw new Error(`Variant is required for product: ${p.slug}`)
       }
       if (chosen.stock < line.quantity) {
-        throw new Error(`Variant out of stock for product: ${p.slug}`)
+        throw new Error("Product is out of stock.")
       }
       unit = Number(chosen.price)
     }
@@ -492,10 +718,14 @@ export const createOrderFromCheckout = async (input: {
     const isPaymentSuccessful = String(order.paymentStatus ?? "").toUpperCase() === "SUCCESS" || hasSuccessfulTransaction
 
     if (isPaymentSuccessful && String(order.status ?? "").toLowerCase() === "pending") {
-      const confirmed = await mirrorOrderStatusSupabase(String(order.id), "confirmed")
-      if (confirmed) {
-        ; (order as Record<string, unknown>).status = "confirmed"
-      }
+      await updateOrderStatus(String(order.id), "payment_success", input.userId ?? undefined, {
+        reasonCode: "payment_success",
+        note: "Order created with successful payment",
+      }).catch(() => null)
+      await updateOrderStatus(String(order.id), "confirmed", input.userId ?? undefined, {
+        reasonCode: "payment_success",
+        note: "Order confirmed after successful payment",
+      }).catch(() => null)
     }
   }
   console.log("Order creation process completed for order ID:", order.id, "with final status:", order.status, "and payment status:", order.paymentStatus)
@@ -536,7 +766,11 @@ export const createOrderFromCheckout = async (input: {
     payload: { orderId: order.id, total, currency: input.currency ?? "INR" },
   }).catch(() => null)
   setImmediate(() => {
-    void safeSyncOrderShipmentToShiprocket(String(order.id), input.userId ?? "system")
+    void triggerShiprocketAutoSync({
+      orderId: String(order.id),
+      actorId: input.userId ?? "system",
+      source: "order_created",
+    })
   })
   console.log("Outbox event enqueued for order.created")
   await markCartConverted({
@@ -552,12 +786,23 @@ export const createOrderFromCheckout = async (input: {
   return order
 }
 const autoSyncFromPayment = async (orderId: string, currentStatus: string, paymentStatus: string) => {
-  const derived = deriveLifecycleFromPayment(paymentStatus)
-  if (!derived) return
   const lifecycle = currentStatus.toLowerCase() as OrderLifecycleStatus
   // Don't auto-sync if already in a terminal or advanced status
   if (["confirmed", "cancelled", "returned", "shipped", "delivered", "refund_initiated", "return_requested"].includes(lifecycle)) return
-  if (lifecycle === derived) return
+  const normalizedPayment = normalizePaymentStatus(paymentStatus)
+  if (normalizedPayment === "SUCCESS") {
+    await updateOrderStatus(orderId, "payment_success", undefined, {
+      reasonCode: "payment_status_sync",
+      note: `Auto-updated from payment status ${paymentStatus}`,
+    }).catch(() => null)
+    await updateOrderStatus(orderId, "confirmed", undefined, {
+      reasonCode: "payment_status_sync",
+      note: "Order confirmed after payment success",
+    }).catch(() => null)
+    return
+  }
+  const derived = deriveLifecycleFromPayment(normalizedPayment)
+  if (!derived || lifecycle === derived) return
   await updateOrderStatus(orderId, derived, undefined, {
     reasonCode: "payment_status_sync",
     note: `Auto-updated from payment status ${paymentStatus}`,
@@ -664,7 +909,7 @@ export const updateOrderStatus = async (
 
   console.log(`[STATUS UPDATE DEBUG] Order ID: ${id}, New Status: ${status}`)
   
-  const allowed = (status === "cancelled") || await assertMasterValueExists("ORDER_STATUS", status)
+  const allowed = internalOrderLifecycleStatuses.has(status) || await assertMasterValueExists("ORDER_STATUS", status)
   if (!allowed) {
     console.error(`[STATUS UPDATE ERROR] Invalid master value for ORDER_STATUS: ${status}`)
     throw new Error(`Invalid master value for ORDER_STATUS: ${status}`)
@@ -676,10 +921,11 @@ export const updateOrderStatus = async (
     throw new Error("Order not found")
   }
   
-  const fromStatus = existing.status as OrderLifecycleStatus
+  const fromStatus = latestLifecycleStatus(existing)
   const paymentStatus = normalizePaymentStatus((existing as any).paymentStatus)
+  const paymentMethod = String((existing as any).paymentMethod ?? "").toLowerCase()
 
-  if (status === "confirmed" && paymentStatus !== "SUCCESS") {
+  if (status === "confirmed" && paymentStatus !== "SUCCESS" && paymentMethod !== "cod") {
     console.error(`[STATUS UPDATE ERROR] Cannot move to CONFIRMED without SUCCESS payment status. Current: ${paymentStatus}`)
     throw new Error("Order cannot move to CONFIRMED unless payment_status = SUCCESS")
   }
@@ -750,14 +996,11 @@ export const updateOrderStatus = async (
   const maybePhone = (order as any).customerPhone
   if (maybePhone) {
     let smsBody = ""
-    let templateId = ""
     
     if (status === "shipped") {
       smsBody = `Hi, your Ziply5 order #${id} has been shipped. Track your package here: ${env.CDN_BASE_URL}/orders/${id}`
-      templateId = env.SMS_TEMPLATE_ORDER_SHIPPED || ""
     } else if (status === "delivered") {
       smsBody = `Hi, your Ziply5 order #${id} has been delivered. We hope you enjoy your delicious meal!`
-      templateId = env.SMS_TEMPLATE_ORDER_DELIVERED || ""
     }
 
     if (smsBody) {
@@ -768,6 +1011,16 @@ export const updateOrderStatus = async (
         body: smsBody,
       }).catch(err => console.error("Order status SMS failed", err))
     }
+  }
+
+  if (status === "confirmed") {
+    setImmediate(() => {
+      void triggerShiprocketAutoSync({
+        orderId: id,
+        actorId: actorId ?? "system",
+        source: "status_confirmed",
+      })
+    })
   }
 
   return order
@@ -869,14 +1122,16 @@ export const createOrderShipment = async (input: {
         itemAllocations: input.itemAllocations,
       })
       if (!supabaseShipment) throw new Error("supabase_shipment_create_failed")
-      const statusApplied = await appendOrderStatusHistorySupabase({
+      const statusApplied = await mirrorOrderStatusSupabase(input.orderId, "shipped")
+      if (!statusApplied) throw new Error("supabase_order_status_write_failed")
+      const historyApplied = await appendOrderStatusHistorySupabase({
         orderId: input.orderId,
         fromStatus,
-        toStatus: persistedOrderStatus("shipped"),
+        toStatus: "shipped",
         notes: `Shipment created via ${input.carrier.trim()}`,
         changedById: input.actorId,
       })
-      if (!statusApplied) throw new Error("supabase_status_history_write_failed")
+      if (!historyApplied) throw new Error("supabase_status_history_write_failed")
       const fulfillmentApplied = await upsertOrderFulfillmentSupabase({
         orderId: input.orderId,
         fulfillmentStatus: "shipped",
@@ -1009,14 +1264,16 @@ export const confirmOrderDelivery = async (input: {
         const delivered = await markShipmentDeliveredSupabase(shipmentToUpdate)
         if (!delivered) throw new Error("supabase_shipment_delivery_write_failed")
       }
-      const statusApplied = await appendOrderStatusHistorySupabase({
+      const statusApplied = await mirrorOrderStatusSupabase(input.orderId, "delivered")
+      if (!statusApplied) throw new Error("supabase_order_status_write_failed")
+      const historyApplied = await appendOrderStatusHistorySupabase({
         orderId: input.orderId,
         fromStatus,
-        toStatus: persistedOrderStatus("delivered"),
+        toStatus: "delivered",
         notes: input.note?.trim() || "Delivered confirmation",
         changedById: input.actorId,
       })
-      if (!statusApplied) throw new Error("supabase_status_history_write_failed")
+      if (!historyApplied) throw new Error("supabase_status_history_write_failed")
       const fulfillmentApplied = await upsertOrderFulfillmentSupabase({
         orderId: input.orderId,
         fulfillmentStatus: "delivered",

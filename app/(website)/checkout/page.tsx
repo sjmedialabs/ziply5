@@ -21,6 +21,7 @@ import {
   writeCheckoutStorage,
   type CheckoutAddress,
 } from "@/lib/ecommerce-order";
+import { toast } from "@/lib/toast";
 
 type Addr = {
   id: string;
@@ -448,13 +449,15 @@ useEffect(() => {
 
   const goToPayment = async () => {
     if (items.length === 0) {
-      window.alert("Your cart is empty.");
+      toast.error("Your cart is empty.");
       return;
     }
     if (hasValidationErrors) {
-  setOrderError("Some items in your cart are invalid. Please update your cart.");
-  return;
-}
+      const message = "Some items in your cart are invalid. Please update your cart."
+      setOrderError(message);
+      toast.error(message);
+      return;
+    }
     setPlacing(true);
     setOrderError("");
     try {
@@ -470,7 +473,9 @@ useEffect(() => {
         phone: billing.phone.trim(),
       };
       if (!payload.fullName || !payload.city || !payload.state || !payload.postalCode) {
-        setOrderError("Please complete billing address before payment.");
+        const message = "Please complete billing address before payment."
+        setOrderError(message);
+        toast.error(message);
         return;
       }
       window.localStorage.setItem("ziply5_checkout_billing_address", JSON.stringify(payload));
@@ -629,7 +634,9 @@ useEffect(() => {
 
       router.push("/payment");
     } catch (e) {
-      setOrderError(e instanceof Error ? e.message : "Unable to continue to payment. Please try again.");
+      const message = e instanceof Error ? e.message : "Unable to continue to payment. Please try again."
+      setOrderError(message);
+      toast.error(message);
     } finally {
       setPlacing(false);
     }
@@ -789,7 +796,7 @@ useEffect(() => {
               const value = e.target.value;
 
               if (!/^\d{6}$/.test(value)) {
-                alert("Invalid Pincode (must be 6 digits)");
+                toast.error("Invalid Pincode (must be 6 digits)");
               }
             }}
           />

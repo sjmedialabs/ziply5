@@ -8,6 +8,7 @@ import {
   clearCheckoutStorage,
   readCheckoutStorage,
 } from "@/lib/ecommerce-order";
+import { toast } from "@/lib/toast";
 
 declare global {
   interface Window {
@@ -114,6 +115,7 @@ function PaymentPageInner() {
         (typeof crypto !== "undefined" && "randomUUID" in crypto
           ? crypto.randomUUID()
           : `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`);
+      const sessionKey = window.localStorage.getItem("ziply5_session_key") || undefined;
       window.localStorage.setItem("ziply5_checkout_ref", checkoutRef);
 
       const res = await fetch("/api/orders/create", {
@@ -228,6 +230,7 @@ function PaymentPageInner() {
         const parsed = JSON.parse(savedBilling) as Partial<typeof billingAddress>;
         const merged = {
           fullName: (parsed.fullName ?? "").toString(),
+          email: (parsed.email ?? "").toString(),
           line1: (parsed.line1 ?? "").toString(),
           city: (parsed.city ?? "").toString(),
           state: (parsed.state ?? "").toString(),
@@ -285,7 +288,9 @@ const handleCOD = async () => {
 
     router.push(`/order-success?orderId=${orderId}`);
   } catch (e) {
-    setError(e instanceof Error ? e.message : "COD failed");
+    const message = e instanceof Error ? e.message : "COD failed"
+    setError(message);
+    toast.error(message);
     setProcessingGateway(null);
   }
 };
@@ -323,7 +328,9 @@ const handleOnlinePayment = async () => {
 
     await openRazorpay(token, orderId);
   } catch (e) {
-    setError(e instanceof Error ? e.message : "Payment failed");
+    const message = e instanceof Error ? e.message : "Payment failed"
+    setError(message);
+    toast.error(message);
     setProcessingGateway(null);
   }
 };
@@ -467,7 +474,9 @@ const handleOnlinePayment = async () => {
           window.localStorage.removeItem("ziply5_applied_coupon_id");
         } catch (error) {
           setProcessingGateway(null)
-          setError(error instanceof Error ? error.message : "Payment verification failed")
+          const message = error instanceof Error ? error.message : "Payment verification failed"
+          setError(message)
+          toast.error(message)
           void postCartEvent("payment_failed", { reason: error instanceof Error ? error.message : "verify_failed" })
         }
       },
@@ -502,7 +511,9 @@ const handleOnlinePayment = async () => {
     try {
       await openRazorpay(token, createdOrderId);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Retry failed.");
+      const message = e instanceof Error ? e.message : "Retry failed."
+      setError(message);
+      toast.error(message);
       setProcessingGateway(null);
     }
   };
