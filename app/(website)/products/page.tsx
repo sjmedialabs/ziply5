@@ -73,6 +73,7 @@ function ProductsPageContent() {
     }
     return Date.now()
   })[0]
+  const bestSellerParam = (searchParams.get("bestSeller") || "").trim().toLowerCase()
   const packParam = (searchParams.get("pack") || "").trim().toLowerCase()
   const typeParam = (searchParams.get("type") || "").trim().toLowerCase()
   const comboParam = (searchParams.get("combo") || "").trim().toLowerCase()
@@ -108,6 +109,13 @@ function ProductsPageContent() {
     }
   }, [])
 
+  useEffect(() => {
+    if (bestSellerParam === "true") {
+      setBestSellerFilter("true")
+    } else {
+      setBestSellerFilter("all")
+    }
+  }, [bestSellerParam])
   useEffect(() => {
     const wantsCombo =
       packParam === "combo-pack" ||
