@@ -36,6 +36,11 @@ import { enqueueOutboxEvent } from "@/src/server/modules/integrations/outbox.ser
 import { assertMasterValueExists } from "@/src/server/modules/master/master.service"
 import { syncOrderStatusFromShiprocket } from "@/src/server/modules/integrations/shiprocket.service"
 import { safeSyncOrderShipmentToShiprocket } from "@/src/server/modules/shipping/shiprocket.orders"
+import {
+  assertZiply5ShippingWithinSlabCap,
+  totalPacksFromCheckoutLines,
+} from "@/src/lib/shipping/ziply5-shipping"
+import { getLatestTrackingSummariesForOrderIds } from "@/src/server/modules/orders/order-tracking.service"
 import { pgQuery } from "@/src/server/db/pg"
 
 export type OrderLifecycleStatus =
@@ -56,10 +61,10 @@ export type OrderLifecycleStatus =
   | "cancelled"
 
 const allowedTransitions: Record<OrderLifecycleStatus, OrderLifecycleStatus[]> = {
-  pending_payment: ["payment_success", "failed"],
-  payment_success: ["admin_approval_pending", "confirmed"],
+  pending_payment: ["payment_success", "failed", "cancelled"],
+  payment_success: ["admin_approval_pending", "confirmed", "cancelled"],
   admin_approval_pending: ["confirmed", "cancelled"],
-  failed: ["payment_success"],
+  failed: ["payment_success", "cancelled"],
   pending: ["payment_success", "confirmed", "cancelled"],
   confirmed: ["packed", "cancel_requested", "cancelled"],
   packed: ["shipped", "cancel_requested", "cancelled"],
@@ -538,6 +543,7 @@ export const createOrderFromCheckout = async (input: {
   paymentStatus?: string
   paymentId?: string
   sessionKey?: string | null
+  totalItemsUsedForShipping?: number | null
 }) => {
   if (input.paymentId?.trim()) {
     // For COD, paymentId is not provided initially, so this check should only apply to online payments
@@ -561,6 +567,10 @@ export const createOrderFromCheckout = async (input: {
   const initialLifecycleStatus = getInitialLifecycleStatus(input.gateway, input.paymentStatus)
   const initialPersistedStatus = persistedOrderStatus(initialLifecycleStatus)
   const shipping = input.shipping ?? 0
+  const totalItemsUsedForShipping = totalPacksFromCheckoutLines(input.items)
+  if (input.totalItemsUsedForShipping != null && input.totalItemsUsedForShipping !== totalItemsUsedForShipping) {
+    throw new Error("Declared item count for shipping does not match cart lines.")
+  }
   const productIds = [...new Set(input.items.map((i) => i.productId).filter(Boolean))]
   const products = await getCheckoutProductsSupabase({ slugs: [], productIds })
   const byId = Object.fromEntries(products.map((p) => [p.id, p]))
@@ -637,6 +647,11 @@ export const createOrderFromCheckout = async (input: {
     appliedCouponId = validation.appliedCouponId ?? null
   }
 
+  const shippingCheck = assertZiply5ShippingWithinSlabCap(shipping, totalItemsUsedForShipping)
+  if (!shippingCheck.ok) {
+    throw new Error(shippingCheck.message)
+  }
+
   const total = Math.max(subtotal + shipping + taxTotal - discount, 0)
 
   await reserveInventorySupabase(lines.map((line) => ({ productId: line.productId, variantId: line.variantId, quantity: line.quantity })))
@@ -661,6 +676,7 @@ export const createOrderFromCheckout = async (input: {
     shippingCharge: shipping,
     shipping, // Keeping both for backward/forward compatibility
     total,
+    totalItemsUsedForShipping,
   };
 
   const itemRows = lines.map((l) => ({
@@ -833,10 +849,19 @@ export const listOrders = async (
   const items = result.items
   const total = result.total
 
-  const hydratedItems = items.map((order) => ({
+  let hydratedItems = items.map((order) => ({
     ...order,
     paymentStatus: deriveEffectivePaymentStatus(order),
   }))
+
+  if (role === "customer" && hydratedItems.length) {
+    const summaries = await getLatestTrackingSummariesForOrderIds(hydratedItems.map((o) => String(o.id)))
+    const byId = new Map(summaries.map((s) => [s.orderId, s]))
+    hydratedItems = hydratedItems.map((o) => ({
+      ...o,
+      trackingSummary: byId.get(String(o.id)) ?? null,
+    }))
+  }
 
   if (shouldAutoSyncOrders()) {
     await Promise.allSettled(

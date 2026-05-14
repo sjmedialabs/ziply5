@@ -204,9 +204,19 @@ export const syncShipmentTrackingByAwb = async (awbCode: string) => {
   const etdDate = parsed.etd ? new Date(parsed.etd) : null
   const etdValid = etdDate && !Number.isNaN(etdDate.getTime()) ? etdDate : null
   trackingConsole("tracking.sync_by_awb.mapped_status", { awbCode, shiprocketStatus: parsed.shiprocketStatus, internalStatus })
+  logger.info("shiprocket.tracking.shipment_row_update.start", {
+    shipmentId: shipment.id,
+    orderId: shipment.orderId,
+    awbCode,
+    internalStatus,
+    shiprocketStatus: parsed.shiprocketStatus,
+    statusCode: parsed.statusCode,
+    etdSet: Boolean(etdValid),
+  })
   await pgTx(async (tx) => {
-    await tx.query(
-      `
+    try {
+      const updateResult = await tx.query(
+        `
       UPDATE "Shipment"
       SET "shippingStatus"=$2,
           "shipmentStatus"=COALESCE(NULLIF(trim($3), ''), $2),
@@ -220,24 +230,40 @@ export const syncShipmentTrackingByAwb = async (awbCode: string) => {
           "lastTrackingSyncAt"=now(),
           "estimatedDeliveryDate"=COALESCE($11,"estimatedDeliveryDate"),
           "deliveredAt"=CASE WHEN $2='DELIVERED' THEN COALESCE("deliveredAt", now()) ELSE "deliveredAt" END,
-          "deliveredDate"=CASE WHEN $2='DELIVERED' THEN COALESCE("deliveredDate", now()) ELSE "deliveredDate" END,
           "updatedAt"=now()
       WHERE id=$1
       `,
-      [
-        shipment.id,
+        [
+          shipment.id,
+          internalStatus,
+          parsed.shiprocketStatus,
+          parsed.statusCode,
+          parsed.currentStatus,
+          parsed.trackUrl,
+          parsed.courierName,
+          parsed.pickupStatus,
+          JSON.stringify(parsed.trackSection ?? {}),
+          JSON.stringify(parsed.raw ?? {}),
+          etdValid,
+        ],
+      )
+      logger.info("shiprocket.tracking.shipment_row_update.done", {
+        shipmentId: shipment.id,
+        awbCode,
+        rowCount: updateResult.rowCount,
+      })
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      logger.error("shiprocket.tracking.shipment_row_update_failed", {
+        shipmentId: shipment.id,
+        orderId: shipment.orderId,
+        awbCode,
         internalStatus,
-        parsed.shiprocketStatus,
-        parsed.statusCode,
-        parsed.currentStatus,
-        parsed.trackUrl,
-        parsed.courierName,
-        parsed.pickupStatus,
-        JSON.stringify(parsed.trackSection ?? {}),
-        JSON.stringify(parsed.raw ?? {}),
-        etdValid,
-      ],
-    )
+        shiprocketStatus: parsed.shiprocketStatus,
+        message,
+      })
+      throw err
+    }
   })
   trackingConsole("tracking.sync_by_awb.shipment_updated", {
     orderId: shipment.orderId,

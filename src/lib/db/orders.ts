@@ -1474,6 +1474,10 @@ export const getOrderByIdSupabaseBasic = async (orderId: string) => {
         discount: Number(row.discount ?? 0),
         tax: Number(row.tax ?? 0),
         shippingCharge: Number(row.shippingCharge ?? row.shipping_charge ?? row.shipping ?? 0),
+        totalItemsUsedForShipping:
+          row.totalItemsUsedForShipping != null || row.total_items_used_for_shipping != null
+            ? Number(row.totalItemsUsedForShipping ?? row.total_items_used_for_shipping ?? 0)
+            : null,
         shipping: Number(row.shipping ?? 0),
         currency: safeString(row.currency) || "INR",
         couponCode: safeString(row.couponCode ?? row.coupon_code) || null,

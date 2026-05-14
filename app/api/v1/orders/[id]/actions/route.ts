@@ -8,6 +8,10 @@ import {
   setOrderReturnReason,
   updateOrderStatus,
 } from "@/src/server/modules/orders/orders.service"
+import {
+  cancelCustomerOrderWithShiprocketGate,
+  OrderCancellationError,
+} from "@/src/server/modules/orders/order-cancellation.service"
 import { createRefund } from "@/src/server/modules/extended/extended.service"
 import { triggerRazorpayRefund } from "@/src/server/modules/payments/payments.service"
 import { env } from "@/src/server/core/config/env"
@@ -55,22 +59,18 @@ export async function POST(request: NextRequest, ctx: { params: Promise<{ id: st
   try {
     if (parsed.data.action === "cancel_request") {
       const paymentStatus = normalizePaymentStatus(order.paymentStatus)
-      // Only allow cancellation if not yet shipped
-      if (!["pending", "pending_payment", "payment_success", "confirmed", "packed", "admin_approval_pending"].includes(lifecycleStatus)) {
-        return fail("Cannot cancel order after it has been shipped", 422)
-      }
-
-      // Perform auto-cancellation
-      const updated = await updateOrderStatus(order.id, "cancelled", auth.user.sub, {
+      const { updated } = await cancelCustomerOrderWithShiprocketGate({
+        orderId: order.id,
+        actorId: auth.user.sub,
         reasonCode: "customer_cancelled",
         note: parsed.data.reason ?? "Customer cancelled order",
+        latestLifecycle: lifecycleStatus,
       })
 
-      // If it was already paid, trigger an immediate refund
       if (paymentStatus === "SUCCESS") {
         const amount = Number(order.total)
         const refund = await createRefund(order.id, amount, "Customer auto-cancellation refund")
-        await triggerRazorpayRefund({ refundRecordId: refund.id }).catch(e => {
+        await triggerRazorpayRefund({ refundRecordId: refund.id }).catch((e) => {
           console.error("[Auto-Refund Error] Failed to trigger Razorpay refund", e)
         })
       }
@@ -78,12 +78,15 @@ export async function POST(request: NextRequest, ctx: { params: Promise<{ id: st
       return ok(updated, "Order cancelled successfully")
     }
     if (parsed.data.action === "cancel_pending") {
-      await updateOrderStatus(order.id, "cancelled", auth.user.sub, {
+      const { updated } = await cancelCustomerOrderWithShiprocketGate({
+        orderId: order.id,
+        actorId: auth.user.sub,
         reasonCode: "cancel_pending",
         note: parsed.data.reason ?? "Customer cancelled pending order",
+        latestLifecycle: lifecycleStatus,
       })
 
-      return ok({ id: order.id }, "Pending order cancelled")
+      return ok(updated ?? { id: order.id }, "Pending order cancelled")
     }
     if (parsed.data.action === "return_request") {
       if (lifecycleStatus !== "delivered") return fail("Return is allowed only for delivered orders", 422)
@@ -202,6 +205,9 @@ export async function POST(request: NextRequest, ctx: { params: Promise<{ id: st
     const triggered = await triggerRazorpayRefund({ refundRecordId: refund.id })
     return ok({ refund, triggered }, parsed.data.action === "retry_refund" ? "Refund retry initiated" : "Refund initiated")
   } catch (error) {
+    if (error instanceof OrderCancellationError) {
+      return fail(error.message, error.httpStatus)
+    }
     return fail(error instanceof Error ? error.message : "Action failed", 400)
   }
 }

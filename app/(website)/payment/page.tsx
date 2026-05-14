@@ -9,6 +9,7 @@ import {
   readCheckoutStorage,
 } from "@/lib/ecommerce-order";
 import { toast } from "@/lib/toast";
+import { calculateZiply5Shipping } from "@/src/lib/shipping/ziply5-shipping";
 
 declare global {
   interface Window {
@@ -69,9 +70,26 @@ function PaymentPageInner() {
     }
   }, []);
 
+  const packTotal = useMemo(
+    () => items.reduce((sum, item) => sum + Math.max(1, Math.floor(Number(item.quantity) || 0)), 0),
+    [items],
+  );
+  const slabShipping = useMemo(() => {
+    if (!items.length || packTotal < 1) return 0;
+    return calculateZiply5Shipping(packTotal).chargeInr;
+  }, [items.length, packTotal]);
+
+  const checkoutSnap = useMemo(() => readCheckoutStorage(), [items]);
+  const shippingChargeResolved = useMemo(() => {
+    const fromSnap = checkoutSnap?.shippingCharge;
+    if (fromSnap != null && Number.isFinite(fromSnap) && fromSnap >= 0) {
+      return Number(fromSnap);
+    }
+    return slabShipping;
+  }, [checkoutSnap, slabShipping]);
+
   const subTotal = items.reduce((sum, item) => sum + item.price * item.quantity, 0);
-  const shipping = items.length > 0 ? 20 : 0;
-  const calculatedTotal = subTotal + shipping; // Renamed to avoid confusion with couponAdjustedTotal
+  const calculatedTotal = subTotal + shippingChargeResolved;
   const payableAmount = useMemo(() => {
     if (retryMode) {
       return retryAmount ?? calculatedTotal;
@@ -118,6 +136,15 @@ function PaymentPageInner() {
       const sessionKey = window.localStorage.getItem("ziply5_session_key") || undefined;
       window.localStorage.setItem("ziply5_checkout_ref", checkoutRef);
 
+      const snap = readCheckoutStorage();
+      const packTotalInner = items.reduce(
+        (s, i) => s + Math.max(1, Math.floor(Number(i.quantity ?? 1) || 0)),
+        0,
+      );
+      const shippingForOrder = calculateZiply5Shipping(packTotalInner).chargeInr;
+      const subTotalInner = items.reduce((sum, item) => sum + item.price * item.quantity, 0);
+      const calculatedTotalInner = subTotalInner + shippingForOrder;
+
       const res = await fetch("/api/orders/create", {
         method: "POST",
         headers: {
@@ -134,13 +161,18 @@ function PaymentPageInner() {
             subtotal: Number((i.subtotal ?? i.price * i.quantity) ?? 0),
             tax: Number(i.tax ?? 0),
           })),
-          shippingCharge: shipping,
+          shippingCharge: shippingForOrder,
+          totalItemsUsedForShipping: packTotalInner,
+          subtotal: snap?.subtotal ?? subTotalInner,
+          discount: snap?.discount ?? 0,
+          tax: snap?.tax ?? 0,
+          total: snap?.total ?? calculatedTotalInner,
           couponCode:
-            readCheckoutStorage()?.coupon?.code ||
+            snap?.coupon?.code ||
             window.localStorage.getItem("ziply5_coupon_code") ||
             undefined,
           couponId:
-            readCheckoutStorage()?.coupon?.couponId ||
+            snap?.coupon?.couponId ||
             window.localStorage.getItem("ziply5_applied_coupon_id") ||
             null,
           gateway,

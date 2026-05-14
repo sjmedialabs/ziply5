@@ -581,6 +581,8 @@ const persistExtendedShipmentFields = async (
     isPickupGenerated: boolean
     rawShiprocketResponse: unknown
     trackingData: unknown
+    cancelledAt: Date
+    shiprocketCancelResponse: unknown
   }>,
 ) => {
   const sets: string[] = []
@@ -628,6 +630,11 @@ const persistExtendedShipmentFields = async (
   if (data.trackingData !== undefined) {
     values.push(JSON.stringify(data.trackingData))
     sets.push(`"trackingData" = $${values.length}::jsonb`)
+  }
+  add("cancelledAt", data.cancelledAt)
+  if (data.shiprocketCancelResponse !== undefined) {
+    values.push(JSON.stringify(data.shiprocketCancelResponse))
+    sets.push(`"shiprocketCancelResponse" = $${values.length}::jsonb`)
   }
   if (sets.length === 0) return
   values.push(shipmentId)
@@ -1385,9 +1392,12 @@ const getOrderSyncEligibility = async (orderId: string) => {
       validationPayload,
     }
   }
-  const accepted = ["confirmed", "packed", "shipped"].includes(latest)
+  const accepted = ["confirmed", "packed", "shipped", "payment_success", "admin_approval_pending"].includes(latest)
   if (!accepted) return { eligible: false as const, reason: "order not confirmed" }
-  const paidOrCodApproved = payment === "SUCCESS" || paymentMethod === "cod" || order.txPaid === true
+  const prepaidPaid =
+    order.txPaid === true ||
+    ["SUCCESS", "PAID", "CAPTURED", "COMPLETED", "SUCCEEDED"].includes(payment)
+  const paidOrCodApproved = paymentMethod === "cod" || prepaidPaid
   if (!paidOrCodApproved) return { eligible: false as const, reason: "invalid payment state" }
   return { eligible: true as const, order }
 }

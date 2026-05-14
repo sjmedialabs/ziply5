@@ -1,7 +1,7 @@
 "use client";
 
 import BannerSection from "@/components/BannerSection";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, Loader2 } from "lucide-react";
 import Link from "next/link";
 import { useLocations } from "@/hooks/useLocations";
 import { getCartItems, type CartItem, setCartItems, validateCartItems } from "@/lib/cart"; 
@@ -22,6 +22,7 @@ import {
   type CheckoutAddress,
 } from "@/lib/ecommerce-order";
 import { toast } from "@/lib/toast";
+import { calculateZiply5Shipping } from "@/src/lib/shipping/ziply5-shipping";
 
 type Addr = {
   id: string;
@@ -284,7 +285,83 @@ useEffect(() => {
   const subTotal = validatedItems.reduce((acc, item) => acc + item.price * item.quantity, 0);
   const hasValidationErrors = validatedItems.some(i => i.variantError || i.stock < i.quantity);
 
-  const shipping = items.length === 0 ? 0 : 20;
+  const totalPacksForShipping = useMemo(
+    () => validatedItems.reduce((acc, item) => acc + Math.max(1, Math.floor(Number(item.quantity) || 0)), 0),
+    [validatedItems],
+  );
+  const shipping = useMemo(() => {
+    if (items.length === 0 || totalPacksForShipping < 1) return 0;
+    return calculateZiply5Shipping(totalPacksForShipping).chargeInr;
+  }, [items.length, totalPacksForShipping]);
+
+  const [deliveryCheck, setDeliveryCheck] = useState<{
+    loading: boolean;
+    error: string | null;
+    lastOk: boolean;
+    data: {
+      status: string;
+      deliverable: boolean;
+      message?: string;
+      estimatedDeliveryDaysMin: number | null;
+      estimatedDeliveryDaysMax: number | null;
+      codAvailable: boolean;
+      prepaidAvailable: boolean;
+    } | null;
+  }>({ loading: false, error: null, lastOk: false, data: null });
+
+  const runDeliveryCheck = useCallback(async () => {
+    const pin = billing.postalCode.trim();
+    if (!/^\d{6}$/.test(pin) || totalPacksForShipping < 1) {
+      setDeliveryCheck((prev) => ({ ...prev, loading: false, error: null, data: null, lastOk: false }));
+      return;
+    }
+    setDeliveryCheck((prev) => ({ ...prev, loading: true, error: null }));
+    try {
+      const res = await fetch("/api/shipping/check-serviceability", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          delivery_postcode: pin,
+          cod: false,
+          totalItems: totalPacksForShipping,
+        }),
+      });
+      const payload = (await res.json()) as {
+        success?: boolean;
+        message?: string;
+        data?: {
+          status: string;
+          deliverable: boolean;
+          message?: string;
+          estimatedDeliveryDaysMin: number | null;
+          estimatedDeliveryDaysMax: number | null;
+          codAvailable: boolean;
+          prepaidAvailable: boolean;
+        };
+      };
+      if (!res.ok || payload.success === false || !payload.data) {
+        throw new Error(payload.message ?? "Unable to verify delivery for this pincode.");
+      }
+      const d = payload.data;
+      setDeliveryCheck({ loading: false, error: null, lastOk: true, data: d });
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Delivery check failed";
+      setDeliveryCheck({ loading: false, error: msg, lastOk: false, data: null });
+      toast.warning("Could not verify delivery right now. You can still try to place your order.");
+    }
+  }, [billing.postalCode, totalPacksForShipping]);
+
+  useEffect(() => {
+    const pin = billing.postalCode.trim();
+    if (!/^\d{6}$/.test(pin) || totalPacksForShipping < 1) {
+      setDeliveryCheck({ loading: false, error: null, lastOk: false, data: null });
+      return;
+    }
+    const t = window.setTimeout(() => {
+      void runDeliveryCheck();
+    }, 450);
+    return () => window.clearTimeout(t);
+  }, [billing.postalCode, totalPacksForShipping, runDeliveryCheck]);
   const baseTotal =
     offerFinalTotal != null
       ? offerFinalTotal
@@ -461,6 +538,12 @@ useEffect(() => {
     setPlacing(true);
     setOrderError("");
     try {
+      if (deliveryCheck.data?.status === "not_deliverable" && deliveryCheck.lastOk) {
+        const message = "Delivery is not available for this pincode. Please choose a different address.";
+        setOrderError(message);
+        toast.error(message);
+        return;
+      }
       const fullName = `${billing.firstName} ${billing.lastName}`.trim();
       const payload = {
         fullName,
@@ -529,6 +612,7 @@ useEffect(() => {
         discount: Number(offerTotalDiscount.toFixed(2)),
         tax: Number(taxAmount.toFixed(2)),
         shippingCharge: Number((offerAdjustedShipping ?? shipping).toFixed(2)),
+        totalItemsUsedForShipping: totalPacksForShipping,
         total: Number(total.toFixed(2)),
         updatedAt: new Date().toISOString(),
       });
@@ -813,6 +897,62 @@ useEffect(() => {
           />
         </div>
 
+        {/* Delivery validation (Shiprocket serviceability — pricing is Ziply5 slabs only) */}
+        {billing.postalCode.trim().length >= 6 && validatedItems.length > 0 && (
+          <div className="md:col-span-2 rounded-xl border border-[#e8e0d4] bg-white/80 p-3 text-sm text-[#646464]">
+            {deliveryCheck.loading && (
+              <p className="flex items-center gap-2">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Checking delivery for this pincode…
+              </p>
+            )}
+            {!deliveryCheck.loading && deliveryCheck.error && (
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <span className="text-amber-800">{deliveryCheck.error}</span>
+                <button
+                  type="button"
+                  className="rounded-full border border-[#7B3010] px-3 py-1 text-xs font-semibold text-[#7B3010]"
+                  onClick={() => void runDeliveryCheck()}
+                >
+                  Retry
+                </button>
+              </div>
+            )}
+            {!deliveryCheck.loading && !deliveryCheck.error && deliveryCheck.data?.status === "deliverable" && (
+              <p className="text-emerald-800">
+                Deliverable
+                {deliveryCheck.data.estimatedDeliveryDaysMin != null && (
+                  <span className="ml-1">
+                    · Est. {deliveryCheck.data.estimatedDeliveryDaysMin}
+                    {deliveryCheck.data.estimatedDeliveryDaysMax != null &&
+                    deliveryCheck.data.estimatedDeliveryDaysMax !== deliveryCheck.data.estimatedDeliveryDaysMin
+                      ? `–${deliveryCheck.data.estimatedDeliveryDaysMax}`
+                      : ""}{" "}
+                    day(s)
+                  </span>
+                )}
+              </p>
+            )}
+            {!deliveryCheck.loading && !deliveryCheck.error && deliveryCheck.data?.status === "limited_service" && (
+              <p className="text-amber-900">
+                Limited service for this pincode (fewer courier options or longer transit). You can continue with prepaid;
+                COD may be restricted for this destination.
+              </p>
+            )}
+            {!deliveryCheck.loading && !deliveryCheck.error && deliveryCheck.data?.status === "not_deliverable" && (
+              <p className="text-red-700 font-medium">
+                Not deliverable to this pincode. Please update your address to continue.
+              </p>
+            )}
+            {!deliveryCheck.loading && !deliveryCheck.error && deliveryCheck.data?.status === "api_unavailable" && (
+              <p className="text-amber-900">
+                {deliveryCheck.data.message ??
+                  "We could not verify delivery with the carrier right now. You may still place your order; we will confirm before dispatch."}
+              </p>
+            )}
+          </div>
+        )}
+
       </div>
     </div>
     <div className="mt-4 flex flex-col gap-4">
@@ -843,7 +983,7 @@ useEffect(() => {
             <button
               type="button"
               onClick={() => void goToPayment()}
-              disabled={placing || items.length === 0 || total < 250}
+              disabled={placing || items.length === 0 || total < 250 || (deliveryCheck.data?.status === "not_deliverable" && deliveryCheck.lastOk)}
               className="bg-[#7B3010] shadow-2xl tracking-wide font-medium text-white w-full py-4 rounded-full font-melon disabled:opacity-60 disabled:cursor-not-allowed transition-all"
             >
               {placing ? "Please wait…" : "Place Order →"}
@@ -895,7 +1035,7 @@ useEffect(() => {
               <span>Rs.{subTotal.toFixed(2)}</span>
             </div>
             <div className="flex justify-between text-[#C03621] font-medium font-melon tracking-wide mt-2">
-              <span>Shipping</span>
+              <span>Shipping ({totalPacksForShipping} packs)</span>
               <span>Rs.{(offerAdjustedShipping ?? shipping).toFixed(2)}</span>
             </div>
             <div className="flex justify-between text-[#C03621] font-medium font-melon tracking-wide mt-2">
