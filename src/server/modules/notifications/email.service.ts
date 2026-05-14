@@ -10,9 +10,9 @@ export type EmailJobPayload = {
 export const enqueueEmail = async (payload: EmailJobPayload) => {
   const nodeEnv = process.env.NODE_ENV || "not set"
   const isDev = nodeEnv === "development" || nodeEnv === "not set"
-  
+
   console.log(`[Email Service] Processing email to ${payload.to}: "${payload.subject}" (Env: ${nodeEnv}, isDev: ${isDev})`)
-  
+
   if (isDev) {
     console.log("[Email Service] Dev mode: Sending directly via mailService")
     try {
@@ -108,7 +108,7 @@ export const emailTemplates = {
               <p style="margin: 5px 0;"><strong>Total Amount:</strong> ₹${total}</p>
             </div>
             <div style="text-align: center; margin: 30px 0;">
-              <a href="${process.env.NEXT_PUBLIC_APP_URL || "https://ziply5.com"}/profile" style="background-color: #4f46e5; color: #ffffff; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold;">View Order Details</a>
+              <a href="${process.env.NEXT_PUBLIC_APP_URL || "https://ziply5.com"}/orders/${orderId}" style="background-color: #4f46e5; color: #ffffff; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold;">View Order Details</a>
             </div>
           </td>
         </tr>
@@ -176,10 +176,10 @@ export const emailTemplates = {
     </div>
     `,
   }),
- adminCreated: (name: string, password: string, email: string) => ({
-  subject: `Your Ziply5 Account Has Been Created 🎉`,
+  adminCreated: (name: string, password: string, email: string) => ({
+    subject: `Your Ziply5 Account Has Been Created 🎉`,
 
-  html: `
+    html: `
   <div style="font-family: Arial, Helvetica, sans-serif; background-color: #f4f6f8; padding: 20px;">
     
     <table align="center" width="600" cellpadding="0" cellspacing="0"
@@ -279,12 +279,12 @@ export const emailTemplates = {
 
   </div>
   `,
-}),
-userStatusChanged: (name: string, status: string) => ({
+  }),
+  userStatusChanged: (name: string, status: string) => ({
 
-  subject: `Your Account Status Has Been Updated – ${status.toUpperCase()}`,
+    subject: `Your Account Status Has Been Updated – ${status.toUpperCase()}`,
 
-  html: `
+    html: `
   <div style="font-family: Arial, Helvetica, sans-serif; background-color: #f4f6f8; padding: 20px;">
     
     <table align="center" width="600" cellpadding="0" cellspacing="0"
@@ -328,40 +328,38 @@ userStatusChanged: (name: string, status: string) => ({
             <p style="
               font-size: 18px;
               font-weight: bold;
-              color: ${
-                status === "active"
-                  ? "#16a34a"
-                  : status === "suspended"
-                  ? "#dc2626"
-                  : "#6b7280"
-              };
+              color: ${status === "active"
+        ? "#16a34a"
+        : status === "suspended"
+          ? "#dc2626"
+          : "#6b7280"
+      };
               margin-top: 8px;
             ">
               ${status.toUpperCase()}
             </p>
           </div>
 
-          ${
-            status === "active"
-              ? `
+          ${status === "active"
+        ? `
               <p style="font-size: 14px;">
                 🎉 Your account is now active. You can log in and start using our services.
               </p>
               `
-              : status === "suspended"
-              ? `
+        : status === "suspended"
+          ? `
               <p style="font-size: 14px;">
                 ⚠️ Your account has been temporarily suspended. 
                 Please contact support if you believe this is a mistake.
               </p>
               `
-              : `
+          : `
               <p style="font-size: 14px;">
                 ❗ Your account has been marked as deleted. 
                 If this was unexpected, please contact support immediately.
               </p>
               `
-          }
+      }
 
           <p style="font-size: 14px; margin-top: 25px;">
             If you have any questions, please contact our support team.
@@ -392,5 +390,5 @@ userStatusChanged: (name: string, status: string) => ({
 
   </div>
   `,
-}),
+  }),
 }
