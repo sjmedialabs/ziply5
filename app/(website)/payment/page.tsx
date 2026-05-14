@@ -8,6 +8,8 @@ import {
   clearCheckoutStorage,
   readCheckoutStorage,
 } from "@/lib/ecommerce-order";
+import { toast } from "@/lib/toast";
+import { calculateZiply5Shipping } from "@/src/lib/shipping/ziply5-shipping";
 
 declare global {
   interface Window {
@@ -68,9 +70,26 @@ function PaymentPageInner() {
     }
   }, []);
 
+  const packTotal = useMemo(
+    () => items.reduce((sum, item) => sum + Math.max(1, Math.floor(Number(item.quantity) || 0)), 0),
+    [items],
+  );
+  const slabShipping = useMemo(() => {
+    if (!items.length || packTotal < 1) return 0;
+    return calculateZiply5Shipping(packTotal).chargeInr;
+  }, [items.length, packTotal]);
+
+  const checkoutSnap = useMemo(() => readCheckoutStorage(), [items]);
+  const shippingChargeResolved = useMemo(() => {
+    const fromSnap = checkoutSnap?.shippingCharge;
+    if (fromSnap != null && Number.isFinite(fromSnap) && fromSnap >= 0) {
+      return Number(fromSnap);
+    }
+    return slabShipping;
+  }, [checkoutSnap, slabShipping]);
+
   const subTotal = items.reduce((sum, item) => sum + item.price * item.quantity, 0);
-  const shipping = items.length > 0 ? 20 : 0;
-  const calculatedTotal = subTotal + shipping; // Renamed to avoid confusion with couponAdjustedTotal
+  const calculatedTotal = subTotal + shippingChargeResolved;
   const payableAmount = useMemo(() => {
     if (retryMode) {
       return retryAmount ?? calculatedTotal;
@@ -114,7 +133,17 @@ function PaymentPageInner() {
         (typeof crypto !== "undefined" && "randomUUID" in crypto
           ? crypto.randomUUID()
           : `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`);
+      const sessionKey = window.localStorage.getItem("ziply5_session_key") || undefined;
       window.localStorage.setItem("ziply5_checkout_ref", checkoutRef);
+
+      const snap = readCheckoutStorage();
+      const packTotalInner = items.reduce(
+        (s, i) => s + Math.max(1, Math.floor(Number(i.quantity ?? 1) || 0)),
+        0,
+      );
+      const shippingForOrder = calculateZiply5Shipping(packTotalInner).chargeInr;
+      const subTotalInner = items.reduce((sum, item) => sum + item.price * item.quantity, 0);
+      const calculatedTotalInner = subTotalInner + shippingForOrder;
 
       const res = await fetch("/api/orders/create", {
         method: "POST",
@@ -132,13 +161,18 @@ function PaymentPageInner() {
             subtotal: Number((i.subtotal ?? i.price * i.quantity) ?? 0),
             tax: Number(i.tax ?? 0),
           })),
-          shippingCharge: shipping,
+          shippingCharge: shippingForOrder,
+          totalItemsUsedForShipping: packTotalInner,
+          subtotal: snap?.subtotal ?? subTotalInner,
+          discount: snap?.discount ?? 0,
+          tax: snap?.tax ?? 0,
+          total: snap?.total ?? calculatedTotalInner,
           couponCode:
-            readCheckoutStorage()?.coupon?.code ||
+            snap?.coupon?.code ||
             window.localStorage.getItem("ziply5_coupon_code") ||
             undefined,
           couponId:
-            readCheckoutStorage()?.coupon?.couponId ||
+            snap?.coupon?.couponId ||
             window.localStorage.getItem("ziply5_applied_coupon_id") ||
             null,
           gateway,
@@ -228,6 +262,7 @@ function PaymentPageInner() {
         const parsed = JSON.parse(savedBilling) as Partial<typeof billingAddress>;
         const merged = {
           fullName: (parsed.fullName ?? "").toString(),
+          email: (parsed.email ?? "").toString(),
           line1: (parsed.line1 ?? "").toString(),
           city: (parsed.city ?? "").toString(),
           state: (parsed.state ?? "").toString(),
@@ -285,7 +320,9 @@ const handleCOD = async () => {
 
     router.push(`/order-success?orderId=${orderId}`);
   } catch (e) {
-    setError(e instanceof Error ? e.message : "COD failed");
+    const message = e instanceof Error ? e.message : "COD failed"
+    setError(message);
+    toast.error(message);
     setProcessingGateway(null);
   }
 };
@@ -323,7 +360,9 @@ const handleOnlinePayment = async () => {
 
     await openRazorpay(token, orderId);
   } catch (e) {
-    setError(e instanceof Error ? e.message : "Payment failed");
+    const message = e instanceof Error ? e.message : "Payment failed"
+    setError(message);
+    toast.error(message);
     setProcessingGateway(null);
   }
 };
@@ -467,7 +506,9 @@ const handleOnlinePayment = async () => {
           window.localStorage.removeItem("ziply5_applied_coupon_id");
         } catch (error) {
           setProcessingGateway(null)
-          setError(error instanceof Error ? error.message : "Payment verification failed")
+          const message = error instanceof Error ? error.message : "Payment verification failed"
+          setError(message)
+          toast.error(message)
           void postCartEvent("payment_failed", { reason: error instanceof Error ? error.message : "verify_failed" })
         }
       },
@@ -502,7 +543,9 @@ const handleOnlinePayment = async () => {
     try {
       await openRazorpay(token, createdOrderId);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Retry failed.");
+      const message = e instanceof Error ? e.message : "Retry failed."
+      setError(message);
+      toast.error(message);
       setProcessingGateway(null);
     }
   };

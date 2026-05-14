@@ -15,6 +15,8 @@ export const createOrderSchema = z.object({
 
   shipping: z.number().nonnegative().optional(), // backward compatibility
   shippingCharge: z.number().nonnegative().optional(),
+  /** Sum of checkout line quantities; must match server recomputation for anti-tamper. */
+  totalItemsUsedForShipping: z.number().int().min(0).max(5000).optional(),
   currency: z.string().min(1).optional(),
   couponCode: z.string().optional(),
   couponId: z.string().nullable().optional(),

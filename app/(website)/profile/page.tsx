@@ -14,11 +14,17 @@ import { useStorefrontProducts } from "@/hooks/useStorefrontProducts"
 import { useRealtimeTables } from "@/hooks/useRealtimeTables"
 import { clearSession } from "@/lib/auth-session"
 import { toast } from "@/lib/toast"
+import {
+  deriveLatestLifecycleToStatus,
+  orderHistoryHasCancelRequested,
+  shouldRenderCustomerCancelOrderButton,
+} from "@/src/lib/orders/order-cancel-policy"
 
 type ApiOrderRow = {
   id: string
   status: string
   paymentStatus?: string | null
+  paymentMethod?: string | null
   customerName?: string | null
   customerPhone?: string | null
   customerAddress?: string | null
@@ -29,6 +35,8 @@ type ApiOrderRow = {
   transactions?: Array<{ status: string }>
   returnRequests?: Array<{ id: string; status: string; productId?: string | null }>
   shipmentStatus?: string | null
+  shippingStatus?: string | null
+  statusHistory?: Array<{ toStatus: string }>
   courierName?: string | null
   awbCode?: string | null
   trackingNumber?: string | null
@@ -383,10 +391,10 @@ function ProfilePageContent() {
 
   const runOrderAction = async (orderId: string, action: "cancel_request" | "return_request" | "cancel_pending") => {
     const token = window.localStorage.getItem("ziply5_access_token")
-    if (!token) return
+    if (!token) return false
     setOrderActionBusy(`${orderId}:${action}`)
     try {
-      await fetch(`/api/v1/orders/${orderId}/actions`, {
+      const res = await fetch(`/api/v1/orders/${orderId}/actions`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -394,6 +402,15 @@ function ProfilePageContent() {
         },
         body: JSON.stringify({ action }),
       })
+      const payload = (await res.json()) as { success?: boolean; message?: string }
+      if (!res.ok || payload.success === false) {
+        toast.error("Action failed", payload.message ?? "Request failed")
+        return false
+      }
+      if (action === "cancel_request" || action === "cancel_pending") {
+        toast.success("Order cancelled", "Your order has been cancelled.")
+      }
+      return true
     } finally {
       setOrderActionBusy(null)
       void queryClient.invalidateQueries({ queryKey: ["profile-orders"] })
@@ -895,6 +912,15 @@ function ProfilePageContent() {
                       const shippingStatus = (order.shipmentStatus ?? "pending").toLowerCase()
                       const previewItems = order.items.slice(0, 2)
                       const moreItems = Math.max(order.items.length - 2, 0)
+                      const latestLifecycle = deriveLatestLifecycleToStatus(order.statusHistory, order.status)
+                      const cancelRequested = orderHistoryHasCancelRequested(order.statusHistory)
+                      const showCancel = shouldRenderCustomerCancelOrderButton({
+                        latestLifecycle,
+                        shipmentStatus: order.shipmentStatus ?? null,
+                        shippingStatus: order.shippingStatus ?? null,
+                        orderStatusLower: order.status.toLowerCase(),
+                        cancelRequested,
+                      })
                       return (<div
                         key={order.id}
                         className="rounded-2xl border border-[#E8DCC8] bg-white p-4 shadow-sm"
@@ -934,7 +960,7 @@ function ProfilePageContent() {
                         </div>
 
                         <div className="mt-3 flex flex-wrap items-center gap-2">
-                          {["pending", "confirmed", "packed", "admin_approval_pending"].includes(order.status.toLowerCase()) && (
+                          {showCancel && (
                             <button
                               type="button"
                               disabled={orderActionBusy === `${order.id}:cancel_request` || orderActionBusy === `${order.id}:cancel_pending`}
@@ -1154,12 +1180,24 @@ function ProfilePageContent() {
                         <button
                           type="button"
                           onClick={() => {
-                            void runOrderAction(selectedOrderForCancel.id, selectedOrderForCancel.status.toLowerCase() === "pending" ? "cancel_pending" : "cancel_request")
-                            setIsCancelModalOpen(false)
+                            void (async () => {
+                              const ok = await runOrderAction(
+                                selectedOrderForCancel.id,
+                                selectedOrderForCancel.status.toLowerCase() === "pending" ? "cancel_pending" : "cancel_request",
+                              )
+                              if (ok) setIsCancelModalOpen(false)
+                            })()
                           }}
-                          className="flex-1 rounded-xl bg-red-600 py-3 text-xs font-bold uppercase tracking-widest text-white shadow-md hover:bg-red-700 transition-all"
+                          disabled={
+                            orderActionBusy === `${selectedOrderForCancel.id}:cancel_request` ||
+                            orderActionBusy === `${selectedOrderForCancel.id}:cancel_pending`
+                          }
+                          className="flex-1 rounded-xl bg-red-600 py-3 text-xs font-bold uppercase tracking-widest text-white shadow-md hover:bg-red-700 transition-all disabled:opacity-50"
                         >
-                          Confirm
+                          {orderActionBusy === `${selectedOrderForCancel.id}:cancel_request` ||
+                          orderActionBusy === `${selectedOrderForCancel.id}:cancel_pending`
+                            ? "Processing…"
+                            : "Confirm"}
                         </button>
                       </div>
                     </div>

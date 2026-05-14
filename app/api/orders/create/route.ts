@@ -39,6 +39,7 @@ export async function POST(request: NextRequest) {
       paymentStatus: parsed.data.paymentStatus,
       paymentId: parsed.data.paymentId,
       sessionKey: parsed.data.sessionKey,
+      totalItemsUsedForShipping: parsed.data.totalItemsUsedForShipping ?? null,
     })
     console.log("After createOrderFromCheckout")
     console.log("Order created successfully:", order)
