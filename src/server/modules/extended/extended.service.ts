@@ -7,7 +7,9 @@ import {
   listUserAddressesSupabase,
   updateUserAddressSupabase,
 } from "@/src/lib/db/users"
-import { createReturnRequestSupabase } from "@/src/lib/db/returns"
+import { getReturnIneligibilityReason } from "@/src/lib/returns/return-eligibility"
+import { updateOrderStatus } from "@/src/server/modules/orders/orders.service"
+import { env } from "@/src/server/core/config/env"
 import { logger } from "@/lib/logger"
 
 const supabase = () => getSupabaseAdmin()
@@ -269,6 +271,7 @@ export const listReturnRequests = () =>
             'total', o.total,
             'status', o.status,
             'userId', o."userId",
+            'paymentMethod', o."paymentMethod",
             'refunds', COALESCE((
               SELECT jsonb_agg(jsonb_build_object('id', r.id, 'amount', r.amount, 'status', r.status, 'createdAt', r."createdAt") ORDER BY r."createdAt" DESC)
               FROM "RefundRecord" r
@@ -298,42 +301,101 @@ export const listReturnRequests = () =>
 export const updateReturnStatus = (id: string, status: string) =>
   pgQuery(`UPDATE "ReturnRequest" SET status=$2, "updatedAt"=now() WHERE id=$1 RETURNING *`, [id, status]).then((r) => r[0])
 
+export type CreateReturnRequestMeta = {
+  description?: string | null
+  videoUrl?: string | null
+  returnType: "refund" | "exchange"
+  refundMethod?: "upi" | "bank" | null
+  upiId?: string | null
+  bankDetails?: Record<string, unknown> | null
+  headerImages?: string[] | null
+}
+
 export const createReturnRequest = async (
   orderId: string,
   userId: string | null,
-  reason?: string,
-  items?: Array<{ orderItemId: string; productId: string; requestedQty: number; reasonCode?: string; notes?: string; imageUrl?: string }>,
+  reason: string | undefined,
+  items: Array<{ orderItemId: string; productId: string; requestedQty: number; reasonCode?: string; notes?: string; imageUrl?: string }>,
+  meta: CreateReturnRequestMeta,
 ) => {
-  const orderRows = await pgQuery<Array<{ id: string; status: string }>>(`SELECT id, status FROM "Order" WHERE id=$1 LIMIT 1`, [orderId])
-  const order = orderRows[0]
-  if (!order) throw new Error("Order not found")
-  if (String(order.status) !== "delivered") throw new Error("Returns are allowed only for delivered orders")
   const cleanItems = (items ?? []).filter((item) => item.productId && item.orderItemId)
   if (cleanItems.length === 0) throw new Error("At least one return item is required")
 
-  const productIds = [...new Set(cleanItems.map((item) => item.productId))]
-  const existingRows = await pgQuery<Array<{ productId: string | null; status: string }>>(
+  const orderRows = await pgQuery<
+    Array<{
+      id: string
+      orderStatus: string
+      paymentMethod: string | null
+      latestLifecycle: string | null
+      deliveredAt: Date | null
+    }>
+  >(
     `
-      SELECT rr."productId" as "productId", rr.status
-      FROM "ReturnRequest" rr
-      WHERE rr."orderId" = $1
-        AND rr.status <> 'rejected'
-        AND rr."productId" = ANY($2::text[])
+    SELECT
+      o.id,
+      o.status::text as "orderStatus",
+      o."paymentMethod",
+      (
+        SELECT h."toStatus"
+        FROM "OrderStatusHistory" h
+        WHERE h."orderId" = o.id
+        ORDER BY h."changedAt" DESC NULLS LAST
+        LIMIT 1
+      ) as "latestLifecycle",
+      COALESCE(
+        (SELECT MAX(s."deliveredAt") FROM "Shipment" s WHERE s."orderId" = o.id AND s."deliveredAt" IS NOT NULL),
+        (SELECT MAX(h."changedAt") FROM "OrderStatusHistory" h WHERE h."orderId" = o.id AND LOWER(TRIM(h."toStatus")) = 'delivered')
+      ) AS "deliveredAt"
+    FROM "Order" o
+    WHERE o.id = $1
+    LIMIT 1
     `,
-    [orderId, productIds],
+    [orderId],
   )
-  const existingProductIds = new Set(
-    existingRows
-      .map((row) => row.productId)
-      .filter((value): value is string => Boolean(value)),
-  )
-  const creatableItems = cleanItems.filter((item) => !existingProductIds.has(item.productId))
-  if (creatableItems.length === 0) {
-    throw new Error("Return request already exists for selected order item(s)")
+  const order = orderRows[0]
+  if (!order) throw new Error("Order not found")
+
+  const windowDays = Number(env.RETURN_WINDOW_DAYS ?? "7")
+  const ineligible = getReturnIneligibilityReason({
+    orderStatus: String(order.orderStatus ?? "").toLowerCase(),
+    latestLifecycle: order.latestLifecycle ? String(order.latestLifecycle).toLowerCase() : null,
+    deliveredAt: order.deliveredAt,
+    returnWindowDays: windowDays,
+  })
+  if (ineligible === "not_delivered") throw new Error("Returns are allowed only for delivered orders")
+  if (ineligible === "missing_delivered_at") throw new Error("Delivery date is not available; contact support to request a return")
+  if (ineligible === "return_window_expired") throw new Error(`Return window expired (${windowDays} days after delivery)`)
+
+  const pm = String(order.paymentMethod ?? "").toLowerCase()
+  if (meta.returnType === "refund" && pm === "cod") {
+    const hasUpi = Boolean(meta.upiId?.trim())
+    const hasBank = Boolean(meta.bankDetails && Object.keys(meta.bankDetails).length > 0)
+    if (!hasUpi && !hasBank) {
+      throw new Error("For COD refunds, provide a UPI ID or bank details")
+    }
   }
 
+  const active = await pgQuery<Array<{ id: string }>>(
+    `
+    SELECT id FROM "ReturnRequest"
+    WHERE "orderId" = $1
+      AND LOWER(status) NOT IN ('rejected', 'cancelled', 'completed', 'refunded')
+    LIMIT 1
+    `,
+    [orderId],
+  )
+  if (active.length) throw new Error("An active return request already exists for this order")
+
+  const shipmentRows = await pgQuery<Array<{ id: string }>>(
+    `SELECT id FROM "Shipment" WHERE "orderId" = $1 ORDER BY "createdAt" DESC NULLS LAST LIMIT 1`,
+    [orderId],
+  )
+  const shipmentId = shipmentRows[0]?.id ?? null
+
+  const imageList = [...new Set([...(meta.headerImages ?? []), ...cleanItems.map((i) => i.imageUrl).filter(Boolean)])] as string[]
+
   const createdRows: Array<Record<string, unknown>> = []
-  for (const item of creatableItems) {
+  for (const item of cleanItems) {
     const rowId = randomUUID()
     const itemReason = [item.reasonCode?.trim(), item.notes?.trim(), item.imageUrl ? `Image: ${item.imageUrl}` : null]
       .filter(Boolean)
@@ -342,11 +404,32 @@ export const createReturnRequest = async (
 
     const created = await pgQuery<Array<Record<string, unknown>>>(
       `
-        INSERT INTO "ReturnRequest" (id, "orderId", "userId", "productId", reason, "imageUrl", status, "createdAt", "updatedAt")
-        VALUES ($1, $2, $3, $4, $5, $6, 'requested', now(), now())
+        INSERT INTO "ReturnRequest" (
+          id, "orderId", "userId", "productId", reason, "imageUrl", description, "videoUrl", images,
+          "returnType", "refundMethod", "upiId", "bankDetails", "shipmentId", status, "requestedAt", "createdAt", "updatedAt"
+        )
+        VALUES (
+          $1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb,
+          $10, $11, $12, $13::jsonb, $14, 'requested', now(), now(), now()
+        )
         RETURNING *
       `,
-      [rowId, orderId, userId ?? null, item.productId, combinedReason || null, item.imageUrl ?? null],
+      [
+        rowId,
+        orderId,
+        userId ?? null,
+        item.productId,
+        combinedReason || null,
+        item.imageUrl ?? null,
+        meta.description?.trim() || null,
+        meta.videoUrl?.trim() || null,
+        JSON.stringify(imageList),
+        meta.returnType,
+        meta.refundMethod ?? null,
+        meta.upiId?.trim() || null,
+        meta.bankDetails ? JSON.stringify(meta.bankDetails) : null,
+        shipmentId,
+      ],
     )
     createdRows.push(created[0])
 
@@ -361,6 +444,12 @@ export const createReturnRequest = async (
     )
   }
 
+  await updateOrderStatus(orderId, "return_requested", userId ?? undefined, {
+    reasonCode: "return_requested",
+    note: "Customer submitted return request",
+  }).catch(() => null)
+
+  console.log("[returns] createReturnRequest.ok", { orderId, rows: createdRows.length })
   return createdRows[0]
 }
 

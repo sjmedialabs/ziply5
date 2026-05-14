@@ -14,6 +14,7 @@ import {
   orderHistoryHasCancelRequested,
   shouldRenderCustomerCancelOrderButton,
 } from "@/src/lib/orders/order-cancel-policy"
+import { getReturnIneligibilityReason } from "@/src/lib/returns/return-eligibility"
 import { OrderShipmentPanel } from "@/src/components/shipping/order-shipment-panel"
 import { OrderStatusHistoryCard } from "@/src/components/orders/order-status-history-card"
 import { OrderSummaryHeroCard } from "@/src/components/orders/order-summary-hero-card"
@@ -31,6 +32,8 @@ const FALLBACK_TIMELINE = [
   "refund_initiated",
   "returned",
 ] as const
+const CUSTOMER_RETURN_WINDOW_DAYS = 7
+
 const FALLBACK_RETURN_REASONS = [
   "Damaged",
   "Wrong item",
@@ -62,6 +65,18 @@ export default function OrderDetailPage() {
     uploading: boolean;
   }>>({})
 
+  const [returnMeta, setReturnMeta] = useState({
+    returnType: "refund" as "refund" | "exchange",
+    description: "",
+    videoUrl: "",
+    refundMethod: "" as "" | "upi" | "bank",
+    upiId: "",
+    bankAccountName: "",
+    bankAccountNumber: "",
+    bankIfsc: "",
+    bankName: "",
+  })
+
   const [actionBusy, setActionBusy] = useState<string | null>(null)
   const [reviewDrafts, setReviewDrafts] = useState<Record<string, { rating: number; content: string }>>({})
   const [existingReviewedProducts, setExistingReviewedProducts] = useState<Set<string>>(new Set())
@@ -86,6 +101,17 @@ export default function OrderDetailPage() {
       }
     })
     setSelectedItemsForReturn(initialItems)
+    setReturnMeta({
+      returnType: "refund",
+      description: "",
+      videoUrl: "",
+      refundMethod: "",
+      upiId: "",
+      bankAccountName: "",
+      bankAccountNumber: "",
+      bankIfsc: "",
+      bankName: "",
+    })
     setIsReturnModalOpen(true)
   }
 
@@ -121,6 +147,43 @@ export default function OrderDetailPage() {
 
   const submitReturnRequest = async () => {
     if (!order) return
+
+    const latestLifecycle = deriveLatestLifecycleToStatus(order.statusHistory, order.status)
+    const deliveredAt = order.deliveredAt
+      ? new Date(order.deliveredAt)
+      : order.shipmentDeliveredAt
+        ? new Date(order.shipmentDeliveredAt as string | Date)
+        : (() => {
+            const hit = order.statusHistory.find((h) => h.toStatus.toLowerCase() === "delivered")
+            return hit?.changedAt ? new Date(hit.changedAt) : null
+          })()
+    const ineligible = getReturnIneligibilityReason({
+      orderStatus: order.status.toLowerCase(),
+      latestLifecycle,
+      deliveredAt,
+      returnWindowDays: CUSTOMER_RETURN_WINDOW_DAYS,
+    })
+    if (ineligible === "not_delivered") {
+      toast.error("Not eligible", "Returns are only available for delivered orders.")
+      return
+    }
+    if (ineligible === "missing_delivered_at") {
+      toast.error("Not eligible", "Delivery date is not available yet.")
+      return
+    }
+    if (ineligible === "return_window_expired") {
+      toast.error("Not eligible", `Return window is ${CUSTOMER_RETURN_WINDOW_DAYS} days after delivery.`)
+      return
+    }
+    if (
+      order.returnRequests?.some((req) =>
+        !["rejected", "cancelled", "completed", "refunded"].includes(String(req.status ?? "").toLowerCase()),
+      )
+    ) {
+      toast.error("Not eligible", "This order already has an active return request.")
+      return
+    }
+
     const itemsToReturn = Object.entries(selectedItemsForReturn)
       .filter(([_, data]) => data.selected && !returnedProductIds.has(String(data.productId ?? "").trim()))
       .map(([id, data]) => ({
@@ -129,7 +192,7 @@ export default function OrderDetailPage() {
         quantity: data.quantity,
         reasonCode: data.reasonCode,
         notes: data.notes,
-        imageUrl: data.imageUrl
+        imageUrl: data.imageUrl,
       }))
 
     if (itemsToReturn.length === 0) {
@@ -144,10 +207,29 @@ export default function OrderDetailPage() {
       }
     }
 
+    if (returnMeta.returnType === "refund" && String(order.paymentMethod ?? "").toLowerCase() === "cod") {
+      const hasUpi = Boolean(returnMeta.upiId.trim())
+      const hasBank = Boolean(returnMeta.bankAccountNumber.trim() && returnMeta.bankIfsc.trim())
+      if (!hasUpi && !hasBank) {
+        toast.error("Validation Error", "For COD refunds, enter a UPI ID or complete bank details.")
+        return
+      }
+    }
+
     const token = window.localStorage.getItem("ziply5_access_token")
     if (!token) return
     setActionBusy("return_request")
     try {
+      const bankDetails =
+        returnMeta.refundMethod === "bank" && returnMeta.bankAccountNumber.trim()
+          ? {
+              accountName: returnMeta.bankAccountName.trim() || undefined,
+              accountNumber: returnMeta.bankAccountNumber.trim(),
+              ifsc: returnMeta.bankIfsc.trim(),
+              bankName: returnMeta.bankName.trim() || undefined,
+            }
+          : undefined
+
       const res = await fetch(`/api/v1/returns`, {
         method: "POST",
         headers: {
@@ -156,7 +238,14 @@ export default function OrderDetailPage() {
         },
         body: JSON.stringify({
           orderId: order.id,
-          items: itemsToReturn
+          items: itemsToReturn,
+          description: returnMeta.description.trim() || undefined,
+          videoUrl: returnMeta.videoUrl.trim() || undefined,
+          returnType: returnMeta.returnType,
+          refundMethod: returnMeta.refundMethod || undefined,
+          upiId: returnMeta.upiId.trim() || undefined,
+          bankDetails,
+          headerImages: itemsToReturn.map((i) => i.imageUrl).filter(Boolean),
         }),
       })
       const payload = await res.json()
@@ -211,7 +300,7 @@ export default function OrderDetailPage() {
     () =>
       new Set(
         (order?.returnRequests ?? [])
-          .filter((req) => String(req.status ?? "").toLowerCase() !== "rejected")
+          .filter((req) => !["rejected", "cancelled", "completed", "refunded"].includes(String(req.status ?? "").toLowerCase()))
           .map((req) => String(req.productId ?? "").trim())
           .filter(Boolean),
       ),
@@ -222,7 +311,36 @@ export default function OrderDetailPage() {
     [order?.items, returnedProductIds],
   )
   const returnExists = Boolean(order?.returnRequests?.length)
-  const activeReturnRequest = order?.returnRequests?.find(r => r.status.toLowerCase() !== "rejected")
+  const hasActiveOpenReturn = useMemo(
+    () =>
+      Boolean(
+        order?.returnRequests?.some((req) =>
+          !["rejected", "cancelled", "completed", "refunded"].includes(String(req.status ?? "").toLowerCase()),
+        ),
+      ),
+    [order?.returnRequests],
+  )
+  const derivedDeliveredAt = useMemo(() => {
+    if (!order) return null
+    if (order.deliveredAt) return new Date(order.deliveredAt)
+    const shipAt = order.shipmentDeliveredAt
+    if (shipAt) return new Date(shipAt as string | Date)
+    const hit = order.statusHistory.find((h) => h.toStatus.toLowerCase() === "delivered")
+    return hit?.changedAt ? new Date(hit.changedAt) : null
+  }, [order])
+  const returnEligibilityReason = useMemo(() => {
+    if (!order) return "no_order" as const
+    if (hasActiveOpenReturn) return "active_return" as const
+    const latest = deriveLatestLifecycleToStatus(order.statusHistory, order.status)
+    return (
+      getReturnIneligibilityReason({
+        orderStatus: order.status.toLowerCase(),
+        latestLifecycle: latest,
+        deliveredAt: derivedDeliveredAt,
+        returnWindowDays: CUSTOMER_RETURN_WINDOW_DAYS,
+      }) ?? null
+    )
+  }, [order, derivedDeliveredAt, hasActiveOpenReturn])
   const cancelRequested = orderHistoryHasCancelRequested(order?.statusHistory)
   const latestLifecycle = useMemo(
     () => deriveLatestLifecycleToStatus(order?.statusHistory, order?.status ?? ""),
@@ -424,13 +542,63 @@ export default function OrderDetailPage() {
           {(order.returnRequests?.length > 0 || order?.refunds?.length > 0) && (
             <div className="rounded-xl border border-[#E5E7EB] bg-white p-4 shadow-sm">
               <h2 className="mb-3 text-sm font-semibold text-[#111827]">Return / refund status</h2>
-              <div className="space-y-2">
+              <div className="space-y-3">
                 {order.returnRequests.map((req) => (
-                  <p key={req.id} className="text-sm text-[#6B7280]">
-                    Return request: <span className="font-semibold uppercase text-[#111827]">{req.status}</span>
-                    {req.productId ? ` — Product ${req.productId}` : ""}
-                    {req.reason ? ` — ${req.reason}` : ""}
-                  </p>
+                  <div key={req.id} className="rounded-lg border border-[#F3F4F6] bg-[#FAFAFA] p-3 text-sm text-[#6B7280]">
+                    <p>
+                      Return: <span className="font-semibold uppercase text-[#111827]">{req.status}</span>
+                      {req.productId ? ` — Product ${req.productId.slice(0, 8)}…` : ""}
+                    </p>
+                    {req.reason ? <p className="mt-1 text-xs">Reason: {req.reason}</p> : null}
+                    {req.description ? <p className="mt-1 text-xs">Details: {req.description}</p> : null}
+                    {req.videoUrl ? (
+                      <p className="mt-1 text-xs">
+                        Video:{" "}
+                        <a href={req.videoUrl} className="text-[#7B3010] underline" target="_blank" rel="noreferrer">
+                          link
+                        </a>
+                      </p>
+                    ) : null}
+                    {req.returnType ? <p className="mt-1 text-xs uppercase">Type: {req.returnType}</p> : null}
+                    {req.reverseAwb ? (
+                      <div className="mt-2 space-y-1 text-xs">
+                        <p>
+                          Reverse AWB: <span className="font-mono text-[#111827]">{req.reverseAwb}</span>
+                          {req.reverseCourier ? ` — ${req.reverseCourier}` : ""}
+                        </p>
+                        {req.reverseTrackingUrl ? (
+                          <a href={req.reverseTrackingUrl} className="text-[#7B3010] underline" target="_blank" rel="noreferrer">
+                            Track return shipment
+                          </a>
+                        ) : null}
+                        <div>
+                          <button
+                            type="button"
+                            className="mt-1 rounded-md border border-[#E5E7EB] px-2 py-1 text-[10px] font-semibold uppercase text-[#111827]"
+                            onClick={() => {
+                              void (async () => {
+                                const t = window.localStorage.getItem("ziply5_access_token")
+                                if (!t) return
+                                const r = await fetch(`/api/v1/returns/${req.id}/reverse-tracking/refresh`, {
+                                  method: "POST",
+                                  headers: { Authorization: `Bearer ${t}` },
+                                })
+                                const p = await r.json()
+                                if (!r.ok || !p.success) toast.error("Refresh failed", p.message ?? "Could not refresh return tracking")
+                                else {
+                                  toast.success("Updated", "Return tracking refreshed.")
+                                  void queryClient.invalidateQueries({ queryKey: ["order-detail", params.id] })
+                                }
+                              })()
+                            }}
+                          >
+                            Refresh return tracking
+                          </button>
+                        </div>
+                      </div>
+                    ) : null}
+                    {req.rejectionReason ? <p className="mt-1 text-xs text-red-700">Rejected: {req.rejectionReason}</p> : null}
+                  </div>
                 ))}
                 {order.refunds?.map((ref) => (
                   <p key={ref.id} className="text-sm text-[#6B7280]">
@@ -548,8 +716,8 @@ export default function OrderDetailPage() {
           </div>
 
           {order.status.toLowerCase() === "delivered" && (
-            <div className="rounded-xl border border-[#E5E7EB] bg-white p-4 shadow-sm">
-              {hasReturnableItems ? (
+            <div className="rounded-xl border border-[#E5E7EB] bg-white p-4 shadow-sm space-y-2">
+              {returnEligibilityReason === null && hasReturnableItems ? (
                 <button
                   type="button"
                   onClick={openReturnModal}
@@ -557,11 +725,20 @@ export default function OrderDetailPage() {
                 >
                   Request return
                 </button>
-              ) : (
+              ) : returnEligibilityReason === "active_return" ? (
+                <div className="space-y-1">
+                  <p className="text-sm font-semibold uppercase text-[#111827]">Return in progress</p>
+                  <p className="text-xs text-[#6B7280]">We already have an open return for this order.</p>
+                </div>
+              ) : returnEligibilityReason === "return_window_expired" ? (
+                <p className="text-xs text-[#6B7280]">The {CUSTOMER_RETURN_WINDOW_DAYS}-day return window for this order has ended.</p>
+              ) : !hasReturnableItems ? (
                 <div className="space-y-1">
                   <p className="text-sm font-semibold uppercase text-[#111827]">Return processing</p>
                   <p className="text-xs text-[#6B7280]">All products in this order already have active return requests.</p>
                 </div>
+              ) : (
+                <p className="text-xs text-[#6B7280]">Returns are not available for this order state.</p>
               )}
             </div>
           )}
@@ -579,6 +756,102 @@ export default function OrderDetailPage() {
 
                 <div className="p-6 space-y-6">
                   <p className="text-sm text-gray-600">Select the items you wish to return and provide a reason and photo for each.</p>
+
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div>
+                      <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Return type</label>
+                      <select
+                        value={returnMeta.returnType}
+                        onChange={(e) =>
+                          setReturnMeta((m) => ({ ...m, returnType: e.target.value as "refund" | "exchange" }))
+                        }
+                        className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm"
+                      >
+                        <option value="refund">Refund</option>
+                        <option value="exchange">Exchange</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Video URL (optional)</label>
+                      <input
+                        value={returnMeta.videoUrl}
+                        onChange={(e) => setReturnMeta((m) => ({ ...m, videoUrl: e.target.value }))}
+                        className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm"
+                        placeholder="https://…"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Overall description</label>
+                    <textarea
+                      rows={2}
+                      value={returnMeta.description}
+                      onChange={(e) => setReturnMeta((m) => ({ ...m, description: e.target.value }))}
+                      className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm resize-none"
+                      placeholder="Describe the issue across items…"
+                    />
+                  </div>
+
+                  {returnMeta.returnType === "refund" && String(order.paymentMethod ?? "").toLowerCase() === "cod" && (
+                    <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 space-y-3">
+                      <p className="text-xs font-semibold text-amber-900 uppercase">COD refund details</p>
+                      <div className="grid gap-2 sm:grid-cols-2">
+                        <div>
+                          <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Refund via</label>
+                          <select
+                            value={returnMeta.refundMethod}
+                            onChange={(e) =>
+                              setReturnMeta((m) => ({ ...m, refundMethod: e.target.value as "" | "upi" | "bank" }))
+                            }
+                            className="w-full rounded-lg border border-gray-200 px-2 py-2 text-sm"
+                          >
+                            <option value="">Select</option>
+                            <option value="upi">UPI</option>
+                            <option value="bank">Bank transfer</option>
+                          </select>
+                        </div>
+                        {returnMeta.refundMethod === "upi" && (
+                          <div>
+                            <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">UPI ID</label>
+                            <input
+                              value={returnMeta.upiId}
+                              onChange={(e) => setReturnMeta((m) => ({ ...m, upiId: e.target.value }))}
+                              className="w-full rounded-lg border border-gray-200 px-2 py-2 text-sm"
+                            />
+                          </div>
+                        )}
+                      </div>
+                      {returnMeta.refundMethod === "bank" && (
+                        <div className="grid gap-2 sm:grid-cols-2">
+                          <input
+                            placeholder="Account holder"
+                            value={returnMeta.bankAccountName}
+                            onChange={(e) => setReturnMeta((m) => ({ ...m, bankAccountName: e.target.value }))}
+                            className="rounded-lg border border-gray-200 px-2 py-2 text-sm"
+                          />
+                          <input
+                            placeholder="Account number"
+                            value={returnMeta.bankAccountNumber}
+                            onChange={(e) => setReturnMeta((m) => ({ ...m, bankAccountNumber: e.target.value }))}
+                            className="rounded-lg border border-gray-200 px-2 py-2 text-sm"
+                          />
+                          <input
+                            placeholder="IFSC"
+                            value={returnMeta.bankIfsc}
+                            onChange={(e) => setReturnMeta((m) => ({ ...m, bankIfsc: e.target.value }))}
+                            className="rounded-lg border border-gray-200 px-2 py-2 text-sm"
+                          />
+                          <input
+                            placeholder="Bank name"
+                            value={returnMeta.bankName}
+                            onChange={(e) => setReturnMeta((m) => ({ ...m, bankName: e.target.value }))}
+                            className="rounded-lg border border-gray-200 px-2 py-2 text-sm"
+                          />
+                        </div>
+                      )}
+                    </div>
+                  )}
 
                   <div className="space-y-4">
                     {order.items.map((item) => {

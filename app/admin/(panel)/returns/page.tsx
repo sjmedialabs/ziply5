@@ -18,6 +18,17 @@ type ReturnRow = {
   status: string;
   reason: string | null;
   imageUrl?: string | null;
+  description?: string | null;
+  videoUrl?: string | null;
+  returnType?: string | null;
+  refundMethod?: string | null;
+  upiId?: string | null;
+  bankDetails?: unknown;
+  adminNote?: string | null;
+  rejectionReason?: string | null;
+  reverseAwb?: string | null;
+  reverseCourier?: string | null;
+  reverseTrackingUrl?: string | null;
   createdAt: string;
   updatedAt?: string;
   productId: string;
@@ -38,6 +49,7 @@ type ReturnRow = {
     customerName?: string;
     customerPhone?: string;
     customerAddress?: string;
+    paymentMethod?: string | null;
   };
 
   items?: Array<{
@@ -68,6 +80,14 @@ export default function AdminReturnsPage() {
   const [selectedReturn, setSelectedReturn] = useState<ReturnRow | null>(null);
   const [returnProduct, setReturnProduct] = useState<any>(null);
   const [user, setUser] = useState<any>(null);
+
+  const [actionNotes, setActionNotes] = useState("");
+  const [rejectReason, setRejectReason] = useState("");
+
+  useEffect(() => {
+    setActionNotes("");
+    setRejectReason("");
+  }, [selectedReturn?.id]);
 
   const filteredRows = rows.filter((row) => {
     if (filter === "pending" && !["requested", "approved", "picked_up"].includes(row.status)) return false;
@@ -115,11 +135,8 @@ export default function AdminReturnsPage() {
   }, []);
   useEffect(() => {
     load();
-  }, [load, loadProduct]);
+  }, [load]);
 
-  useEffect(() => {
-    load();
-  }, [load, loadProduct]);
   const loadOrder = async (orderId: string) => {
     if (!orderId) return
     setLoading(true)
@@ -145,15 +162,24 @@ export default function AdminReturnsPage() {
     }
   };
 
-  const runAction = async (id: string, action: "approve" | "reject" | "mark_picked" | "mark_received") => {
+  const runAction = async (
+    id: string,
+    action: "approve" | "reject" | "mark_picked" | "mark_received",
+    extra?: { notes?: string; rejectionReason?: string },
+  ) => {
     setUpdating(`${id}:${action}`);
     setError("");
     try {
       await authedFetch(`/api/v1/returns/${id}/actions`, {
         method: "POST",
-        body: JSON.stringify({ action }),
+        body: JSON.stringify({
+          action,
+          notes: extra?.notes?.trim() || undefined,
+          rejectionReason: extra?.rejectionReason?.trim() || undefined,
+        }),
       });
       await load();
+      setSelectedReturn(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Action failed");
     } finally {
@@ -373,6 +399,94 @@ export default function AdminReturnsPage() {
               </div>
             </div>
 
+            <div className="mb-6 rounded-xl border p-4">
+              <h3 className="mb-3 font-semibold text-[#4A1D1F]">
+                Return details
+              </h3>
+              <div className="grid gap-2 text-sm sm:grid-cols-2">
+                {selectedReturn.returnType ? (
+                  <p><span className="font-medium">Type:</span> {selectedReturn.returnType}</p>
+                ) : null}
+                {selectedReturn.description ? (
+                  <p className="sm:col-span-2"><span className="font-medium">Description:</span> {selectedReturn.description}</p>
+                ) : null}
+                {selectedReturn.videoUrl ? (
+                  <p className="sm:col-span-2">
+                    <span className="font-medium">Video:</span>{" "}
+                    <a href={selectedReturn.videoUrl} className="text-[#7B3010] underline" target="_blank" rel="noreferrer">
+                      {selectedReturn.videoUrl}
+                    </a>
+                  </p>
+                ) : null}
+                {String(selectedReturn.order?.paymentMethod ?? "").toLowerCase() === "cod" && selectedReturn.returnType === "refund" ? (
+                  <>
+                    {selectedReturn.refundMethod ? (
+                      <p><span className="font-medium">Refund method:</span> {selectedReturn.refundMethod}</p>
+                    ) : null}
+                    {selectedReturn.upiId ? (
+                      <p><span className="font-medium">UPI:</span> {selectedReturn.upiId}</p>
+                    ) : null}
+                    {selectedReturn.bankDetails != null ? (
+                      <p className="sm:col-span-2 font-mono text-xs">
+                        <span className="font-medium font-sans">Bank:</span> {JSON.stringify(selectedReturn.bankDetails)}
+                      </p>
+                    ) : null}
+                  </>
+                ) : null}
+                {selectedReturn.adminNote ? (
+                  <p className="sm:col-span-2"><span className="font-medium">Admin note:</span> {selectedReturn.adminNote}</p>
+                ) : null}
+                {selectedReturn.rejectionReason ? (
+                  <p className="sm:col-span-2 text-red-700"><span className="font-medium">Rejection:</span> {selectedReturn.rejectionReason}</p>
+                ) : null}
+              </div>
+            </div>
+
+            {(selectedReturn.reverseAwb || selectedReturn.reverseTrackingUrl) && (
+              <div className="mb-6 rounded-xl border p-4">
+                <h3 className="mb-3 font-semibold text-[#4A1D1F]">Reverse shipment</h3>
+                {selectedReturn.reverseAwb ? (
+                  <p className="text-sm">
+                    <span className="font-medium">AWB:</span>{" "}
+                    <span className="font-mono">{selectedReturn.reverseAwb}</span>
+                    {selectedReturn.reverseCourier ? ` — ${selectedReturn.reverseCourier}` : ""}
+                  </p>
+                ) : null}
+                {selectedReturn.reverseTrackingUrl ? (
+                  <p className="mt-2 text-sm">
+                    <a href={selectedReturn.reverseTrackingUrl} className="text-[#7B3010] underline" target="_blank" rel="noreferrer">
+                      Open carrier tracking
+                    </a>
+                  </p>
+                ) : null}
+                <button
+                  type="button"
+                  className="mt-3 rounded-md border border-[#E8DCC8] px-3 py-1.5 text-xs font-semibold uppercase text-[#4A1D1F] disabled:opacity-40"
+                  disabled={Boolean(updating)}
+                  onClick={() => {
+                    void (async () => {
+                      setUpdating(`${selectedReturn.id}:refresh_rev`);
+                      setError("");
+                      try {
+                        await authedFetch(`/api/v1/returns/${selectedReturn.id}/reverse-tracking/refresh`, {
+                          method: "POST",
+                        });
+                        await load();
+                        const fresh = (await authedFetch<ReturnRow[]>("/api/v1/returns")).find((r) => r.id === selectedReturn.id);
+                        if (fresh) setSelectedReturn(fresh);
+                      } catch (e) {
+                        setError(e instanceof Error ? e.message : "Refresh failed");
+                      } finally {
+                        setUpdating(null);
+                      }
+                    })();
+                  }}
+                >
+                  Refresh reverse tracking
+                </button>
+              </div>
+            )}
+
             {/* RETURN REASON */}
             <div className="mb-6 rounded-xl border p-4">
               <h3 className="mb-3 font-semibold text-[#4A1D1F]">
@@ -429,6 +543,65 @@ export default function AdminReturnsPage() {
                   </div>
                 </div>
 
+              </div>
+            </div>
+
+            <div className="mb-6 rounded-xl border border-amber-100 bg-amber-50/40 p-4">
+              <h3 className="mb-3 font-semibold text-[#4A1D1F]">Admin actions</h3>
+              <label className="block text-xs font-medium text-[#646464]">Note (optional, stored on approve / reject)</label>
+              <textarea
+                className="mt-1 w-full rounded-lg border border-[#E8DCC8] px-2 py-2 text-sm"
+                rows={2}
+                value={actionNotes}
+                onChange={(e) => setActionNotes(e.target.value)}
+              />
+              <label className="mt-3 block text-xs font-medium text-[#646464]">Rejection reason (required to reject)</label>
+              <textarea
+                className="mt-1 w-full rounded-lg border border-[#E8DCC8] px-2 py-2 text-sm"
+                rows={2}
+                value={rejectReason}
+                onChange={(e) => setRejectReason(e.target.value)}
+                placeholder="Shown to the customer when the return is rejected."
+              />
+              <div className="mt-3 flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  disabled={Boolean(updating)}
+                  onClick={() => void runAction(selectedReturn.id, "approve", { notes: actionNotes })}
+                  className="rounded-full bg-[#7B3010] px-4 py-2 text-xs font-semibold uppercase text-white disabled:opacity-40"
+                >
+                  Approve &amp; create reverse pickup
+                </button>
+                <button
+                  type="button"
+                  disabled={Boolean(updating)}
+                  onClick={() => {
+                    if (!rejectReason.trim()) {
+                      setError("Enter a rejection reason.");
+                      return;
+                    }
+                    void runAction(selectedReturn.id, "reject", { notes: actionNotes, rejectionReason: rejectReason });
+                  }}
+                  className="rounded-full border border-red-300 bg-white px-4 py-2 text-xs font-semibold uppercase text-red-800 disabled:opacity-40"
+                >
+                  Reject return
+                </button>
+                <button
+                  type="button"
+                  disabled={Boolean(updating)}
+                  onClick={() => void runAction(selectedReturn.id, "mark_picked")}
+                  className="rounded-full border border-[#E8DCC8] bg-white px-4 py-2 text-xs font-semibold uppercase text-[#4A1D1F] disabled:opacity-40"
+                >
+                  Mark picked up
+                </button>
+                <button
+                  type="button"
+                  disabled={Boolean(updating)}
+                  onClick={() => void runAction(selectedReturn.id, "mark_received")}
+                  className="rounded-full border border-[#E8DCC8] bg-white px-4 py-2 text-xs font-semibold uppercase text-[#4A1D1F] disabled:opacity-40"
+                >
+                  Mark received
+                </button>
               </div>
             </div>
 

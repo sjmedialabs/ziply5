@@ -71,6 +71,16 @@ export type CancelOrdersInput = {
   ids: number[]
 }
 
+export type CreateReturnOrderResponse = {
+  shipment_id?: number
+  order_id?: number
+  awb_code?: string
+  awb_code_data?: string
+  message?: unknown
+  payload?: Record<string, unknown>
+  [key: string]: unknown
+}
+
 export type CancelOrdersResponse = {
   message?: unknown
   status_code?: number
@@ -231,6 +241,7 @@ const request = async <T>(endpoint: string, method: HttpMethod, body?: unknown) 
     if (endpoint.includes("/courier/assign/awb")) return mockFile<T>("assign-awb.json")
     if (endpoint.includes("/courier/generate/pickup")) return mockFile<T>("pickup.json")
     if (endpoint.includes("/orders/cancel")) return mockFile<T>("cancel-order.json")
+    if (endpoint.includes("/orders/create/return")) return mockFile<T>("create-return.json")
     throw new Error(`No mock response mapped for ${endpoint}`)
   }
   return requestWithAuth<T>(endpoint, method, body)
@@ -281,6 +292,9 @@ export const shiprocketClient = {
   },
   async cancelOrders(input: CancelOrdersInput): Promise<CancelOrdersResponse> {
     return request<CancelOrdersResponse>("/orders/cancel", "POST", input)
+  },
+  async createReturnOrder(input: Record<string, unknown>): Promise<CreateReturnOrderResponse> {
+    return request<CreateReturnOrderResponse>("/orders/create/return", "POST", input)
   },
 }
 
