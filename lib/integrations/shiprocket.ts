@@ -25,8 +25,11 @@ export type ServiceabilityInput = {
 export type ServiceabilityCourier = {
   name: string
   eta_days: number
+  /** Present for internal diagnostics only — never use for customer shipping price. */
   rate: number
   courier_company_id?: number
+  /** Shiprocket courier row: COD supported for this option when true / 1. */
+  cod_available?: boolean
 }
 
 export type ServiceabilityResponse = {
@@ -61,6 +64,18 @@ export type GeneratePickupInput = {
 export type GeneratePickupResponse = {
   pickup_status?: string
   pickup_request_id?: string
+}
+
+export type CancelOrdersInput = {
+  /** Shiprocket channel order ids (numeric). */
+  ids: number[]
+}
+
+export type CancelOrdersResponse = {
+  message?: unknown
+  status_code?: number
+  status?: number
+  [key: string]: unknown
 }
 
 const DEFAULT_TIMEOUT_MS = 12000
@@ -215,6 +230,7 @@ const request = async <T>(endpoint: string, method: HttpMethod, body?: unknown) 
     if (endpoint.includes("/orders/create/adhoc")) return mockFile<T>("create-order.json")
     if (endpoint.includes("/courier/assign/awb")) return mockFile<T>("assign-awb.json")
     if (endpoint.includes("/courier/generate/pickup")) return mockFile<T>("pickup.json")
+    if (endpoint.includes("/orders/cancel")) return mockFile<T>("cancel-order.json")
     throw new Error(`No mock response mapped for ${endpoint}`)
   }
   return requestWithAuth<T>(endpoint, method, body)
@@ -235,12 +251,23 @@ export const shiprocketClient = {
     if ("available_couriers" in payload) return payload as ServiceabilityResponse
     const data = payload.data as Record<string, unknown> | undefined
     const available = (data?.available_courier_companies ?? data?.available_couriers ?? []) as Array<Record<string, unknown>>
-    const normalized: ServiceabilityCourier[] = available.map((item) => ({
-      name: String(item.courier_name ?? item.name ?? "Courier"),
-      eta_days: Number(item.estimated_delivery_days ?? item.eta_days ?? 3),
-      rate: Number(item.rate ?? item.freight_charge ?? 0),
-      courier_company_id: item.courier_company_id ? Number(item.courier_company_id) : undefined,
-    }))
+    const normalized: ServiceabilityCourier[] = available.map((item) => {
+      const rawCod = item.cod ?? item.cod_available ?? item.is_cod_available
+      const cod_available =
+        rawCod === undefined || rawCod === null
+          ? true
+          : rawCod === 1 ||
+            rawCod === true ||
+            String(rawCod).toLowerCase() === "true" ||
+            String(rawCod).toLowerCase() === "yes"
+      return {
+        name: String(item.courier_name ?? item.name ?? "Courier"),
+        eta_days: Number(item.estimated_delivery_days ?? item.eta_days ?? item.etd_hours ?? 3),
+        rate: Number(item.rate ?? item.freight_charge ?? item.shipping_rate ?? 0),
+        courier_company_id: item.courier_company_id ? Number(item.courier_company_id) : undefined,
+        cod_available,
+      }
+    })
     return { available_couriers: normalized }
   },
   async createOrder(input: CreateOrderInput): Promise<CreateOrderResponse> {
@@ -251,6 +278,9 @@ export const shiprocketClient = {
   },
   async generatePickup(input: GeneratePickupInput): Promise<GeneratePickupResponse> {
     return request<GeneratePickupResponse>("/courier/generate/pickup", "POST", input)
+  },
+  async cancelOrders(input: CancelOrdersInput): Promise<CancelOrdersResponse> {
+    return request<CancelOrdersResponse>("/orders/cancel", "POST", input)
   },
 }
 

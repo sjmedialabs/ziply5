@@ -1,10 +1,10 @@
 "use client";
 
 import BannerSection from "@/components/BannerSection";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, Loader2 } from "lucide-react";
 import Link from "next/link";
 import { useLocations } from "@/hooks/useLocations";
-import { getCartItems, type CartItem, setCartItems, validateCartItems } from "@/lib/cart"; 
+import { getCartItems, type CartItem, setCartItems, validateCartItems } from "@/lib/cart";
 import { useStorefrontProducts } from "@/hooks/useStorefrontProducts";
 import {
   Select,
@@ -21,6 +21,8 @@ import {
   writeCheckoutStorage,
   type CheckoutAddress,
 } from "@/lib/ecommerce-order";
+import { toast } from "@/lib/toast";
+import { calculateZiply5Shipping } from "@/src/lib/shipping/ziply5-shipping";
 
 type Addr = {
   id: string;
@@ -63,7 +65,7 @@ export default function CheckoutPage() {
       .then((data) => {
         if (data?.cities) setCityMap(data.cities);
       })
-      .catch(() => {});
+      .catch(() => { });
   }, []);
 
   const availableCities = cities?.filter((c: any) => {
@@ -139,7 +141,7 @@ export default function CheckoutPage() {
 
   const [fetchingPincode, setFetchingPincode] = useState(false);
 
-  const normalizeStr = (str: string) => 
+  const normalizeStr = (str: string) =>
     str.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
 
   const loadAddresses = useCallback(async () => {
@@ -151,7 +153,7 @@ export default function CheckoutPage() {
     try {
       const data = await authedFetch<Addr[]>("/api/v1/me/addresses");
       setSavedAddresses(data);
-    } catch {}
+    } catch { }
   }, [router]);
 
   useEffect(() => {
@@ -182,9 +184,48 @@ export default function CheckoutPage() {
         setState(savedCheckout.billingAddress.state ?? "");
         setCity(savedCheckout.billingAddress.city ?? "");
       }
+
+      // Also restore coupon from checkout storage if available
+      if (savedCheckout.coupon) {
+        if (!couponCode && savedCheckout.coupon.code) {
+          setCouponCode(savedCheckout.coupon.code);
+        }
+        if (!appliedCouponId && savedCheckout.coupon.couponId) {
+          setAppliedCouponId(savedCheckout.coupon.couponId);
+        }
+      }
     }
 
     void loadAddresses();
+
+    const fetchProfile = async () => {
+      const token = window.localStorage.getItem("ziply5_access_token");
+      const userStr = window.localStorage.getItem("ziply5_user");
+      if (!token || !userStr) return;
+      try {
+        const user = JSON.parse(userStr);
+        if (!user?.id) return;
+        const res = await fetch(`/api/v1/profile?userId=${encodeURIComponent(user.id)}`, {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "x-user-id": user.id
+          },
+        });
+        const payload = await res.json();
+        if (payload.success && payload.data) {
+          setBilling((prev) => ({
+            ...prev,
+            email: prev.email || payload.data.email || "",
+            phone: prev.phone || payload.data.profile?.phone || "",
+            firstName: prev.firstName || payload.data.name?.split(" ")[0] || "",
+            lastName: prev.lastName || payload.data.name?.split(" ").slice(1).join(" ") || "",
+          }));
+        }
+      } catch (err) {
+        console.error("Failed to fetch profile in checkout", err);
+      }
+    };
+    fetchProfile();
 
     return () => {
       window.removeEventListener("ziply5:cart-updated", syncCart);
@@ -204,12 +245,12 @@ export default function CheckoutPage() {
           const payload = await res.json();
           if (payload.success && payload.data) {
             const { city: fetchedCity, state: fetchedState } = payload.data;
-            
+
             // Case-insensitive & accent-insensitive state matching
             if (fetchedState && states) {
               const normState = normalizeStr(fetchedState);
               const matchedState = states.find(s => normalizeStr(s.label) === normState);
-              
+
               if (matchedState) {
                 setState(matchedState.label);
               } else {
@@ -222,7 +263,7 @@ export default function CheckoutPage() {
             if (fetchedCity) {
               const normCity = normalizeStr(fetchedCity);
               const titleCaseCity = fetchedCity.toLowerCase().split(' ').map(w => w.charAt(0).toUpperCase() + w.substring(1)).join(' ');
-              
+
               // We need to wait for state to update and cities to be available
               // or just set the city and hope the Select can handle it.
               // Since availableCities depends on 'state', we set a small timeout or use the city directly.
@@ -242,26 +283,26 @@ export default function CheckoutPage() {
     }
   }, [billing.postalCode]);
 
-useEffect(() => {
-  if (!products.length) return;
+  useEffect(() => {
+    if (!products.length) return;
 
-  const cleaned = items.filter(item => {
-    const p = products.find(p => p.id === item.productId || p.slug === item.slug);
-    if (!p) return false;
+    const cleaned = items.filter(item => {
+      const p = products.find(p => p.id === item.productId || p.slug === item.slug);
+      if (!p) return false;
 
-    // remove invalid variant items
-    if (p.productKind === "variant") {
-      return item.variantId && p.variants.some(v => v.id === item.variantId);
+      // remove invalid variant items
+      if (p.productKind === "variant") {
+        return item.variantId && p.variants.some(v => v.id === item.variantId);
+      }
+
+      return true;
+    });
+
+    if (cleaned.length !== items.length) {
+      setCartItems(cleaned);
+      setItems(cleaned);
     }
-
-    return true;
-  });
-
-  if (cleaned.length !== items.length) {
-    setCartItems(cleaned);
-    setItems(cleaned);
-  }
-}, [products]);
+  }, [products]);
   // Validate items against current product/variant data from DB
   const validatedItems = useMemo<ValidatedCartItem[]>(() => {
     return items.map((item) => {
@@ -300,12 +341,88 @@ useEffect(() => {
   const subTotal = validatedItems.reduce((acc, item) => acc + item.price * item.quantity, 0);
   const hasValidationErrors = validatedItems.some(i => i.variantError || i.stock < i.quantity);
 
-  const shipping = items.length === 0 ? 0 : 20;
+  const totalPacksForShipping = useMemo(
+    () => validatedItems.reduce((acc, item) => acc + Math.max(1, Math.floor(Number(item.quantity) || 0)), 0),
+    [validatedItems],
+  );
+  const shipping = useMemo(() => {
+    if (items.length === 0 || totalPacksForShipping < 1) return 0;
+    return calculateZiply5Shipping(totalPacksForShipping).chargeInr;
+  }, [items.length, totalPacksForShipping]);
+
+  const [deliveryCheck, setDeliveryCheck] = useState<{
+    loading: boolean;
+    error: string | null;
+    lastOk: boolean;
+    data: {
+      status: string;
+      deliverable: boolean;
+      message?: string;
+      estimatedDeliveryDaysMin: number | null;
+      estimatedDeliveryDaysMax: number | null;
+      codAvailable: boolean;
+      prepaidAvailable: boolean;
+    } | null;
+  }>({ loading: false, error: null, lastOk: false, data: null });
+
+  const runDeliveryCheck = useCallback(async () => {
+    const pin = billing.postalCode.trim();
+    if (!/^\d{6}$/.test(pin) || totalPacksForShipping < 1) {
+      setDeliveryCheck((prev) => ({ ...prev, loading: false, error: null, data: null, lastOk: false }));
+      return;
+    }
+    setDeliveryCheck((prev) => ({ ...prev, loading: true, error: null }));
+    try {
+      const res = await fetch("/api/shipping/check-serviceability", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          delivery_postcode: pin,
+          cod: false,
+          totalItems: totalPacksForShipping,
+        }),
+      });
+      const payload = (await res.json()) as {
+        success?: boolean;
+        message?: string;
+        data?: {
+          status: string;
+          deliverable: boolean;
+          message?: string;
+          estimatedDeliveryDaysMin: number | null;
+          estimatedDeliveryDaysMax: number | null;
+          codAvailable: boolean;
+          prepaidAvailable: boolean;
+        };
+      };
+      if (!res.ok || payload.success === false || !payload.data) {
+        throw new Error(payload.message ?? "Unable to verify delivery for this pincode.");
+      }
+      const d = payload.data;
+      setDeliveryCheck({ loading: false, error: null, lastOk: true, data: d });
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Delivery check failed";
+      setDeliveryCheck({ loading: false, error: msg, lastOk: false, data: null });
+      toast.warning("Could not verify delivery right now. You can still try to place your order.");
+    }
+  }, [billing.postalCode, totalPacksForShipping]);
+
+  useEffect(() => {
+    const pin = billing.postalCode.trim();
+    if (!/^\d{6}$/.test(pin) || totalPacksForShipping < 1) {
+      setDeliveryCheck({ loading: false, error: null, lastOk: false, data: null });
+      return;
+    }
+    const t = window.setTimeout(() => {
+      void runDeliveryCheck();
+    }, 450);
+    return () => window.clearTimeout(t);
+  }, [billing.postalCode, totalPacksForShipping, runDeliveryCheck]);
   const baseTotal =
     offerFinalTotal != null
       ? offerFinalTotal
       : Math.max(subTotal - offerTotalDiscount, 0) + (offerAdjustedShipping ?? shipping);
-  
+
   const taxAmount = (subTotal - offerTotalDiscount) * (taxPercentage / 100);
   const total = baseTotal + taxAmount;
 
@@ -408,6 +525,7 @@ useEffect(() => {
       setCouponDiscount(Number(payload.data.discount));
       if (payload.data.couponId) {
         window.localStorage.setItem("ziply5_applied_coupon_id", payload.data.couponId);
+        window.localStorage.setItem("ziply5_coupon_code", couponCode.trim());
         setAppliedCouponId(payload.data.couponId);
       }
       await recalculateOffers(couponCode.trim());
@@ -428,7 +546,15 @@ useEffect(() => {
     try {
       window.localStorage.removeItem("ziply5_coupon_code");
       window.localStorage.removeItem("ziply5_applied_coupon_id");
-    } catch {}
+      window.localStorage.removeItem("ziply5_final_total");
+
+      // Also update consolidated checkout storage if it exists
+      const savedCheckout = readCheckoutStorage();
+      if (savedCheckout) {
+        savedCheckout.coupon = null;
+        writeCheckoutStorage(savedCheckout);
+      }
+    } catch { }
     await recalculateOffers("");
   };
 
@@ -456,16 +582,24 @@ useEffect(() => {
 
   const goToPayment = async () => {
     if (items.length === 0) {
-      window.alert("Your cart is empty.");
+      toast.error("Your cart is empty.");
       return;
     }
     if (hasValidationErrors) {
-  setOrderError("Some items in your cart are invalid. Please update your cart.");
-  return;
-}
+      const message = "Some items in your cart are invalid. Please update your cart."
+      setOrderError(message);
+      toast.error(message);
+      return;
+    }
     setPlacing(true);
     setOrderError("");
     try {
+      if (deliveryCheck.data?.status === "not_deliverable" && deliveryCheck.lastOk) {
+        const message = "Delivery is not available for this pincode. Please choose a different address.";
+        setOrderError(message);
+        toast.error(message);
+        return;
+      }
       const fullName = `${billing.firstName} ${billing.lastName}`.trim();
       const payload = {
         fullName,
@@ -478,12 +612,16 @@ useEffect(() => {
         phone: billing.phone.trim(),
       };
       if (!payload.fullName || !payload.city || !payload.state || !payload.postalCode) {
-        setOrderError("Please complete billing address before payment.");
+        const message = "Please complete billing address before payment."
+        setOrderError(message);
+        toast.error(message);
         return;
       }
       window.localStorage.setItem("ziply5_checkout_billing_address", JSON.stringify(payload));
       if (couponApplied) {
         window.localStorage.setItem("ziply5_final_total", total.toString());
+      } else {
+        window.localStorage.removeItem("ziply5_final_total");
       }
       const normalizedAddress: CheckoutAddress = {
         fullName: payload.fullName,
@@ -519,17 +657,18 @@ useEffect(() => {
         selectedShippingMethod: "standard",
         coupon: couponApplied
           ? {
-              couponId: appliedCouponId || window.localStorage.getItem("ziply5_applied_coupon_id"),
-              code: couponCode.trim(),
-              discountType: "flat",
-              discountValue: couponDiscount,
-              appliedDiscount: offerTotalDiscount,
-            }
+            couponId: appliedCouponId || window.localStorage.getItem("ziply5_applied_coupon_id"),
+            code: couponCode.trim(),
+            discountType: "flat",
+            discountValue: couponDiscount,
+            appliedDiscount: offerTotalDiscount,
+          }
           : null,
         subtotal: Number(subTotal.toFixed(2)),
         discount: Number(offerTotalDiscount.toFixed(2)),
         tax: Number(taxAmount.toFixed(2)),
         shippingCharge: Number((offerAdjustedShipping ?? shipping).toFixed(2)),
+        totalItemsUsedForShipping: totalPacksForShipping,
         total: Number(total.toFixed(2)),
         updatedAt: new Date().toISOString(),
       });
@@ -541,7 +680,7 @@ useEffect(() => {
       }
 
       if (selectedAddressId !== "manual" && originalAddress) {
-        const hasChanged = 
+        const hasChanged =
           billing.firstName !== (originalAddress.firstName || "") ||
           billing.lastName !== (originalAddress.lastName || "") ||
           billing.email !== (originalAddress.email || "") ||
@@ -565,7 +704,7 @@ useEffect(() => {
                 postalCode: billing.postalCode,
                 phone: billing.phone || null,
               });
-            } catch {}
+            } catch { }
           }
         }
       } else if (selectedAddressId === "manual") {
@@ -584,7 +723,7 @@ useEffect(() => {
               country: "India",
               phone: billing.phone || null,
             });
-          } catch {}
+          } catch { }
         }
       }
 
@@ -635,7 +774,9 @@ useEffect(() => {
 
       router.push("/payment");
     } catch (e) {
-      setOrderError(e instanceof Error ? e.message : "Unable to continue to payment. Please try again.");
+      const message = e instanceof Error ? e.message : "Unable to continue to payment. Please try again."
+      setOrderError(message);
+      toast.error(message);
     } finally {
       setPlacing(false);
     }
@@ -644,7 +785,7 @@ useEffect(() => {
   return (
     <div>
       {/* Banner */}
-   {/*   <BannerSection
+      {/*   <BannerSection
         title="Check out"
         subtitle="Some of the queries you want to know about us."
         gradient="linear-gradient(to right, #EFD7EF 0%, #F5F9FC 30%, #F8EAE1 60%, #EAF8F9 100%)"
@@ -694,164 +835,220 @@ useEffect(() => {
                 </div>
               )}
 
-      <div className="grid md:grid-cols-2 gap-4">
+              <div className="grid md:grid-cols-2 gap-4">
 
-        {/* First Name */}
-        <div>
-          <label className="text-[#646464] text-sm">First Name</label>
-          <input
-            className="input mt-1"
-            placeholder="First name"
-            value={billing.firstName}
-            onChange={(e) => setBilling((prev) => ({ ...prev, firstName: e.target.value }))}
-          />
-        </div>
+                {/* First Name */}
+                <div>
+                  <label className="text-[#646464] text-sm">First Name</label>
+                  <input
+                    className="input mt-1"
+                    placeholder="First name"
+                    value={billing.firstName}
+                    onChange={(e) => setBilling((prev) => ({ ...prev, firstName: e.target.value }))}
+                  />
+                </div>
 
-        {/* Last Name */}
-        <div>
-          <label className="text-[#646464] text-sm">Last Name</label>
-          <input
-            className="input mt-1"
-            placeholder="Last name"
-            value={billing.lastName}
-            onChange={(e) => setBilling((prev) => ({ ...prev, lastName: e.target.value }))}
-          />
-        </div>
+                {/* Last Name */}
+                <div>
+                  <label className="text-[#646464] text-sm">Last Name</label>
+                  <input
+                    className="input mt-1"
+                    placeholder="Last name"
+                    value={billing.lastName}
+                    onChange={(e) => setBilling((prev) => ({ ...prev, lastName: e.target.value }))}
+                  />
+                </div>
 
-        {/* Email */}
-        <div className="">
-          <label className="text-[#646464] text-sm">Email Address</label>
-          <input
-            className="input mt-1"
-            placeholder="Email address"
-            value={billing.email}
-            onChange={(e) => setBilling((prev) => ({ ...prev, email: e.target.value }))}
-          />
-        </div>
+                {/* Email */}
+                <div className="">
+                  <label className="text-[#646464] text-sm">Email Address</label>
+                  <input
+                    className="input mt-1"
+                    placeholder="Email address"
+                    value={billing.email}
+                    onChange={(e) => setBilling((prev) => ({ ...prev, email: e.target.value }))}
+                  />
+                </div>
 
-        {/* Address Line */}
-        <div className="">
-          <label className="text-[#646464] text-sm">Address Line</label>
-          <input
-            className="input mt-1"
-            placeholder="House no, street, area"
-            value={billing.line1}
-            onChange={(e) => setBilling((prev) => ({ ...prev, line1: e.target.value }))}
-          />
-        </div>
+                {/* Address Line */}
+                <div className="">
+                  <label className="text-[#646464] text-sm">Address Line</label>
+                  <input
+                    className="input mt-1"
+                    placeholder="House no, street, area"
+                    value={billing.line1}
+                    onChange={(e) => setBilling((prev) => ({ ...prev, line1: e.target.value }))}
+                  />
+                </div>
 
-        {/* State */}
-        <div>
-          <label className="text-[#646464] text-sm">State</label>
-          <Select value={state || undefined} onValueChange={(val) => {
-            setState(val);
-            setCity(""); // reset city
-          }}>
-            <SelectTrigger className="input mt-1">
-              <SelectValue placeholder="Select State" />
-            </SelectTrigger>
-            <SelectContent>
-              {states?.map((s) => (
-                <SelectItem key={s.value} value={s.label}>
-                  {s.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
+                {/* State */}
+                <div>
+                  <label className="text-[#646464] text-sm">State</label>
+                  <Select value={state || undefined} onValueChange={(val) => {
+                    setState(val);
+                    setCity(""); // reset city
+                  }}>
+                    <SelectTrigger className="input mt-1">
+                      <SelectValue placeholder="Select State" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {states?.map((s) => (
+                        <SelectItem key={s.value} value={s.label}>
+                          {s.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
 
-        {/* City */}
-        <div>
-          <label className="text-[#646464] text-sm">City</label>
-          <Select
-            value={city || undefined}
-            onValueChange={setCity}
-            disabled={!state}
-          >
-            <SelectTrigger className="input mt-1">
-              <SelectValue placeholder={!state ? "Select state first" : "Select City"} />
-            </SelectTrigger>
-            <SelectContent>
-              {availableCities?.map((c) => (
-                <SelectItem key={c.value} value={c.label}>
-                  {c.label}
-                </SelectItem>
-              ))}
-              {city && !availableCities.find(c => c.label === city) && (
-                <SelectItem value={city}>{city}</SelectItem>
-              )}
-            </SelectContent>
-          </Select>
-        </div>
+                {/* City */}
+                <div>
+                  <label className="text-[#646464] text-sm">City</label>
+                  <Select
+                    value={city || undefined}
+                    onValueChange={setCity}
+                    disabled={!state}
+                  >
+                    <SelectTrigger className="input mt-1">
+                      <SelectValue placeholder={!state ? "Select state first" : "Select City"} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {availableCities?.map((c) => (
+                        <SelectItem key={c.value} value={c.label}>
+                          {c.label}
+                        </SelectItem>
+                      ))}
+                      {city && !availableCities.find(c => c.label === city) && (
+                        <SelectItem value={city}>{city}</SelectItem>
+                      )}
+                    </SelectContent>
+                  </Select>
+                </div>
 
-        {/* Zip Code */}
-        <div className="">
-          <label className="text-[#646464] text-sm">
-            Zip / Postal Code
-          </label>
-          <input
-            className="input mt-1"
-            placeholder="Enter pincode"
-            value={billing.postalCode}
-            onChange={(e) => setBilling((prev) => ({ ...prev, postalCode: e.target.value }))}
-            disabled={fetchingPincode}
-            onBlur={(e) => {
-              const value = e.target.value;
+                {/* Zip Code */}
+                <div className="">
+                  <label className="text-[#646464] text-sm">
+                    Zip / Postal Code
+                  </label>
+                  <input
+                    className="input mt-1"
+                    placeholder="Enter pincode"
+                    value={billing.postalCode}
+                    onChange={(e) => setBilling((prev) => ({ ...prev, postalCode: e.target.value }))}
+                    disabled={fetchingPincode}
+                    onBlur={(e) => {
+                      const value = e.target.value;
 
-              if (value && !/^\d{6}$/.test(value)) {
-                alert("Invalid Pincode (must be 6 digits)");
-              }
-            }}
-          />
-          {fetchingPincode && <p className="text-[10px] text-primary animate-pulse mt-1">Fetching location details...</p>}
-        </div>
+                      if (!/^\d{6}$/.test(value)) {
+                        toast.error("Invalid Pincode (must be 6 digits)");
+                      }
+                    }}
+                  />
+                  {fetchingPincode && <p className="text-[10px] text-primary animate-pulse mt-1">Fetching location details...</p>}
+                </div>
 
-        {/* Phone */}
-        <div className="">
-          <label className="text-[#646464] text-sm">Phone (optional)</label>
-          <input
-            className="input mt-1"
-            placeholder="Phone number"
-            value={billing.phone}
-            onChange={(e) => setBilling((prev) => ({ ...prev, phone: e.target.value }))}
-          />
-        </div>
+                {/* Phone */}
+                <div className="">
+                  <label className="text-[#646464] text-sm">Phone (optional)</label>
+                  <input
+                    className="input mt-1"
+                    placeholder="Phone number"
+                    value={billing.phone}
+                    onChange={(e) => setBilling((prev) => ({ ...prev, phone: e.target.value }))}
+                  />
+                </div>
 
-      </div>
-    </div>
-    <div className="mt-4 flex flex-col gap-4">
-            {/* Terms */}
-            <div className="text-center">
-            <p className="text-xs text-[#646464]">
-              By clicking the button, you agree to the{" "}
-              <Link href="/terms" className="text-primary underline">
-                Terms and Conditions
-              </Link>
-            </p>
+                {/* Delivery validation (Shiprocket serviceability — pricing is Ziply5 slabs only) */}
+                {billing.postalCode.trim().length >= 6 && validatedItems.length > 0 && (
+                  <div className="md:col-span-2 rounded-xl border border-[#e8e0d4] bg-white/80 p-3 text-sm text-[#646464]">
+                    {deliveryCheck.loading && (
+                      <p className="flex items-center gap-2">
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        Checking delivery for this pincode…
+                      </p>
+                    )}
+                    {!deliveryCheck.loading && deliveryCheck.error && (
+                      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                        <span className="text-amber-800">{deliveryCheck.error}</span>
+                        <button
+                          type="button"
+                          className="rounded-full border border-[#7B3010] px-3 py-1 text-xs font-semibold text-[#7B3010]"
+                          onClick={() => void runDeliveryCheck()}
+                        >
+                          Retry
+                        </button>
+                      </div>
+                    )}
+                    {!deliveryCheck.loading && !deliveryCheck.error && deliveryCheck.data?.status === "deliverable" && (
+                      <p className="text-emerald-800">
+                        Deliverable
+                        {deliveryCheck.data.estimatedDeliveryDaysMin != null && (
+                          <span className="ml-1">
+                            · Est. {deliveryCheck.data.estimatedDeliveryDaysMin}
+                            {deliveryCheck.data.estimatedDeliveryDaysMax != null &&
+                              deliveryCheck.data.estimatedDeliveryDaysMax !== deliveryCheck.data.estimatedDeliveryDaysMin
+                              ? `–${deliveryCheck.data.estimatedDeliveryDaysMax}`
+                              : ""}{" "}
+                            day(s)
+                          </span>
+                        )}
+                      </p>
+                    )}
+                    {!deliveryCheck.loading && !deliveryCheck.error && deliveryCheck.data?.status === "limited_service" && (
+                      <p className="text-amber-900">
+                        Limited service for this pincode (fewer courier options or longer transit). You can continue with prepaid;
+                        COD may be restricted for this destination.
+                      </p>
+                    )}
+                    {!deliveryCheck.loading && !deliveryCheck.error && deliveryCheck.data?.status === "not_deliverable" && (
+                      <p className="text-red-700 font-medium">
+                        Not deliverable to this pincode. Please update your address to continue.
+                      </p>
+                    )}
+                    {!deliveryCheck.loading && !deliveryCheck.error && deliveryCheck.data?.status === "api_unavailable" && (
+                      <p className="text-amber-900">
+                        {deliveryCheck.data.message ??
+                          "We could not verify delivery with the carrier right now. You may still place your order; we will confirm before dispatch."}
+                      </p>
+                    )}
+                  </div>
+                )}
+
+              </div>
             </div>
-            {orderError && (
-              <p className="text-center text-sm text-red-600 mb-4">{orderError}</p>
-            )}
-
-            {items.length > 0 && total < 250 && (
-              <div className="rounded-2xl bg-white/60 p-3 text-center border border-red-200/50 mb-2">
-                <p className="text-xs font-medium text-red-700">
-                  Add INR {(250 - total).toFixed(2)} more to place order.
-                  <br />
-                  <span className="text-[10px] opacity-70">(Minimum order: INR 250.00)</span>
+            <div className="mt-4 flex flex-col gap-4">
+              {/* Terms */}
+              <div className="text-center">
+                <p className="text-xs text-[#646464]">
+                  By clicking the button, you agree to the{" "}
+                  <Link href="/terms" className="text-primary underline">
+                    Terms and Conditions
+                  </Link>
                 </p>
               </div>
-            )}
+              {orderError && (
+                <p className="text-center text-sm text-red-600 mb-4">{orderError}</p>
+              )}
 
-            {/* Button */}
-            <button
-              type="button"
-              onClick={() => void goToPayment()}
-              disabled={placing || items.length === 0 || total < 250}
-              className="bg-[#7B3010] shadow-2xl tracking-wide font-medium text-white w-full py-4 rounded-full font-melon disabled:opacity-60 disabled:cursor-not-allowed transition-all"
-            >
-              {placing ? "Please wait…" : "Place Order →"}
-            </button>
+              {items.length > 0 && total < 250 && (
+                <div className="rounded-2xl bg-white/60 p-3 text-center border border-red-200/50 mb-2">
+                  <p className="text-xs font-medium text-red-700">
+                    Add INR {(250 - total).toFixed(2)} more to place order.
+                    <br />
+                    <span className="text-[10px] opacity-70">(Minimum order: INR 250.00)</span>
+                  </p>
+                </div>
+              )}
+
+              {/* Button */}
+              <button
+                type="button"
+                onClick={() => void goToPayment()}
+                disabled={placing || items.length === 0 || total < 250 || (deliveryCheck.data?.status === "not_deliverable" && deliveryCheck.lastOk)}
+                className="bg-[#7B3010] shadow-2xl tracking-wide font-medium text-white w-full py-4 rounded-full font-melon disabled:opacity-60 disabled:cursor-not-allowed transition-all"
+              >
+                {placing ? "Please wait…" : "Place Order →"}
+              </button>
             </div>
           </div>
 
@@ -866,26 +1063,26 @@ useEffect(() => {
             <div className="space-y-4 py-8">
               {validatedItems.map((item) => (
                 <div key={item.id}>
-                <div className="flex justify-between text-sm pb-2">
-                  <div>
-                    <p className="font-medium font-melon text-[#C03621] tracking-wide">
-                      {item.productName || item.name}
-                      {item.variantError && <span className="block text-[10px] text-red-700">! Variant required</span>}
-                      {item.stock < item.quantity && <span className="block text-[10px] text-red-700">! Out of stock</span>}
-                    </p>
-                    <p className="text-xs text-[#646464]">
-                      Qty: {item.quantity} | Net wt. {item.weight}
-                    </p>
-                  </div>
+                  <div className="flex justify-between text-sm pb-2">
+                    <div>
+                      <p className="font-medium font-melon text-[#C03621] tracking-wide">
+                        {item.productName || item.name}
+                        {item.variantError && <span className="block text-[10px] text-red-700">! Variant required</span>}
+                        {item.stock < item.quantity && <span className="block text-[10px] text-red-700">! Out of stock</span>}
+                      </p>
+                      <p className="text-xs text-[#646464]">
+                        Qty: {item.quantity} | Net wt. {item.weight}
+                      </p>
+                    </div>
 
-                  <span className="text-[#C03621] font-medium font-melon tracking-wide">
-                    {item.basePrice && item.basePrice > item.price && (
-                      <span className="text-[10px] line-through mr-1 opacity-50">Rs.{item.basePrice.toFixed(2)}</span>
-                    )}
-                    Rs.{(item.price * item.quantity).toFixed(2)}
-                  </span>
-                </div>
-                <div className="w-full h-0.5 bg-black"></div>
+                    <span className="text-[#C03621] font-medium font-melon tracking-wide">
+                      {item.basePrice && item.basePrice > item.price && (
+                        <span className="text-[10px] line-through mr-1 opacity-50">Rs.{item.basePrice.toFixed(2)}</span>
+                      )}
+                      Rs.{(item.price * item.quantity).toFixed(2)}
+                    </span>
+                  </div>
+                  <div className="w-full h-0.5 bg-black"></div>
                 </div>
               ))}
               {items.length === 0 && (
@@ -899,7 +1096,7 @@ useEffect(() => {
               <span>Rs.{subTotal.toFixed(2)}</span>
             </div>
             <div className="flex justify-between text-[#C03621] font-medium font-melon tracking-wide mt-2">
-              <span>Shipping</span>
+              <span>Shipping ({totalPacksForShipping} packs)</span>
               <span>Rs.{(offerAdjustedShipping ?? shipping).toFixed(2)}</span>
             </div>
             <div className="flex justify-between text-[#C03621] font-medium font-melon tracking-wide mt-2">

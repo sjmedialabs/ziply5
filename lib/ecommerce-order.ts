@@ -50,6 +50,8 @@ export type EcommerceCheckoutState = {
   discount: number
   tax: number
   shippingCharge: number
+  /** Sum of line quantities used for Ziply5 slab shipping at checkout. */
+  totalItemsUsedForShipping?: number
   total: number
   updatedAt: string
 }
@@ -128,9 +130,11 @@ export const readCheckoutStorage = (): EcommerceCheckoutState | null => {
   try {
     const raw = window.localStorage.getItem(ECOMMERCE_CHECKOUT_KEY)
     if (!raw) return null
-    const parsed = JSON.parse(raw)
+    const parsed = JSON.parse(raw) as Record<string, unknown>
     const items = Array.isArray(parsed?.items)
-      ? parsed.items.map(normalizeCartItem).filter((item): item is CartItemNormalized => Boolean(item))
+      ? (parsed.items as unknown[])
+          .map(normalizeCartItem)
+          .filter((item): item is CartItemNormalized => Boolean(item))
       : []
     return {
       items,
@@ -142,6 +146,10 @@ export const readCheckoutStorage = (): EcommerceCheckoutState | null => {
       discount: Math.max(0, toFinite(parsed?.discount, 0)),
       tax: Math.max(0, toFinite(parsed?.tax, 0)),
       shippingCharge: Math.max(0, toFinite(parsed?.shippingCharge, 0)),
+      totalItemsUsedForShipping:
+        parsed?.totalItemsUsedForShipping == null
+          ? undefined
+          : Math.max(0, Math.floor(toFinite(parsed?.totalItemsUsedForShipping, 0))),
       total: Math.max(0, toFinite(parsed?.total, 0)),
       updatedAt: String(parsed?.updatedAt ?? new Date().toISOString()),
     }

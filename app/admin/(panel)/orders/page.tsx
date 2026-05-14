@@ -59,13 +59,8 @@ export default function AdminOrdersPage() {
     if ((o.paymentStatus ?? "").toUpperCase() === "INITIATED") return "initiated";
     return "pending";
   }, []);
-<<<<<<< HomePage
-  const lifecycleStatus = useCallback((o: OrderRow) => (o.status ?? "pending").toLowerCase(), []);
-  const latestShipmentStatus = useCallback((o: OrderRow) => (o.shipments?.[0]?.shipmentStatus ?? "not_shipped").toLowerCase(), []);
-=======
-  const lifecycleStatus = useCallback((o: OrderRow) => ( o.status ?? "pending").toLowerCase(), []);
+  const lifecycleStatus = useCallback((o: OrderRow) => (o.statusHistory?.[0]?.toStatus ?? o.status ?? "pending").toLowerCase(), []);
   const latestShipmentStatus = useCallback((o: OrderRow) => (o.shipmentStatus ?? o.shipments?.[0]?.shipmentStatus ?? "not_shipped").toLowerCase(), []);
->>>>>>> main
   const itemsCount = useCallback((o: OrderRow) => o.items.reduce((sum, item) => sum + Number(item.quantity ?? 0), 0), []);
   const deliveryEta = useCallback((o: OrderRow) => {
     if (o.fulfillment?.deliveredAt) return "Delivered";

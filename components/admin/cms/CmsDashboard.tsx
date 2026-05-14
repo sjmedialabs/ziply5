@@ -280,7 +280,7 @@ export default function CmsDashboard() {
   }
 
   return (
-    <div className="mx-auto max-w-7xl space-y-6 p-6">
+    <div className="mx-auto max-w-7xl space-y-6 lg:p-6">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="font-melon text-2xl font-bold text-[#4A1D1F]">CMS Dashboard</h1>
@@ -313,7 +313,7 @@ export default function CmsDashboard() {
       )}
 
       <Tabs value={tab} onValueChange={(v) => setTab(v as typeof tab)} className="space-y-4">
-        <TabsList className="flex flex-wrap justify-start w-full h-auto gap-1">
+        <TabsList className="flex overflow-x-auto justify-start w-full h-auto gap-1">
           <TabsTrigger className='cursor-pointer data-[state=active]:bg-primary data-[state=active]:text-white' value="home">Home</TabsTrigger>
           <TabsTrigger className='cursor-pointer data-[state=active]:bg-primary data-[state=active]:text-white' value="about">About</TabsTrigger>
           <TabsTrigger className='cursor-pointer data-[state=active]:bg-primary data-[state=active]:text-white' value="privacy">Privacy Policy</TabsTrigger>

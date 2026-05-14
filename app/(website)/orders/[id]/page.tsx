@@ -2,58 +2,22 @@
 
 import { FormEvent, useEffect, useMemo, useState } from "react"
 import { useParams, useRouter } from "next/navigation"
-import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query"
+import { useQueryClient, useMutation } from "@tanstack/react-query"
 import { useRealtimeTables } from "@/hooks/useRealtimeTables"
 import { useMasterValues } from "@/hooks/useMasterData"
-import { Camera, X, Download } from "lucide-react"
+import { Camera, X } from "lucide-react"
 import { toast } from "@/lib/toast"
 import { generateInvoicePDF } from "@/lib/invoice"
-import { TrackingTimeline } from "@/src/components/shipping/tracking-timeline"
-
-type OrderDetail = {
-  id: string
-  status: string
-  paymentStatus?: string | null
-  currency: string
-  subtotal?: string | number
-  tax?: string | number
-  discount?: string | number
-  shipping?: string | number
-  total: string | number
-  createdAt: string
-  deliveredAt?: string | null
-  customerName?: string | null
-  customerPhone?: string | null
-  customerAddress?: string | null
-  user?: { email?: string | null } | null
-  items: Array<{
-    id: string
-    productId?: string
-    quantity: number
-    unitPrice?: string | number
-    lineTotal?: string | number
-    product?: { name?: string | null } | null
-  }>
-  statusHistory: Array<{ toStatus: string; changedAt: string }>
-  transactions: Array<{ id: string; status: string; gateway: string; createdAt: string }>
-  shipments: Array<{ id: string; carrier: string | null; trackingNo: string | null; shipmentStatus: string; eta?: string | null }>
-  awbCode?: string | null
-  courierName?: string | null
-  trackingNumber?: string | null
-  trackingUrl?: string | null
-  estimatedDeliveryDate?: string | null
-  shipmentStatus?: string | null
-  lastTrackingSyncAt?: string | null
-  returnRequests: Array<{
-    id: string
-    status: string
-    reason: string | null
-    productId?: string | null
-    items?: Array<{ id: string; orderItemId: string; requestedQty: number }>
-    createdAt?: string | null
-  }>
-  refunds: Array<{ id: string; status: string; amount: string | number; createdAt: string }>
-}
+import { useOrderWithTracking } from "@/hooks/useOrderWithTracking"
+import {
+  deriveLatestLifecycleToStatus,
+  orderHistoryHasCancelRequested,
+  shouldRenderCustomerCancelOrderButton,
+} from "@/src/lib/orders/order-cancel-policy"
+import { OrderShipmentPanel } from "@/src/components/shipping/order-shipment-panel"
+import { OrderStatusHistoryCard } from "@/src/components/orders/order-status-history-card"
+import { OrderSummaryHeroCard } from "@/src/components/orders/order-summary-hero-card"
+import { OrderHelpFooter } from "@/src/components/orders/order-help-footer"
 
 const FALLBACK_TIMELINE = [
   "pending_payment",
@@ -84,6 +48,8 @@ export default function OrderDetailPage() {
   const returnReasonMasterQuery = useMasterValues("RETURN_REASONS")
   const timeline = statusMasterQuery.data?.map((item) => item.value) ?? FALLBACK_TIMELINE
   const returnReasons = returnReasonMasterQuery.data ?? []
+
+  const { orderQuery, trackingQuery, refreshTrackingMutation } = useOrderWithTracking(params.id)
 
   const [isReturnModalOpen, setIsReturnModalOpen] = useState(false)
   const [selectedItemsForReturn, setSelectedItemsForReturn] = useState<Record<string, {
@@ -199,27 +165,13 @@ export default function OrderDetailPage() {
       toast.success("Return Requested", "Your return request has been submitted successfully.")
       setIsReturnModalOpen(false)
       void queryClient.invalidateQueries({ queryKey: ["order-detail", params.id] })
+      void queryClient.invalidateQueries({ queryKey: ["order-tracking", params.id] })
     } catch (error) {
       toast.error("Error", error instanceof Error ? error.message : "Failed to submit return request")
     } finally {
       setActionBusy(null)
     }
   }
-
-  const orderQuery = useQuery({
-    queryKey: ["order-detail", params.id],
-    enabled: Boolean(params.id),
-    queryFn: async () => {
-      const token = window.localStorage.getItem("ziply5_access_token")
-      if (!token) throw new Error("Please login to view order details.")
-      const res = await fetch(`/api/v1/orders/${params.id}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      })
-      const payload = (await res.json()) as { success?: boolean; message?: string; data?: OrderDetail }
-      if (!res.ok || !payload.success || !payload.data) throw new Error(payload.message ?? "Unable to load order.")
-      return payload.data
-    },
-  })
 
   const statusActionMutation = useMutation({
     mutationFn: async (action: "cancel_request") => {
@@ -239,14 +191,16 @@ export default function OrderDetailPage() {
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["order-detail", params.id] })
+      await queryClient.invalidateQueries({ queryKey: ["order-tracking", params.id] })
     },
   })
 
   useRealtimeTables({
-    tables: ["orders", "returns", "refunds"],
+    tables: ["orders", "returns", "refunds", "shipments"],
     onChange: () => {
       if (params.id) {
         void queryClient.invalidateQueries({ queryKey: ["order-detail", params.id] })
+        void queryClient.invalidateQueries({ queryKey: ["order-tracking", params.id] })
       }
     },
   })
@@ -269,17 +223,39 @@ export default function OrderDetailPage() {
   )
   const returnExists = Boolean(order?.returnRequests?.length)
   const activeReturnRequest = order?.returnRequests?.find(r => r.status.toLowerCase() !== "rejected")
-  const cancelRequested = historySet.has("cancel_requested")
+  const cancelRequested = orderHistoryHasCancelRequested(order?.statusHistory)
+  const latestLifecycle = useMemo(
+    () => deriveLatestLifecycleToStatus(order?.statusHistory, order?.status ?? ""),
+    [order?.statusHistory, order?.status],
+  )
+  const trackingShipment = trackingQuery.data?.shipment
+  const canShowCustomerCancel = Boolean(
+    order &&
+      shouldRenderCustomerCancelOrderButton({
+        latestLifecycle,
+        shipmentStatus:
+          trackingShipment?.shipmentStatus ??
+          order.shipmentStatus ??
+          order.shipments?.[0]?.shipmentStatus ??
+          null,
+        shippingStatus: trackingShipment?.shippingStatus ?? null,
+        orderStatusLower: order.status.toLowerCase(),
+        cancelRequested,
+      }),
+  )
   const returnRequested = historySet.has("return_requested")
   const paymentStatus =
     order?.paymentStatus ??
     (order?.transactions.some((tx) => tx.status === "paid") ? "paid" : "pending")
 
-  const runStatusAction = async (action: "cancel_request") => {
-    setActionBusy(action)
+  const confirmCancelFromModal = async () => {
+    setActionBusy("cancel_request")
     try {
-      await statusActionMutation.mutateAsync(action)
-      toast.success("Request Sent", "Your request has been processed successfully.")
+      await statusActionMutation.mutateAsync("cancel_request")
+      toast.success("Order cancelled", "Your order has been cancelled.")
+      setIsCancelModalOpen(false)
+    } catch (e) {
+      toast.error("Cancellation failed", e instanceof Error ? e.message : "Request failed")
     } finally {
       setActionBusy(null)
     }
@@ -347,162 +323,147 @@ export default function OrderDetailPage() {
   }
 
   return (
-    <section className="mx-auto max-w-7xl space-y-4 px-4 py-6">
-      <div className="flex items-center justify-between">
-        <h1 className="font-melon text-2xl font-bold text-[#4A1D1F]">Order details</h1>
-        <div className="flex items-center gap-2">
-          {params.id && order && order.status.toLowerCase() !== "cancelled" ? (
-            <button
-              type="button"
-              onClick={() => router.push(`/orders/${params.id}/track`)}
-              className="rounded-full border border-[#E8DCC8] bg-white px-4 py-2 text-xs font-semibold uppercase text-[#4A1D1F]"
-            >
-              Track my order
-            </button>
-          ) : null}
-          <button
-            type="button"
-            onClick={() => router.back()}
-            className="rounded-full border border-[#E8DCC8] bg-white px-4 py-2 text-xs font-semibold uppercase text-[#4A1D1F]"
-          >
-            Back
-          </button>
+    <section className="mx-auto max-w-7xl space-y-4 px-4 py-6 print:px-2">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-bold text-[#111827]">Order details</h1>
+          <p className="mt-1 text-sm text-[#6B7280]">View your order, shipment tracking, and delivery updates in one place.</p>
         </div>
+        <button
+          type="button"
+          onClick={() => router.back()}
+          className="rounded-md border border-[#D1D5DB] bg-white px-3 py-1.5 text-xs font-medium text-[#111827] hover:bg-[#F9FAFB]"
+        >
+          Back
+        </button>
       </div>
 
-      {orderQuery.isLoading && <p className="text-sm text-[#646464]">Loading order details…</p>}
-      {orderQuery.error && <p className="text-sm text-red-600">{orderQuery.error instanceof Error ? orderQuery.error.message : "Failed to load order."}</p>}
+      {orderQuery.isLoading && <p className="text-sm text-[#6B7280]">Loading order details…</p>}
+      {orderQuery.error && (
+        <p className="text-sm text-red-600">{orderQuery.error instanceof Error ? orderQuery.error.message : "Failed to load order."}</p>
+      )}
 
       {order && (
         <>
-          {/* payment details div */}
-          <div className="rounded-2xl border border-[#E8DCC8] bg-white p-4 shadow-sm">
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <div>
-                <p className="text-xs uppercase tracking-[0.15em] text-[#646464]">Order ID</p>
-                <p className="font-mono text-sm text-[#2A1810]">{order.id}</p>
-                <p className="mt-1 text-xs text-[#646464]">
-                  Order created on {new Date(order.createdAt).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })}
-                </p>
-              </div>
-              <span className="rounded-full bg-[#FDF0E6] px-3 py-1 text-[11px] font-semibold uppercase text-[#7B3010]">{order.status}</span>
+          <OrderSummaryHeroCard
+            order={order}
+            paymentStatus={paymentStatus}
+            onDownloadInvoice={() => void downloadInvoice()}
+            extraActions={
+              <>
+                {canShowCustomerCancel && (
+                    <button
+                      type="button"
+                      onClick={() => setIsCancelModalOpen(true)}
+                      disabled={actionBusy === "cancel_request"}
+                      className="rounded-md border border-[#D1D5DB] bg-white px-3 py-1.5 text-xs font-medium text-[#111827] hover:bg-[#F9FAFB] disabled:opacity-40"
+                    >
+                      {actionBusy === "cancel_request" ? "Submitting…" : "Request cancel"}
+                    </button>
+                  )}
+                {paymentStatus.toLowerCase() === "pending" &&
+                  order.status.toLowerCase() !== "delivered" &&
+                  order.status.toLowerCase() !== "cancelled" && (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        router.push(
+                          `/payment?orderId=${encodeURIComponent(order.id)}&amount=${encodeURIComponent(String(order.total ?? ""))}&name=${encodeURIComponent(order.customerName ?? "")}&phone=${encodeURIComponent(order.customerPhone ?? "")}&address=${encodeURIComponent(order.customerAddress ?? "")}`,
+                        )
+                      }
+                      className="rounded-md bg-[#111827] px-3 py-1.5 text-xs font-medium text-white hover:bg-[#1f2937]"
+                    >
+                      Pay now
+                    </button>
+                  )}
+              </>
+            }
+          />
+
+          {order.status.toLowerCase() === "cancelled" && (
+            <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-center">
+              <p className="text-sm font-bold uppercase tracking-wide text-red-600">This order has been cancelled</p>
+              <p className="mt-1 text-xs text-red-500">Tracking information may no longer update.</p>
             </div>
-            <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
-              <p className="text-sm text-[#646464]">Payment status: <span className="font-semibold uppercase">{paymentStatus}</span></p>
-              <button
-                type="button"
-                onClick={() => void downloadInvoice()}
-                className="flex items-center gap-2 rounded-full border border-[#E8DCC8] bg-white px-4 py-2 text-xs font-semibold uppercase text-[#4A1D1F]"
-              >
-                <Download size={14} />
-                Download Invoice
-              </button>
-            </div>
-            {(paymentStatus ?? "").toUpperCase() === "SUCCESS" && ["confirmed", "packed"].includes(order.status.toLowerCase()) && !cancelRequested && (
-              <button
-                type="button"
-                onClick={() => setIsCancelModalOpen(true)}
-                disabled={actionBusy === "cancel_request"}
-                className="mt-2 rounded-full border border-[#E8DCC8] bg-white px-4 py-2 text-xs font-semibold uppercase text-[#4A1D1F] disabled:opacity-40"
-              >
-                {actionBusy === "cancel_request" ? "Submitting..." : "Request cancel"}
-              </button>
-            )}
-          </div>
-          {/* order timelines */}
-          <div className="rounded-2xl border border-[#E8DCC8] bg-white p-4 shadow-sm">
-            <h2 className="mb-3 text-sm font-semibold uppercase tracking-[0.15em] text-[#4A1D1F]">Order timeline</h2>
-            <div className="grid gap-2 md:grid-cols-3">
+          )}
+
+          <div className="rounded-xl border border-[#E5E7EB] bg-white p-4 shadow-sm">
+            <h2 className="mb-3 text-sm font-semibold text-[#111827]">Order lifecycle</h2>
+            <div className="grid gap-2 sm:grid-cols-2 md:grid-cols-3">
               {timeline.map((step) => {
                 const reached = historySet.has(step) || order.status.toLowerCase() === step
                 return (
-                  <div key={step} className="rounded-lg border border-[#F2E6DD] bg-[#FFFBF7] px-3 py-2 text-xs uppercase">
-                    <span className={reached ? "text-[#2A1810] font-semibold" : "text-[#646464]"}>{step}</span>
+                  <div key={step} className="rounded-lg border border-[#F3F4F6] bg-[#FAFAFA] px-3 py-2 text-xs uppercase">
+                    <span className={reached ? "font-semibold text-[#111827]" : "text-[#6B7280]"}>{step}</span>
                   </div>
                 )
               })}
             </div>
           </div>
-          {/* order status  */}
-          {order.status.toLowerCase() !== "delivered" ? (
-            <div className="rounded-2xl border border-[#E8DCC8] bg-white p-4 shadow-sm">
-              <h2 className="mb-3 text-sm font-semibold uppercase tracking-[0.15em] text-[#4A1D1F]">Shipment Details</h2>
-              <TrackingTimeline
-                orderStatus={order.status}
-                shipmentStatus={order.shipmentStatus ?? order.shipments?.[0]?.shipmentStatus ?? null}
-                statusHistory={order.statusHistory}
-              />
-              <div className="mt-3 grid gap-2 text-xs text-[#646464] sm:grid-cols-2">
-                <p><span className="font-semibold text-[#2A1810]">Courier:</span> {order.courierName ?? order.shipments?.[0]?.carrier ?? "TBD"}</p>
-                <p><span className="font-semibold text-[#2A1810]">AWB:</span> {order.awbCode ?? order.trackingNumber ?? order.shipments?.[0]?.trackingNo ?? "Pending"}</p>
-                <p><span className="font-semibold text-[#2A1810]">Last Sync:</span> {order.lastTrackingSyncAt ? new Date(order.lastTrackingSyncAt).toLocaleString() : "—"}</p>
-                <p><span className="font-semibold text-[#2A1810]">Delivery ETA:</span> {order.estimatedDeliveryDate ? new Date(order.estimatedDeliveryDate).toLocaleDateString("en-GB") : "TBD"}</p>
-              </div>
-              {order.trackingUrl ? (
-                <button
-                  type="button"
-                  onClick={() => window.open(order.trackingUrl!, "_blank", "noopener,noreferrer")}
-                  className="mt-3 rounded-full border border-[#E8DCC8] bg-white px-4 py-2 text-xs font-semibold uppercase text-[#4A1D1F]"
-                >
-                  Track Shipment
-                </button>
-              ) : null}
-              {order?.shipments?.length === 0 ? (
-                <p className="text-sm text-[#646464]">Shipment details will appear once dispatched.</p>
-              ) : (
-                <div className="space-y-2 text-sm">
-                  {order?.shipments?.map((shipment) => (
-                    <div key={shipment.id} className="rounded-lg border border-[#F2E6DD] bg-[#FFFBF7] p-3">
-                      <p><span className="font-semibold">Carrier:</span> {shipment.carrier ?? "Carrier TBD"}</p>
-                      <p><span className="font-semibold">Tracking Number:</span> {shipment.trackingNo ?? "Not assigned"}</p>
-                      <p><span className="font-semibold">Shipment Status:</span> {(shipment.shipmentStatus ?? "pending").toUpperCase()}</p>
-                      <p><span className="font-semibold">ETA:</span> {shipment.eta ? new Date(shipment.eta).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }) : "TBD"}</p>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          ) : (
-            <div className="rounded-2xl border border-[#E8DCC8] bg-white p-4 shadow-sm">
-              <h2 className="mb-3 text-sm font-semibold uppercase tracking-[0.15em] text-[#4A1D1F]">Delivery Info</h2>
-              <p className="text-sm text-[#646464]">
-                Delivered date: {order.deliveredAt ? new Date(order.deliveredAt).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }) : "Delivered"}
-              </p>
-            </div>
-          )}
+
+          <div id="shipment-tracking" className="scroll-mt-20">
+            <OrderShipmentPanel
+              tracking={trackingQuery.data}
+              isLoading={Boolean(orderQuery.data) && trackingQuery.isLoading}
+              error={
+                trackingQuery.error instanceof Error
+                  ? trackingQuery.error
+                  : trackingQuery.error
+                    ? new Error("Tracking failed")
+                    : null
+              }
+              orderLifecycleStatus={order.status}
+              onRefreshFromShiprocket={async () => {
+                await refreshTrackingMutation.mutateAsync()
+              }}
+            />
+          </div>
+
+          <OrderStatusHistoryCard statusHistory={order.statusHistory} />
 
           {(order.returnRequests?.length > 0 || order?.refunds?.length > 0) && (
-            <div className="rounded-2xl border border-[#E8DCC8] bg-white p-4 shadow-sm">
-              <h2 className="mb-3 text-sm font-semibold uppercase tracking-[0.15em] text-[#4A1D1F]">Return / Refund Status</h2>
+            <div className="rounded-xl border border-[#E5E7EB] bg-white p-4 shadow-sm">
+              <h2 className="mb-3 text-sm font-semibold text-[#111827]">Return / refund status</h2>
               <div className="space-y-2">
                 {order.returnRequests.map((req) => (
-                  <p key={req.id} className="text-sm text-[#646464]">
-                    Return Request: <span className="font-semibold uppercase">{req.status}</span>
+                  <p key={req.id} className="text-sm text-[#6B7280]">
+                    Return request: <span className="font-semibold uppercase text-[#111827]">{req.status}</span>
                     {req.productId ? ` — Product ${req.productId}` : ""}
                     {req.reason ? ` — ${req.reason}` : ""}
                   </p>
                 ))}
                 {order.refunds?.map((ref) => (
-                  <p key={ref.id} className="text-sm text-[#646464]">
-                    Refund: <span className="font-semibold uppercase">{ref.status}</span> — {order.currency} {Number(ref.amount).toFixed(2)}
+                  <p key={ref.id} className="text-sm text-[#6B7280]">
+                    Refund: <span className="font-semibold uppercase text-[#111827]">{ref.status}</span> — {order.currency}{" "}
+                    {Number(ref.amount).toFixed(2)}
                   </p>
                 ))}
               </div>
             </div>
           )}
 
-          <div className="rounded-2xl border border-[#E8DCC8] bg-white p-4 shadow-sm">
-            <h2 className="mb-3 text-sm font-semibold uppercase tracking-[0.15em] text-[#4A1D1F]">Customer Details</h2>
-            <div className="space-y-1 text-sm text-[#646464]">
-              <p><span className="font-semibold text-[#2A1810]">Name:</span> {order.customerName ?? "-"}</p>
-              <p><span className="font-semibold text-[#2A1810]">Phone:</span> {order.customerPhone ?? "-"}</p>
-              <p><span className="font-semibold text-[#2A1810]">Email:</span> {order.user?.email ?? "-"}</p>
-              <p><span className="font-semibold text-[#2A1810]">Delivery Address:</span> {order.customerAddress ?? "-"}</p>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="rounded-xl border border-[#E5E7EB] bg-white p-4 text-sm shadow-sm">
+              <p className="mb-2 font-semibold text-[#111827]">Shipping & contact</p>
+              <p className="text-[#111827]">{order.customerName ?? "—"}</p>
+              <p className="text-[#6B7280]">{order.customerAddress ?? "—"}</p>
+              <p className="text-[#6B7280]">{order.customerPhone ?? "—"}</p>
+              <p className="mt-2 text-[#6B7280]">{order.user?.email ?? "—"}</p>
+            </div>
+            <div className="rounded-xl border border-[#E5E7EB] bg-white p-4 text-sm shadow-sm">
+              <p className="mb-2 font-semibold text-[#111827]">Payment</p>
+              <p className="text-[#111827]">{(order.paymentMethod ?? "Not specified").toUpperCase()}</p>
+              <p className="text-[#6B7280]">
+                Status: <span className="font-semibold uppercase">{paymentStatus}</span>
+              </p>
+              <p className="mt-2 font-semibold text-[#111827]">
+                Total: {order.currency} {Number(order.total).toFixed(2)}
+              </p>
             </div>
           </div>
 
-          <div className="rounded-2xl border border-[#E8DCC8] bg-white p-4 shadow-sm">
-            <h2 className="mb-3 text-sm font-semibold uppercase tracking-[0.15em] text-[#4A1D1F]">Items</h2>
+          <div className="rounded-xl border border-[#E8DCC8] bg-white p-4 shadow-sm">
+            <h2 className="mb-3 text-sm font-semibold text-[#111827]">Items</h2>
             <div className="space-y-2">
               {order.items.map((item) => (
                 <div key={item.id} className="rounded-lg border border-[#F2E6DD] bg-[#FFFBF7] p-3 text-sm text-[#646464]">
@@ -565,36 +526,47 @@ export default function OrderDetailPage() {
             </div>
           </div>
 
-          <div className="rounded-2xl border border-[#E8DCC8] bg-white p-4 shadow-sm">
-            <h2 className="mb-3 text-sm font-semibold uppercase tracking-[0.15em] text-[#4A1D1F]">Billing</h2>
-            <div className="space-y-1 text-sm text-[#646464]">
-              <p>Subtotal: <span className="font-semibold text-[#2A1810]">{order.currency} {Number(order.subtotal ?? 0).toFixed(2)}</span></p>
-              <p>Tax: <span className="font-semibold text-[#2A1810]">{order.currency} {Number(order.tax ?? 0).toFixed(2)}</span></p>
-              <p>Discount: <span className="font-semibold text-red-600">- {order.currency} {Number(order.discount ?? 0).toFixed(2)}</span></p>
-              <p>Shipping: <span className="font-semibold text-[#2A1810]">{order.currency} {Number(order.shipping ?? 0).toFixed(2)}</span></p>
-              <p>Total: <span className="font-semibold text-[#2A1810]">{order.currency} {Number(order.total).toFixed(2)}</span></p>
+          <div className="rounded-xl border border-[#E5E7EB] bg-white p-4 shadow-sm">
+            <h2 className="mb-3 text-sm font-semibold text-[#111827]">Billing summary</h2>
+            <div className="space-y-1 text-sm text-[#6B7280]">
+              <p>
+                Subtotal: <span className="font-semibold text-[#111827]">{order.currency} {Number(order.subtotal ?? 0).toFixed(2)}</span>
+              </p>
+              <p>
+                Tax: <span className="font-semibold text-[#111827]">{order.currency} {Number(order.tax ?? 0).toFixed(2)}</span>
+              </p>
+              <p>
+                Discount: <span className="font-semibold text-red-600">- {order.currency} {Number(order.discount ?? 0).toFixed(2)}</span>
+              </p>
+              <p>
+                Shipping: <span className="font-semibold text-[#111827]">{order.currency} {Number(order.shipping ?? 0).toFixed(2)}</span>
+              </p>
+              <p>
+                Total: <span className="font-semibold text-[#111827]">{order.currency} {Number(order.total).toFixed(2)}</span>
+              </p>
             </div>
           </div>
 
           {order.status.toLowerCase() === "delivered" && (
-            <div className="rounded-2xl border border-[#E8DCC8] bg-white p-4 shadow-sm">
+            <div className="rounded-xl border border-[#E5E7EB] bg-white p-4 shadow-sm">
               {hasReturnableItems ? (
                 <button
                   type="button"
                   onClick={openReturnModal}
-                  className="rounded-full bg-[#7B3010] px-4 py-2 text-xs font-semibold uppercase text-white hover:opacity-90 transition-all"
+                  className="rounded-md bg-[#111827] px-4 py-2 text-xs font-semibold uppercase text-white hover:bg-[#1f2937]"
                 >
-                  Request Return
+                  Request return
                 </button>
               ) : (
                 <div className="space-y-1">
-                  <p className="text-sm font-semibold text-[#4A1D1F] uppercase">Return Processing</p>
-                  <p className="text-xs text-[#646464]">All products in this order already have active return requests.</p>
+                  <p className="text-sm font-semibold uppercase text-[#111827]">Return processing</p>
+                  <p className="text-xs text-[#6B7280]">All products in this order already have active return requests.</p>
                 </div>
               )}
             </div>
           )}
 
+          <OrderHelpFooter orderId={order.id} />
           {isReturnModalOpen && (
             <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm" onClick={() => setIsReturnModalOpen(false)}>
               <div className="w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-3xl bg-white shadow-2xl" onClick={(e) => e.stopPropagation()}>
@@ -739,10 +711,7 @@ export default function OrderDetailPage() {
                     </button>
                     <button
                       type="button"
-                      onClick={() => {
-                        void runStatusAction("cancel_request")
-                        setIsCancelModalOpen(false)
-                      }}
+                      onClick={() => void confirmCancelFromModal()}
                       disabled={actionBusy === "cancel_request"}
                       className="flex-1 rounded-xl bg-red-600 py-3 text-xs font-bold uppercase tracking-widest text-white shadow-md hover:bg-red-700 disabled:opacity-50 transition-all"
                     >

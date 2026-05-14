@@ -58,6 +58,10 @@ export type SupabaseOrderRecord = {
   isPickupGenerated?: boolean | null
   isLabelGenerated?: boolean | null
   trackingData?: unknown
+  shippingStatusCode?: number | null
+  awbAssignedAt?: string | Date | null
+  labelUrl?: string | null
+  pickupGeneratedAt?: string | Date | null
   appliedCouponId?: string | null
   couponCode?: string | null
   discount?: number | null
@@ -935,34 +939,32 @@ export const appendOrderStatusHistorySupabase = async (input: {
   reasonCode?: string | null
 }) => {
   const client = getSupabaseAdmin()
-  const statusUpdated = await mirrorOrderStatusSupabase(input.orderId, input.toStatus)
-  if (!statusUpdated) return false
   for (const table of ORDER_STATUS_HISTORY_TABLES) {
     const attempts = [
       () =>
         client
           .from(table)
-          .insert({
+          .insert(withId({
             orderId: input.orderId,
             fromStatus: input.fromStatus,
             toStatus: input.toStatus,
             notes: input.notes,
             changedById: input.changedById,
             reasonCode: input.reasonCode ?? null,
-          })
+          }))
           .select("id")
           .single(),
       () =>
         client
           .from(table)
-          .insert({
+          .insert(withId({
             order_id: input.orderId,
             from_status: input.fromStatus,
             to_status: input.toStatus,
             notes: input.notes,
             changed_by_id: input.changedById,
             reason_code: input.reasonCode ?? null,
-          })
+          }))
           .select("id")
           .single(),
     ]
@@ -1473,6 +1475,10 @@ export const getOrderByIdSupabaseBasic = async (orderId: string) => {
         discount: Number(row.discount ?? 0),
         tax: Number(row.tax ?? 0),
         shippingCharge: Number(row.shippingCharge ?? row.shipping_charge ?? row.shipping ?? 0),
+        totalItemsUsedForShipping:
+          row.totalItemsUsedForShipping != null || row.total_items_used_for_shipping != null
+            ? Number(row.totalItemsUsedForShipping ?? row.total_items_used_for_shipping ?? 0)
+            : null,
         shipping: Number(row.shipping ?? 0),
         currency: safeString(row.currency) || "INR",
         couponCode: safeString(row.couponCode ?? row.coupon_code) || null,
@@ -1766,6 +1772,10 @@ export const upsertOrderShipmentSnapshotSupabase = async (
     isPickupGenerated: boolean | null
     isLabelGenerated: boolean | null
     trackingData: unknown
+    shippingStatusCode: number | null
+    awbAssignedAt: Date | null
+    labelUrl: string | null
+    pickupGeneratedAt: Date | null
   }>,
 ) => {
   const client = getSupabaseAdmin()

@@ -9,6 +9,8 @@ import {
 import { getOrderByIdSupabaseBasic, getOrderWithOpsRelationsSupabase, upsertOrderShipmentSnapshotSupabase } from "@/src/lib/db/orders"
 import { normalizeShiprocketErrorMessage } from "@/src/server/modules/shipping/shiprocket.utils"
 import { logger } from "@/lib/logger"
+import { withShiprocketOrderSyncLock, SHIPROCKET_SYNC_LOCK_TTL_MS } from "@/src/server/modules/shipping/shiprocket-sync-lock"
+import { syncShipmentTracking } from "@/src/server/modules/shipping/shiprocket.tracking"
 
 const shipmentConsole = (step: string, details?: unknown) => {
   if (details === undefined) {
@@ -156,13 +158,7 @@ export const assignShipmentAwb = async (orderId: string, actorId: string) => {
   shipmentConsole("service.assign_awb.start", { orderId, actorId })
   const awb = await assignAwbForOrderShipment(orderId, actorId)
   const awbCode = awb.parsedAwb?.awbCode ?? awb.awb?.awb_code ?? awb.shipment?.trackingNo ?? null
-  const estimatedDeliveryDateRaw =
-    ((awb.awb as Record<string, unknown> | undefined)?.response as Record<string, unknown> | undefined)?.data &&
-    typeof ((awb.awb as Record<string, unknown> | undefined)?.response as Record<string, unknown> | undefined)?.data === "object"
-      ? (((((awb.awb as Record<string, unknown>).response as Record<string, unknown>).data as Record<string, unknown>).estimated_delivery_date ??
-          (((awb.awb as Record<string, unknown>).response as Record<string, unknown>).data as Record<string, unknown>).edd) as string | undefined)
-      : undefined
-  const estimatedDeliveryDate = estimatedDeliveryDateRaw ? new Date(estimatedDeliveryDateRaw) : null
+  const estimatedDeliveryDate = awb.parsedAwb?.estimatedDeliveryDate ? new Date(awb.parsedAwb.estimatedDeliveryDate) : null
 
   await persistAndValidateSnapshot(orderId, {
     awbCode,
@@ -194,18 +190,20 @@ export const generateShipmentPickup = async (orderId: string, actorId: string) =
   const pickup = await generatePickupForOrderShipment(orderId, actorId)
   await persistAndValidateSnapshot(orderId, {
     pickupStatus: pickup.pickup?.pickup_status ?? "scheduled",
+    pickupGeneratedAt: (pickup.shipment as any)?.pickupGeneratedAt ?? null,
     shipmentStatus: pickup.pickup?.pickup_status ?? "pickup_generated",
     shippingStatus: pickup.pickup?.pickup_status ?? "pickup_generated",
     shipmentSyncedAt: new Date(),
     isPickupGenerated: true,
     shiprocketRawResponse: pickup.pickup ?? null,
+    isShipmentCreated: true,
   }, "generateShipmentPickup").catch(() => null)
   shipmentConsole("service.generate_pickup.done", { orderId, pickupStatus: pickup.pickup?.pickup_status ?? null })
   return pickup
 }
 
 export const retryShiprocketShipmentSync = async (orderId: string, actorId: string) => {
-  return syncOrderShipmentToShiprocket(orderId, actorId, { generatePickup: true, forceResync: true })
+  return safeSyncOrderShipmentToShiprocket(orderId, actorId, { generatePickup: true, forceResync: true })
 }
 
 export const syncOrderShipmentToShiprocket = async (
@@ -312,22 +310,69 @@ export const repairShipmentState = async (orderId: string) => {
   }
 }
 
+const hydrateTrackingAfterLifecycleSync = async (orderId: string) => {
+  try {
+    const o = await getOrderByIdSupabaseBasic(orderId)
+    const awb =
+      typeof o?.awbCode === "string" && o.awbCode.trim()
+        ? o.awbCode.trim()
+        : typeof (o as { trackingNumber?: string | null })?.trackingNumber === "string" &&
+            (o as { trackingNumber: string }).trackingNumber.trim()
+          ? (o as { trackingNumber: string }).trackingNumber.trim()
+          : null
+    if (!awb) {
+      logger.info("shiprocket.stage.completed", { orderId, phase: "tracking_skipped_no_awb" })
+      return
+    }
+    await syncShipmentTracking(orderId)
+    logger.info("shiprocket.tracking.updated", { orderId, source: "post_lifecycle_sync" })
+  } catch (e) {
+    logger.warn("shiprocket.tracking.post_sync_failed", {
+      orderId,
+      reason: e instanceof Error ? e.message : "unknown",
+    })
+  }
+}
+
 export const safeSyncOrderShipmentToShiprocket = async (
   orderId: string,
   actorId: string,
   options?: { generatePickup?: boolean; forceResync?: boolean },
 ) => {
-  try {
-    return await syncOrderShipmentToShiprocket(orderId, actorId, {
-      generatePickup: options?.generatePickup !== false,
-      forceResync: options?.forceResync === true,
-    })
-  } catch (error) {
+  const ran = await withShiprocketOrderSyncLock(orderId, SHIPROCKET_SYNC_LOCK_TTL_MS, async () => {
+    logger.info("shiprocket.sync.start", { orderId, actorId, options: options ?? {} })
+    try {
+      const result = await syncOrderShipmentToShiprocket(orderId, actorId, {
+        generatePickup: options?.generatePickup !== false,
+        forceResync: options?.forceResync === true,
+      })
+      if (result.status === "failed") {
+        logger.error("shiprocket.sync.failed", { orderId, result })
+      } else {
+        logger.info("shiprocket.sync.success", { orderId, status: result.status })
+      }
+      await hydrateTrackingAfterLifecycleSync(orderId)
+      return result
+    } catch (error) {
+      logger.error("shiprocket.sync.failed", {
+        orderId,
+        reason: error instanceof Error ? error.message : "unknown",
+      })
+      return {
+        status: "failed" as const,
+        orderId,
+        reason: normalizeShiprocketErrorMessage(error, "Shiprocket sync failed"),
+        syncTime: new Date().toISOString(),
+      }
+    }
+  })
+  if (ran === null) {
     return {
-      status: "failed" as const,
+      status: "skipped" as const,
       orderId,
-      reason: normalizeShiprocketErrorMessage(error, "Shiprocket sync failed"),
-      syncTime: new Date().toISOString(),
+      reason: "Shiprocket sync already in progress for this order",
+      skippedReason: "lock_held" as const,
     }
   }
+  return ran
 }
