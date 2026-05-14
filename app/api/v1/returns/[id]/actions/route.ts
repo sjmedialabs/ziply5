@@ -5,10 +5,12 @@ import { requireAuth } from "@/src/server/middleware/auth"
 import { requirePermission } from "@/src/server/middleware/rbac"
 import { pgQuery } from "@/src/server/db/pg"
 import { updateOrderStatus } from "@/src/server/modules/orders/orders.service"
+import { createShiprocketReturnAfterAdminApproval } from "@/src/server/modules/returns/return-shiprocket.service"
 
 const schema = z.object({
   action: z.enum(["approve", "reject", "mark_picked", "mark_received"]),
   notes: z.string().max(1000).optional(),
+  rejectionReason: z.string().max(1000).optional(),
 })
 
 export async function POST(request: NextRequest, ctx: { params: Promise<{ id: string }> }) {
@@ -24,21 +26,36 @@ export async function POST(request: NextRequest, ctx: { params: Promise<{ id: st
 
   try {
     if (parsed.data.action === "approve") {
-      const rows = await pgQuery<Array<{ orderId: string }>>(
-        `UPDATE "ReturnRequest" SET status='approved', "updatedAt"=now() WHERE id=$1 RETURNING "orderId"`,
-        [id],
-      )
-      const orderId = rows[0]?.orderId
-      if (orderId) {
-        await updateOrderStatus(orderId, "return_approved", auth.user.sub, {
-          reasonCode: "return_approved",
-          note: "Return approved by admin",
-        }).catch(() => null)
+      const seedRows = await pgQuery<Array<{ orderId: string }>>(`SELECT "orderId" FROM "ReturnRequest" WHERE id=$1 LIMIT 1`, [id])
+      const orderId = seedRows[0]?.orderId
+      if (!orderId) return fail("Return request not found", 404)
+
+      if (parsed.data.notes?.trim()) {
+        await pgQuery(`UPDATE "ReturnRequest" SET "adminNote" = $2, "updatedAt"=now() WHERE id=$1`, [id, parsed.data.notes.trim()])
       }
-      return ok({ updated: true, orderId }, "Return approved")
+
+      await createShiprocketReturnAfterAdminApproval({ seedReturnRequestId: id, actorId: auth.user.sub })
+
+      await updateOrderStatus(orderId, "return_approved", auth.user.sub, {
+        reasonCode: "return_approved",
+        note: parsed.data.notes?.trim() || "Return approved; reverse pickup scheduled in Shiprocket",
+      }).catch(() => null)
+
+      return ok({ updated: true, orderId }, "Return approved and reverse pickup created")
     }
     if (parsed.data.action === "reject") {
-      await pgQuery(`UPDATE "ReturnRequest" SET status='rejected', "updatedAt"=now() WHERE id=$1`, [id])
+      await pgQuery(
+        `
+        UPDATE "ReturnRequest"
+        SET status='rejected',
+            "rejectionReason"=$2,
+            "rejectedAt"=now(),
+            "adminNote"=COALESCE($3, "adminNote"),
+            "updatedAt"=now()
+        WHERE id=$1
+        `,
+        [id, parsed.data.rejectionReason?.trim() || "Rejected by admin", parsed.data.notes?.trim() || null],
+      )
       return ok({ updated: true }, "Return rejected")
     }
     const nextStatus = parsed.data.action === "mark_picked" ? "picked_up" : "received"
