@@ -80,6 +80,7 @@ type AppEnv = {
   DLT_ORDER_CONFIRM_MSG?: string
   DLT_ORDER_CANCEL_ID?: string
   DLT_ORDER_CANCEL_MSG?: string
+  DATA_GOV_API_KEY?: string
 }
 
 const getEnv = (key: keyof AppEnv, fallback?: string) => {
@@ -169,4 +170,5 @@ export const env: AppEnv = {
   DLT_ORDER_CONFIRM_MSG: process.env.DLT_ORDER_CONFIRM_MSG,
   DLT_ORDER_CANCEL_ID: process.env.DLT_ORDER_CANCEL_ID,
   DLT_ORDER_CANCEL_MSG: process.env.DLT_ORDER_CANCEL_MSG,
+  DATA_GOV_API_KEY: process.env.DATA_GOV_API_KEY,
 }

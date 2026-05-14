@@ -48,6 +48,10 @@ export default function AddressesPage() {
   const [country, setCountry] = useState("IN");
   const [phone, setPhone] = useState("");
   const [label, setLabel] = useState("");
+  const [fetchingPincode, setFetchingPincode] = useState(false);
+
+  const normalizeStr = (str: string) => 
+    str.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
 
   const { data: states } = useLocations("state");
   const { data: cities } = useLocations("city");
@@ -100,6 +104,51 @@ export default function AddressesPage() {
   useEffect(() => {
     load();
   }, [load]);
+
+  // Pincode Lookup Logic
+  useEffect(() => {
+    const pin = postalCode.trim();
+    if (pin.length === 6 && /^\d{6}$/.test(pin)) {
+      const controller = new AbortController();
+      const runLookup = async () => {
+        setFetchingPincode(true);
+        try {
+          const res = await fetch(`/api/v1/pincode/${pin}`, { signal: controller.signal });
+          const payload = await res.json();
+          if (payload.success && payload.data) {
+            const { city: fetchedCity, state: fetchedState } = payload.data;
+            
+            // Case-insensitive & accent-insensitive state matching
+            if (fetchedState && states) {
+              const normState = normalizeStr(fetchedState);
+              const matchedState = states.find(s => normalizeStr(s.label) === normState);
+              
+              if (matchedState) {
+                setState(matchedState.label);
+              } else {
+                // Fallback to title case
+                const titleCaseState = fetchedState.toLowerCase().split(' ').map(w => w.charAt(0).toUpperCase() + w.substring(1)).join(' ');
+                setState(titleCaseState);
+              }
+            }
+
+            if (fetchedCity) {
+              const titleCaseCity = fetchedCity.toLowerCase().split(' ').map(w => w.charAt(0).toUpperCase() + w.substring(1)).join(' ');
+              setCity(titleCaseCity);
+            }
+          }
+        } catch (err) {
+          if ((err as any).name !== "AbortError") {
+            console.error("Pincode lookup failed:", err);
+          }
+        } finally {
+          setFetchingPincode(false);
+        }
+      };
+      void runLookup();
+      return () => controller.abort();
+    }
+  }, [postalCode]);
 
   const add = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -329,6 +378,9 @@ export default function AddressesPage() {
                     {availableCities?.map((c) => (
                       <SelectItem key={c.value} value={c.label}>{c.label}</SelectItem>
                     ))}
+                    {city && !availableCities.find(c => c.label === city) && (
+                      <SelectItem value={city}>{city}</SelectItem>
+                    )}
                   </SelectContent>
                 </Select>
               </label>
@@ -338,8 +390,10 @@ export default function AddressesPage() {
                   required
                   value={postalCode}
                   onChange={(e) => setPostalCode(e.target.value)}
+                  disabled={fetchingPincode}
                   className="mt-1 w-full rounded-lg border border-[#D9D9D1] bg-white px-3 py-2 text-sm"
                 />
+                {fetchingPincode && <p className="text-[10px] text-primary animate-pulse mt-0.5">Fetching location...</p>}
               </label>
               <label className="text-xs font-semibold uppercase text-[#646464]">
                 Country

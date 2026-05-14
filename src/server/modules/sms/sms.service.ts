@@ -1,6 +1,7 @@
 import { env } from "@/src/server/core/config/env"
 import { pgQuery } from "@/src/server/db/pg"
 import util from "util"
+import { enqueueEmail } from "@/src/server/modules/notifications/email.service"
 
 export type SmsTemplateKey =
   | "PASSWORD_RESET"
@@ -28,10 +29,11 @@ type SendSmsOptions = {
   templateKey: SmsTemplateKey
   variables: string[]
   body?: string // Optional now, will use DLT_MSG if available
+  email?: string // Optional email for dual-notification
 }
 
 export const smsService = {
-  async send({ mobile, templateKey, variables, body }: SendSmsOptions) {
+  async send({ mobile, templateKey, variables, body, email }: SendSmsOptions) {
     console.log(`[SMS SERVICE ENTRY] Template: ${templateKey}, To: ${mobile}`)
     const config = DLT_CONFIG[templateKey]
     const templateId = config?.id || env[`SMS_TEMPLATE_${templateKey}` as keyof typeof env] as string
@@ -62,10 +64,43 @@ export const smsService = {
       console.error(`[SMS ERROR] To: ${mobile}`, err)
     }
 
+    // Dual-Notification: Disabled to prevent duplicates as OrderService now handles specific email routing.
+    /*
+    void (async () => {
+      try {
+        let targetEmail = email
+        if (!targetEmail) {
+          const digits = mobile.replace(/\D/g, "")
+          const search = digits.length > 10 ? digits.slice(-10) : digits
+          const rows = await pgQuery<{ email: string }>(
+            `SELECT u.email FROM "User" u JOIN "UserProfile" up ON up."userId" = u.id WHERE up.phone LIKE $1 LIMIT 1`,
+            [`%${search}`]
+          )
+          targetEmail = rows[0]?.email
+        }
+
+        if (targetEmail && !targetEmail.endsWith("@ziply5.local")) {
+          await enqueueEmail({
+            to: targetEmail,
+            subject: templateKey.replaceAll("_", " "),
+            html: `<div style="font-family:sans-serif; padding:20px; border:1px solid #eee; border-radius:8px;">
+              <h2 style="color:#4f46e5; margin-top:0;">Notification</h2>
+              <p style="font-size:16px; line-height:1.5;">${finalBody}</p>
+              <hr style="border:0; border-top:1px solid #eee; margin:20px 0;" />
+              <p style="font-size:12px; color:#666;">This is an automated notification from Ziply5.</p>
+            </div>`,
+          })
+        }
+      } catch (e) {
+        console.error("[SMS SERVICE] Dual-email notification failed", e)
+      }
+    })()
+    */
+
     // Audit Log
     await pgQuery(
       `INSERT INTO sms_logs (mobile, template, payload, status, provider_response) VALUES ($1, $2, $3, $4, $5)`,
-      [mobile, templateKey, JSON.stringify({ variables, body: finalBody }), status, providerResponse]
+      [mobile, templateKey, JSON.stringify({ variables, body: finalBody, email }), status, providerResponse]
     ).catch(e => console.error("Failed to log SMS", e))
 
     if (status === "failed") throw new Error(`SMS delivery failed: ${providerResponse}`)

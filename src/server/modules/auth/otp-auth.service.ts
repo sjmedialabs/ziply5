@@ -10,6 +10,7 @@ import {
   signAccessToken,
   signRefreshToken,
 } from "@/src/server/core/security/jwt"
+import { emailTemplates, enqueueEmail } from "../notifications/email.service"
 
 const parseDurationMs = (value: string, fallbackMs: number) => {
   const match = /^(\d+)([smhd])$/i.exec(value.trim())
@@ -84,13 +85,23 @@ export const otpAuthService = {
       return { userId, name: input.name }
     })
 
-    // 4. Send Welcome SMS
+    // 4. Send Welcome Notifications
+    const customerName = input.name || "Customer";
+    
+    // Send SMS (Dual-notification logic will also try to send a simple email)
     await smsService.send({
       mobile,
       templateKey: "WELCOME",
-      variables: [input.name],
-      body: `Welcome to Ziply5 ! Your account is created successfully. Username: ${input.name} - Team Ziply5`
+      variables: [customerName],
+      body: `Welcome to Ziply5 ! Your account is created successfully. Username: ${customerName} - Team Ziply5`,
+      email: input.email // Pass email explicitly to ensure dual-notification works
     }).catch(e => console.error("Welcome SMS failed", e))
+
+    // Send Rich HTML Welcome Email
+    if (input.email && !input.email.endsWith("@ziply5.local")) {
+      const mail = emailTemplates.welcome(customerName)
+      await enqueueEmail({ to: input.email, ...mail }).catch(e => console.error("Welcome email failed", e))
+    }
 
     // 5. Issue Tokens
     const accessToken = signAccessToken({
