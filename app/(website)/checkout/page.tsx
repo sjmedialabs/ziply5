@@ -137,6 +137,11 @@ export default function CheckoutPage() {
     phone: "",
   });
 
+  const [fetchingPincode, setFetchingPincode] = useState(false);
+
+  const normalizeStr = (str: string) => 
+    str.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
+
   const loadAddresses = useCallback(async () => {
     const token = typeof window !== "undefined" ? window.localStorage.getItem("ziply5_access_token") : null;
     if (!token) {
@@ -186,6 +191,57 @@ export default function CheckoutPage() {
       window.removeEventListener("storage", syncCart);
     };
   }, [couponCode, loadAddresses]);
+
+  // Pincode Lookup Logic
+  useEffect(() => {
+    const pin = billing.postalCode.trim();
+    if (pin.length === 6 && /^\d{6}$/.test(pin)) {
+      const controller = new AbortController();
+      const runLookup = async () => {
+        setFetchingPincode(true);
+        try {
+          const res = await fetch(`/api/v1/pincode/${pin}`, { signal: controller.signal });
+          const payload = await res.json();
+          if (payload.success && payload.data) {
+            const { city: fetchedCity, state: fetchedState } = payload.data;
+            
+            // Case-insensitive & accent-insensitive state matching
+            if (fetchedState && states) {
+              const normState = normalizeStr(fetchedState);
+              const matchedState = states.find(s => normalizeStr(s.label) === normState);
+              
+              if (matchedState) {
+                setState(matchedState.label);
+              } else {
+                // Fallback to title case
+                const titleCaseState = fetchedState.toLowerCase().split(' ').map(w => w.charAt(0).toUpperCase() + w.substring(1)).join(' ');
+                setState(titleCaseState);
+              }
+            }
+
+            if (fetchedCity) {
+              const normCity = normalizeStr(fetchedCity);
+              const titleCaseCity = fetchedCity.toLowerCase().split(' ').map(w => w.charAt(0).toUpperCase() + w.substring(1)).join(' ');
+              
+              // We need to wait for state to update and cities to be available
+              // or just set the city and hope the Select can handle it.
+              // Since availableCities depends on 'state', we set a small timeout or use the city directly.
+              setCity(titleCaseCity);
+            }
+          }
+        } catch (err) {
+          if ((err as any).name !== "AbortError") {
+            console.error("Pincode lookup failed:", err);
+          }
+        } finally {
+          setFetchingPincode(false);
+        }
+      };
+      void runLookup();
+      return () => controller.abort();
+    }
+  }, [billing.postalCode]);
+
 useEffect(() => {
   if (!products.length) return;
 
@@ -721,6 +777,9 @@ useEffect(() => {
                   {c.label}
                 </SelectItem>
               ))}
+              {city && !availableCities.find(c => c.label === city) && (
+                <SelectItem value={city}>{city}</SelectItem>
+              )}
             </SelectContent>
           </Select>
         </div>
@@ -735,14 +794,16 @@ useEffect(() => {
             placeholder="Enter pincode"
             value={billing.postalCode}
             onChange={(e) => setBilling((prev) => ({ ...prev, postalCode: e.target.value }))}
+            disabled={fetchingPincode}
             onBlur={(e) => {
               const value = e.target.value;
 
-              if (!/^\d{6}$/.test(value)) {
+              if (value && !/^\d{6}$/.test(value)) {
                 alert("Invalid Pincode (must be 6 digits)");
               }
             }}
           />
+          {fetchingPincode && <p className="text-[10px] text-primary animate-pulse mt-1">Fetching location details...</p>}
         </div>
 
         {/* Phone */}

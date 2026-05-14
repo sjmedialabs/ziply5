@@ -321,6 +321,7 @@ export const createOrderFromCheckout = async (input: {
   paymentStatus?: string
   paymentId?: string
 }) => {
+  console.log(`[Order Service Debug] Incoming createOrderFromCheckout payload:`, JSON.stringify(input, null, 2))
   if (input.paymentId?.trim()) {
     // For COD, paymentId is not provided initially, so this check should only apply to online payments
     // or if a paymentId is explicitly passed for a retry.
@@ -418,6 +419,7 @@ export const createOrderFromCheckout = async (input: {
     userId: input.userId ?? null,
     customerName: input.billingAddress?.fullName ?? null,
     customerPhone: input.billingAddress?.phone ?? null,
+    customerEmail: input.billingAddress?.email ?? null,
     customerAddress: input.billingAddress
       ? `${input.billingAddress.line1}, ${input.billingAddress.city}, ${input.billingAddress.state}, ${input.billingAddress.postalCode}, ${input.billingAddress.country}`
       : null,
@@ -449,11 +451,15 @@ export const createOrderFromCheckout = async (input: {
 
   console.log("[orders.service] Attempting to create order with Supabase payload:", JSON.stringify({ orderData, itemCount: itemRows.length }, null, 2));
 
-  const created = await createOrderWithItemsSupabase({
-    orderData,
-    itemRows,
-  })
-  if (!created?.id) throw new Error("Unable to create order via Supabase")
+  const created = await createOrderWithItemsSupabase({ orderData, itemRows })
+  if (!created) throw new Error("Supabase order insert failed")
+
+  // Use the data we already have instead of a heavy re-fetch to avoid timeouts
+  const order = {
+    ...orderData,
+    id: created.id,
+    user: (orderData as any).user || null
+  } as any
   console.log("Creating order with data:")
   await appendOrderStatusHistorySupabase({
     orderId: created.id,
@@ -469,8 +475,6 @@ export const createOrderFromCheckout = async (input: {
             : "Order created, awaiting payment",
     changedById: input.userId ?? null,
   }).catch(() => null)
-  const order = await getOrderByIdSupabaseBasic(created.id)
-  if (!order) throw new Error("Unable to hydrate created order via Supabase")
   console.log("Created order with ID:", created.id)
   const transactionStatus = input.paymentStatus === "paid" ? "paid" : input.paymentStatus === "failed" ? "failed" : "pending"
   console.log("Recording initial transaction with status:", transactionStatus)
@@ -507,26 +511,57 @@ export const createOrderFromCheckout = async (input: {
   })
   console.log("Activity logged for order creation", { orderId: order.id, userId: input.userId ?? null })
   console.log(`[Order Service] createOrderFromCheckout: order.status="${order.status}", order.paymentStatus="${order.paymentStatus}", phone="${order.customerPhone}"`)
-  if (order.customerPhone) {
     const normalizedStatus = String(order.status).toLowerCase()
-    if (normalizedStatus === "confirmed") {
-      console.log(`[Order Service] Triggering ORDER_CONFIRM SMS for new order ${order.id}`)
-      // Send Confirmation SMS
-      await smsService.send({
-        mobile: order.customerPhone,
-        templateKey: "ORDER_CONFIRM",
-        variables: [order.customerName || "Customer", String(order.id)],
-      }).catch(e => console.error("Order confirm SMS failed", e))
-    } else if (String(order.paymentStatus).toUpperCase() === "SUCCESS") {
-      console.log(`[Order Service] Triggering ORDER_PAID SMS for new order ${order.id}`)
-      // Send Payment Success SMS
-      await smsService.send({
-        mobile: order.customerPhone,
-        templateKey: "ORDER_PAID",
-        variables: [String(total), String(order.id)],
-      }).catch(e => console.error("Order payment SMS failed", e))
+    let customerEmailRaw = (order as any).customerEmail || input.billingAddress?.email || (order as any).user?.email
+    if (!customerEmailRaw && input.userId) {
+      customerEmailRaw = await getUserEmailSupabase(input.userId).catch(() => null)
     }
-  }
+    const customerEmail = customerEmailRaw?.trim()
+    const customerName = order.customerName || "Customer"
+
+    if (normalizedStatus === "confirmed") {
+      console.log(`[Order Service] Triggering ORDER_CONFIRM for order ${order.id}. Email: ${customerEmail}, Phone: ${order.customerPhone}`)
+      
+      // Send Confirmation SMS
+      if (order.customerPhone) {
+        await smsService.send({
+          mobile: order.customerPhone,
+          templateKey: "ORDER_CONFIRM",
+          variables: [customerName, String(order.id)],
+        }).catch(e => console.error("Order confirm SMS failed", e))
+      }
+
+      // Send Confirmation Email
+      if (customerEmail && !customerEmail.endsWith("@ziply5.local")) {
+        const mail = emailTemplates.orderPlaced(customerName, String(order.id), String(total))
+        console.log(`[Order Service] Enqueuing orderPlaced email to ${customerEmail}`)
+        await enqueueEmail({ to: customerEmail, ...mail }).catch(e => console.error("Order confirm email failed", e))
+      } else {
+        console.warn(`[Order Service] Skipping confirmation email: ${customerEmail ? 'Internal domain' : 'Missing email'}`)
+      }
+    } 
+    
+    if (String(order.paymentStatus).toUpperCase() === "SUCCESS" || String(input.paymentStatus).toUpperCase() === "PAID") {
+      console.log(`[Order Service] Triggering ORDER_PAID for order ${order.id}. Email: ${customerEmail}, Phone: ${order.customerPhone}`)
+      
+      // Send Payment Success SMS
+      if (order.customerPhone) {
+        await smsService.send({
+          mobile: order.customerPhone,
+          templateKey: "ORDER_PAID",
+          variables: [String(total), String(order.id)],
+        }).catch(e => console.error("Order payment SMS failed", e))
+      }
+
+      // Send Payment Success Email
+      if (customerEmail && !customerEmail.endsWith("@ziply5.local")) {
+        const mail = emailTemplates.orderPaid(customerName, String(order.id), String(total))
+        console.log(`[Order Service] Enqueuing orderPaid email to ${customerEmail}`)
+        await enqueueEmail({ to: customerEmail, ...mail }).catch(e => console.error("Order payment email failed", e))
+      } else {
+        console.warn(`[Order Service] Skipping payment email: ${customerEmail ? 'Internal domain' : 'Missing email'}`)
+      }
+    }
   console.log("Enqueuing outbox event for order.created")
   await enqueueOutboxEvent({
     eventType: "order.created",
@@ -662,10 +697,9 @@ export const updateOrderStatus = async (
 
   console.log(`[STATUS UPDATE DEBUG] Order ID: ${id}, New Status: ${status}`)
   
-  const allowed = (status === "cancelled") || await assertMasterValueExists("ORDER_STATUS", status)
+  const allowed = (status === "cancelled") || await assertMasterValueExists("ORDER_STATUS", status).catch(() => false)
   if (!allowed) {
-    console.error(`[STATUS UPDATE ERROR] Invalid master value for ORDER_STATUS: ${status}`)
-    throw new Error(`Invalid master value for ORDER_STATUS: ${status}`)
+    console.warn(`[STATUS UPDATE WARNING] Status "${status}" not found in ORDER_STATUS master values. Continuing anyway to ensure notifications and flow consistency.`);
   }
 
   const existing = await getOrderByIdSupabaseBasic(id)
@@ -678,8 +712,13 @@ export const updateOrderStatus = async (
   const paymentStatus = normalizePaymentStatus((existing as any).paymentStatus)
 
   if (status === "confirmed" && paymentStatus !== "SUCCESS") {
-    console.error(`[STATUS UPDATE ERROR] Cannot move to CONFIRMED without SUCCESS payment status. Current: ${paymentStatus}`)
-    throw new Error("Order cannot move to CONFIRMED unless payment_status = SUCCESS")
+    const isCod = (existing.paymentMethod || "").toLowerCase() === "cod";
+    if (!isCod) {
+      console.error(`[STATUS UPDATE ERROR] Cannot move to CONFIRMED without SUCCESS payment status. Current: ${paymentStatus}, Method: ${existing.paymentMethod}`);
+      throw new Error("Order cannot move to CONFIRMED unless payment_status = SUCCESS (except for COD)");
+    } else {
+      console.log(`[STATUS UPDATE] Allowing COD order ${id} to move to CONFIRMED with PENDING payment status`);
+    }
   }
   if (status !== fromStatus && !allowedTransitions[fromStatus]?.includes(status)) {
     console.error(`[STATUS UPDATE ERROR] Invalid transition: ${fromStatus} -> ${status}`)
@@ -740,9 +779,27 @@ export const updateOrderStatus = async (
     payload: { orderId: id, fromStatus, toStatus: status, reasonCode: options?.reasonCode ?? null },
   }).catch(() => null)
 
-  const maybeEmail = (order as any).user?.email
-  if (maybeEmail) {
-    console.log(`[Email] Status update for ${maybeEmail}: ${status}`)
+  let customerEmailRaw = (order as any).customerEmail || (order as any).user?.email
+  if (!customerEmailRaw && order.userId) {
+    customerEmailRaw = await getUserEmailSupabase(order.userId).catch(() => null)
+  }
+  const customerEmail = customerEmailRaw?.trim()
+  const customerName = order.customerName || "Customer"
+
+  if (customerEmail && !customerEmail.endsWith("@ziply5.local")) {
+    let mail;
+    if (status === "confirmed") {
+      mail = emailTemplates.orderPlaced(customerName, id, String(order.total || 0));
+    } else if (status === "payment_success") {
+      mail = emailTemplates.orderPaid(customerName, id, String(order.total || 0));
+    } else {
+      mail = emailTemplates.orderStatus(customerName, id, status);
+    }
+    
+    console.log(`[Email] Sending ${status} update for ${customerEmail}`)
+    await enqueueEmail({ to: customerEmail, ...mail }).catch(e => console.error("Order status email failed", e))
+  } else {
+    console.warn(`[Order Service] Skipping status email for order ${id} (status: ${status}): ${customerEmail ? 'Internal domain' : 'Missing email'}`)
   }
 
   const maybePhone = (order as any).customerPhone

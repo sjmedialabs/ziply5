@@ -37,9 +37,11 @@ function PaymentPageInner() {
     postalCode: "",
     country: "India",
     phone: "",
+    email: "",
   });
   const [hasCheckoutBilling, setHasCheckoutBilling] = useState(false);
   const [hasCheckoutSnapshot, setHasCheckoutSnapshot] = useState(false);
+  const [fetchingPincode, setFetchingPincode] = useState(false);
 
   useEffect(() => {
     // Avoid hydration mismatch: cart is client-only (localStorage)
@@ -57,6 +59,7 @@ function PaymentPageInner() {
           postalCode: saved.postalCode ?? "",
           country: saved.country ?? "India",
           phone: saved.phone ?? "",
+          email: saved.email ?? "",
         });
       }
       setCouponAdjustedTotal(checkout.total ?? null);
@@ -103,6 +106,38 @@ function PaymentPageInner() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [items.length]);
 
+  // Pincode Lookup Logic
+  useEffect(() => {
+    const pin = billingAddress.postalCode.trim();
+    if (pin.length === 6 && /^\d{6}$/.test(pin)) {
+      const controller = new AbortController();
+      const runLookup = async () => {
+        setFetchingPincode(true);
+        try {
+          const res = await fetch(`/api/v1/pincode/${pin}`, { signal: controller.signal });
+          const payload = await res.json();
+          if (payload.success && payload.data) {
+            const { city: fetchedCity, state: fetchedState } = payload.data;
+            const toTitleCase = (str: string) => str.toLowerCase().split(' ').map(w => w.charAt(0).toUpperCase() + w.substring(1)).join(' ');
+            setBillingAddress((prev) => ({
+              ...prev,
+              city: fetchedCity ? toTitleCase(fetchedCity) : prev.city,
+              state: fetchedState ? toTitleCase(fetchedState) : prev.state,
+            }));
+          }
+        } catch (err) {
+          if ((err as any).name !== "AbortError") {
+            console.error("Pincode lookup failed:", err);
+          }
+        } finally {
+          setFetchingPincode(false);
+        }
+      };
+      void runLookup();
+      return () => controller.abort();
+    }
+  }, [billingAddress.postalCode]);
+
   const createOrderMutation = useMutation({
     mutationFn: async ({ token, gateway }: { token: string; gateway: "cod" | "razorpay" }) => {
       const checkoutRef =
@@ -147,6 +182,7 @@ function PaymentPageInner() {
             postalCode: billingAddress.postalCode,
             country: billingAddress.country,
             phone: billingAddress.phone || "",
+            email: billingAddress.email || "",
           },
 
           paymentStatus: gateway === "cod" ? "pending" : "pending",
@@ -228,6 +264,7 @@ function PaymentPageInner() {
           postalCode: (parsed.postalCode ?? "").toString(),
           country: (parsed.country ?? "India").toString(),
           phone: (parsed.phone ?? "").toString(),
+          email: (parsed.email ?? "").toString(),
         };
         setBillingAddress(merged);
         setHasCheckoutBilling(
@@ -573,7 +610,9 @@ const handleOnlinePayment = async () => {
                 placeholder="Postal code"
                 value={billingAddress.postalCode}
                 onChange={(e) => setBillingAddress((prev) => ({ ...prev, postalCode: e.target.value }))}
+                disabled={fetchingPincode}
               />
+              {fetchingPincode && <p className="text-[10px] text-primary animate-pulse absolute mt-10">Fetching location...</p>}
               <input
                 className="input"
                 placeholder="Phone (optional)"
@@ -581,6 +620,12 @@ const handleOnlinePayment = async () => {
                 onChange={(e) => setBillingAddress((prev) => ({ ...prev, phone: e.target.value }))}
               />
             </div>
+            <input
+              className="input"
+              placeholder="Email address"
+              value={billingAddress.email}
+              onChange={(e) => setBillingAddress((prev) => ({ ...prev, email: e.target.value }))}
+            />
           </div>
         )}
 

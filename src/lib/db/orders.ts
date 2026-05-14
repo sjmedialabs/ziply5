@@ -31,6 +31,7 @@ export type SupabaseOrderRecord = {
   total?: number | null
   updatedAt?: string | Date | null
   customerAddress?: string | null
+  customerEmail?: string | null
   items: any[]
   statusHistory: Array<{ toStatus?: string; changedAt?: string | Date | null;[key: string]: unknown }>
   refunds: Array<{ id: string; status?: string; amount?: number }>
@@ -1480,6 +1481,7 @@ export const getOrderByIdSupabaseBasic = async (orderId: string) => {
         customerName: (row.customerName ?? row.customer_name ?? null) as string | null,
         customerPhone: (row.customerPhone ?? row.customer_phone ?? null) as string | null,
         customerAddress: (row.customerAddress ?? row.customer_address ?? null) as string | null,
+        customerEmail: (row.customerEmail ?? row.customer_email ?? null) as string | null,
         shiprocketOrderId: safeString((row as Record<string, unknown>).shiprocketOrderId ?? (row as Record<string, unknown>).shiprocket_order_id) || null,
         shipmentId: safeString((row as Record<string, unknown>).shipmentId ?? (row as Record<string, unknown>).shipment_id) || null,
         awbCode: safeString((row as Record<string, unknown>).awbCode ?? (row as Record<string, unknown>).awb_code) || null,
@@ -1663,11 +1665,11 @@ export const createOrderWithItemsSupabase = async (input: {
   for (const itemTable of ORDER_ITEM_TABLES) {
     let inserted = false
 
-    const camelRows = input.itemRows.map((row) => ({
+    const camelRows = input.itemRows.map((row) => withId({
       ...row,
       orderId,
     }))
-    const snakeRows = input.itemRows.map((row) => ({
+    const snakeRows = input.itemRows.map((row) => withId({
       ...camelToSnakeObject(row),
       order_id: orderId,
     }))
