@@ -1,0 +1,8 @@
+{
+  "payload": {
+    "shipment_id": 990012,
+    "awb_code": "RETMOCK123456"
+  },
+  "awb_code": "RETMOCK123456",
+  "shipment_id": 990012
+}

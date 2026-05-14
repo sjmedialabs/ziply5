@@ -3,13 +3,14 @@
 import { useEffect, useMemo, useState } from "react"
 import Image from "next/image"
 import { useParams, useRouter } from "next/navigation"
-import { ArrowLeft, ChevronLeft, ChevronRight } from "lucide-react"
+import { ArrowLeft, ChevronLeft, ChevronRight, X } from "lucide-react"
 import { getFavoriteSlugs, toggleFavoriteSlug } from "@/lib/favorites"
 import { addToCart, getCartItems, getCartQuantity, setCartItemQuantity } from "@/lib/cart"
 import { FALLBACK_PRODUCT_IMAGE, toStorefrontProduct, type StorefrontProduct } from "@/lib/storefront-products"
 import Link from "next/link"
 import { toast } from "@/lib/toast"
 import { Skeleton } from "@/components/ui/skeleton"
+import { ModalAnimation } from "@/components/animations"
 
 export default function ProductPage() {
   const params = useParams()
@@ -29,6 +30,21 @@ export default function ProductPage() {
   const [selectedImage, setSelectedImage] = useState("")
   const [thumbStart, setThumbStart] = useState(0)
   const [reviews, setReviews] = useState<Array<{ id: string; rating: number; body?: string | null; user?: { name?: string | null } | null }>>([])
+  const [selectedRelatedProduct, setSelectedRelatedProduct] = useState<StorefrontProduct | null>(null)
+
+  const updateVariantQty = (prod: StorefrontProduct, variant: any, nextQty: number) => {
+    const vId = variant.id ? String(variant.id) : (variant.sku || variant.weight || variant.name);
+    setCartItemQuantity({
+      productId: String(prod.id),
+      variantId: vId,
+      slug: prod.slug,
+      name: prod.name,
+      price: variant.price,
+      image: prod.image,
+      weight: variant.weight || variant.name,
+      sku: variant.sku
+    }, nextQty)
+  }
 
   const galleryImages = useMemo(() => {
     if (!product) return []
@@ -425,7 +441,7 @@ export default function ProductPage() {
 
             <div className="mt-4 flex items-center gap-4">
               <span className="text-xs font-light font-melon tracking-wide text-[#272727]" title="Quantity Add to Cart">Add to cart</span>
-              <div className="flex items-center overflow-hidden rounded-2xl border border-[#FF8A00}">
+              <div className="flex items-center overflow-hidden rounded-2xl border border-[#FF8A00]">
                 <button
                   type="button"
                   onClick={() => {
@@ -588,7 +604,7 @@ export default function ProductPage() {
               )
             })}
 
-          {/* Product Sections */}
+          {/* Product Sections details*/}
           {(!product?.details || product.details.length === 0) &&
             product?.sections?.length > 0 &&
             product.sections.map((section: any, idx: number) => {
@@ -695,23 +711,57 @@ export default function ProductPage() {
                   <p className="mt-1 text-center text-[10px] font-semibold uppercase text-white/90">
                     Home style meal | Net wt. {item.weight}
                   </p>
-                  <p className="mt-2 text-sm text-center font-medium text-[#FFF5C5]">Rs. {product.price.toFixed(2)}</p>
+                  <p className="mt-2 text-sm text-center font-medium text-[#FFF5C5]">Rs. {item.price.toFixed(2)}</p>
                   <div className="mt-auto pt-3 flex items-center justify-between gap-2">
-                    {(cartQtyBySlug[product.slug] ?? 0) > 0 ? (
+                    {(cartQtyBySlug[item.slug] ?? 0) > 0 && item.productKind === "simple" ? (
                       <div className="flex items-center rounded-md border border-[#d5c4b8] bg-white/95 px-1 py-0.5">
                         <button
                           type="button"
-                          onClick={() => setCartItemQuantity(product, Math.max(0, (cartQtyBySlug[product.slug] ?? 0) - 1))}
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            const qty = cartQtyBySlug[item.slug] ?? 0
+                            const nextQty = Math.max(0, qty - 1)
+                            const defaultVariant = item.variants.find((v) => v.isDefault) ?? item.variants[0]
+                            setCartItemQuantity({
+                              productId: item.id,
+                              variantId: defaultVariant?.id ?? null,
+                              slug: item.slug,
+                              name: item.name,
+                              price: item.price,
+                              comparePrice: item.oldPrice,
+                              image: item.image,
+                              weight: item.weight,
+                              sku: item.sku,
+                              stock: item.stock,
+                            }, nextQty)
+                          }}
                           className="h-6 w-6 rounded cursor-pointer text-sm font-light text-[#5A272A] hover:bg-[#f4efec]"
                         >
                           -
                         </button>
                         <span className="min-w-5 text-center text-xs font-light text-[#5A272A]">
-                          {cartQtyBySlug[product.slug] ?? 0}
+                          {cartQtyBySlug[item.slug] ?? 0}
                         </span>
                         <button
                           type="button"
-                          onClick={() => setCartItemQuantity(product, (cartQtyBySlug[product.slug] ?? 0) + 1)}
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            const qty = cartQtyBySlug[item.slug] ?? 0
+                            const nextQty = qty + 1
+                            const defaultVariant = item.variants.find((v) => v.isDefault) ?? item.variants[0]
+                            setCartItemQuantity({
+                              productId: item.id,
+                              variantId: defaultVariant?.id ?? null,
+                              slug: item.slug,
+                              name: item.name,
+                              price: item.price,
+                              comparePrice: item.oldPrice,
+                              image: item.image,
+                              weight: item.weight,
+                              sku: item.sku,
+                              stock: item.stock,
+                            }, nextQty)
+                          }}
                           className="h-6 w-6 rounded text-sm cursor-pointer font-light text-[#5A272A] hover:bg-[#f4efec]"
                         >
                           +
@@ -720,15 +770,59 @@ export default function ProductPage() {
                     ) : (
                       <button
                         type="button"
-                        onClick={() => setCartItemQuantity(product, 1)}
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          if (item.productKind === "variant") {
+                            setSelectedRelatedProduct(item)
+                          } else {
+                            const defaultVariant = item.variants.find((v) => v.isDefault) ?? item.variants[0]
+                            setCartItemQuantity({
+                              productId: item.id,
+                              variantId: defaultVariant?.id ?? null,
+                              slug: item.slug,
+                              name: item.name,
+                              price: item.price,
+                              comparePrice: item.oldPrice,
+                              image: item.image,
+                              weight: item.weight,
+                              sku: item.sku,
+                              stock: item.stock,
+                            }, 1)
+                          }
+                        }}
                         className="rounded-lg border cursor-pointer border-white tracking-wide px-4 py-1.5 text-[12px] font-light text-white hover:bg-primary hover:text-white transition-all "
                       >
-                        Add to Cart
+                        {item.productKind === "variant" ? "Select Options" : "Add to Cart"}
                       </button>
                     )}
-                    <Link href="/checkout" className="rounded-lg bg-primary cursor-pointer tracking-wide px-3 py-1.5 text-[12px] font-light text-white hover:bg-[#2d1011]">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        if (item.productKind === "variant") {
+                          setSelectedRelatedProduct(item)
+                        } else {
+                          if ((cartQtyBySlug[item.slug] ?? 0) === 0) {
+                            const defaultVariant = item.variants.find((v) => v.isDefault) ?? item.variants[0]
+                            setCartItemQuantity({
+                              productId: item.id,
+                              variantId: defaultVariant?.id ?? null,
+                              slug: item.slug,
+                              name: item.name,
+                              price: item.price,
+                              comparePrice: item.oldPrice,
+                              image: item.image,
+                              weight: item.weight,
+                              sku: item.sku,
+                              stock: item.stock,
+                            }, 1)
+                          }
+                          router.push("/checkout")
+                        }
+                      }}
+                      className="rounded-lg bg-primary cursor-pointer tracking-wide px-3 py-1.5 text-[12px] font-light text-white hover:bg-[#2d1011]"
+                    >
                       Buy Now
-                    </Link>
+                    </button>
                   </div>
 
                   {/* <p className="mt-2 text-sm font-medium text-[#FFF5C5]">Rs. {product.price.toFixed(2)}</p> */}
@@ -756,6 +850,84 @@ export default function ProductPage() {
           </div>
         </div>
       </div>
+
+      {/* VARIANT SELECTION MODAL FOR RELATED PRODUCTS */}
+      <ModalAnimation open={Boolean(selectedRelatedProduct)} className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
+        {selectedRelatedProduct ? (
+          <div onClick={() => setSelectedRelatedProduct(null)} className="fixed inset-0 flex items-center justify-center p-4">
+            <div className="w-full max-w-md overflow-hidden rounded-3xl bg-white shadow-2xl" onClick={(e) => e.stopPropagation()}>
+              <div className="flex items-center justify-between bg-primary p-5 text-white">
+                <h3 className="font-melon text-lg font-bold uppercase tracking-wider">Select Options</h3>
+                <button onClick={() => setSelectedRelatedProduct(null)} className="rounded-full cursor-pointer bg-white/20 p-1 hover:bg-white/30 transition-colors">
+                  <X size={20} />
+                </button>
+              </div>
+
+              <div className="p-6">
+                <div className="mb-4 flex gap-4">
+                  <div className="relative h-20 w-20 shrink-0 rounded-xl bg-gray-100 p-2">
+                    <Image src={selectedRelatedProduct.image} alt={selectedRelatedProduct.name} fill className="object-contain" />
+                  </div>
+                  <div>
+                    <h4 className="font-melon text-base font-medium text-[#4A1D1F]">{selectedRelatedProduct.name}</h4>
+                    <p className="text-xs text-gray-500 line-clamp-2">{selectedRelatedProduct.description}</p>
+                  </div>
+                </div>
+
+                <div className="space-y-3 max-h-[40vh] overflow-y-auto pr-1">
+                  {selectedRelatedProduct.variants.map((v: any) => {
+                    const vId = v.id ? String(v.id) : (v.sku || v.weight || v.name);
+                    const qty = getCartQuantity(String(selectedRelatedProduct.id), vId)
+                    return (
+                      <div key={vId} className="flex items-center justify-between rounded-2xl border border-gray-100 bg-gray-50/50 p-4 transition-all hover:border-orange-200">
+                        <div>
+                          <p className="font-melon text-sm font-medium text-[#4A1D1F]">{v.weight || v.name}</p>
+                          <p className="text-sm font-medium text-orange-500">Rs. {v.price.toFixed(2)}</p>
+                        </div>
+
+                        <div className="flex items-center gap-3">
+                          {qty > 0 ? (
+                            <div className="flex items-center rounded-lg border border-orange-200 bg-white px-2 py-1 shadow-sm">
+                              <button onClick={(e) => { e.stopPropagation(); updateVariantQty(selectedRelatedProduct, v, qty - 1); }} className="h-6 w-6 font-bold text-primary hover:scale-110 cursor-pointer transition-transform">-</button>
+                              <span className="min-w-6 text-center text-xs font-bold text-gray-700">{qty}</span>
+                              <button onClick={(e) => { e.stopPropagation(); updateVariantQty(selectedRelatedProduct, v, qty + 1); }} className="h-6 w-6 font-bold text-primary hover:scale-110 cursor-pointer transition-transform">+</button>
+                            </div>
+                          ) : (
+                            <button
+                              onClick={(e) => { e.stopPropagation(); updateVariantQty(selectedRelatedProduct, v, 1); }}
+                              className="rounded-full cursor-pointer bg-primary px-5 py-1.5 text-[11px] font-bold text-white shadow-md hover:bg-[#3a1517] transition-all"
+                            >
+                              ADD
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+
+              <div className="border-t border-gray-100 p-5 flex items-center justify-between gap-3 bg-gray-50/50">
+                <button
+                  onClick={() => setSelectedRelatedProduct(null)}
+                  className="flex-1 rounded-full border-2 cursor-pointer border-primary py-2.5 text-[11px] font-bold uppercase tracking-widest text-primary hover:bg-primary/10 transition-colors"
+                >
+                  Continue Shopping
+                </button>
+                <button
+                  onClick={() => {
+                    setSelectedRelatedProduct(null);
+                    router.push("/cart");
+                  }}
+                  className="flex-1 rounded-full bg-primary cursor-pointer border-2 border-primary py-2.5 text-[11px] font-bold uppercase tracking-widest text-white hover:bg-[#3a1517] transition-colors"
+                >
+                  Go to Cart
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : null}
+      </ModalAnimation>
     </section>
   )
 }

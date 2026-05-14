@@ -32,7 +32,7 @@ export const shouldRetryWithTimestamps = (message: string) => {
 
 export const shouldRetryWithId = (message: string) => {
   const m = message.toLowerCase()
-  return m.includes("violates not-null constraint") && m.includes('"id"')
+  return m.includes("violates not-null constraint") && (m.includes('"id"') || m.includes("column id") || m.includes("column \"id\""))
 }
 
 const markNoIdColumn = (table: string, message: string) => {

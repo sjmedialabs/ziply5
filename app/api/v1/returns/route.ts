@@ -5,25 +5,43 @@ import { requirePermission } from "@/src/server/middleware/rbac"
 import {
   createReturnRequest,
   listReturnRequests,
+  type CreateReturnRequestMeta,
 } from "@/src/server/modules/extended/extended.service"
 import { pgQuery } from "@/src/server/db/pg"
 import { z } from "zod"
 
+const bankDetailsSchema = z
+  .object({
+    accountName: z.string().optional(),
+    accountNumber: z.string().optional(),
+    ifsc: z.string().optional(),
+    bankName: z.string().optional(),
+  })
+  .optional()
+
 const createSchema = z.object({
   orderId: z.string().min(1),
   reason: z.string().optional(),
-  description: z.string().max(1000).optional(),
-  items: z.array(
-    z.object({
-      orderItemId: z.string(),
-      productId: z.string(),
-      quantity: z.number().min(1),
-      reasonCode: z.string().optional(),
-      notes: z.string().optional(),
-      imageUrl: z.string().optional()
-    })
-  ).min(1).optional(),
-  status: z.string().optional()
+  description: z.string().max(2000).optional(),
+  videoUrl: z.string().max(500).optional(),
+  returnType: z.enum(["refund", "exchange"]).default("refund"),
+  refundMethod: z.enum(["upi", "bank"]).optional(),
+  upiId: z.string().max(100).optional(),
+  bankDetails: bankDetailsSchema,
+  headerImages: z.array(z.string().url()).max(8).optional(),
+  items: z
+    .array(
+      z.object({
+        orderItemId: z.string(),
+        productId: z.string(),
+        quantity: z.number().min(1),
+        reasonCode: z.string().optional(),
+        notes: z.string().optional(),
+        imageUrl: z.string().optional(),
+      }),
+    )
+    .min(1),
+  status: z.string().optional(),
 })
 
 export async function GET(request: NextRequest) {
@@ -62,17 +80,26 @@ export async function POST(request: NextRequest) {
   try {
     const reason = [parsed.data.reason?.trim(), parsed.data.description?.trim()].filter(Boolean).join(" - ")
 
-    // Format items to append imageUrl to notes
-    const formattedItems = parsed.data.items?.map(item => ({
+    const formattedItems = parsed.data.items.map((item) => ({
       orderItemId: item.orderItemId,
       productId: item.productId,
       requestedQty: item.quantity,
       reasonCode: item.reasonCode,
       imageUrl: item.imageUrl,
-      notes: [item.notes?.trim(), item.imageUrl ? `Image: ${item.imageUrl}` : ""].filter(Boolean).join(" | ")
+      notes: [item.notes?.trim(), item.imageUrl ? `Image: ${item.imageUrl}` : ""].filter(Boolean).join(" | "),
     }))
 
-    const row = await createReturnRequest(parsed.data.orderId, order.userId, reason || undefined, formattedItems)
+    const meta: CreateReturnRequestMeta = {
+      description: parsed.data.description?.trim() || null,
+      videoUrl: parsed.data.videoUrl?.trim() || null,
+      returnType: parsed.data.returnType,
+      refundMethod: parsed.data.refundMethod ?? null,
+      upiId: parsed.data.upiId?.trim() || null,
+      bankDetails: parsed.data.bankDetails ?? null,
+      headerImages: parsed.data.headerImages ?? null,
+    }
+
+    const row = await createReturnRequest(parsed.data.orderId, order.userId, reason || undefined, formattedItems, meta)
     return ok(row, "Return requested", 201)
   } catch (e) {
     return fail(e instanceof Error ? e.message : "Error", 400)
