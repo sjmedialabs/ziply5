@@ -65,6 +65,8 @@ export function useStorefrontProducts(limit = 200) {
       const mappedBundles = (Array.isArray(bundles) ? bundles : []).map((b: any) => {
         const effectivePrice = Number(b?.effectivePrice ?? b?.comboPrice ?? 0)
         const image = String(b?.image ?? FALLBACK_PRODUCT_IMAGE)
+        const maxPurchasableQty = Number(b?.maxPurchasableQty ?? 0)
+        const isAvailable = Boolean(b?.isAvailable) && maxPurchasableQty > 0
         return {
           id: String(b.id),
           name: String(b.name),
@@ -73,8 +75,8 @@ export function useStorefrontProducts(limit = 200) {
           productKind: "simple",
           price: effectivePrice,
           oldPrice: Number(b?.dynamicPrice ?? effectivePrice),
-          stockStatus: "in_stock",
-          stock: 9999,
+          stockStatus: isAvailable ? "in_stock" : "out_of_stock",
+          stock: isAvailable ? maxPurchasableQty : 0,
           description: String(b?.description ?? "Combo bundle"),
           image,
           gallery: [image],
@@ -100,6 +102,9 @@ export function useStorefrontProducts(limit = 200) {
           bundleProducts: b?.products ?? [],
           bundleSavings: Number(b?.savings ?? 0),
           comboSlug: String(b.slug),
+          maxPurchasableQty,
+          isAvailable,
+          unavailableReason: b?.unavailableReason ?? null,
         } as StorefrontProduct
       })
       return [...mappedBundles, ...base]

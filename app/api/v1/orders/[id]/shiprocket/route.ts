@@ -106,7 +106,8 @@ export async function POST(request: NextRequest, ctx: { params: Promise<{ id: st
           (data as { awb?: { parsedAwb?: { courierName?: string | null } } }).awb?.parsedAwb?.courierName ?? null,
         trackingUrl:
           (data as { awb?: { parsedAwb?: { trackingUrl?: string | null } } }).awb?.parsedAwb?.trackingUrl ?? null,
-        estimatedDeliveryDate: null,
+        estimatedDeliveryDate:
+          (data as { awb?: { parsedAwb?: { estimatedDeliveryDate?: string | null } } }).awb?.parsedAwb?.estimatedDeliveryDate ?? null,
         shippingStatus:
           (data as { awb?: { shipmentUpdated?: boolean } }).awb?.shipmentUpdated === true ? "AWB_ASSIGNED" : "PROCESSING",
         raw: data,

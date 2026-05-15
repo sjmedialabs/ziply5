@@ -15,6 +15,8 @@ export const createOrderSchema = z.object({
 
   shipping: z.number().nonnegative().optional(), // backward compatibility
   shippingCharge: z.number().nonnegative().optional(),
+  /** Sum of checkout line quantities; must match server recomputation for anti-tamper. */
+  totalItemsUsedForShipping: z.number().int().min(0).max(5000).optional(),
   currency: z.string().min(1).optional(),
   couponCode: z.string().optional(),
   couponId: z.string().nullable().optional(),
@@ -42,6 +44,7 @@ export const createOrderSchema = z.object({
   paymentStatus: z.enum(["pending", "paid", "failed"]).optional(),
   paymentId: z.string().optional(),
   appliedCouponId: z.string().nullable().optional(),
+  sessionKey: z.string().optional(),
 })
 
 export const updateOrderStatusSchema = z.object({

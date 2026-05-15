@@ -1,15 +1,30 @@
 import nodemailer from "nodemailer";
 import { env } from "@/src/server/core/config/env";
 
-const transporter = nodemailer.createTransport({
-  host: env.SMTP_HOST,
-  port: Number(env.SMTP_PORT || "587"),
-  secure: env.SMTP_PORT === "465",
-  auth: {
-    user: env.SMTP_USER,
-    pass: env.SMTP_PASS,
-  },
-});
+let transporter: nodemailer.Transporter | null = null;
+
+function getTransporter() {
+  if (!transporter && env.SMTP_HOST) {
+    const host = env.SMTP_HOST;
+    const port = Number(env.SMTP_PORT || "587");
+    console.log(`[Mail Service] Initializing transporter for ${host}:${port} (user: ${env.SMTP_USER})`);
+    transporter = nodemailer.createTransport({
+      host,
+      port,
+      secure: port === 465,
+      auth: {
+        user: env.SMTP_USER,
+        pass: env.SMTP_PASS,
+      },
+    });
+  }
+  return transporter;
+}
+
+const cleanEmail = (email: string) => {
+  if (!email) return email;
+  return email.replace(/^["']|["']$/g, "").trim();
+};
 
 export const mailService = {
   async send({
@@ -29,13 +44,21 @@ export const mailService = {
     }
 
     try {
-      const info = await transporter.sendMail({
-        from: env.SMTP_FROM || env.SMTP_USER,
-        to,
+      const tx = getTransporter();
+      if (!tx) {
+        console.warn("[Mail Service] Transporter not available. Mail skipped.");
+        return;
+      }
+      const from = cleanEmail(env.SMTP_FROM || env.SMTP_USER || "");
+      console.log(`[Mail Service] Attempting to send email from: ${from} to: ${to}`);
+      const info = await tx.sendMail({
+        from,
+        to: cleanEmail(to),
         subject,
         text,
         html,
       });
+      console.log(`[Mail Service] Email sent successfully to ${to}: ${info.messageId}`);
       return info;
     } catch (error) {
       console.error("[Mail Service] Failed to send email:", error);

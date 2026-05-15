@@ -14,24 +14,75 @@ import { useStorefrontProducts } from "@/hooks/useStorefrontProducts"
 import { useRealtimeTables } from "@/hooks/useRealtimeTables"
 import { clearSession } from "@/lib/auth-session"
 import { toast } from "@/lib/toast"
+import {
+  deriveLatestLifecycleToStatus,
+  orderHistoryHasCancelRequested,
+  shouldRenderCustomerCancelOrderButton,
+} from "@/src/lib/orders/order-cancel-policy"
+import { getReturnIneligibilityReason } from "@/src/lib/returns/return-eligibility"
+
+const CUSTOMER_RETURN_WINDOW_DAYS = 7
 
 type ApiOrderRow = {
   id: string
   status: string
   paymentStatus?: string | null
+  paymentMethod?: string | null
   customerName?: string | null
   customerPhone?: string | null
   customerAddress?: string | null
   refunds?: Array<{ status: string }>
   total: string | number
   createdAt: string
+  deliveredAt?: string | null
   items: Array<{ id: string; productId: string; quantity: number; product: { name: string } }>
   transactions?: Array<{ status: string }>
   returnRequests?: Array<{ id: string; status: string; productId?: string | null }>
   shipmentStatus?: string | null
+  shippingStatus?: string | null
+  shipmentDeliveredAt?: string | Date | null
+  statusHistory?: Array<{ toStatus: string; changedAt?: string | null }>
   courierName?: string | null
   awbCode?: string | null
   trackingNumber?: string | null
+}
+
+const isNonTerminalReturnStatus = (status: string | undefined | null) =>
+  !["rejected", "cancelled", "completed", "refunded"].includes(String(status ?? "").toLowerCase())
+
+const getReturnedProductIds = (order: ApiOrderRow) =>
+  new Set(
+    (order.returnRequests ?? [])
+      .filter((req) => isNonTerminalReturnStatus(req.status))
+      .map((req) => String(req.productId ?? "").trim())
+      .filter(Boolean),
+  )
+
+const profileHasActiveOpenReturn = (order: ApiOrderRow) =>
+  Boolean(order.returnRequests?.some((req) => isNonTerminalReturnStatus(req.status)))
+
+const profileReturnEligibilityReason = (order: ApiOrderRow): string | null => {
+  if (profileHasActiveOpenReturn(order)) return "active_return"
+  const returnedIds = getReturnedProductIds(order)
+  const hasReturnableItems = order.items.some((item) => !returnedIds.has(String(item.productId ?? "").trim()))
+  if (!hasReturnableItems) return "no_items"
+  const deliveredAt = order.deliveredAt
+    ? new Date(order.deliveredAt)
+    : order.shipmentDeliveredAt
+      ? new Date(order.shipmentDeliveredAt as string | Date)
+      : (() => {
+          const hit = order.statusHistory?.find((h) => h.toStatus.toLowerCase() === "delivered")
+          return hit?.changedAt ? new Date(hit.changedAt) : null
+        })()
+  const latestLifecycle = deriveLatestLifecycleToStatus(order.statusHistory ?? [], order.status)
+  return (
+    getReturnIneligibilityReason({
+      orderStatus: order.status.toLowerCase(),
+      latestLifecycle,
+      deliveredAt,
+      returnWindowDays: CUSTOMER_RETURN_WINDOW_DAYS,
+    }) ?? null
+  )
 }
 
 function ProfilePageContent() {
@@ -65,13 +116,19 @@ function ProfilePageContent() {
     quantity: number;
     uploading: boolean;
   }>>({})
-  const getReturnedProductIds = (order: ApiOrderRow) =>
-    new Set(
-      (order.returnRequests ?? [])
-        .filter((req) => String(req.status ?? "").toLowerCase() !== "rejected")
-        .map((req) => String(req.productId ?? "").trim())
-        .filter(Boolean),
-    )
+  const [returnMeta, setReturnMeta] = useState({
+    returnType: "refund" as "refund" | "exchange",
+    description: "",
+    videoUrl: "",
+    refundMethod: "" as "" | "upi" | "bank",
+    upiId: "",
+    bankAccountName: "",
+    bankAccountNumber: "",
+    bankIfsc: "",
+    bankName: "",
+  })
+  const [isCancelModalOpen, setIsCancelModalOpen] = useState(false)
+  const [selectedOrderForCancel, setSelectedOrderForCancel] = useState<{ id: string, status: string } | null>(null)
 
   useEffect(() => {
     const fetchReasons = async () => {
@@ -114,6 +171,17 @@ function ProfilePageContent() {
       }
     })
     setSelectedItemsForReturn(initialItems)
+    setReturnMeta({
+      returnType: "refund",
+      description: "",
+      videoUrl: "",
+      refundMethod: "",
+      upiId: "",
+      bankAccountName: "",
+      bankAccountNumber: "",
+      bankIfsc: "",
+      bankName: "",
+    })
     setIsReturnModalOpen(true)
   }
 
@@ -149,6 +217,33 @@ function ProfilePageContent() {
 
   const submitReturnRequest = async () => {
     if (!selectedOrderForReturn) return
+
+    const block = profileReturnEligibilityReason(selectedOrderForReturn)
+    if (block === "active_return") {
+      toast.error("Not eligible", "This order already has an active return request.")
+      return
+    }
+    if (block === "no_items") {
+      toast.error("Not eligible", "There are no additional items available to return on this order.")
+      return
+    }
+    if (block === "not_delivered") {
+      toast.error("Not eligible", "Returns are only available for delivered orders.")
+      return
+    }
+    if (block === "missing_delivered_at") {
+      toast.error("Not eligible", "Delivery date is not available yet.")
+      return
+    }
+    if (block === "return_window_expired") {
+      toast.error("Not eligible", `Return window is ${CUSTOMER_RETURN_WINDOW_DAYS} days after delivery.`)
+      return
+    }
+    if (block) {
+      toast.error("Not eligible", "Returns are not available for this order.")
+      return
+    }
+
     const returnedProductIds = getReturnedProductIds(selectedOrderForReturn)
     const itemsToReturn = Object.entries(selectedItemsForReturn)
       .filter(([_, data]) => data.selected && !returnedProductIds.has(String(data.productId ?? "").trim()))
@@ -173,10 +268,29 @@ function ProfilePageContent() {
       }
     }
 
+    if (returnMeta.returnType === "refund" && String(selectedOrderForReturn.paymentMethod ?? "").toLowerCase() === "cod") {
+      const hasUpi = Boolean(returnMeta.upiId.trim())
+      const hasBank = Boolean(returnMeta.bankAccountNumber.trim() && returnMeta.bankIfsc.trim())
+      if (!hasUpi && !hasBank) {
+        toast.error("Validation Error", "For COD refunds, enter a UPI ID or complete bank details.")
+        return
+      }
+    }
+
     const token = window.localStorage.getItem("ziply5_access_token")
     if (!token) return
     setOrderActionBusy(`${selectedOrderForReturn.id}:return_request`)
     try {
+      const bankDetails =
+        returnMeta.refundMethod === "bank" && returnMeta.bankAccountNumber.trim()
+          ? {
+              accountName: returnMeta.bankAccountName.trim() || undefined,
+              accountNumber: returnMeta.bankAccountNumber.trim(),
+              ifsc: returnMeta.bankIfsc.trim(),
+              bankName: returnMeta.bankName.trim() || undefined,
+            }
+          : undefined
+
       const res = await fetch(`/api/v1/returns`, {
         method: "POST",
         headers: {
@@ -185,7 +299,14 @@ function ProfilePageContent() {
         },
         body: JSON.stringify({
           orderId: selectedOrderForReturn.id,
-          items: itemsToReturn
+          items: itemsToReturn,
+          description: returnMeta.description.trim() || undefined,
+          videoUrl: returnMeta.videoUrl.trim() || undefined,
+          returnType: returnMeta.returnType,
+          refundMethod: returnMeta.refundMethod || undefined,
+          upiId: returnMeta.upiId.trim() || undefined,
+          bankDetails,
+          headerImages: itemsToReturn.map((i) => i.imageUrl).filter(Boolean),
         }),
       })
       const payload = await res.json()
@@ -381,10 +502,10 @@ function ProfilePageContent() {
 
   const runOrderAction = async (orderId: string, action: "cancel_request" | "return_request" | "cancel_pending") => {
     const token = window.localStorage.getItem("ziply5_access_token")
-    if (!token) return
+    if (!token) return false
     setOrderActionBusy(`${orderId}:${action}`)
     try {
-      await fetch(`/api/v1/orders/${orderId}/actions`, {
+      const res = await fetch(`/api/v1/orders/${orderId}/actions`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -392,6 +513,15 @@ function ProfilePageContent() {
         },
         body: JSON.stringify({ action }),
       })
+      const payload = (await res.json()) as { success?: boolean; message?: string }
+      if (!res.ok || payload.success === false) {
+        toast.error("Action failed", payload.message ?? "Request failed")
+        return false
+      }
+      if (action === "cancel_request" || action === "cancel_pending") {
+        toast.success("Order cancelled", "Your order has been cancelled.")
+      }
+      return true
     } finally {
       setOrderActionBusy(null)
       void queryClient.invalidateQueries({ queryKey: ["profile-orders"] })
@@ -893,6 +1023,15 @@ function ProfilePageContent() {
                       const shippingStatus = (order.shipmentStatus ?? "pending").toLowerCase()
                       const previewItems = order.items.slice(0, 2)
                       const moreItems = Math.max(order.items.length - 2, 0)
+                      const latestLifecycle = deriveLatestLifecycleToStatus(order.statusHistory, order.status)
+                      const cancelRequested = orderHistoryHasCancelRequested(order.statusHistory)
+                      const showCancel = shouldRenderCustomerCancelOrderButton({
+                        latestLifecycle,
+                        shipmentStatus: order.shipmentStatus ?? null,
+                        shippingStatus: order.shippingStatus ?? null,
+                        orderStatusLower: order.status.toLowerCase(),
+                        cancelRequested,
+                      })
                       return (<div
                         key={order.id}
                         className="rounded-2xl border border-[#E8DCC8] bg-white p-4 shadow-sm"
@@ -932,11 +1071,14 @@ function ProfilePageContent() {
                         </div>
 
                         <div className="mt-3 flex flex-wrap items-center gap-2">
-                          {["pending", "confirmed", "packed", "admin_approval_pending"].includes(order.status.toLowerCase()) && (
+                          {showCancel && (
                             <button
                               type="button"
                               disabled={orderActionBusy === `${order.id}:cancel_request` || orderActionBusy === `${order.id}:cancel_pending`}
-                              onClick={() => void runOrderAction(order.id, order.status.toLowerCase() === "pending" ? "cancel_pending" : "cancel_request")}
+                              onClick={() => {
+                                setSelectedOrderForCancel({ id: order.id, status: order.status })
+                                setIsCancelModalOpen(true)
+                              }}
                               className="rounded-md border border-[#E8DCC8] bg-white px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-[#4A1D1F] disabled:opacity-40"
                             >
                               Cancel Order
@@ -960,7 +1102,14 @@ function ProfilePageContent() {
                               type="button"
                               disabled={
                                 orderActionBusy === `${order.id}:return_request` ||
-                                !order.items.some((item) => !getReturnedProductIds(order).has(String(item.productId ?? "").trim()))
+                                Boolean(profileReturnEligibilityReason(order))
+                              }
+                              title={
+                                profileReturnEligibilityReason(order) === "active_return"
+                                  ? "An open return already exists for this order."
+                                  : profileReturnEligibilityReason(order) === "return_window_expired"
+                                    ? `Returns must be within ${CUSTOMER_RETURN_WINDOW_DAYS} days of delivery.`
+                                    : undefined
                               }
                               onClick={() => openReturnModal(order)}
                               className="rounded-md border border-[#E8DCC8] bg-white px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-[#4A1D1F] disabled:opacity-40"
@@ -1014,6 +1163,102 @@ function ProfilePageContent() {
 
                     <div className="p-6 space-y-6">
                       <p className="text-sm text-gray-600">Select the items you wish to return and provide a reason and photo for each.</p>
+
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <div>
+                          <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Return type</label>
+                          <select
+                            value={returnMeta.returnType}
+                            onChange={(e) =>
+                              setReturnMeta((m) => ({ ...m, returnType: e.target.value as "refund" | "exchange" }))
+                            }
+                            className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm"
+                          >
+                            <option value="refund">Refund</option>
+                            <option value="exchange">Exchange</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Video URL (optional)</label>
+                          <input
+                            value={returnMeta.videoUrl}
+                            onChange={(e) => setReturnMeta((m) => ({ ...m, videoUrl: e.target.value }))}
+                            className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm"
+                            placeholder="https://…"
+                          />
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Overall description</label>
+                        <textarea
+                          rows={2}
+                          value={returnMeta.description}
+                          onChange={(e) => setReturnMeta((m) => ({ ...m, description: e.target.value }))}
+                          className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm resize-none"
+                          placeholder="Describe the issue across items…"
+                        />
+                      </div>
+
+                      {returnMeta.returnType === "refund" && String(selectedOrderForReturn.paymentMethod ?? "").toLowerCase() === "cod" && (
+                        <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 space-y-3">
+                          <p className="text-xs font-semibold text-amber-900 uppercase">COD refund details</p>
+                          <div className="grid gap-2 sm:grid-cols-2">
+                            <div>
+                              <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Refund via</label>
+                              <select
+                                value={returnMeta.refundMethod}
+                                onChange={(e) =>
+                                  setReturnMeta((m) => ({ ...m, refundMethod: e.target.value as "" | "upi" | "bank" }))
+                                }
+                                className="w-full rounded-lg border border-gray-200 px-2 py-2 text-sm"
+                              >
+                                <option value="">Select</option>
+                                <option value="upi">UPI</option>
+                                <option value="bank">Bank transfer</option>
+                              </select>
+                            </div>
+                            {returnMeta.refundMethod === "upi" && (
+                              <div>
+                                <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">UPI ID</label>
+                                <input
+                                  value={returnMeta.upiId}
+                                  onChange={(e) => setReturnMeta((m) => ({ ...m, upiId: e.target.value }))}
+                                  className="w-full rounded-lg border border-gray-200 px-2 py-2 text-sm"
+                                />
+                              </div>
+                            )}
+                          </div>
+                          {returnMeta.refundMethod === "bank" && (
+                            <div className="grid gap-2 sm:grid-cols-2">
+                              <input
+                                placeholder="Account holder"
+                                value={returnMeta.bankAccountName}
+                                onChange={(e) => setReturnMeta((m) => ({ ...m, bankAccountName: e.target.value }))}
+                                className="rounded-lg border border-gray-200 px-2 py-2 text-sm"
+                              />
+                              <input
+                                placeholder="Account number"
+                                value={returnMeta.bankAccountNumber}
+                                onChange={(e) => setReturnMeta((m) => ({ ...m, bankAccountNumber: e.target.value }))}
+                                className="rounded-lg border border-gray-200 px-2 py-2 text-sm"
+                              />
+                              <input
+                                placeholder="IFSC"
+                                value={returnMeta.bankIfsc}
+                                onChange={(e) => setReturnMeta((m) => ({ ...m, bankIfsc: e.target.value }))}
+                                className="rounded-lg border border-gray-200 px-2 py-2 text-sm"
+                              />
+                              <input
+                                placeholder="Bank name"
+                                value={returnMeta.bankName}
+                                onChange={(e) => setReturnMeta((m) => ({ ...m, bankName: e.target.value }))}
+                                className="rounded-lg border border-gray-200 px-2 py-2 text-sm"
+                              />
+                            </div>
+                          )}
+                        </div>
+                      )}
 
                       <div className="space-y-4">
                         {selectedOrderForReturn.items.map((item) => {
@@ -1119,6 +1364,54 @@ function ProfilePageContent() {
                           className="flex-1 rounded-xl bg-primary py-3 text-xs font-bold uppercase tracking-widest text-white shadow-md hover:opacity-90 disabled:opacity-50 transition-all"
                         >
                           {orderActionBusy === `${selectedOrderForReturn.id}:return_request` ? "Submitting..." : "Submit Return Request"}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* CANCEL CONFIRMATION MODAL */}
+              {isCancelModalOpen && selectedOrderForCancel && (
+                <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm" onClick={() => setIsCancelModalOpen(false)}>
+                  <div className="w-full max-w-md rounded-3xl bg-white shadow-2xl overflow-hidden" onClick={(e) => e.stopPropagation()}>
+                    <div className="bg-primary p-5 text-white flex items-center justify-between">
+                      <h3 className="font-melon text-lg font-bold uppercase tracking-wider">Confirm Cancellation</h3>
+                      <button onClick={() => setIsCancelModalOpen(false)} className="rounded-full bg-white/20 p-1 hover:bg-white/30 transition-colors">
+                        <X size={20} />
+                      </button>
+                    </div>
+                    <div className="p-6 text-center">
+                      <p className="text-gray-600 mb-6">Are you sure you want to cancel order #{selectedOrderForCancel.id.slice(0, 8)}? This action cannot be undone.</p>
+                      <div className="flex gap-3">
+                        <button
+                          type="button"
+                          onClick={() => setIsCancelModalOpen(false)}
+                          className="flex-1 rounded-xl border border-gray-200 py-3 text-xs font-bold uppercase tracking-widest text-gray-600 hover:bg-gray-50 transition-all"
+                        >
+                          Go Back
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            void (async () => {
+                              const ok = await runOrderAction(
+                                selectedOrderForCancel.id,
+                                selectedOrderForCancel.status.toLowerCase() === "pending" ? "cancel_pending" : "cancel_request",
+                              )
+                              if (ok) setIsCancelModalOpen(false)
+                            })()
+                          }}
+                          disabled={
+                            orderActionBusy === `${selectedOrderForCancel.id}:cancel_request` ||
+                            orderActionBusy === `${selectedOrderForCancel.id}:cancel_pending`
+                          }
+                          className="flex-1 rounded-xl bg-red-600 py-3 text-xs font-bold uppercase tracking-widest text-white shadow-md hover:bg-red-700 transition-all disabled:opacity-50"
+                        >
+                          {orderActionBusy === `${selectedOrderForCancel.id}:cancel_request` ||
+                          orderActionBusy === `${selectedOrderForCancel.id}:cancel_pending`
+                            ? "Processing…"
+                            : "Confirm"}
                         </button>
                       </div>
                     </div>

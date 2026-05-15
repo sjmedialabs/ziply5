@@ -57,6 +57,8 @@ export async function POST(request: NextRequest) {
       billingAddress: parsed.data.billingAddress,
       paymentStatus: parsed.data.paymentStatus,
       paymentId: parsed.data.paymentId,
+      sessionKey: parsed.data.sessionKey ?? null,
+      totalItemsUsedForShipping: parsed.data.totalItemsUsedForShipping ?? null,
     })
 
     return ok(order, "Order created", 201)

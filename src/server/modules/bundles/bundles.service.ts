@@ -11,6 +11,12 @@ type BundleProductLite = {
   thumbnail: string | null
 }
 
+type BundleAvailability = {
+  isAvailable: boolean
+  maxPurchasableQty: number
+  unavailableReason: string | null
+}
+
 type BundleRow = {
   id: string
   name: string
@@ -86,10 +92,82 @@ async function hydrateBundles(baseRows: BundleRow[]) {
     byBundle.set(p.bundleId, arr)
   }
 
+  const availabilityRows = ids.length
+    ? await pgQuery<{
+        bundleId: string
+        productId: string
+        productStatus: string
+        productIsActive: boolean | null
+        variantId: string | null
+        variantStock: number | null
+      }>(
+        `
+          SELECT
+            bp."bundleId" as "bundleId",
+            bp."productId" as "productId",
+            p.status as "productStatus",
+            p."isActive" as "productIsActive",
+            pv.id as "variantId",
+            pv.stock as "variantStock"
+          FROM "BundleProduct" bp
+          LEFT JOIN "Product" p ON p.id = bp."productId"
+          LEFT JOIN "ProductVariant" pv ON pv."productId" = p.id
+          WHERE bp."bundleId" = ANY($1::text[])
+        `,
+        [ids],
+      )
+    : []
+  const availabilityByBundle = new Map<string, BundleAvailability>()
+  for (const bundleId of ids) {
+    const rows = availabilityRows.filter((row) => row.bundleId === bundleId)
+    const grouped = new Map<string, typeof rows>()
+    for (const row of rows) {
+      const key = String(row.productId ?? "").trim()
+      if (!key) continue
+      const list = grouped.get(key) ?? []
+      list.push(row)
+      grouped.set(key, list)
+    }
+    const productIds = [...grouped.keys()]
+    if (productIds.length < 1 || productIds.length > MAX_BUNDLE_PRODUCTS) {
+      availabilityByBundle.set(bundleId, { isAvailable: false, maxPurchasableQty: 0, unavailableReason: "invalid_combo_children" })
+      continue
+    }
+    const stockCaps: number[] = []
+    let blockedReason: string | null = null
+    for (const productId of productIds) {
+      const productRows = grouped.get(productId) ?? []
+      const first = productRows[0]
+      if (!first) {
+        blockedReason = "product_not_found"
+        break
+      }
+      if (String(first.productStatus ?? "").toLowerCase() !== "published" || first.productIsActive === false) {
+        blockedReason = "product_inactive"
+        break
+      }
+      const validVariant = productRows
+        .filter((row) => Boolean(row.variantId) && Number(row.variantStock ?? 0) > 0)
+        .sort((a, b) => Number(b.variantStock ?? 0) - Number(a.variantStock ?? 0))[0]
+      if (!validVariant) {
+        blockedReason = "variant_unavailable"
+        break
+      }
+      stockCaps.push(Math.floor(Number(validVariant.variantStock ?? 0)))
+    }
+    const maxPurchasableQty = blockedReason ? 0 : Math.min(...stockCaps)
+    availabilityByBundle.set(bundleId, {
+      isAvailable: !blockedReason && Number.isFinite(maxPurchasableQty) && maxPurchasableQty > 0,
+      maxPurchasableQty: !blockedReason && Number.isFinite(maxPurchasableQty) ? maxPurchasableQty : 0,
+      unavailableReason: blockedReason,
+    })
+  }
+
   return baseRows.map((b) => {
     const bundleProducts = byBundle.get(b.id) ?? []
     const dynamicPrice = computeDynamicPrice(bundleProducts)
     const effectivePrice = b.pricingMode === "fixed" ? Number(b.comboPrice ?? dynamicPrice) : dynamicPrice
+    const availability = availabilityByBundle.get(b.id) ?? { isAvailable: false, maxPurchasableQty: 0, unavailableReason: "unavailable" }
     return {
       ...b,
       products: bundleProducts,
@@ -97,6 +175,9 @@ async function hydrateBundles(baseRows: BundleRow[]) {
       dynamicPrice,
       effectivePrice,
       savings: computeSavings(bundleProducts, effectivePrice),
+      isAvailable: availability.isAvailable,
+      maxPurchasableQty: availability.maxPurchasableQty,
+      unavailableReason: availability.unavailableReason,
     }
   })
 }

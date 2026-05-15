@@ -5,6 +5,7 @@ import Image from "next/image"
 import Link from "next/link"
 import { addToCart, getCartItems, setCartItemQuantity } from "@/lib/cart"
 import { FALLBACK_PRODUCT_IMAGE } from "@/lib/storefront-products"
+import { toast } from "@/lib/toast"
 
 type BundleProduct = { productId: string; name: string; slug: string; price: number; thumbnail?: string | null }
 type BundleDetail = {
@@ -19,6 +20,9 @@ type BundleDetail = {
   dynamicPrice: number
   savings: number
   products: BundleProduct[]
+  isAvailable?: boolean
+  maxPurchasableQty?: number
+  unavailableReason?: string | null
 }
 
 export default function ComboDetailPage({ params }: { params: Promise<{ slug: string }> }) {
@@ -54,6 +58,14 @@ export default function ComboDetailPage({ params }: { params: Promise<{ slug: st
 
   const addCombo = () => {
     if (!bundle) return
+    if (!bundle.isAvailable || Number(bundle.maxPurchasableQty ?? 0) <= 0) {
+      toast.error("Combo product is no longer available.", "One of the combo products is unavailable.")
+      return
+    }
+    if (qty >= Number(bundle.maxPurchasableQty ?? 0)) {
+      toast.error("Product is out of stock.", "You reached the maximum purchasable combo quantity.")
+      return
+    }
     addToCart(
       {
         slug: bundle.slug,
@@ -65,6 +77,7 @@ export default function ComboDetailPage({ params }: { params: Promise<{ slug: st
       },
       1,
     )
+    toast.success("Combo added to cart")
   }
 
   if (loading) return <section className="mx-auto max-w-5xl px-4 py-10 text-sm text-[#646464]">Loading combo...</section>
@@ -94,10 +107,20 @@ export default function ComboDetailPage({ params }: { params: Promise<{ slug: st
             {qty > 0 ? (
               <button
                 onClick={() =>
-                  setCartItemQuantity(
-                    { slug: bundle.slug, name: bundle.name, variantId: null, price: Number(bundle.effectivePrice), image: bundle.image || FALLBACK_PRODUCT_IMAGE, weight: `${bundle.products.length} items` },
-                    qty + 1,
-                  )
+                  {
+                    if (!bundle.isAvailable || Number(bundle.maxPurchasableQty ?? 0) <= 0) {
+                      toast.error("Combo product is no longer available.")
+                      return
+                    }
+                    if (qty + 1 > Number(bundle.maxPurchasableQty ?? 0)) {
+                      toast.error("Product is out of stock.", "Requested quantity is not available for this combo.")
+                      return
+                    }
+                    setCartItemQuantity(
+                      { slug: bundle.slug, name: bundle.name, variantId: null, price: Number(bundle.effectivePrice), image: bundle.image || FALLBACK_PRODUCT_IMAGE, weight: `${bundle.products.length} items` },
+                      qty + 1,
+                    )
+                  }
                 }
                 className="rounded-full border border-[#E8DCC8] px-4 py-2 text-xs font-semibold uppercase tracking-wide"
               >

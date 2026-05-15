@@ -31,6 +31,7 @@ export type SupabaseOrderRecord = {
   total?: number | null
   updatedAt?: string | Date | null
   customerAddress?: string | null
+  customerEmail?: string | null
   items: any[]
   statusHistory: Array<{ toStatus?: string; changedAt?: string | Date | null;[key: string]: unknown }>
   refunds: Array<{ id: string; status?: string; amount?: number }>
@@ -57,6 +58,10 @@ export type SupabaseOrderRecord = {
   isPickupGenerated?: boolean | null
   isLabelGenerated?: boolean | null
   trackingData?: unknown
+  shippingStatusCode?: number | null
+  awbAssignedAt?: string | Date | null
+  labelUrl?: string | null
+  pickupGeneratedAt?: string | Date | null
   appliedCouponId?: string | null
   couponCode?: string | null
   discount?: number | null
@@ -934,34 +939,32 @@ export const appendOrderStatusHistorySupabase = async (input: {
   reasonCode?: string | null
 }) => {
   const client = getSupabaseAdmin()
-  const statusUpdated = await mirrorOrderStatusSupabase(input.orderId, input.toStatus)
-  if (!statusUpdated) return false
   for (const table of ORDER_STATUS_HISTORY_TABLES) {
     const attempts = [
       () =>
         client
           .from(table)
-          .insert({
+          .insert(withId({
             orderId: input.orderId,
             fromStatus: input.fromStatus,
             toStatus: input.toStatus,
             notes: input.notes,
             changedById: input.changedById,
             reasonCode: input.reasonCode ?? null,
-          })
+          }))
           .select("id")
           .single(),
       () =>
         client
           .from(table)
-          .insert({
+          .insert(withId({
             order_id: input.orderId,
             from_status: input.fromStatus,
             to_status: input.toStatus,
             notes: input.notes,
             changed_by_id: input.changedById,
             reason_code: input.reasonCode ?? null,
-          })
+          }))
           .select("id")
           .single(),
     ]
@@ -1456,6 +1459,19 @@ export const getOrderByIdSupabaseBasic = async (orderId: string) => {
           reason: safeString((req as any).reason) || null,
           productId: safeString((req as any).productId ?? (req as any).product_id) || null,
           imageUrl: safeString((req as any).imageUrl ?? (req as any).image_url) || null,
+          description: safeString((req as any).description) || null,
+          videoUrl: safeString((req as any).videoUrl ?? (req as any).video_url) || null,
+          images: (req as any).images ?? (req as any).Images ?? null,
+          returnType: safeString((req as any).returnType ?? (req as any).return_type) || null,
+          refundMethod: safeString((req as any).refundMethod ?? (req as any).refund_method) || null,
+          upiId: safeString((req as any).upiId ?? (req as any).upi_id) || null,
+          bankDetails: (req as any).bankDetails ?? (req as any).bank_details ?? null,
+          adminNote: safeString((req as any).adminNote ?? (req as any).admin_note) || null,
+          rejectionReason: safeString((req as any).rejectionReason ?? (req as any).rejection_reason) || null,
+          reverseAwb: safeString((req as any).reverseAwb ?? (req as any).reverse_awb) || null,
+          reverseCourier: safeString((req as any).reverseCourier ?? (req as any).reverse_courier) || null,
+          reverseTrackingUrl: safeString((req as any).reverseTrackingUrl ?? (req as any).reverse_tracking_url) || null,
+          pickupScheduledAt: (req as any).pickupScheduledAt ?? (req as any).pickup_scheduled_at ?? null,
           createdAt: (req as any).createdAt ?? (req as any).created_at ?? null,
           items,
         }
@@ -1472,6 +1488,10 @@ export const getOrderByIdSupabaseBasic = async (orderId: string) => {
         discount: Number(row.discount ?? 0),
         tax: Number(row.tax ?? 0),
         shippingCharge: Number(row.shippingCharge ?? row.shipping_charge ?? row.shipping ?? 0),
+        totalItemsUsedForShipping:
+          row.totalItemsUsedForShipping != null || row.total_items_used_for_shipping != null
+            ? Number(row.totalItemsUsedForShipping ?? row.total_items_used_for_shipping ?? 0)
+            : null,
         shipping: Number(row.shipping ?? 0),
         currency: safeString(row.currency) || "INR",
         couponCode: safeString(row.couponCode ?? row.coupon_code) || null,
@@ -1480,6 +1500,7 @@ export const getOrderByIdSupabaseBasic = async (orderId: string) => {
         customerName: (row.customerName ?? row.customer_name ?? null) as string | null,
         customerPhone: (row.customerPhone ?? row.customer_phone ?? null) as string | null,
         customerAddress: (row.customerAddress ?? row.customer_address ?? null) as string | null,
+        customerEmail: (row.customerEmail ?? row.customer_email ?? null) as string | null,
         shiprocketOrderId: safeString((row as Record<string, unknown>).shiprocketOrderId ?? (row as Record<string, unknown>).shiprocket_order_id) || null,
         shipmentId: safeString((row as Record<string, unknown>).shipmentId ?? (row as Record<string, unknown>).shipment_id) || null,
         awbCode: safeString((row as Record<string, unknown>).awbCode ?? (row as Record<string, unknown>).awb_code) || null,
@@ -1663,11 +1684,11 @@ export const createOrderWithItemsSupabase = async (input: {
   for (const itemTable of ORDER_ITEM_TABLES) {
     let inserted = false
 
-    const camelRows = input.itemRows.map((row) => ({
+    const camelRows = input.itemRows.map((row) => withId({
       ...row,
       orderId,
     }))
-    const snakeRows = input.itemRows.map((row) => ({
+    const snakeRows = input.itemRows.map((row) => withId({
       ...camelToSnakeObject(row),
       order_id: orderId,
     }))
@@ -1764,6 +1785,10 @@ export const upsertOrderShipmentSnapshotSupabase = async (
     isPickupGenerated: boolean | null
     isLabelGenerated: boolean | null
     trackingData: unknown
+    shippingStatusCode: number | null
+    awbAssignedAt: Date | null
+    labelUrl: string | null
+    pickupGeneratedAt: Date | null
   }>,
 ) => {
   const client = getSupabaseAdmin()

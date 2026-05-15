@@ -7,6 +7,7 @@ export type ShiprocketCourierOption = {
   eta_days: number
   rate: number
   courier_company_id?: number
+  cod_available?: boolean
 }
 
 export type ShiprocketServiceabilityResponse = {

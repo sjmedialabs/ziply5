@@ -211,16 +211,39 @@ export default function AdminAbandonedCartsPage() {
         <>
           <div className="grid gap-2 rounded-xl border border-[#E8DCC8] bg-white p-3 md:grid-cols-4">
             <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search session/email/mobile" className="rounded border px-3 py-2 text-sm" />
-            <select value={converted} onChange={(e) => setConverted(e.target.value as "all" | "yes" | "no")} className="rounded border px-3 py-2 text-sm">
-              <option value="all">All conversions</option>
-              <option value="yes">Converted</option>
-              <option value="no">Unconverted</option>
-            </select>
-            <select value={userType} onChange={(e) => setUserType(e.target.value as "all" | "guest" | "registered")} className="rounded border px-3 py-2 text-sm">
-              <option value="all">All users</option>
-              <option value="guest">Guest</option>
-              <option value="registered">Registered</option>
-            </select>
+            <Select
+              value={converted}
+              onValueChange={(value) =>
+                setConverted(value as "all" | "yes" | "no")
+              }
+            >
+              <SelectTrigger className=" rounded border px-3 py-2 text-sm">
+                <SelectValue placeholder="All conversions" />
+              </SelectTrigger>
+
+              <SelectContent>
+                <SelectItem value="all">All conversions</SelectItem>
+                <SelectItem value="yes">Converted</SelectItem>
+                <SelectItem value="no">Unconverted</SelectItem>
+              </SelectContent>
+            </Select>
+
+            <Select
+              value={userType}
+              onValueChange={(value) =>
+                setUserType(value as "all" | "guest" | "registered")
+              }
+            >
+              <SelectTrigger className="rounded border px-3 py-2 text-sm">
+                <SelectValue placeholder="All users" />
+              </SelectTrigger>
+
+              <SelectContent>
+                <SelectItem value="all">All users</SelectItem>
+                <SelectItem value="guest">Guest</SelectItem>
+                <SelectItem value="registered">Registered</SelectItem>
+              </SelectContent>
+            </Select>
             <button type="button" onClick={() => load()} className="rounded bg-[#7B3010] px-3 py-2 text-xs font-semibold uppercase tracking-wide text-white">Apply Filters</button>
           </div>
           <ConsoleTable headers={["Cart ID", "Customer", "Type", "Items", "Cart Value", "Last Active", "Since Abandoned", "Recovery", "Actions"]}>

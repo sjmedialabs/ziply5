@@ -4,7 +4,7 @@ import { useEffect, useRef } from "react"
 import { getSupabaseRealtimeClient } from "@/lib/supabase-realtime"
 
 type Props = {
-  tables: Array<"orders" | "returns" | "refunds">
+  tables: Array<"orders" | "returns" | "refunds" | "shipments">
   onChange: () => void
   fallbackPollMs?: number
 }
@@ -13,6 +13,7 @@ const tableMap: Record<Props["tables"][number], string> = {
   orders: "Order",
   returns: "ReturnRequest",
   refunds: "RefundRecord",
+  shipments: "Shipment",
 }
 
 export function useRealtimeTables({ tables, onChange, fallbackPollMs = 20_000 }: Props) {
