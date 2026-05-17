@@ -5,7 +5,12 @@ import { fail, ok } from "@/src/server/core/http/response"
 import { createOrderSchema } from "@/src/server/modules/orders/orders.validator"
 import { createOrderFromCheckout } from "@/src/server/modules/orders/orders.service"
 
+export async function GET() {
+  return ok({ message: "Order creation endpoint is active" })
+}
+
 export async function POST(request: NextRequest) {
+  console.log("POST /api/orders/create started")
   const blocked = checkRateLimit(request, "orders:create", { limit: 15, windowMs: 60_000 })
   if (blocked) return blocked
   console.log("Processing order creation request...")
@@ -21,13 +26,20 @@ export async function POST(request: NextRequest) {
     const order = await createOrderFromCheckout({
       items: parsed.data.items,
       userId,
-      shipping: parsed.data.shipping,
+      shipping: parsed.data.shippingCharge ?? parsed.data.shipping,
       currency: parsed.data.currency,
       couponCode: parsed.data.couponCode,
+      appliedCouponId: parsed.data.couponId ?? parsed.data.appliedCouponId ?? null,
       gateway: parsed.data.gateway,
+      subtotal: parsed.data.subtotal,
+      discount: parsed.data.discount,
+      tax: parsed.data.tax,
+      total: parsed.data.total,
       billingAddress: parsed.data.billingAddress,
       paymentStatus: parsed.data.paymentStatus,
       paymentId: parsed.data.paymentId,
+      sessionKey: parsed.data.sessionKey,
+      totalItemsUsedForShipping: parsed.data.totalItemsUsedForShipping ?? null,
     })
     console.log("After createOrderFromCheckout")
     console.log("Order created successfully:", order)

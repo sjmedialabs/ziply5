@@ -14,20 +14,75 @@ import { useStorefrontProducts } from "@/hooks/useStorefrontProducts"
 import { useRealtimeTables } from "@/hooks/useRealtimeTables"
 import { clearSession } from "@/lib/auth-session"
 import { toast } from "@/lib/toast"
+import {
+  deriveLatestLifecycleToStatus,
+  orderHistoryHasCancelRequested,
+  shouldRenderCustomerCancelOrderButton,
+} from "@/src/lib/orders/order-cancel-policy"
+import { getReturnIneligibilityReason } from "@/src/lib/returns/return-eligibility"
+
+const CUSTOMER_RETURN_WINDOW_DAYS = 7
 
 type ApiOrderRow = {
   id: string
   status: string
   paymentStatus?: string | null
+  paymentMethod?: string | null
   customerName?: string | null
   customerPhone?: string | null
   customerAddress?: string | null
   refunds?: Array<{ status: string }>
   total: string | number
   createdAt: string
+  deliveredAt?: string | null
   items: Array<{ id: string; productId: string; quantity: number; product: { name: string } }>
   transactions?: Array<{ status: string }>
   returnRequests?: Array<{ id: string; status: string; productId?: string | null }>
+  shipmentStatus?: string | null
+  shippingStatus?: string | null
+  shipmentDeliveredAt?: string | Date | null
+  statusHistory?: Array<{ toStatus: string; changedAt?: string | null }>
+  courierName?: string | null
+  awbCode?: string | null
+  trackingNumber?: string | null
+}
+
+const isNonTerminalReturnStatus = (status: string | undefined | null) =>
+  !["rejected", "cancelled", "completed", "refunded"].includes(String(status ?? "").toLowerCase())
+
+const getReturnedProductIds = (order: ApiOrderRow) =>
+  new Set(
+    (order.returnRequests ?? [])
+      .filter((req) => isNonTerminalReturnStatus(req.status))
+      .map((req) => String(req.productId ?? "").trim())
+      .filter(Boolean),
+  )
+
+const profileHasActiveOpenReturn = (order: ApiOrderRow) =>
+  Boolean(order.returnRequests?.some((req) => isNonTerminalReturnStatus(req.status)))
+
+const profileReturnEligibilityReason = (order: ApiOrderRow): string | null => {
+  if (profileHasActiveOpenReturn(order)) return "active_return"
+  const returnedIds = getReturnedProductIds(order)
+  const hasReturnableItems = order.items.some((item) => !returnedIds.has(String(item.productId ?? "").trim()))
+  if (!hasReturnableItems) return "no_items"
+  const deliveredAt = order.deliveredAt
+    ? new Date(order.deliveredAt)
+    : order.shipmentDeliveredAt
+      ? new Date(order.shipmentDeliveredAt as string | Date)
+      : (() => {
+          const hit = order.statusHistory?.find((h) => h.toStatus.toLowerCase() === "delivered")
+          return hit?.changedAt ? new Date(hit.changedAt) : null
+        })()
+  const latestLifecycle = deriveLatestLifecycleToStatus(order.statusHistory ?? [], order.status)
+  return (
+    getReturnIneligibilityReason({
+      orderStatus: order.status.toLowerCase(),
+      latestLifecycle,
+      deliveredAt,
+      returnWindowDays: CUSTOMER_RETURN_WINDOW_DAYS,
+    }) ?? null
+  )
 }
 
 function ProfilePageContent() {
@@ -61,13 +116,19 @@ function ProfilePageContent() {
     quantity: number;
     uploading: boolean;
   }>>({})
-  const getReturnedProductIds = (order: ApiOrderRow) =>
-    new Set(
-      (order.returnRequests ?? [])
-        .filter((req) => String(req.status ?? "").toLowerCase() !== "rejected")
-        .map((req) => String(req.productId ?? "").trim())
-        .filter(Boolean),
-    )
+  const [returnMeta, setReturnMeta] = useState({
+    returnType: "refund" as "refund" | "exchange",
+    description: "",
+    videoUrl: "",
+    refundMethod: "" as "" | "upi" | "bank",
+    upiId: "",
+    bankAccountName: "",
+    bankAccountNumber: "",
+    bankIfsc: "",
+    bankName: "",
+  })
+  const [isCancelModalOpen, setIsCancelModalOpen] = useState(false)
+  const [selectedOrderForCancel, setSelectedOrderForCancel] = useState<{ id: string, status: string } | null>(null)
 
   useEffect(() => {
     const fetchReasons = async () => {
@@ -110,6 +171,17 @@ function ProfilePageContent() {
       }
     })
     setSelectedItemsForReturn(initialItems)
+    setReturnMeta({
+      returnType: "refund",
+      description: "",
+      videoUrl: "",
+      refundMethod: "",
+      upiId: "",
+      bankAccountName: "",
+      bankAccountNumber: "",
+      bankIfsc: "",
+      bankName: "",
+    })
     setIsReturnModalOpen(true)
   }
 
@@ -145,6 +217,33 @@ function ProfilePageContent() {
 
   const submitReturnRequest = async () => {
     if (!selectedOrderForReturn) return
+
+    const block = profileReturnEligibilityReason(selectedOrderForReturn)
+    if (block === "active_return") {
+      toast.error("Not eligible", "This order already has an active return request.")
+      return
+    }
+    if (block === "no_items") {
+      toast.error("Not eligible", "There are no additional items available to return on this order.")
+      return
+    }
+    if (block === "not_delivered") {
+      toast.error("Not eligible", "Returns are only available for delivered orders.")
+      return
+    }
+    if (block === "missing_delivered_at") {
+      toast.error("Not eligible", "Delivery date is not available yet.")
+      return
+    }
+    if (block === "return_window_expired") {
+      toast.error("Not eligible", `Return window is ${CUSTOMER_RETURN_WINDOW_DAYS} days after delivery.`)
+      return
+    }
+    if (block) {
+      toast.error("Not eligible", "Returns are not available for this order.")
+      return
+    }
+
     const returnedProductIds = getReturnedProductIds(selectedOrderForReturn)
     const itemsToReturn = Object.entries(selectedItemsForReturn)
       .filter(([_, data]) => data.selected && !returnedProductIds.has(String(data.productId ?? "").trim()))
@@ -169,10 +268,29 @@ function ProfilePageContent() {
       }
     }
 
+    if (returnMeta.returnType === "refund" && String(selectedOrderForReturn.paymentMethod ?? "").toLowerCase() === "cod") {
+      const hasUpi = Boolean(returnMeta.upiId.trim())
+      const hasBank = Boolean(returnMeta.bankAccountNumber.trim() && returnMeta.bankIfsc.trim())
+      if (!hasUpi && !hasBank) {
+        toast.error("Validation Error", "For COD refunds, enter a UPI ID or complete bank details.")
+        return
+      }
+    }
+
     const token = window.localStorage.getItem("ziply5_access_token")
     if (!token) return
     setOrderActionBusy(`${selectedOrderForReturn.id}:return_request`)
     try {
+      const bankDetails =
+        returnMeta.refundMethod === "bank" && returnMeta.bankAccountNumber.trim()
+          ? {
+              accountName: returnMeta.bankAccountName.trim() || undefined,
+              accountNumber: returnMeta.bankAccountNumber.trim(),
+              ifsc: returnMeta.bankIfsc.trim(),
+              bankName: returnMeta.bankName.trim() || undefined,
+            }
+          : undefined
+
       const res = await fetch(`/api/v1/returns`, {
         method: "POST",
         headers: {
@@ -181,7 +299,14 @@ function ProfilePageContent() {
         },
         body: JSON.stringify({
           orderId: selectedOrderForReturn.id,
-          items: itemsToReturn
+          items: itemsToReturn,
+          description: returnMeta.description.trim() || undefined,
+          videoUrl: returnMeta.videoUrl.trim() || undefined,
+          returnType: returnMeta.returnType,
+          refundMethod: returnMeta.refundMethod || undefined,
+          upiId: returnMeta.upiId.trim() || undefined,
+          bankDetails,
+          headerImages: itemsToReturn.map((i) => i.imageUrl).filter(Boolean),
         }),
       })
       const payload = await res.json()
@@ -377,10 +502,10 @@ function ProfilePageContent() {
 
   const runOrderAction = async (orderId: string, action: "cancel_request" | "return_request" | "cancel_pending") => {
     const token = window.localStorage.getItem("ziply5_access_token")
-    if (!token) return
+    if (!token) return false
     setOrderActionBusy(`${orderId}:${action}`)
     try {
-      await fetch(`/api/v1/orders/${orderId}/actions`, {
+      const res = await fetch(`/api/v1/orders/${orderId}/actions`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -388,6 +513,15 @@ function ProfilePageContent() {
         },
         body: JSON.stringify({ action }),
       })
+      const payload = (await res.json()) as { success?: boolean; message?: string }
+      if (!res.ok || payload.success === false) {
+        toast.error("Action failed", payload.message ?? "Request failed")
+        return false
+      }
+      if (action === "cancel_request" || action === "cancel_pending") {
+        toast.success("Order cancelled", "Your order has been cancelled.")
+      }
+      return true
     } finally {
       setOrderActionBusy(null)
       void queryClient.invalidateQueries({ queryKey: ["profile-orders"] })
@@ -514,26 +648,25 @@ function ProfilePageContent() {
               {/* TAB ITEM */}
               <div
                 onClick={() => setActiveTab("about")}
-                className={`flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-medium transition-colors ${activeTab === "about" ? "bg-[#FDE2E7] text-[#7A1F2A]" : "text-[#374151] hover:bg-[#F3F4F6]"
+                className={`flex items-center gap-3 rounded-xl px-4 py-3 cursor-pointer text-sm font-medium transition-colors ${activeTab === "about" ? "bg-[#FDE2E7] text-[#7A1F2A]" : "text-[#374151] hover:bg-[#F3F4F6]"
                   }`}
               >
                 <User size={18} />
                 <span className="font-medium">Personal Information</span>
               </div>
 
-          <div
-            onClick={() => setActiveTab("favorite")}
-            className={`mt-1 flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-medium transition-colors ${
-              activeTab === "favorite" ? "bg-[#FDE2E7] text-[#7A1F2A]" : "text-[#374151] hover:bg-[#F3F4F6]"
-            }`}
-          >
-            <Heart size={18} />
-            <span className="font-medium">Wishlist</span>
-          </div>
+              <div
+                onClick={() => setActiveTab("favorite")}
+                className={`mt-1 flex items-center gap-3 rounded-xl cursor-pointer px-4 py-3 text-sm font-medium transition-colors ${activeTab === "favorite" ? "bg-[#FDE2E7] text-[#7A1F2A]" : "text-[#374151] hover:bg-[#F3F4F6]"
+                  }`}
+              >
+                <Heart size={18} />
+                <span className="font-medium">Wishlist</span>
+              </div>
 
               <div
                 onClick={() => setActiveTab("orders")}
-                className={`mt-1 flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-medium transition-colors ${activeTab === "orders" ? "bg-[#FDE2E7] text-[#7A1F2A]" : "text-[#374151] hover:bg-[#F3F4F6]"
+                className={`mt-1 flex items-center gap-3 rounded-xl cursor-pointer px-4 py-3 text-sm font-medium transition-colors ${activeTab === "orders" ? "bg-[#FDE2E7] text-[#7A1F2A]" : "text-[#374151] hover:bg-[#F3F4F6]"
                   }`}
               >
                 <Package size={18} />
@@ -604,23 +737,23 @@ function ProfilePageContent() {
                   Track return/replace
                 </Link>
               </div> */}
-            <div className="flex justify-between items-center w-full">
-              <button
-                onClick={() => setIsManageModalOpen(true)}
-                className="mt-4 text-xs font-bold text-primary underline uppercase tracking-widest"
-              >
-                Manage Profile
-              </button>
-                        <div className="">
-            {/* <button
+                    <div className="flex justify-between items-center w-full">
+                      <button
+                        onClick={() => setIsManageModalOpen(true)}
+                        className="mt-4 text-xs font-bold text-primary underline uppercase tracking-widest"
+                      >
+                        Manage Profile
+                      </button>
+                      <div className="">
+                        {/* <button
               type="button"
               onClick={handleLogout}
               className="rounded-md bg-[#5A272A] px-4 py-2 text-xs font-semibold uppercase tracking-wide text-white hover:bg-[#451f21]"
             >
               Logout
             </button> */}
-          </div>
-          </div>
+                      </div>
+                    </div>
 
                     {/* SOCIAL */}
                     {/* <div className="flex items-center">
@@ -725,144 +858,144 @@ function ProfilePageContent() {
                   </div>
                 )}
                 {activeTab === "favorite" && (
-  <>
-    {favoriteProducts.length === 0 ? (
-      <p className="text-gray-500">No favorites yet.</p>
-    ) : (
-      <>
-        <div className="mb-5 flex items-center justify-between">
-          <p className="text-base font-semibold text-[#111827]">
-            Wishlist ({favoriteProducts.length})
-          </p>
-          <button
-            type="button"
-            onClick={() => {
-              favoriteProducts.forEach((p) => {
-                setCartItemQuantity(toCartProduct(p), 1)
-                removeFavorite(p.slug)
-              })
-            }}
-            className="rounded-md border border-[#D1D5DB] bg-white px-4 py-2 text-xs font-medium text-[#111827] hover:bg-[#F9FAFB]"
-          >
-            Move all to cart
-          </button>
-        </div>
-
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {favoriteProducts.map((product) => {
-            const comboProducts = ((product as any).bundleProducts ?? []) as Array<{
-              thumbnail?: string | null
-              name?: string
-            }>
-
-            const comboThumbs = comboProducts
-              .map((x) => (x?.thumbnail ?? "").trim())
-              .filter(Boolean)
-              .slice(0, 3)
-
-            const showComboThumbStrip =
-              Boolean((product as any).isCombo) &&
-              comboThumbs.length > 0
-
-            return (
-              <article
-                key={product.slug}
-                className="rounded-xl border border-[#E5E7EB] bg-white p-3 shadow-sm transition hover:shadow-md"
-              >
-                <div className="relative rounded-md bg-[#F8F9FB] p-3">
-                  <button
-                    type="button"
-                    onClick={() => removeFavorite(product.slug)}
-                    className="absolute right-2 top-2 h-7 w-7 z-10 rounded-full border border-[#E5E7EB] bg-white text-sm text-[#6B7280]"
-                    aria-label="Remove from wishlist"
-                  >
-                    ×
-                  </button>
-
-                  <Link
-                    href={
-                      (product as any).isCombo
-                        ? `/combo/${product.slug}`
-                        : `/product/${product.slug}`
-                    }
-                    className="block"
-                  >
-                    <div className="relative h-32 w-full">
-                      {showComboThumbStrip ? (
-                        <div className="flex flex-col sm:flex-row items-center justify-center gap-1 h-full">
-                          {comboThumbs.map((thumb, imageIdx) => (
-                            <div
-                              key={imageIdx}
-                              className="flex flex-col sm:flex-row items-center justify-center gap-1"
-                            >
-                              <div className="relative h-10 w-10 sm:h-12 sm:w-12">
-                                <Image
-                                  src={thumb}
-                                  alt={`${product.name} item ${imageIdx + 1}`}
-                                  fill
-                                  className="object-contain"
-                                />
-                              </div>
-                              {imageIdx < comboThumbs.length - 1 && (
-                                <span className="text-lg font-bold text-gray-400">
-                                  +
-                                </span>
-                              )}
-                            </div>
-                          ))}
+                  <>
+                    {favoriteProducts.length === 0 ? (
+                      <p className="text-gray-500">No favorites yet.</p>
+                    ) : (
+                      <>
+                        <div className="mb-5 flex items-center justify-between">
+                          <p className="text-base font-semibold text-[#111827]">
+                            Wishlist ({favoriteProducts.length})
+                          </p>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              favoriteProducts.forEach((p) => {
+                                setCartItemQuantity(toCartProduct(p), 1)
+                                removeFavorite(p.slug)
+                              })
+                            }}
+                            className="rounded-md border border-[#D1D5DB] bg-white px-4 py-2 text-xs font-medium text-[#111827] hover:bg-[#F9FAFB]"
+                          >
+                            Move all to cart
+                          </button>
                         </div>
-                      ) : (
-                        <Image
-                          src={product.image}
-                          alt={product.name}
-                          fill
-                          className="object-contain"
-                        />
-                      )}
-                    </div>
-                  </Link>
-                </div>
 
-                <h3 className="mt-3 line-clamp-2 text-sm font-semibold text-[#111827]">
-                  {product.name}
-                </h3>
+                        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                          {favoriteProducts.map((product) => {
+                            const comboProducts = ((product as any).bundleProducts ?? []) as Array<{
+                              thumbnail?: string | null
+                              name?: string
+                            }>
 
-                <p className="mt-1 text-xs text-[#6B7280]">
-                  {(product as any).isCombo
-                    ? "Combo Pack"
-                    : `Net wt. ${product.weight}`}
-                </p>
+                            const comboThumbs = comboProducts
+                              .map((x) => (x?.thumbnail ?? "").trim())
+                              .filter(Boolean)
+                              .slice(0, 3)
 
-                <p className="mt-2 text-sm font-semibold text-[#B91C1C]">
-                  Rs.{Number(product.price).toFixed(2)}
-                </p>
+                            const showComboThumbStrip =
+                              Boolean((product as any).isCombo) &&
+                              comboThumbs.length > 0
 
-                <div className="mt-3 flex items-center justify-end">
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      if ((product as any).isCombo) {
-                        router.push(`/combo/${product.slug}`)
-                      } else {
-                        moveFavoriteToCart(product)
-                      }
-                    }}
-                    className="rounded-md border border-[#D1D5DB] px-3 py-1.5 text-xs font-medium text-[#111827] hover:bg-[#F9FAFB]"
-                  >
-                    {(product as any).isCombo
-                      ? "View Combo"
-                      : "Move to cart"}
-                  </button>
-                </div>
-              </article>
-            )
-          })}
-        </div>
-      </>
-    )}
-  </>
-)}
+                            return (
+                              <article
+                                key={product.slug}
+                                className="rounded-xl border border-[#E5E7EB] bg-white p-3 shadow-sm transition hover:shadow-md"
+                              >
+                                <div className="relative rounded-md bg-[#F8F9FB] p-3">
+                                  <button
+                                    type="button"
+                                    onClick={() => removeFavorite(product.slug)}
+                                    className="absolute right-2 top-2 h-7 w-7 z-10 rounded-full border border-[#E5E7EB] bg-white text-sm text-[#6B7280]"
+                                    aria-label="Remove from wishlist"
+                                  >
+                                    ×
+                                  </button>
+
+                                  <Link
+                                    href={
+                                      (product as any).isCombo
+                                        ? `/combo/${product.slug}`
+                                        : `/product/${product.slug}`
+                                    }
+                                    className="block"
+                                  >
+                                    <div className="relative h-32 w-full">
+                                      {showComboThumbStrip ? (
+                                        <div className="flex flex-col sm:flex-row items-center justify-center gap-1 h-full">
+                                          {comboThumbs.map((thumb, imageIdx) => (
+                                            <div
+                                              key={imageIdx}
+                                              className="flex flex-col sm:flex-row items-center justify-center gap-1"
+                                            >
+                                              <div className="relative h-10 w-10 sm:h-12 sm:w-12">
+                                                <Image
+                                                  src={thumb}
+                                                  alt={`${product.name} item ${imageIdx + 1}`}
+                                                  fill
+                                                  className="object-contain"
+                                                />
+                                              </div>
+                                              {imageIdx < comboThumbs.length - 1 && (
+                                                <span className="text-lg font-bold text-gray-400">
+                                                  +
+                                                </span>
+                                              )}
+                                            </div>
+                                          ))}
+                                        </div>
+                                      ) : (
+                                        <Image
+                                          src={product.image}
+                                          alt={product.name}
+                                          fill
+                                          className="object-contain"
+                                        />
+                                      )}
+                                    </div>
+                                  </Link>
+                                </div>
+
+                                <h3 className="mt-3 line-clamp-2 text-sm font-semibold text-[#111827]">
+                                  {product.name}
+                                </h3>
+
+                                <p className="mt-1 text-xs text-[#6B7280]">
+                                  {(product as any).isCombo
+                                    ? "Combo Pack"
+                                    : `Net wt. ${product.weight}`}
+                                </p>
+
+                                <p className="mt-2 text-sm font-semibold text-[#B91C1C]">
+                                  Rs.{Number(product.price).toFixed(2)}
+                                </p>
+
+                                <div className="mt-3 flex items-center justify-end">
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation()
+                                      if ((product as any).isCombo) {
+                                        router.push(`/combo/${product.slug}`)
+                                      } else {
+                                        moveFavoriteToCart(product)
+                                      }
+                                    }}
+                                    className="rounded-md border border-[#D1D5DB] px-3 py-1.5 text-xs font-medium text-[#111827] hover:bg-[#F9FAFB]"
+                                  >
+                                    {(product as any).isCombo
+                                      ? "View Combo"
+                                      : "Move to cart"}
+                                  </button>
+                                </div>
+                              </article>
+                            )
+                          })}
+                        </div>
+                      </>
+                    )}
+                  </>
+                )}
 
                 {activeTab === "orders" && (
                   <div className="space-y-4 text-sm">
@@ -887,8 +1020,18 @@ function ProfilePageContent() {
                       orders.length === 0 && <p className="text-gray-500">No orders yet.</p>}
                     {authSnapshot.token && authSnapshot.role === "customer" && orders.map((order) => {
                       const paymentStatus = order.paymentStatus ?? (order.transactions?.some((tx) => tx.status === "paid") ? "paid" : "pending")
+                      const shippingStatus = (order.shipmentStatus ?? "pending").toLowerCase()
                       const previewItems = order.items.slice(0, 2)
                       const moreItems = Math.max(order.items.length - 2, 0)
+                      const latestLifecycle = deriveLatestLifecycleToStatus(order.statusHistory, order.status)
+                      const cancelRequested = orderHistoryHasCancelRequested(order.statusHistory)
+                      const showCancel = shouldRenderCustomerCancelOrderButton({
+                        latestLifecycle,
+                        shipmentStatus: order.shipmentStatus ?? null,
+                        shippingStatus: order.shippingStatus ?? null,
+                        orderStatusLower: order.status.toLowerCase(),
+                        cancelRequested,
+                      })
                       return (<div
                         key={order.id}
                         className="rounded-2xl border border-[#E8DCC8] bg-white p-4 shadow-sm"
@@ -900,9 +1043,14 @@ function ProfilePageContent() {
                               Order created on {new Date(order.createdAt).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })}
                             </p>
                           </div>
-                          <span className="rounded-full bg-[#FDF0E6] px-2.5 py-1 text-[10px] font-semibold uppercase text-[#7B3010]">
-                            {order.status}
-                          </span>
+                          <div className="flex flex-col items-end gap-1">
+                            <span className="rounded-full bg-[#FDF0E6] px-2.5 py-1 text-[10px] font-semibold uppercase text-[#7B3010]">
+                              {order.status}
+                            </span>
+                            <span className="rounded-full bg-indigo-50 px-2.5 py-1 text-[10px] font-semibold uppercase text-indigo-700">
+                              {shippingStatus.replaceAll("_", " ")}
+                            </span>
+                          </div>
                         </div>
 
                         <div className="mt-3 space-y-1 text-sm text-[#2A1810]">
@@ -914,14 +1062,25 @@ function ProfilePageContent() {
 
                         <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
                           <p className="font-semibold text-[#5A272A]">Rs. {Number(order.total).toFixed(2)}</p>
+                          <p className="text-[11px] text-[#646464]">
+                            {order.courierName ?? "Courier TBD"} • AWB {order.awbCode ?? order.trackingNumber ?? "Pending"}
+                          </p>
                           {/* <span className="rounded-full border border-[#E8DCC8] px-2.5 py-1 text-[10px] font-semibold uppercase text-[#4A1D1F]">
                       {paymentStatus}
                     </span> */}
                         </div>
 
                         <div className="mt-3 flex flex-wrap items-center gap-2">
-                          {paymentStatus.toLowerCase() === "pending" && order.status.toLowerCase() === "pending" && (
-                            <button className="rounded-md border border-[#E8DCC8] bg-white px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-[#4A1D1F]" type="button" onClick={() => void runOrderAction(order.id, "cancel_pending")}>
+                          {showCancel && (
+                            <button
+                              type="button"
+                              disabled={orderActionBusy === `${order.id}:cancel_request` || orderActionBusy === `${order.id}:cancel_pending`}
+                              onClick={() => {
+                                setSelectedOrderForCancel({ id: order.id, status: order.status })
+                                setIsCancelModalOpen(true)
+                              }}
+                              className="rounded-md border border-[#E8DCC8] bg-white px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-[#4A1D1F] disabled:opacity-40"
+                            >
                               Cancel Order
                             </button>
                           )}
@@ -938,23 +1097,19 @@ function ProfilePageContent() {
                               Pay Now
                             </button>
                           )}
-                          {(order.paymentStatus ?? "").toUpperCase() === "SUCCESS" &&
-                            ["confirmed", "packed"].includes(order.status.toLowerCase()) && (
-                              <button
-                                type="button"
-                                disabled={orderActionBusy === `${order.id}:cancel_request`}
-                                onClick={() => void runOrderAction(order.id, "cancel_request")}
-                                className="rounded-md border border-[#E8DCC8] bg-white px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-[#4A1D1F] disabled:opacity-40"
-                              >
-                                Cancel order
-                              </button>
-                            )}
                           {order.status.toLowerCase() === "delivered" && (
                             <button
                               type="button"
                               disabled={
                                 orderActionBusy === `${order.id}:return_request` ||
-                                !order.items.some((item) => !getReturnedProductIds(order).has(String(item.productId ?? "").trim()))
+                                Boolean(profileReturnEligibilityReason(order))
+                              }
+                              title={
+                                profileReturnEligibilityReason(order) === "active_return"
+                                  ? "An open return already exists for this order."
+                                  : profileReturnEligibilityReason(order) === "return_window_expired"
+                                    ? `Returns must be within ${CUSTOMER_RETURN_WINDOW_DAYS} days of delivery.`
+                                    : undefined
                               }
                               onClick={() => openReturnModal(order)}
                               className="rounded-md border border-[#E8DCC8] bg-white px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-[#4A1D1F] disabled:opacity-40"
@@ -971,13 +1126,15 @@ function ProfilePageContent() {
                               Review
                             </button>
                           )}
-                          <button
-                            type="button"
-                            onClick={() => router.push(`/orders/${order.id}/track`)}
-                            className="rounded-md border border-[#E8DCC8] bg-white px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-[#4A1D1F]"
-                          >
-                            Track my order
-                          </button>
+                          {order.status.toLowerCase() !== "cancelled" && (
+                            <button
+                              type="button"
+                              onClick={() => router.push(`/orders/${order.id}/track`)}
+                              className="rounded-md border border-[#E8DCC8] bg-white px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-[#4A1D1F]"
+                            >
+                              Track my order
+                            </button>
+                          )}
                           <button
                             type="button"
                             onClick={() => router.push(`/orders/${order.id}`)}
@@ -1006,6 +1163,102 @@ function ProfilePageContent() {
 
                     <div className="p-6 space-y-6">
                       <p className="text-sm text-gray-600">Select the items you wish to return and provide a reason and photo for each.</p>
+
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <div>
+                          <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Return type</label>
+                          <select
+                            value={returnMeta.returnType}
+                            onChange={(e) =>
+                              setReturnMeta((m) => ({ ...m, returnType: e.target.value as "refund" | "exchange" }))
+                            }
+                            className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm"
+                          >
+                            <option value="refund">Refund</option>
+                            <option value="exchange">Exchange</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Video URL (optional)</label>
+                          <input
+                            value={returnMeta.videoUrl}
+                            onChange={(e) => setReturnMeta((m) => ({ ...m, videoUrl: e.target.value }))}
+                            className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm"
+                            placeholder="https://…"
+                          />
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Overall description</label>
+                        <textarea
+                          rows={2}
+                          value={returnMeta.description}
+                          onChange={(e) => setReturnMeta((m) => ({ ...m, description: e.target.value }))}
+                          className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm resize-none"
+                          placeholder="Describe the issue across items…"
+                        />
+                      </div>
+
+                      {returnMeta.returnType === "refund" && String(selectedOrderForReturn.paymentMethod ?? "").toLowerCase() === "cod" && (
+                        <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 space-y-3">
+                          <p className="text-xs font-semibold text-amber-900 uppercase">COD refund details</p>
+                          <div className="grid gap-2 sm:grid-cols-2">
+                            <div>
+                              <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Refund via</label>
+                              <select
+                                value={returnMeta.refundMethod}
+                                onChange={(e) =>
+                                  setReturnMeta((m) => ({ ...m, refundMethod: e.target.value as "" | "upi" | "bank" }))
+                                }
+                                className="w-full rounded-lg border border-gray-200 px-2 py-2 text-sm"
+                              >
+                                <option value="">Select</option>
+                                <option value="upi">UPI</option>
+                                <option value="bank">Bank transfer</option>
+                              </select>
+                            </div>
+                            {returnMeta.refundMethod === "upi" && (
+                              <div>
+                                <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">UPI ID</label>
+                                <input
+                                  value={returnMeta.upiId}
+                                  onChange={(e) => setReturnMeta((m) => ({ ...m, upiId: e.target.value }))}
+                                  className="w-full rounded-lg border border-gray-200 px-2 py-2 text-sm"
+                                />
+                              </div>
+                            )}
+                          </div>
+                          {returnMeta.refundMethod === "bank" && (
+                            <div className="grid gap-2 sm:grid-cols-2">
+                              <input
+                                placeholder="Account holder"
+                                value={returnMeta.bankAccountName}
+                                onChange={(e) => setReturnMeta((m) => ({ ...m, bankAccountName: e.target.value }))}
+                                className="rounded-lg border border-gray-200 px-2 py-2 text-sm"
+                              />
+                              <input
+                                placeholder="Account number"
+                                value={returnMeta.bankAccountNumber}
+                                onChange={(e) => setReturnMeta((m) => ({ ...m, bankAccountNumber: e.target.value }))}
+                                className="rounded-lg border border-gray-200 px-2 py-2 text-sm"
+                              />
+                              <input
+                                placeholder="IFSC"
+                                value={returnMeta.bankIfsc}
+                                onChange={(e) => setReturnMeta((m) => ({ ...m, bankIfsc: e.target.value }))}
+                                className="rounded-lg border border-gray-200 px-2 py-2 text-sm"
+                              />
+                              <input
+                                placeholder="Bank name"
+                                value={returnMeta.bankName}
+                                onChange={(e) => setReturnMeta((m) => ({ ...m, bankName: e.target.value }))}
+                                className="rounded-lg border border-gray-200 px-2 py-2 text-sm"
+                              />
+                            </div>
+                          )}
+                        </div>
+                      )}
 
                       <div className="space-y-4">
                         {selectedOrderForReturn.items.map((item) => {
@@ -1111,6 +1364,54 @@ function ProfilePageContent() {
                           className="flex-1 rounded-xl bg-primary py-3 text-xs font-bold uppercase tracking-widest text-white shadow-md hover:opacity-90 disabled:opacity-50 transition-all"
                         >
                           {orderActionBusy === `${selectedOrderForReturn.id}:return_request` ? "Submitting..." : "Submit Return Request"}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* CANCEL CONFIRMATION MODAL */}
+              {isCancelModalOpen && selectedOrderForCancel && (
+                <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm" onClick={() => setIsCancelModalOpen(false)}>
+                  <div className="w-full max-w-md rounded-3xl bg-white shadow-2xl overflow-hidden" onClick={(e) => e.stopPropagation()}>
+                    <div className="bg-primary p-5 text-white flex items-center justify-between">
+                      <h3 className="font-melon text-lg font-bold uppercase tracking-wider">Confirm Cancellation</h3>
+                      <button onClick={() => setIsCancelModalOpen(false)} className="rounded-full bg-white/20 p-1 hover:bg-white/30 transition-colors">
+                        <X size={20} />
+                      </button>
+                    </div>
+                    <div className="p-6 text-center">
+                      <p className="text-gray-600 mb-6">Are you sure you want to cancel order #{selectedOrderForCancel.id.slice(0, 8)}? This action cannot be undone.</p>
+                      <div className="flex gap-3">
+                        <button
+                          type="button"
+                          onClick={() => setIsCancelModalOpen(false)}
+                          className="flex-1 rounded-xl border border-gray-200 py-3 text-xs font-bold uppercase tracking-widest text-gray-600 hover:bg-gray-50 transition-all"
+                        >
+                          Go Back
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            void (async () => {
+                              const ok = await runOrderAction(
+                                selectedOrderForCancel.id,
+                                selectedOrderForCancel.status.toLowerCase() === "pending" ? "cancel_pending" : "cancel_request",
+                              )
+                              if (ok) setIsCancelModalOpen(false)
+                            })()
+                          }}
+                          disabled={
+                            orderActionBusy === `${selectedOrderForCancel.id}:cancel_request` ||
+                            orderActionBusy === `${selectedOrderForCancel.id}:cancel_pending`
+                          }
+                          className="flex-1 rounded-xl bg-red-600 py-3 text-xs font-bold uppercase tracking-widest text-white shadow-md hover:bg-red-700 transition-all disabled:opacity-50"
+                        >
+                          {orderActionBusy === `${selectedOrderForCancel.id}:cancel_request` ||
+                          orderActionBusy === `${selectedOrderForCancel.id}:cancel_pending`
+                            ? "Processing…"
+                            : "Confirm"}
                         </button>
                       </div>
                     </div>

@@ -25,6 +25,10 @@ type OrderRow = {
   items: Array<{ quantity: number; product: { name: string; slug: string } }>;
   transactions?: Array<{ status: string }>;
   shipments?: Array<{ id: string; carrier: string | null; trackingNo: string | null; shipmentStatus: string; shippedAt?: string | null }>;
+  courierName?: string | null;
+  awbCode?: string | null;
+  trackingUrl?: string | null;
+  shipmentStatus?: string | null;
   fulfillment?: { fulfillmentStatus: string; deliveredAt?: string | null; shippedAt?: string | null } | null;
   statusHistory?: Array<{ toStatus: string; changedAt: string }>;
   user?: { id: string; name: string; email: string };
@@ -55,8 +59,8 @@ export default function AdminOrdersPage() {
     if ((o.paymentStatus ?? "").toUpperCase() === "INITIATED") return "initiated";
     return "pending";
   }, []);
-  const lifecycleStatus = useCallback((o: OrderRow) => ( o.status ?? "pending").toLowerCase(), []);
-  const latestShipmentStatus = useCallback((o: OrderRow) => (o.shipments?.[0]?.shipmentStatus ?? "not_shipped").toLowerCase(), []);
+  const lifecycleStatus = useCallback((o: OrderRow) => (o.statusHistory?.[0]?.toStatus ?? o.status ?? "pending").toLowerCase(), []);
+  const latestShipmentStatus = useCallback((o: OrderRow) => (o.shipmentStatus ?? o.shipments?.[0]?.shipmentStatus ?? "not_shipped").toLowerCase(), []);
   const itemsCount = useCallback((o: OrderRow) => o.items.reduce((sum, item) => sum + Number(item.quantity ?? 0), 0), []);
   const deliveryEta = useCallback((o: OrderRow) => {
     if (o.fulfillment?.deliveredAt) return "Delivered";
@@ -149,7 +153,7 @@ export default function AdminOrdersPage() {
   //   },
   // });
   // useRealtimeTables({
-  //   tables: ["orders"], // ✅ ONLY this
+  //   tables: ["orders"], // 
   //   onChange: () => {
   //     if (canFetch) void load();
   //   },
@@ -352,7 +356,11 @@ export default function AdminOrdersPage() {
                     </td>
                     <td className="px-3 py-2"><span className="inline-flex rounded-full bg-slate-100 px-2 py-0.5 text-xs capitalize">{toPaymentStatus(o)}</span></td>
                     <td className="px-3 py-2"><span className="inline-flex rounded-full bg-amber-50 px-2 py-0.5 text-xs capitalize text-[#4A1D1F]">{lifecycleStatus(o).replaceAll("_", " ")}</span></td>
-                    <td className="px-3 py-2"><span className="inline-flex rounded-full bg-indigo-50 px-2 py-0.5 text-xs capitalize text-indigo-700">{latestShipmentStatus(o).replaceAll("_", " ")}</span></td>
+                    <td className="px-3 py-2">
+                      <span className="inline-flex rounded-full bg-indigo-50 px-2 py-0.5 text-xs capitalize text-indigo-700">{latestShipmentStatus(o).replaceAll("_", " ")}</span>
+                      <p className="mt-1 text-[11px] text-[#646464]">{o.courierName ?? o.shipments?.[0]?.carrier ?? "Courier TBD"}</p>
+                      <p className="text-[11px] text-[#646464]">AWB: {o.awbCode ?? o.shipments?.[0]?.trackingNo ?? "Pending"}</p>
+                    </td>
                     <td className="px-3 py-2 font-semibold">Rs.{Number(o.total).toFixed(2)}</td>
                     <td className="px-3 py-2">{itemsCount(o)}</td>
                     <td className="px-3 py-2">
@@ -375,6 +383,9 @@ export default function AdminOrdersPage() {
                               </button>
                               <button type="button" onClick={() => router.push(`/admin/orders/${o.id}`)} className="block w-full rounded px-2 py-1.5 text-left text-xs hover:bg-[#FFFBF3]">
                                 Track Order
+                              </button>
+                              <button type="button" onClick={() => void authedPost(`/api/v1/orders/${o.id}/shiprocket`, { action: "refresh_tracking" }).then(() => load())} className="block w-full rounded px-2 py-1.5 text-left text-xs hover:bg-[#FFFBF3]">
+                                Refresh Tracking
                               </button>
                             </>
                           )}

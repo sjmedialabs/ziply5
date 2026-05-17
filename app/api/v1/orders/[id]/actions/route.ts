@@ -8,6 +8,10 @@ import {
   setOrderReturnReason,
   updateOrderStatus,
 } from "@/src/server/modules/orders/orders.service"
+import {
+  cancelCustomerOrderWithShiprocketGate,
+  OrderCancellationError,
+} from "@/src/server/modules/orders/order-cancellation.service"
 import { createRefund } from "@/src/server/modules/extended/extended.service"
 import { triggerRazorpayRefund } from "@/src/server/modules/payments/payments.service"
 import { env } from "@/src/server/core/config/env"
@@ -46,6 +50,7 @@ export async function POST(request: NextRequest, ctx: { params: Promise<{ id: st
 
   const order = await getOrderById(id)
   if (!order) return fail("Order not found", 404)
+  const lifecycleStatus = String(order.statusHistory?.[0]?.toStatus ?? order.status ?? "").toLowerCase()
   const isAdmin = ["admin", "super_admin"].includes(auth.user.role)
   if (!isAdmin && order.userId !== auth.user.sub) {
     return fail("Forbidden", 403)
@@ -54,27 +59,37 @@ export async function POST(request: NextRequest, ctx: { params: Promise<{ id: st
   try {
     if (parsed.data.action === "cancel_request") {
       const paymentStatus = normalizePaymentStatus(order.paymentStatus)
-      if (paymentStatus !== "SUCCESS") return fail("Only paid orders can be cancelled", 422)
-      if (!["confirmed", "packed"].includes(String(order.status))) return fail("Cannot cancel after shipment", 422)
-      const updated = await updateOrderStatus(order.id, "cancel_requested", auth.user.sub, {
-        reasonCode: "cancel_requested",
-        note: parsed.data.reason ?? "Customer requested cancellation",
-      })
-      if (parsed.data.reason?.trim()) {
-        await setOrderCancelReason(order.id, parsed.data.reason.trim())
-      }
-      return ok(updated, "Cancel requested")
-    }
-    if (parsed.data.action === "cancel_pending") {
-      await updateOrderStatus(order.id, "cancelled", auth.user.sub, {
-        reasonCode: "cancel_pending",
-        note: parsed.data.reason ?? "Customer cancelled pending order",
+      const { updated } = await cancelCustomerOrderWithShiprocketGate({
+        orderId: order.id,
+        actorId: auth.user.sub,
+        reasonCode: "customer_cancelled",
+        note: parsed.data.reason ?? "Customer cancelled order",
+        latestLifecycle: lifecycleStatus,
       })
 
-      return ok({ id: order.id }, "Pending order cancelled")
+      if (paymentStatus === "SUCCESS") {
+        const amount = Number(order.total)
+        const refund = await createRefund(order.id, amount, "Customer auto-cancellation refund")
+        await triggerRazorpayRefund({ refundRecordId: refund.id }).catch((e) => {
+          console.error("[Auto-Refund Error] Failed to trigger Razorpay refund", e)
+        })
+      }
+
+      return ok(updated, "Order cancelled successfully")
+    }
+    if (parsed.data.action === "cancel_pending") {
+      const { updated } = await cancelCustomerOrderWithShiprocketGate({
+        orderId: order.id,
+        actorId: auth.user.sub,
+        reasonCode: "cancel_pending",
+        note: parsed.data.reason ?? "Customer cancelled pending order",
+        latestLifecycle: lifecycleStatus,
+      })
+
+      return ok(updated ?? { id: order.id }, "Pending order cancelled")
     }
     if (parsed.data.action === "return_request") {
-      if (String(order.status) !== "delivered") return fail("Return is allowed only for delivered orders", 422)
+      if (lifecycleStatus !== "delivered") return fail("Return is allowed only for delivered orders", 422)
       const deliveredAt = order.statusHistory.find((entry) => entry.toStatus === "delivered")?.changedAt ?? order.updatedAt ?? new Date()
       const returnWindowDays = Number(env.RETURN_WINDOW_DAYS ?? "7")
       const elapsedDays = (Date.now() - new Date(deliveredAt).getTime()) / (1000 * 60 * 60 * 24)
@@ -190,6 +205,9 @@ export async function POST(request: NextRequest, ctx: { params: Promise<{ id: st
     const triggered = await triggerRazorpayRefund({ refundRecordId: refund.id })
     return ok({ refund, triggered }, parsed.data.action === "retry_refund" ? "Refund retry initiated" : "Refund initiated")
   } catch (error) {
+    if (error instanceof OrderCancellationError) {
+      return fail(error.message, error.httpStatus)
+    }
     return fail(error instanceof Error ? error.message : "Action failed", 400)
   }
 }

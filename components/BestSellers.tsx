@@ -16,7 +16,7 @@ export default function BestSellers({ cmsData }: { cmsData?: any }) {
   const best = products.filter((p) => p.isBestSeller === true)
   const bestSellers = useMemo(() => best.slice(0, 3), [best])
   const router = useRouter()
-  const sectionTitle = cmsData?.title || "BEST SELLERS" 
+  const sectionTitle = cmsData?.title || "BEST SELLERS"
   const buttonText = cmsData?.buttonText || "view all"
   const buttonUrl = cmsData?.url || "/#best-sellers"
 
@@ -66,13 +66,13 @@ export default function BestSellers({ cmsData }: { cmsData?: any }) {
       const token = window.localStorage.getItem("ziply5_access_token");
       const userStr = window.localStorage.getItem("ziply5_user");
       const userId = userStr ? JSON.parse(userStr).id : null;
-      
+
       if (token && userId) {
         try {
           const res = await fetch("/api/v1/favorites", {
-            headers: { 
+            headers: {
               Authorization: `Bearer ${token}`,
-              "x-user-id": userId 
+              "x-user-id": userId
             },
           });
           const payload = await res.json();
@@ -90,7 +90,7 @@ export default function BestSellers({ cmsData }: { cmsData?: any }) {
   const handleToggleFavorite = async (e: React.MouseEvent, slug: string) => {
     e.stopPropagation();
     const token = window.localStorage.getItem("ziply5_access_token");
-    
+
     if (!token) {
       const wantLogin = confirm("Would you like to log in to save your favorites permanently across your devices? Cancel to save locally for this session.");
       if (wantLogin) {
@@ -133,25 +133,25 @@ export default function BestSellers({ cmsData }: { cmsData?: any }) {
           {bestSellers.map((product) => {
             const tagName = product.tags?.[0]?.tag?.name
             return (
-            <div key={product.id} className="w-full max-w-sm group cursor-pointer font-melon" onClick={() =>
-              router.push(`/product/${product.slug}`)
-            }>
-              <div
-                className="card-smooth rounded-2xl px-8 relative overflow-hidden transition-all duration-300 ease-out group-hover:ring-4 group-hover:ring-[#F36E21] group-hover:shadow-xl h-full flex flex-col"
-                style={{ backgroundColor: pickBg(product) }}
-              >
-                {tagName ? (
-                  tagName === "veg" ? (
-                    <span className="absolute top-4 right-0 bg-[#10B981] text-white text-[11px] font-medium px-3 py-1 border border-white rounded-l-sm z-10">
-                      {tagName.charAt(0).toUpperCase() + tagName.slice(1)}
-                    </span>
-                  ) : (
-                    <span className="absolute top-4 right-0 bg-[#F97316] text-white text-[11px] font-medium px-3 py-1 rounded-l-sm border border-white z-10">
-                      {tagName.charAt(0).toUpperCase() + tagName.slice(1)}
-                    </span>
-                  )
-                ) : null}
-                {/* {product.type === "non-veg" && (
+              <div key={product.id} className="w-full max-w-sm group cursor-pointer font-melon" onClick={() =>
+                router.push(`/product/${product.slug}`)
+              }>
+                <div
+                  className="card-smooth rounded-2xl px-8 relative overflow-hidden transition-all duration-300 ease-out group-hover:ring-4 group-hover:ring-[#F36E21] group-hover:shadow-xl h-full flex flex-col"
+                  style={{ backgroundColor: pickBg(product) }}
+                >
+                  {tagName ? (
+                    tagName === "veg" ? (
+                      <span className="absolute top-4 right-0 bg-[#10B981] text-white text-[11px] font-medium px-3 py-1 border border-white rounded-l-sm z-10">
+                        {tagName.charAt(0).toUpperCase() + tagName.slice(1)}
+                      </span>
+                    ) : (
+                      <span className="absolute top-4 right-0 bg-[#F97316] text-white text-[11px] font-medium px-3 py-1 rounded-l-sm border border-white z-10">
+                        {tagName.charAt(0).toUpperCase() + tagName.slice(1)}
+                      </span>
+                    )
+                  ) : null}
+                  {/* {product.type === "non-veg" && (
                   <span className="absolute top-4 right-0 bg-[#F97316] text-white text-[11px] font-medium px-3 py-1 rounded-l-sm border border-white z-10">
                     Non-veg
                   </span>
@@ -162,89 +162,89 @@ export default function BestSellers({ cmsData }: { cmsData?: any }) {
                   </span>
                 )} */}
 
-                <button
-                  type="button"
-                  onClick={(e) => handleToggleFavorite(e, product.slug)}
-                  className="absolute left-4 top-4 z-20 rounded-full bg-white/90 px-2 py-1 text-sm text-[#7a1e0e]"
-                >
-                  {favoriteSlugs.includes(product.slug) ? "♥" : "♡"}
-                </button>
+                  <button
+                    type="button"
+                    onClick={(e) => handleToggleFavorite(e, product.slug)}
+                    className="absolute left-4 top-4 z-20 rounded-full bg-white/90 px-2 py-1 text-sm text-[#7a1e0e]"
+                  >
+                    {favoriteSlugs.includes(product.slug) ? "♥" : "♡"}
+                  </button>
 
-                <div className="relative h-full flex items-center justify-center py-4">
-                  <Image src={product.image} alt={product.name} width={180} height={220} className="w-auto h-full object-contain group-hover:scale-105 transition-transform duration-300 ease-out" />
-                </div>
+                  <div className="relative h-full flex items-center justify-center py-4">
+                    <Image src={product.image} alt={product.name} width={180} height={220} className="w-auto h-full object-contain group-hover:scale-105 transition-transform duration-300 ease-out" />
+                  </div>
 
-                <div className="text-center pb-4">
-                  <h3 className="font-medium text-white text-[15px] md:text-xl leading-tight tracking-wide line-clamp-2 min-h-[44px] md:min-h-[56px]">
-                    {product.name}
-                  </h3>
-                  <p className="text-[#FFF5C5] text-[11px] uppercase tracking-wide line-clamp-2 min-h-[30px]">
-                    {product.description}
-                  </p>
+                  <div className="text-center pb-4">
+                    <h3 className="font-medium text-white text-[15px] md:text-xl leading-tight tracking-wide line-clamp-2 min-h-[44px] md:min-h-[56px]">
+                      {product.name}
+                    </h3>
+                    <p className="text-[#FFF5C5] text-[11px] uppercase tracking-wide line-clamp-2 min-h-[30px]">
+                      {product.description}
+                    </p>
 
-                  <div className="mt-3 flex items-center justify-between gap-2">
-                    {(cartQtyBySlug[product.slug] ?? 0) > 0 && product.productKind === "simple" ? (
-                      <div className="flex items-center rounded-md border border-[#d5c4b8] bg-white/95 px-1 py-0.5">
+                    <div className="mt-3 flex items-center justify-between gap-2">
+                      {(cartQtyBySlug[product.slug] ?? 0) > 0 && product.productKind === "simple" ? (
+                        <div className="flex items-center rounded-md border border-[#d5c4b8] bg-white/95 px-1 py-0.5">
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setCartItemQuantity(product, Math.max(0, (cartQtyBySlug[product.slug] ?? 0) - 1));
+                            }}
+                            className="h-6 w-6 rounded text-sm font-light text-[#5A272A] hover:bg-[#f4efec]"
+                          >
+                            -
+                          </button>
+                          <span className="min-w-5 text-center text-xs font-light text-[#5A272A]">
+                            {cartQtyBySlug[product.slug] ?? 0}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setCartItemQuantity(product, (cartQtyBySlug[product.slug] ?? 0) + 1);
+                            }}
+                            className="h-6 w-6 rounded text-sm font-light text-[#5A272A] hover:bg-[#f4efec]"
+                          >
+                            +
+                          </button>
+                        </div>
+                      ) : (
                         <button
                           type="button"
                           onClick={(e) => {
                             e.stopPropagation();
-                            setCartItemQuantity(product, Math.max(0, (cartQtyBySlug[product.slug] ?? 0) - 1));
+                            if (product.productKind === "variant") {
+                              setSelectedProduct(product);
+                            } else {
+                              setCartItemQuantity(product, 1);
+                            }
                           }}
-                          className="h-6 w-6 rounded text-sm font-light text-[#5A272A] hover:bg-[#f4efec]"
+                          className="rounded-lg border cursor-pointer border-white tracking-wide px-4 py-1.5 text-[12px] font-light text-white hover:bg-primary hover:text-white transition-all "
                         >
-                          -
+                          Add to Cart
                         </button>
-                        <span className="min-w-5 text-center text-xs font-light text-[#5A272A]">
-                          {cartQtyBySlug[product.slug] ?? 0}
-                        </span>
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setCartItemQuantity(product, (cartQtyBySlug[product.slug] ?? 0) + 1);
-                          }}
-                          className="h-6 w-6 rounded text-sm font-light text-[#5A272A] hover:bg-[#f4efec]"
-                        >
-                          +
-                        </button>
-                      </div>
-                    ) : (
+                      )}
                       <button
-                        type="button"
                         onClick={(e) => {
-                          e.stopPropagation();
+                          e.stopPropagation()
                           if (product.productKind === "variant") {
                             setSelectedProduct(product);
                           } else {
-                            setCartItemQuantity(product, 1);
+                            if ((cartQtyBySlug[product.slug] ?? 0) === 0) {
+                              setCartItemQuantity(product, 1);
+                            }
+                            router.push("/checkout");
                           }
-                        }}
-                        className="rounded-lg border border-white tracking-wide px-4 py-1.5 text-[12px] font-light text-white hover:bg-primary hover:text-white transition-all "
-                      >
-                        Add to Cart
+                        }} className="rounded-lg cursor-pointer bg-primary tracking-wide px-3 py-1.5 text-[12px] font-light text-white hover:bg-[#2d1011]">
+                        Buy Now
                       </button>
-                    )}
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        if (product.productKind === "variant") {
-                          setSelectedProduct(product);
-                        } else {
-                          if ((cartQtyBySlug[product.slug] ?? 0) === 0) {
-                            setCartItemQuantity(product, 1);
-                          }
-                          router.push("/checkout");
-                        }
-                      }} className="rounded-lg bg-primary tracking-wide px-3 py-1.5 text-[12px] font-light text-white hover:bg-[#2d1011]">
-                      Buy Now
-                    </button>
-                  </div>
+                    </div>
 
-                  <p className="mt-2 text-sm font-medium text-[#FFF5C5]">Rs. {product.price.toFixed(2)}</p>
+                    <p className="mt-2 text-sm font-medium text-[#FFF5C5]">Rs. {product.price.toFixed(2)}</p>
+                  </div>
                 </div>
               </div>
-            </div>
             )
           })}
         </div>
@@ -256,11 +256,11 @@ export default function BestSellers({ cmsData }: { cmsData?: any }) {
           <div className="w-full max-w-md overflow-hidden rounded-3xl bg-white shadow-2xl" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between bg-primary p-5 text-white">
               <h3 className="font-melon text-lg font-bold uppercase tracking-wider">Select Options</h3>
-              <button onClick={() => setSelectedProduct(null)} className="rounded-full bg-white/20 p-1 hover:bg-white/30 transition-colors">
+              <button onClick={() => setSelectedProduct(null)} className="rounded-full bg-white/20 p-1 cursor-pointer hover:bg-white/30 transition-colors">
                 <X size={20} />
               </button>
             </div>
-            
+
             <div className="p-6">
               <div className="mb-4 flex gap-4">
                 <div className="relative h-20 w-20 shrink-0 rounded-xl bg-gray-100 p-2">
@@ -282,18 +282,18 @@ export default function BestSellers({ cmsData }: { cmsData?: any }) {
                         <p className="font-melon text-sm font-bold text-[#4A1D1F]">{v.weight || v.name}</p>
                         <p className="text-sm font-bold text-orange-500">Rs. {v.price.toFixed(2)}</p>
                       </div>
-                      
+
                       <div className="flex items-center gap-3">
                         {qty > 0 ? (
                           <div className="flex items-center rounded-lg border border-orange-200 bg-white px-2 py-1 shadow-sm">
-                            <button onClick={(e) => { e.stopPropagation(); updateVariantQty(selectedProduct, v, qty - 1); }} className="h-6 w-6 font-bold text-primary hover:scale-110 transition-transform">-</button>
+                            <button onClick={(e) => { e.stopPropagation(); updateVariantQty(selectedProduct, v, qty - 1); }} className="h-6 w-6 font-bold text-primary cursor-pointer hover:scale-110 transition-transform">-</button>
                             <span className="min-w-6 text-center text-xs font-bold text-gray-700">{qty}</span>
-                            <button onClick={(e) => { e.stopPropagation(); updateVariantQty(selectedProduct, v, qty + 1); }} className="h-6 w-6 font-bold text-primary hover:scale-110 transition-transform">+</button>
+                            <button onClick={(e) => { e.stopPropagation(); updateVariantQty(selectedProduct, v, qty + 1); }} className="h-6 w-6 font-bold text-primary hover:scale-110 cursor-pointer transition-transform">+</button>
                           </div>
                         ) : (
                           <button
                             onClick={(e) => { e.stopPropagation(); updateVariantQty(selectedProduct, v, 1); }}
-                            className="rounded-full bg-primary px-5 py-1.5 text-[11px] font-bold text-white shadow-md hover:bg-[#3a1517] transition-all"
+                            className="rounded-full bg-primary cursor-pointer px-5 py-1.5 text-[11px] font-bold text-white shadow-md hover:bg-[#3a1517] transition-all"
                           >
                             ADD
                           </button>

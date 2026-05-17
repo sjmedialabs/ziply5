@@ -35,7 +35,7 @@ export default function CravingsGallery({ cmsData }: { cmsData?: any }) {
         </div>
         <div className="flex gap-4 overflow-x-auto pb-4 scrollbar-hide" style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}>
           {displayItems.map((item: any, i: number) => (
-            <div key={item.id || i} className="flex-shrink-0 w-48 md:w-56 group cursor-pointer">
+            <div key={item.id || i} className="flex-shrink-0 w-48 md:w-56 group">
               <div className="card-smooth relative h-64 md:h-80 overflow-hidden shadow-lg rounded-lg group-hover:scale-[1.02]">
                 <Image src={item.image} alt={item.alt || `craving ${item.id || i}`} fill className="object-cover" />
                 <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />

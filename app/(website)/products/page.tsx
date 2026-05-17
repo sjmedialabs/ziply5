@@ -73,6 +73,7 @@ function ProductsPageContent() {
     }
     return Date.now()
   })[0]
+  const bestSellerParam = (searchParams.get("bestSeller") || "").trim().toLowerCase()
   const packParam = (searchParams.get("pack") || "").trim().toLowerCase()
   const typeParam = (searchParams.get("type") || "").trim().toLowerCase()
   const comboParam = (searchParams.get("combo") || "").trim().toLowerCase()
@@ -98,7 +99,7 @@ function ProductsPageContent() {
       .then((tagRes: { success?: boolean; data?: any }) => {
         if (cancelled) return
         const tags = ((tagRes.data as any[] | undefined) ?? [])
-          .map((t) => ({ slug: t.slug, name: t.name, id: t.id,   }))
+          .map((t) => ({ slug: t.slug, name: t.name, id: t.id, }))
         setTagOptions(tags)
       })
       .catch(() => null)
@@ -108,6 +109,13 @@ function ProductsPageContent() {
     }
   }, [])
 
+  useEffect(() => {
+    if (bestSellerParam === "true") {
+      setBestSellerFilter("true")
+    } else {
+      setBestSellerFilter("all")
+    }
+  }, [bestSellerParam])
   useEffect(() => {
     const wantsCombo =
       packParam === "combo-pack" ||
@@ -194,13 +202,13 @@ function ProductsPageContent() {
       const token = window.localStorage.getItem("ziply5_access_token");
       const userStr = window.localStorage.getItem("ziply5_user");
       const userId = userStr ? JSON.parse(userStr).id : null;
-      
+
       if (token && userId) {
         try {
           const res = await fetch("/api/v1/favorites", {
-            headers: { 
+            headers: {
               Authorization: `Bearer ${token}`,
-              "x-user-id": userId 
+              "x-user-id": userId
             },
           });
           const payload = await res.json();
@@ -234,13 +242,13 @@ function ProductsPageContent() {
   }
 
   const categories = useMemo(() => {
-    const base = categoryOptions.length > 0 
-      ? categoryOptions 
+    const base = categoryOptions.length > 0
+      ? categoryOptions
       : Array.from(new Set(products.map((p) => p.category).filter((x) => x && x !== "all"))).map((slug) => ({
-          slug,
-          name: slug.replace(/-/g, " "),
-        }));
-    
+        slug,
+        name: slug.replace(/-/g, " "),
+      }));
+
     // Merge Meal Types into Category Options as they are conceptually same for filtering here
     return [...base]
   }, [categoryOptions, products])
@@ -249,7 +257,7 @@ function ProductsPageContent() {
     let items = products.filter((item) => {
       // Merged logic: filter matches either the category field OR the diet type field
       const categoryMatch = categoryFilter === "all" || item.category === categoryFilter || item.type === categoryFilter
-      
+
       const packMatch =
         packFilter === "all" ||
         (packFilter === "combo-pack" && (item as any).isCombo) ||
@@ -263,13 +271,13 @@ function ProductsPageContent() {
       const preparationTypeMatch =
         preparationTypeFilter === "all" || String((item as any).preparationType ?? "") === preparationTypeFilter
 
-const tagMatch =
-  selectedTagIds.length === 0 ||
-  selectedTagIds.some((selectedId) =>
-    (item as any).tags?.some((t: any) => t.tag.id === selectedId)
-  );
-      return categoryMatch && packMatch && mealTimeMatch && 
-             bestSellerMatch && featuredMatch && preparationTypeMatch && tagMatch
+      const tagMatch =
+        selectedTagIds.length === 0 ||
+        selectedTagIds.some((selectedId) =>
+          (item as any).tags?.some((t: any) => t.tag.id === selectedId)
+        );
+      return categoryMatch && packMatch && mealTimeMatch &&
+        bestSellerMatch && featuredMatch && preparationTypeMatch && tagMatch
     })
 
     if (searchTerm) {
@@ -362,13 +370,13 @@ const tagMatch =
     return map
   }, [filteredProducts, pageSeedRef])
 
-const toggleTag = (tagId: string) => {
-  setSelectedTagIds(prev =>
-    prev.includes(tagId)
-      ? prev.filter(id => id !== tagId)
-      : [...prev, tagId]
-  )
-}
+  const toggleTag = (tagId: string) => {
+    setSelectedTagIds(prev =>
+      prev.includes(tagId)
+        ? prev.filter(id => id !== tagId)
+        : [...prev, tagId]
+    )
+  }
 
   const [selectedProduct, setSelectedProduct] = useState<any | null>(null)
   const filterBarRef = useRef<HTMLDivElement | null>(null)
@@ -397,7 +405,7 @@ const toggleTag = (tagId: string) => {
       sku: variant.sku
     }, nextQty)
   }
-  console.log("fetch products:::::::",filteredProducts)
+  console.log("fetch products:::::::", filteredProducts)
 
   return (
     <section className="w-full bg-[#F3F0DC]">
@@ -407,9 +415,9 @@ const toggleTag = (tagId: string) => {
         className="fixed left-0 right-0 z-[90] bg-[#F3F0DC]/75 backdrop-blur-sm pt-3"
       >
         <div className="mx-auto w-full max-w-7xl px-4 sm:px-6 lg:px-8">
-            <div className="rounded-3xl bg-white/40 p-3 md:p-4">
-              <div className="flex flex-col gap-4">
-                {/* <div className="flex items-center justify-between">
+          <div className="rounded-3xl bg-white/40 p-3 md:p-4">
+            <div className="flex flex-col gap-4">
+              {/* <div className="flex items-center justify-between">
                   <p className="text-xs font-bold uppercase tracking-wide text-[#1F1F1C]">Filtered Products By</p>
                   <button
                     type="button"
@@ -433,58 +441,58 @@ const toggleTag = (tagId: string) => {
                   </button>
                 </div> */}
 
-                <div className="grid grid-cols-2 items-center gap-3 md:grid-cols-3 lg:grid-cols-4">
-                  <Select value={categoryFilter} onValueChange={(value) => setCategoryFilter(value as CategoryFilter)}>
-                    <SelectTrigger className="h-9 rounded-full border-[#D9D9D1] bg-white px-4 text-xs font-medium">
-                      <SelectValue placeholder="Category & Type" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">All Categories</SelectItem>
-                      {categories.map((cat, idx) => (
-                        <SelectItem key={`${cat.slug || "cat"}-${idx}`} value={cat.slug}>
-                          {cat.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+              <div className="grid grid-cols-2 items-center gap-3 md:grid-cols-3 lg:grid-cols-4">
+                <Select value={categoryFilter} onValueChange={(value) => setCategoryFilter(value as CategoryFilter)}>
+                  <SelectTrigger className="h-9 cursor-pointer rounded-full border-[#D9D9D1] bg-white px-4 text-xs font-medium">
+                    <SelectValue placeholder="Category & Type" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem className="cursor-pointer" value="all">All Categories</SelectItem>
+                    {categories.map((cat, idx) => (
+                      <SelectItem className="cursor-pointer" key={`${cat.slug || "cat"}-${idx}`} value={cat.slug}>
+                        {cat.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
 
-                  <Select value={packFilter} onValueChange={(value) => setPackFilter(value as any)}>
-                    <SelectTrigger className="h-9 rounded-full border-[#D9D9D1] bg-white px-4 text-xs font-medium">
-                      <SelectValue placeholder="Packs & Deals" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">All Packs</SelectItem>
-                      <SelectItem value="combo-pack">Combo Pack</SelectItem>
-                      <SelectItem value="limited-offers">Limited Deals</SelectItem>
-                    </SelectContent>
-                  </Select>
+                <Select value={packFilter} onValueChange={(value) => setPackFilter(value as any)}>
+                  <SelectTrigger className="h-9 cursor-pointer rounded-full border-[#D9D9D1] bg-white px-4 text-xs font-medium">
+                    <SelectValue placeholder="Packs & Deals" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem className="cursor-pointer" value="all">All Packs</SelectItem>
+                    <SelectItem className="cursor-pointer" value="combo-pack">Combo Pack</SelectItem>
+                    <SelectItem className="cursor-pointer" value="limited-offers">Limited Deals</SelectItem>
+                  </SelectContent>
+                </Select>
 
-                  <Select value={sortBy} onValueChange={(value) => setSortBy(value as SortType)}>
-                    <SelectTrigger className="h-9 rounded-full border-[#D9D9D1] bg-white px-4 text-xs font-medium">
-                      <SelectValue placeholder="Sort by" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="popular">Popular</SelectItem>
-                      <SelectItem value="newest">Newest</SelectItem>
-                      <SelectItem value="price-low-high">Price: Low to High</SelectItem>
-                      <SelectItem value="price-high-low">Price: High to Low</SelectItem>
-                      <SelectItem value="name-asc">A to Z</SelectItem>
-                      <SelectItem value="name-desc">Z to A</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  <Select value={preparationTypeFilter} onValueChange={(value) => setPreparationTypeFilter(value as PreparationFilter)}>
-                    <SelectTrigger className="h-9 rounded-full border-[#D9D9D1] bg-white px-4 text-xs font-medium">
-                      <SelectValue placeholder="Preparation Type" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">All Preparation Types</SelectItem>
-                      <SelectItem value="ready_to_eat">Ready to Eat</SelectItem>
-                      <SelectItem value="ready_to_cook">Ready to Cook</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
+                <Select value={sortBy} onValueChange={(value) => setSortBy(value as SortType)}>
+                  <SelectTrigger className="h-9 cursor-pointer rounded-full border-[#D9D9D1] bg-white px-4 text-xs font-medium">
+                    <SelectValue placeholder="Sort by" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem className="cursor-pointer" value="popular">Popular</SelectItem>
+                    <SelectItem className="cursor-pointer" value="newest">Newest</SelectItem>
+                    <SelectItem className="cursor-pointer" value="price-low-high">Price: Low to High</SelectItem>
+                    <SelectItem className="cursor-pointer" value="price-high-low">Price: High to Low</SelectItem>
+                    <SelectItem className="cursor-pointer" value="name-asc">A to Z</SelectItem>
+                    <SelectItem className="cursor-pointer" value="name-desc">Z to A</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Select value={preparationTypeFilter} onValueChange={(value) => setPreparationTypeFilter(value as PreparationFilter)}>
+                  <SelectTrigger className="h-9 cursor-pointer rounded-full border-[#D9D9D1] bg-white px-4 text-xs font-medium">
+                    <SelectValue placeholder="Preparation Type" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem className="cursor-pointer" value="all">All Preparation Types</SelectItem>
+                    <SelectItem className="cursor-pointer" value="ready_to_eat">Ready to Eat</SelectItem>
+                    <SelectItem value="ready_to_cook">Ready to Cook</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
             </div>
+          </div>
         </div>
       </div>
 
@@ -512,11 +520,10 @@ const toggleTag = (tagId: string) => {
                   key={tag.id}
                   type="button"
                   onClick={() => toggleTag(tag.id)}
-                  className={`rounded-full border px-3 py-1 text-[10px] font-bold uppercase transition-all ${
-                    selectedTagIds.includes(tag.id)
-                      ? "border-primary bg-primary text-white shadow-sm"
-                      : "border-gray-200 bg-white text-gray-500 hover:border-primary"
-                  }`}
+                  className={`rounded-full border cursor-pointer px-3 py-1 text-[10px] font-bold uppercase transition-all ${selectedTagIds.includes(tag.id)
+                    ? "border-primary bg-primary text-white shadow-sm"
+                    : "border-gray-200 bg-white text-gray-500 hover:border-primary"
+                    }`}
                 >
                   {tag.name}
                 </button>
@@ -524,22 +531,20 @@ const toggleTag = (tagId: string) => {
               <button
                 type="button"
                 onClick={() => setBestSellerFilter(bestSellerFilter === "all" ? "true" : "all")}
-                className={`rounded-full border px-3 py-1 text-[10px] font-bold uppercase transition-all ${
-                  bestSellerFilter === "true"
-                    ? "border-primary bg-primary text-white shadow-sm"
-                    : "border-gray-200 bg-white text-gray-500 hover:border-primary"
-                }`}
+                className={`rounded-full border px-3 cursor-pointer py-1 text-[10px] font-bold uppercase transition-all ${bestSellerFilter === "true"
+                  ? "border-primary bg-primary text-white shadow-sm"
+                  : "border-gray-200 bg-white text-gray-500 hover:border-primary"
+                  }`}
               >
                 Best Sellers
               </button>
               <button
                 type="button"
                 onClick={() => setFeaturedFilter(featuredFilter === "all" ? "true" : "all")}
-                className={`rounded-full border px-3 py-1 text-[10px] font-bold uppercase transition-all ${
-                  featuredFilter === "true"
-                    ? "border-primary bg-primary text-white shadow-sm"
-                    : "border-gray-200 bg-white text-gray-500 hover:border-primary"
-                }`}
+                className={`rounded-full border px-3 py-1 cursor-pointer text-[10px] font-bold uppercase transition-all ${featuredFilter === "true"
+                  ? "border-primary bg-primary text-white shadow-sm"
+                  : "border-gray-200 bg-white text-gray-500 hover:border-primary"
+                  }`}
               >
                 Featured
               </button>
@@ -560,7 +565,7 @@ const toggleTag = (tagId: string) => {
             <div className="text-6xl mb-4">🍽️</div>
             <h3 className="font-melon text-xl text-[#5A272A] font-bold uppercase">No Products Found</h3>
             <p className="text-sm text-gray-500 mt-2">Try adjusting your filters or search term to find what you're looking for.</p>
-            <button 
+            <button
               onClick={() => {
                 setCategoryFilter("all")
                 setPackFilter("all")
@@ -584,9 +589,9 @@ const toggleTag = (tagId: string) => {
           {paginatedProducts.map((product, idx) => {
             const displayPrice = (product as any).variants?.length
               ? Number(
-                  (product as any).variants.find((v: any) => v.isDefault)?.price ||
-                    (product as any).variants[0].price
-                )
+                (product as any).variants.find((v: any) => v.isDefault)?.price ||
+                (product as any).variants[0].price
+              )
               : Number(product.price || 0);
             const globalIdx = (currentPage - 1) * PRODUCTS_PAGE_SIZE + idx
             const cardBg = productBgBySlug[String(product.slug || product.id || globalIdx)] || "#3EA6CF"
@@ -608,136 +613,136 @@ const toggleTag = (tagId: string) => {
                     style={{ backgroundColor: cardBg }}
                   >
 
-                
-                  {product.tags &&
-                  product?.tags[0]?.tag?.name && (
-                           <div className="absolute top-0  z-20 right-0 w-20 h-5 rounded-sm flex items-center justify-center">
-                                    {
-                                        product.tags[0].tag.name === "veg"?(<span className="absolute top-4 right-0 bg-[#10B981] text-white text-[11px] font-medium px-3 py-1 border border-white rounded-l-sm z-10">
-                                      {product.tags[0].tag.name?.charAt(0).toUpperCase() + product.tags[0].tag.name.slice(1)}
-                                    </span>):(<span className="absolute top-4 right-0 bg-[#F97316] text-white text-[11px] font-medium px-3 py-1 rounded-l-sm border border-white z-10">
-                                      {product.tags[0].tag.name?.charAt(0).toUpperCase() + product.tags[0].tag.name.slice(1)}
-                                    </span>)
-                                      }
-                            </div>
-                  )
-                }
-                <Link href={(product as any).isCombo ? `/combo/${product.slug}` : `/product/${product.slug}`} className="block">
-                
-    
 
-                  <div className={`relative mx-auto min-h-[280px] h-full w-full transition-transform duration-300 hover:scale-90 ${showComboThumbStrip ? 'max-w-full' : 'max-w-[190px]'}`}>
-                    {showComboThumbStrip ? (
-                      <div className="h-full w-full flex flex-col sm:flex-row   items-center justify-center gap-2 px-1">
-                        {comboThumbs.map((thumb, imageIdx) => (
-                          <div key={`${product.slug}-combo-thumb-${imageIdx}`} className="flex mt-[0px] sm:mt-[100px]  mb-0 flex-col sm:flex-row justify-center items-center gap-2">
-                            <div className="relative h-30 w-28">
-                              <Image
-                                src={thumb}
-                                alt={`${product.name} item ${imageIdx + 1}`}
-                                fill
-                                className="object-contain"
-                              />
-                            </div>
-                            {imageIdx < comboThumbs.length - 1 ? (
-                              <span className="text-xl font-bold text-white/95 ">+</span>
-                            ) : null}
+                    {product.tags &&
+                      product?.tags[0]?.tag?.name && (
+                        <div className="absolute top-0  z-20 right-0 w-20 h-5 rounded-sm flex items-center justify-center">
+                          {
+                            product.tags[0].tag.name === "veg" ? (<span className="absolute top-4 right-0 bg-[#10B981] text-white text-[11px] font-medium px-3 py-1 border border-white rounded-l-sm z-10">
+                              {product.tags[0].tag.name?.charAt(0).toUpperCase() + product.tags[0].tag.name.slice(1)}
+                            </span>) : (<span className="absolute top-4 right-0 bg-[#F97316] text-white text-[11px] font-medium px-3 py-1 rounded-l-sm border border-white z-10">
+                              {product.tags[0].tag.name?.charAt(0).toUpperCase() + product.tags[0].tag.name.slice(1)}
+                            </span>)
+                          }
+                        </div>
+                      )
+                    }
+                    <Link href={(product as any).isCombo ? `/combo/${product.slug}` : `/product/${product.slug}`} className="block">
+
+
+
+                      <div className={`relative mx-auto min-h-[280px] h-full w-full transition-transform duration-300 hover:scale-90 ${showComboThumbStrip ? 'max-w-full' : 'max-w-[190px]'}`}>
+                        {showComboThumbStrip ? (
+                          <div className="h-full w-full flex flex-col sm:flex-row   items-center justify-center gap-2 px-1">
+                            {comboThumbs.map((thumb, imageIdx) => (
+                              <div key={`${product.slug}-combo-thumb-${imageIdx}`} className="flex mt-[0px] sm:mt-[100px]  mb-0 flex-col sm:flex-row justify-center items-center gap-2">
+                                <div className="relative h-30 w-28">
+                                  <Image
+                                    src={thumb}
+                                    alt={`${product.name} item ${imageIdx + 1}`}
+                                    fill
+                                    className="object-contain"
+                                  />
+                                </div>
+                                {imageIdx < comboThumbs.length - 1 ? (
+                                  <span className="text-xl font-bold text-white/95 ">+</span>
+                                ) : null}
+                              </div>
+                            ))}
                           </div>
-                        ))}
+                        ) : (
+                          <Image src={product.image} alt={product.name} fill className="object-contain" />
+                        )}
                       </div>
-                    ) : (
-                      <Image src={product.image} alt={product.name} fill className="object-contain" />
-                    )}
-                  </div>
 
-                <div className="mt-2 text-center tracking-wide font-light font-melon">
-                  <h3 className="text-[18px] uppercase leading-tight text-white drop-shadow-[0_1px_0_rgba(0,0,0,0.2)]">
-                    {product.name}
-                  </h3>
-                  <p className="mt-1 text-[10px] uppercase tracking-wide text-white/90">
-                    Home style meal | Net wt. {product.weight}
-                  </p>
-                  {product.productKind === "simple" && product.stock && product.stock > 0 && product.stock <= 5 && (
-                    <p className="mt-1 text-[11px] font-medium text-orange-200">
-                      Hurry up only {product.stock} left
-                    </p>
-                  )}
-                   <p className="mt-1 text-sm font-melon text-[#FFF5C5]">Rs. {product.price.toFixed(2)}</p>
-                </div>
-              </Link>
+                      <div className="mt-2 text-center tracking-wide font-light font-melon">
+                        <h3 className="text-[18px] uppercase leading-tight text-white drop-shadow-[0_1px_0_rgba(0,0,0,0.2)]">
+                          {product.name}
+                        </h3>
+                        <p className="mt-1 text-[10px] uppercase tracking-wide text-white/90">
+                          Home style meal | Net wt. {product.weight}
+                        </p>
+                        {product.productKind === "simple" && product.stock && product.stock > 0 && product.stock <= 5 && (
+                          <p className="mt-1 text-[11px] font-medium text-orange-200">
+                            Hurry up only {product.stock} left
+                          </p>
+                        )}
+                        <p className="mt-1 text-sm font-melon text-[#FFF5C5]">Rs. {product.price.toFixed(2)}</p>
+                      </div>
+                    </Link>
 
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    handleToggleFavorite(e, product.slug);
-                  }}
-                  className="absolute left-3 top-3 z-[60] p-2 text-white cursor-pointer hover:scale-110 transition-transform"
-                >
-                  <Heart size={24} className={favoriteSlugs.includes(product.slug) ? "fill-white text-white" : "text-white"} />
-                </button>
-
-                <div className="mt-auto flex items-end justify-between gap-2 pt-2 font-melon tracking-wide font-light">
-                  {(cartQtyBySlug[product.slug] ?? 0) > 0 && product.productKind === "simple" ? (
-                    <div className="flex items-center rounded-md border border-[#d5c4b8] bg-white/95 px-1 py-0.5">
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setCartItemQuantity(product as any, Math.max(0, (cartQtyBySlug[product.slug] ?? 0) - 1));
-                        }}
-                        className="h-6 w-6 rounded text-sm  text-[#5A272A] hover:bg-[#f4efec]"
-                      >
-                        -
-                      </button>
-                      <span className="min-w-5 text-center text-xs font-light text-[#5A272A]">
-                        {cartQtyBySlug[product.slug] ?? 0}
-                      </span>
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setCartItemQuantity(product as any, (cartQtyBySlug[product.slug] ?? 0) + 1);
-                        }}
-                        className="h-6 w-6 rounded text-sm text-[#5A272A] hover:bg-[#f4efec]"
-                      >
-                        +
-                      </button>
-                    </div>
-                  ) : (
                     <button
                       type="button"
                       onClick={(e) => {
+                        e.preventDefault();
                         e.stopPropagation();
-                        if ((product as any).isCombo) {
-                          window.location.href = `/combo/${product.slug}`
-                        } else if (product.productKind === "variant") {
-                          setSelectedProduct(product);
-                        } else {
-                          setCartItemQuantity(product as any, 1);
-                        }
+                        handleToggleFavorite(e, product.slug);
                       }}
-                      className="rounded-lg border border-white tracking-wide px-4 py-1.5 text-[12px] font-light text-white hover:bg-primary hover:text-white transition-all "
+                      className="absolute left-3 top-3 z-[60] p-2 text-white cursor-pointer hover:scale-110 transition-transform"
                     >
-                      {(product as any).isCombo ? "View Combo" : "Add to Cart"}
+                      <Heart size={24} className={favoriteSlugs.includes(product.slug) ? "fill-white text-white" : "text-white"} />
                     </button>
-                  )}
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      if (product.productKind === "variant") {
-                        setSelectedProduct(product);
-                      } else {
-                        if ((cartQtyBySlug[product.slug] ?? 0) === 0) {
-                          setCartItemQuantity(product as any, 1);
-                        }
-                        router.push("/checkout");
-                      }
-                    }} className="rounded-lg bg-primary tracking-wide px-3 py-1.5 text-[12px] font-light text-white hover:bg-[#2d1011]">
-                    Buy Now
-                  </button>
-                </div>
+
+                    <div className="mt-auto flex items-end justify-between gap-2 pt-2 font-melon tracking-wide font-light">
+                      {(cartQtyBySlug[product.slug] ?? 0) > 0 && product.productKind === "simple" ? (
+                        <div className="flex items-center rounded-md border border-[#d5c4b8] bg-white/95 px-1 py-0.5">
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setCartItemQuantity(product as any, Math.max(0, (cartQtyBySlug[product.slug] ?? 0) - 1));
+                            }}
+                            className="h-6 w-6 rounded text-sm  text-[#5A272A] hover:bg-[#f4efec]"
+                          >
+                            -
+                          </button>
+                          <span className="min-w-5 text-center text-xs font-light text-[#5A272A]">
+                            {cartQtyBySlug[product.slug] ?? 0}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setCartItemQuantity(product as any, (cartQtyBySlug[product.slug] ?? 0) + 1);
+                            }}
+                            className="h-6 w-6 rounded text-sm text-[#5A272A] hover:bg-[#f4efec]"
+                          >
+                            +
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if ((product as any).isCombo) {
+                              window.location.href = `/combo/${product.slug}`
+                            } else if (product.productKind === "variant") {
+                              setSelectedProduct(product);
+                            } else {
+                              setCartItemQuantity(product as any, 1);
+                            }
+                          }}
+                          className="rounded-lg border cursor-pointer border-white tracking-wide px-4 py-1.5 text-[12px] font-light text-white hover:bg-primary hover:text-white transition-all "
+                        >
+                          {(product as any).isCombo ? "View Combo" : "Add to Cart"}
+                        </button>
+                      )}
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (product.productKind === "variant") {
+                            setSelectedProduct(product);
+                          } else {
+                            if ((cartQtyBySlug[product.slug] ?? 0) === 0) {
+                              setCartItemQuantity(product as any, 1);
+                            }
+                            router.push("/checkout");
+                          }
+                        }} className="rounded-lg bg-primary cursor-pointer tracking-wide px-3 py-1.5 text-[12px] font-light text-white hover:bg-[#2d1011]">
+                        Buy Now
+                      </button>
+                    </div>
                   </article>
                 </ScaleHover>
               </SlideUp>
@@ -777,77 +782,77 @@ const toggleTag = (tagId: string) => {
       <ModalAnimation open={Boolean(selectedProduct)} className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm" >
         {selectedProduct ? (
           <div onClick={() => setSelectedProduct(null)} className="fixed inset-0 flex items-center justify-center p-4">
-          <div className="w-full max-w-md overflow-hidden rounded-3xl bg-white shadow-2xl" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center justify-between bg-primary p-5 text-white">
-              <h3 className="font-melon text-lg font-bold uppercase tracking-wider">Select Options</h3>
-              <button onClick={() => setSelectedProduct(null)} className="rounded-full bg-white/20 p-1 hover:bg-white/30 transition-colors">
-                <X size={20} />
-              </button>
-            </div>
-            
-            <div className="p-6">
-              <div className="mb-4 flex gap-4">
-                <div className="relative h-20 w-20 shrink-0 rounded-xl bg-gray-100 p-2">
-                  <Image src={selectedProduct.image} alt={selectedProduct.name} fill className="object-contain" />
+            <div className="w-full max-w-md overflow-hidden rounded-3xl bg-white shadow-2xl" onClick={(e) => e.stopPropagation()}>
+              <div className="flex items-center justify-between bg-primary p-5 text-white">
+                <h3 className="font-melon text-lg font-bold uppercase tracking-wider">Select Options</h3>
+                <button onClick={() => setSelectedProduct(null)} className="rounded-full cursor-pointer bg-white/20 p-1 hover:bg-white/30 transition-colors">
+                  <X size={20} />
+                </button>
+              </div>
+
+              <div className="p-6">
+                <div className="mb-4 flex gap-4">
+                  <div className="relative h-20 w-20 shrink-0 rounded-xl bg-gray-100 p-2">
+                    <Image src={selectedProduct.image} alt={selectedProduct.name} fill className="object-contain" />
+                  </div>
+                  <div>
+                    <h4 className="font-melon text-base font-medium text-[#4A1D1F]">{selectedProduct.name}</h4>
+                    <p className="text-xs text-gray-500 line-clamp-2">{selectedProduct.description}</p>
+                  </div>
                 </div>
-                <div>
-                  <h4 className="font-melon text-base font-medium text-[#4A1D1F]">{selectedProduct.name}</h4>
-                  <p className="text-xs text-gray-500 line-clamp-2">{selectedProduct.description}</p>
+
+                <div className="space-y-3 max-h-[40vh] overflow-y-auto pr-1">
+                  {selectedProduct.variants.map((v: any) => {
+                    const vId = v.id ? String(v.id) : (v.sku || v.weight || v.name);
+                    const qty = getCartQuantity(String(selectedProduct.id), vId)
+                    return (
+                      <div key={v.id} className="flex items-center justify-between rounded-2xl border border-gray-100 bg-gray-50/50 p-4 transition-all hover:border-orange-200">
+                        <div>
+                          <p className="font-melon text-sm font-medium text-[#4A1D1F]">{v.weight || v.name}</p>
+                          <p className="text-sm font-medium text-orange-500">Rs. {v.price.toFixed(2)}</p>
+                        </div>
+
+                        <div className="flex items-center gap-3">
+                          {qty > 0 ? (
+                            <div className="flex items-center rounded-lg border border-orange-200 bg-white px-2 py-1 shadow-sm">
+                              <button onClick={(e) => { e.stopPropagation(); updateVariantQty(selectedProduct, v, qty - 1); }} className="h-6 w-6 font-bold text-primary hover:scale-110 cursor-pointer transition-transform">-</button>
+                              <span className="min-w-6 text-center text-xs font-bold text-gray-700">{qty}</span>
+                              <button onClick={(e) => { e.stopPropagation(); updateVariantQty(selectedProduct, v, qty + 1); }} className="h-6 w-6 font-bold text-primary hover:scale-110 cursor-pointer transition-transform">+</button>
+                            </div>
+                          ) : (
+                            <button
+                              onClick={(e) => { e.stopPropagation(); updateVariantQty(selectedProduct, v, 1); }}
+                              className="rounded-full cursor-pointer bg-primary px-5 py-1.5 text-[11px] font-bold text-white shadow-md hover:bg-[#3a1517] transition-all"
+                            >
+                              ADD
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    )
+                  })}
                 </div>
               </div>
 
-              <div className="space-y-3 max-h-[40vh] overflow-y-auto pr-1">
-                {selectedProduct.variants.map((v: any) => {
-                  const vId = v.id ? String(v.id) : (v.sku || v.weight || v.name);
-                  const qty = getCartQuantity(String(selectedProduct.id), vId)
-                  return (
-                    <div key={v.id} className="flex items-center justify-between rounded-2xl border border-gray-100 bg-gray-50/50 p-4 transition-all hover:border-orange-200">
-                      <div>
-                        <p className="font-melon text-sm font-medium text-[#4A1D1F]">{v.weight || v.name}</p>
-                        <p className="text-sm font-medium text-orange-500">Rs. {v.price.toFixed(2)}</p>
-                      </div>
-                      
-                      <div className="flex items-center gap-3">
-                        {qty > 0 ? (
-                          <div className="flex items-center rounded-lg border border-orange-200 bg-white px-2 py-1 shadow-sm">
-                            <button onClick={(e) => { e.stopPropagation(); updateVariantQty(selectedProduct, v, qty - 1); }} className="h-6 w-6 font-bold text-primary hover:scale-110 transition-transform">-</button>
-                            <span className="min-w-6 text-center text-xs font-bold text-gray-700">{qty}</span>
-                            <button onClick={(e) => { e.stopPropagation(); updateVariantQty(selectedProduct, v, qty + 1); }} className="h-6 w-6 font-bold text-primary hover:scale-110 transition-transform">+</button>
-                          </div>
-                        ) : (
-                          <button
-                            onClick={(e) => { e.stopPropagation(); updateVariantQty(selectedProduct, v, 1); }}
-                            className="rounded-full bg-primary px-5 py-1.5 text-[11px] font-bold text-white shadow-md hover:bg-[#3a1517] transition-all"
-                          >
-                            ADD
-                          </button>
-                        )}
-                      </div>
-                      </div>
-                  )
-                })}
+              <div className="border-t border-gray-100 p-5 flex items-center justify-between gap-3 bg-gray-50/50">
+                <button
+                  onClick={() => setSelectedProduct(null)}
+                  className="flex-1 rounded-full border-2 cursor-pointer border-primary py-2.5 text-[11px] font-bold uppercase tracking-widest text-primary hover:bg-primary/10 transition-colors"
+                >
+                  Continue Shopping
+                </button>
+                <button
+                  onClick={() => {
+                    setSelectedProduct(null);
+                    router.push("/cart");
+                  }}
+                  className="flex-1 rounded-full bg-primary cursor-pointer border-2 border-primary py-2.5 text-[11px] font-bold uppercase tracking-widest text-white hover:bg-[#3a1517] transition-colors"
+                >
+                  Go to Cart
+                </button>
               </div>
-            </div>
-
-            <div className="border-t border-gray-100 p-5 flex items-center justify-between gap-3 bg-gray-50/50">
-              <button
-                onClick={() => setSelectedProduct(null)}
-                className="flex-1 rounded-full border-2 cursor-pointer border-primary py-2.5 text-[11px] font-bold uppercase tracking-widest text-primary hover:bg-primary/10 transition-colors"
-              >
-                Continue Shopping
-              </button>
-              <button
-                onClick={() => {
-                  setSelectedProduct(null);
-                  router.push("/cart");
-                }}
-                className="flex-1 rounded-full bg-primary cursor-pointer border-2 border-primary py-2.5 text-[11px] font-bold uppercase tracking-widest text-white hover:bg-[#3a1517] transition-colors"
-              >
-                Go to Cart
-              </button>
             </div>
           </div>
-        </div>
         ) : null}
       </ModalAnimation>
     </section>

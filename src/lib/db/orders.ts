@@ -5,7 +5,7 @@ const ORDER_TABLES = ["Order"]
 const PRODUCT_TABLES = ["Product", "products"]
 const PRODUCT_VARIANT_TABLES = ["ProductVariant", "product_variants"]
 const INVENTORY_ITEM_TABLES = ["InventoryItem", "inventory_items"]
-const COUPON_TABLES = ["Coupon", "coupons"]
+const COUPON_TABLES = ["Coupon", "coupons", "offers_v2"]
 const USER_TABLES = ["User", "users"]
 const SETTING_TABLES = ["Setting", "settings"]
 const TRANSACTION_TABLES = ["Transaction", "transactions"]
@@ -31,10 +31,43 @@ export type SupabaseOrderRecord = {
   total?: number | null
   updatedAt?: string | Date | null
   customerAddress?: string | null
+  customerEmail?: string | null
   items: any[]
-  statusHistory: Array<{ toStatus?: string; changedAt?: string | Date | null; [key: string]: unknown }>
+  statusHistory: Array<{ toStatus?: string; changedAt?: string | Date | null;[key: string]: unknown }>
   refunds: Array<{ id: string; status?: string; amount?: number }>
   notes?: any[]
+  shiprocketOrderId?: string | null
+  shipmentId?: string | null
+  awbCode?: string | null
+  courierName?: string | null
+  courierCompanyId?: string | null
+  trackingNumber?: string | null
+  trackingUrl?: string | null
+  shippingStatus?: string | null
+  shipmentStatus?: string | null
+  pickupStatus?: string | null
+  shippingCharges?: number | null
+  shippingMethod?: string | null
+  estimatedDeliveryDate?: string | Date | null
+  shiprocketRawResponse?: unknown
+  shipmentCreatedAt?: string | Date | null
+  shipmentSyncedAt?: string | Date | null
+  shipmentDeliveredAt?: string | Date | null
+  lastTrackingSyncAt?: string | Date | null
+  isShipmentCreated?: boolean | null
+  isPickupGenerated?: boolean | null
+  isLabelGenerated?: boolean | null
+  trackingData?: unknown
+  shippingStatusCode?: number | null
+  awbAssignedAt?: string | Date | null
+  labelUrl?: string | null
+  pickupGeneratedAt?: string | Date | null
+  appliedCouponId?: string | null
+  couponCode?: string | null
+  discount?: number | null
+  tax?: number | null
+  shippingCharge?: number | null
+  coupon?: { id: string; code: string; discountType: string; discountValue: number } | null
   [key: string]: unknown
 }
 
@@ -266,17 +299,53 @@ export const getCouponByCodeSupabase = async (code: string): Promise<CouponCheck
       return {
         id: safeString(row.id),
         code: safeString(row.code),
-        active: Boolean(row.active),
+        active: Boolean(row.active) || row.status === "active",
         endsAt: row.endsAt ? new Date(String(row.endsAt)) : row.ends_at ? new Date(String(row.ends_at)) : null,
-        minOrderAmount: row.minOrderAmount == null && row.min_order_amount == null ? null : safeNumber(row.minOrderAmount ?? row.min_order_amount),
-        firstOrderOnly: Boolean(row.firstOrderOnly ?? row.first_order_only),
+        minOrderAmount: row.minOrderAmount == null && row.min_order_amount == null && (row.config_json as any)?.minCartValue == null
+          ? null
+          : safeNumber(row.minOrderAmount ?? row.min_order_amount ?? (row.config_json as any)?.minCartValue),
+        firstOrderOnly: Boolean(row.firstOrderOnly ?? row.first_order_only ?? (row.config_json as any)?.firstOrderOnly),
         usageLimitPerUser:
-          row.usageLimitPerUser == null && row.usage_limit_per_user == null ? null : safeNumber(row.usageLimitPerUser ?? row.usage_limit_per_user),
-        discountType: safeString(row.discountType ?? row.discount_type) === "percentage" ? "percentage" : "flat",
-        discountValue: safeNumber(row.discountValue ?? row.discount_value),
+          row.usageLimitPerUser == null && row.usage_limit_per_user == null && (row.config_json as any)?.usageLimitPerUser == null
+            ? null
+            : safeNumber(row.usageLimitPerUser ?? row.usage_limit_per_user ?? (row.config_json as any)?.usageLimitPerUser),
+        discountType: safeString(row.discountType ?? row.discount_type ?? (row.config_json as any)?.discountType) === "percentage" || (row.config_json as any)?.discountType === "percent" ? "percentage" : "flat",
+        discountValue: safeNumber(row.discountValue ?? row.discount_value ?? (row.config_json as any)?.discountValue),
         maxDiscountAmount:
-          row.maxDiscountAmount == null && row.max_discount_amount == null ? null : safeNumber(row.maxDiscountAmount ?? row.max_discount_amount),
+          row.maxDiscountAmount == null && row.max_discount_amount == null && (row.config_json as any)?.maxDiscountAmount == null
+            ? null
+            : safeNumber(row.maxDiscountAmount ?? row.max_discount_amount ?? (row.config_json as any)?.maxDiscountAmount),
       }
+    }
+  }
+  return null
+}
+
+export const getCouponByIdSupabase = async (id: string): Promise<CouponCheckoutRecord | null> => {
+  const client = getSupabaseAdmin()
+  for (const table of COUPON_TABLES) {
+    const { data, error } = await client.from(table).select("*").eq("id", id).maybeSingle()
+    if (error || !data) continue
+    const row = data as Record<string, unknown>
+    return {
+      id: safeString(row.id),
+      code: safeString(row.code),
+      active: Boolean(row.active) || row.status === "active",
+      endsAt: row.endsAt ? new Date(String(row.endsAt)) : row.ends_at ? new Date(String(row.ends_at)) : null,
+      minOrderAmount: row.minOrderAmount == null && row.min_order_amount == null && (row.config_json as any)?.minCartValue == null
+        ? null
+        : safeNumber(row.minOrderAmount ?? row.min_order_amount ?? (row.config_json as any)?.minCartValue),
+      firstOrderOnly: Boolean(row.firstOrderOnly ?? row.first_order_only ?? (row.config_json as any)?.firstOrderOnly),
+      usageLimitPerUser:
+        row.usageLimitPerUser == null && row.usage_limit_per_user == null && (row.config_json as any)?.usageLimitPerUser == null
+          ? null
+          : safeNumber(row.usageLimitPerUser ?? row.usage_limit_per_user ?? (row.config_json as any)?.usageLimitPerUser),
+      discountType: safeString(row.discountType ?? row.discount_type ?? (row.config_json as any)?.discountType) === "percentage" || (row.config_json as any)?.discountType === "percent" ? "percentage" : "flat",
+      discountValue: safeNumber(row.discountValue ?? row.discount_value ?? (row.config_json as any)?.discountValue),
+      maxDiscountAmount:
+        row.maxDiscountAmount == null && row.max_discount_amount == null && (row.config_json as any)?.maxDiscountAmount == null
+          ? null
+          : safeNumber(row.maxDiscountAmount ?? row.max_discount_amount ?? (row.config_json as any)?.maxDiscountAmount),
     }
   }
   return null
@@ -645,32 +714,23 @@ export const createOrderNoteSupabase = async (input: {
   isInternal: boolean
 }) => {
   const client = getSupabaseAdmin()
+
+  const camel = {
+    orderId: input.orderId,
+    note: input.note,
+    isInternal: input.isInternal,
+    createdById: input.actorId,
+  }
   for (const table of ORDER_NOTE_TABLES) {
-    const camel = {
-      orderId: input.orderId,
-      note: input.note,
-      isInternal: input.isInternal,
-      createdById: input.actorId,
-    }
-    const snake = {
-      order_id: input.orderId,
-      note: input.note,
-      is_internal: input.isInternal,
-      created_by_id: input.actorId,
-    }
-    for (const payload of [camel, snake]) {
-      const inserted = await client.from(table).insert(payload).select("id,isInternal,is_internal").maybeSingle()
-      if (!inserted.error && inserted.data) {
-        const row = inserted.data as Record<string, unknown>
-        return {
-          id: safeString(row.id),
-          isInternal: Boolean(row.isInternal ?? row.is_internal),
-        }
-      }
-      if (inserted.error && shouldRetryWithId(inserted.error.message)) {
-        const retry = await client.from(table).insert(withId(payload)).select("id,isInternal,is_internal").maybeSingle()
-        if (!retry.error && retry.data) {
-          const row = retry.data as Record<string, unknown>
+    for (const payload of [camel]) {
+      const attempts = [
+        () => client.from(table).insert(payload).select("id,isInternal").maybeSingle(),
+        () => client.from(table).insert(withId(payload)).select("id,isInternal").maybeSingle(),
+      ]
+      for (const run of attempts) {
+        const { data, error } = await run()
+        if (!error && data) {
+          const row = data as Record<string, unknown>
           return {
             id: safeString(row.id),
             isInternal: Boolean(row.isInternal ?? row.is_internal),
@@ -879,34 +939,32 @@ export const appendOrderStatusHistorySupabase = async (input: {
   reasonCode?: string | null
 }) => {
   const client = getSupabaseAdmin()
-  const statusUpdated = await mirrorOrderStatusSupabase(input.orderId, input.toStatus)
-  if (!statusUpdated) return false
   for (const table of ORDER_STATUS_HISTORY_TABLES) {
     const attempts = [
       () =>
         client
           .from(table)
-          .insert({
+          .insert(withId({
             orderId: input.orderId,
             fromStatus: input.fromStatus,
             toStatus: input.toStatus,
             notes: input.notes,
             changedById: input.changedById,
             reasonCode: input.reasonCode ?? null,
-          })
+          }))
           .select("id")
           .single(),
       () =>
         client
           .from(table)
-          .insert({
+          .insert(withId({
             order_id: input.orderId,
             from_status: input.fromStatus,
             to_status: input.toStatus,
             notes: input.notes,
             changed_by_id: input.changedById,
             reason_code: input.reasonCode ?? null,
-          })
+          }))
           .select("id")
           .single(),
     ]
@@ -1208,6 +1266,7 @@ export const getOrderByIdSupabaseBasic = async (orderId: string) => {
   for (const table of ORDER_TABLES) {
     const { data, error } = await client.from(table).select("*").eq("id", orderId).maybeSingle()
     if (!error && data) {
+      const row = data as Record<string, unknown>
       const itemRows = await fetchRowsByForeignKey(ORDER_ITEM_TABLES, { camel: "orderId", snake: "order_id" }, orderId)
 
       // Hydrate each order item with its related product (id, name, slug, sku, weight).
@@ -1250,38 +1309,56 @@ export const getOrderByIdSupabaseBasic = async (orderId: string) => {
           orderId: safeString(rowItem.orderId ?? rowItem.order_id) || orderId,
           productId,
           variantId: variantId || null,
+          sku: safeString(rowItem.sku) || safeString(variant?.sku) || safeString(product?.sku) || null,
           quantity: safeNumber(rowItem.quantity, 0),
           unitPrice: safeNumber(rowItem.unitPrice ?? rowItem.unit_price, 0),
+          subtotal: safeNumber(rowItem.subtotal ?? rowItem.lineTotal ?? rowItem.line_total, 0),
+          tax: safeNumber(rowItem.tax, 0),
           lineTotal: safeNumber(rowItem.lineTotal ?? rowItem.line_total, 0),
           // Always present so the UI never NPEs on a missing/deleted product.
           product: product
             ? {
-                id: safeString(product.id),
-                name: safeString(product.name) || "Product",
-                slug: safeString(product.slug) || safeString(product.id),
-                sku: safeString(product.sku) || null,
-                weight: safeString(product.weight) || null,
-                thumbnail: safeString(product.thumbnail) || null,
-              }
+              id: safeString(product.id),
+              name: safeString(product.name) || "Product",
+              slug: safeString(product.slug) || safeString(product.id),
+              sku: safeString(product.sku) || null,
+              weight: safeString(product.weight) || null,
+              thumbnail: safeString(product.thumbnail) || null,
+            }
             : {
-                id: productId || "",
-                name: "Deleted product",
-                slug: productId || "",
-                sku: null,
-                weight: null,
-                thumbnail: null,
-              },
+              id: productId || "",
+              name: "Deleted product",
+              slug: productId || "",
+              sku: null,
+              weight: null,
+              thumbnail: null,
+            },
           variant: variant
             ? {
-                id: safeString(variant.id),
-                name: safeString(variant.name) || null,
-                sku: safeString(variant.sku) || null,
-                weight: safeString(variant.weight) || null,
-                price: safeNumber(variant.price, 0),
-              }
+              id: safeString(variant.id),
+              name: safeString(variant.name) || null,
+              sku: safeString(variant.sku) || null,
+              weight: safeString(variant.weight) || null,
+              price: safeNumber(variant.price, 0),
+            }
             : null,
         }
       })
+
+      const appliedCouponId = safeString(row.appliedCouponId ?? row.applied_coupon_id)
+      let coupon: any = null
+      if (appliedCouponId) {
+        const couponRows = await fetchRowsByIds(COUPON_TABLES, "id", [appliedCouponId])
+        const c = couponRows[0]
+        if (c) {
+          coupon = {
+            id: safeString(c.id),
+            code: safeString(c.code),
+            discountType: safeString(c.discountType ?? c.discount_type),
+            discountValue: safeNumber(c.discountValue ?? c.discount_value),
+          }
+        }
+      }
 
       const [transactionRows, noteRows, statusHistoryRows, refundRows, returnRequestRows] = await Promise.all([
         fetchRowsByForeignKey(TRANSACTION_TABLES, { camel: "orderId", snake: "order_id" }, orderId, {
@@ -1315,7 +1392,6 @@ export const getOrderByIdSupabaseBasic = async (orderId: string) => {
         returnRequestItemRows.push(...rows)
       }
 
-      const row = data as Record<string, unknown>
       const userId = safeString(row.userId ?? row.user_id) || null
       let user: Record<string, unknown> | null = null
       if (userId) {
@@ -1383,6 +1459,19 @@ export const getOrderByIdSupabaseBasic = async (orderId: string) => {
           reason: safeString((req as any).reason) || null,
           productId: safeString((req as any).productId ?? (req as any).product_id) || null,
           imageUrl: safeString((req as any).imageUrl ?? (req as any).image_url) || null,
+          description: safeString((req as any).description) || null,
+          videoUrl: safeString((req as any).videoUrl ?? (req as any).video_url) || null,
+          images: (req as any).images ?? (req as any).Images ?? null,
+          returnType: safeString((req as any).returnType ?? (req as any).return_type) || null,
+          refundMethod: safeString((req as any).refundMethod ?? (req as any).refund_method) || null,
+          upiId: safeString((req as any).upiId ?? (req as any).upi_id) || null,
+          bankDetails: (req as any).bankDetails ?? (req as any).bank_details ?? null,
+          adminNote: safeString((req as any).adminNote ?? (req as any).admin_note) || null,
+          rejectionReason: safeString((req as any).rejectionReason ?? (req as any).rejection_reason) || null,
+          reverseAwb: safeString((req as any).reverseAwb ?? (req as any).reverse_awb) || null,
+          reverseCourier: safeString((req as any).reverseCourier ?? (req as any).reverse_courier) || null,
+          reverseTrackingUrl: safeString((req as any).reverseTrackingUrl ?? (req as any).reverse_tracking_url) || null,
+          pickupScheduledAt: (req as any).pickupScheduledAt ?? (req as any).pickup_scheduled_at ?? null,
           createdAt: (req as any).createdAt ?? (req as any).created_at ?? null,
           items,
         }
@@ -1396,13 +1485,44 @@ export const getOrderByIdSupabaseBasic = async (orderId: string) => {
         paymentStatus: safeString(row.paymentStatus ?? row.payment_status) || "PENDING",
         total: Number(row.total ?? 0),
         subtotal: Number(row.subtotal ?? 0),
+        discount: Number(row.discount ?? 0),
+        tax: Number(row.tax ?? 0),
+        shippingCharge: Number(row.shippingCharge ?? row.shipping_charge ?? row.shipping ?? 0),
+        totalItemsUsedForShipping:
+          row.totalItemsUsedForShipping != null || row.total_items_used_for_shipping != null
+            ? Number(row.totalItemsUsedForShipping ?? row.total_items_used_for_shipping ?? 0)
+            : null,
         shipping: Number(row.shipping ?? 0),
         currency: safeString(row.currency) || "INR",
+        couponCode: safeString(row.couponCode ?? row.coupon_code) || null,
         paymentMethod: safeString(row.paymentMethod ?? row.payment_method) || null,
         paymentId: safeString(row.paymentId ?? row.payment_id) || null,
         customerName: (row.customerName ?? row.customer_name ?? null) as string | null,
         customerPhone: (row.customerPhone ?? row.customer_phone ?? null) as string | null,
         customerAddress: (row.customerAddress ?? row.customer_address ?? null) as string | null,
+        customerEmail: (row.customerEmail ?? row.customer_email ?? null) as string | null,
+        shiprocketOrderId: safeString((row as Record<string, unknown>).shiprocketOrderId ?? (row as Record<string, unknown>).shiprocket_order_id) || null,
+        shipmentId: safeString((row as Record<string, unknown>).shipmentId ?? (row as Record<string, unknown>).shipment_id) || null,
+        awbCode: safeString((row as Record<string, unknown>).awbCode ?? (row as Record<string, unknown>).awb_code) || null,
+        courierName: safeString((row as Record<string, unknown>).courierName ?? (row as Record<string, unknown>).courier_name) || null,
+        courierCompanyId: safeString((row as Record<string, unknown>).courierCompanyId ?? (row as Record<string, unknown>).courier_company_id) || null,
+        trackingNumber: safeString((row as Record<string, unknown>).trackingNumber ?? (row as Record<string, unknown>).tracking_number) || null,
+        trackingUrl: safeString((row as Record<string, unknown>).trackingUrl ?? (row as Record<string, unknown>).tracking_url) || null,
+        shippingStatus: safeString((row as Record<string, unknown>).shippingStatus ?? (row as Record<string, unknown>).shipping_status) || null,
+        shipmentStatus: safeString((row as Record<string, unknown>).shipmentStatus ?? (row as Record<string, unknown>).shipment_status) || null,
+        pickupStatus: safeString((row as Record<string, unknown>).pickupStatus ?? (row as Record<string, unknown>).pickup_status) || null,
+        shippingCharges: (row.shippingCharges ?? row.shipping_charges ?? null) as number | null,
+        shippingMethod: safeString((row as Record<string, unknown>).shippingMethod ?? (row as Record<string, unknown>).shipping_method) || null,
+        estimatedDeliveryDate: (row.estimatedDeliveryDate ?? row.estimated_delivery_date ?? null) as string | Date | null,
+        shiprocketRawResponse: (row.shiprocketRawResponse ?? row.shiprocket_raw_response ?? null) as unknown,
+        shipmentCreatedAt: (row.shipmentCreatedAt ?? row.shipment_created_at ?? null) as string | Date | null,
+        shipmentSyncedAt: (row.shipmentSyncedAt ?? row.shipment_synced_at ?? null) as string | Date | null,
+        shipmentDeliveredAt: (row.shipmentDeliveredAt ?? row.shipment_delivered_at ?? null) as string | Date | null,
+        lastTrackingSyncAt: (row.lastTrackingSyncAt ?? row.last_tracking_sync_at ?? null) as string | Date | null,
+        isShipmentCreated: (row.isShipmentCreated ?? row.is_shipment_created ?? null) as boolean | null,
+        isPickupGenerated: (row.isPickupGenerated ?? row.is_pickup_generated ?? null) as boolean | null,
+        isLabelGenerated: (row.isLabelGenerated ?? row.is_label_generated ?? null) as boolean | null,
+        trackingData: (row.trackingData ?? row.tracking_data ?? null) as unknown,
         createdAt: (row.createdAt ?? row.created_at ?? null) as string | Date | null,
         updatedAt: (row.updatedAt ?? row.updated_at ?? null) as string | Date | null,
         items: hydratedItems,
@@ -1412,6 +1532,8 @@ export const getOrderByIdSupabaseBasic = async (orderId: string) => {
         returnRequests,
         notes,
         user,
+        appliedCouponId,
+        coupon,
       } satisfies SupabaseOrderRecord
     }
   }
@@ -1540,10 +1662,13 @@ export const createOrderWithItemsSupabase = async (input: {
     ]
     for (const attempt of insertAttempts) {
       const { data, error } = await attempt();
+      if (error) {
+        console.error(`[orders.createOrderWithItemsSupabase] Insert failed for table ${table}:`, error);
+      }
       if (!error && data?.id) {
-         orderId = safeString(data.id);
-         insertedTable = table;
-         break;
+        orderId = safeString(data.id);
+        insertedTable = table;
+        break;
       }
     }
     if (orderId) break;
@@ -1559,35 +1684,36 @@ export const createOrderWithItemsSupabase = async (input: {
   for (const itemTable of ORDER_ITEM_TABLES) {
     let inserted = false
 
-    const camelRows = input.itemRows.map((row) => ({
+    const camelRows = input.itemRows.map((row) => withId({
       ...row,
       orderId,
     }))
-    const snakeRows = input.itemRows.map((row) => ({
+    const snakeRows = input.itemRows.map((row) => withId({
       ...camelToSnakeObject(row),
       order_id: orderId,
     }))
 
     for (const rows of [camelRows, snakeRows]) {
-        const result = await client.from(itemTable).insert(rows)
+      const result = await client.from(itemTable).insert(rows)
+      if (result.error) console.error(`[orders.createOrderWithItemsSupabase] Item insert error table=${itemTable}:`, result.error);
 
-        if (!result.error) {
-          inserted = true;
-          break;
-        } else {
-          if (shouldRetryWithId(result.error.message)) {
-            const retry = await client.from(itemTable).insert(rows.map(withId))
-            if (!retry.error) {
-              inserted = true;
-              break;
-            }
+      if (!result.error) {
+        inserted = true;
+        break;
+      } else {
+        if (shouldRetryWithId(result.error.message)) {
+          const retry = await client.from(itemTable).insert(rows.map(withId))
+          if (!retry.error) {
+            inserted = true;
+            break;
           }
         }
+      }
     }
 
     if (inserted) {
-        itemOk = true;
-        break;
+      itemOk = true;
+      break;
     }
   }
 
@@ -1629,6 +1755,57 @@ export const createTransactionSupabase = async (input: {
         const retry = await client.from(table).insert(withId(payload)).select("id").maybeSingle()
         if (!retry.error && retry.data?.id) return safeString((retry.data as any).id)
       }
+    }
+  }
+  return null
+}
+
+export const upsertOrderShipmentSnapshotSupabase = async (
+  orderId: string,
+  input: Partial<{
+    shiprocketOrderId: string | null
+    shipmentId: string | null
+    awbCode: string | null
+    courierName: string | null
+    courierCompanyId: string | null
+    trackingNumber: string | null
+    trackingUrl: string | null
+    shippingStatus: string | null
+    shipmentStatus: string | null
+    pickupStatus: string | null
+    shippingCharges: number | null
+    shippingMethod: string | null
+    estimatedDeliveryDate: Date | null
+    shiprocketRawResponse: unknown
+    shipmentCreatedAt: Date | null
+    shipmentSyncedAt: Date | null
+    shipmentDeliveredAt: Date | null
+    lastTrackingSyncAt: Date | null
+    isShipmentCreated: boolean | null
+    isPickupGenerated: boolean | null
+    isLabelGenerated: boolean | null
+    trackingData: unknown
+    shippingStatusCode: number | null
+    awbAssignedAt: Date | null
+    labelUrl: string | null
+    pickupGeneratedAt: Date | null
+  }>,
+) => {
+  const client = getSupabaseAdmin()
+  const now = new Date().toISOString()
+  const payload = {
+    ...input,
+    updatedAt: now,
+  }
+  const snakePayload = camelToSnakeObject(payload)
+  for (const table of ORDER_TABLES) {
+    const attempts = [
+      () => client.from(table).update(payload).eq("id", orderId).select("id").maybeSingle(),
+      () => client.from(table).update(snakePayload).eq("id", orderId).select("id").maybeSingle(),
+    ]
+    for (const run of attempts) {
+      const { data, error } = await run()
+      if (!error && data?.id) return safeString((data as { id?: unknown }).id)
     }
   }
   return null

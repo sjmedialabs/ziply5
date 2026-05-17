@@ -18,12 +18,11 @@ export const pg = new Pool({
   connectionTimeoutMillis: 10000,
 })
 
-export async function pgQuery<T = any>(
-  text: string,
-  values: any[] = []
-) {
+type PgQueryRows<T> = T extends any[] ? T : T[]
+
+export async function pgQuery<T = any>(text: string, values: any[] = []): Promise<PgQueryRows<T>> {
   const res = await pg.query(text, values)
-  return res.rows as T[]
+  return res.rows as PgQueryRows<T>
 }
 
 export async function pgTx<T>(fn: (client: import("pg").PoolClient) => Promise<T>) {

@@ -3,30 +3,36 @@ import { z } from "zod"
 export const createOrderSchema = z.object({
   items: z.array(
     z.object({
-      productId: z.string().optional(),
+      productId: z.string().min(1),
       variantId: z.string().nullable().optional(),
-      slug: z.string().min(1).optional(),
+      sku: z.string().nullable().optional(),
       quantity: z.number().int().positive(),
-    }).superRefine((item, ctx) => {
-      if (!item.productId && !item.slug) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          message: "Either productId or slug is required",
-        })
-      }
+      price: z.number().nonnegative().optional(),
+      subtotal: z.number().nonnegative().optional(),
+      tax: z.number().nonnegative().optional(),
     })
   ).min(1),
 
-  shipping: z.number().nonnegative().optional(),
+  shipping: z.number().nonnegative().optional(), // backward compatibility
+  shippingCharge: z.number().nonnegative().optional(),
+  /** Sum of checkout line quantities; must match server recomputation for anti-tamper. */
+  totalItemsUsedForShipping: z.number().int().min(0).max(5000).optional(),
   currency: z.string().min(1).optional(),
   couponCode: z.string().optional(),
+  couponId: z.string().nullable().optional(),
+  subtotal: z.number().nonnegative().optional(),
+  discount: z.number().nonnegative().optional(),
+  tax: z.number().nonnegative().optional(),
+  total: z.number().nonnegative().optional(),
   gateway: z.string().min(1),
 
   // 🔥 NEW FIELDS
   billingAddress: z
     .object({
       fullName: z.string(),
+      email: z.string().email().optional(),
       line1: z.string(),
+      line2: z.string().optional(),
       city: z.string(),
       state: z.string(),
       postalCode: z.string(),
@@ -37,6 +43,8 @@ export const createOrderSchema = z.object({
 
   paymentStatus: z.enum(["pending", "paid", "failed"]).optional(),
   paymentId: z.string().optional(),
+  appliedCouponId: z.string().nullable().optional(),
+  sessionKey: z.string().optional(),
 })
 
 export const updateOrderStatusSchema = z.object({
