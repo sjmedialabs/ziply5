@@ -12,6 +12,7 @@ export type SmsTemplateKey =
   | "LOGIN_OTP"
   | "ORDER_CONFIRM"
   | "ORDER_CANCEL"
+  | "ABANDONED_CART"
 
 const DLT_CONFIG: Record<SmsTemplateKey, { id?: string; msg?: string }> = {
   PASSWORD_RESET: { id: env.DLT_PASSWORD_RESET_ID, msg: env.DLT_PASSWORD_RESET_MSG },
@@ -22,6 +23,7 @@ const DLT_CONFIG: Record<SmsTemplateKey, { id?: string; msg?: string }> = {
   LOGIN_OTP: { id: env.DLT_LOGIN_OTP_ID, msg: env.DLT_LOGIN_OTP_MSG },
   ORDER_CONFIRM: { id: env.DLT_ORDER_CONFIRM_ID, msg: env.DLT_ORDER_CONFIRM_MSG },
   ORDER_CANCEL: { id: env.DLT_ORDER_CANCEL_ID, msg: env.DLT_ORDER_CANCEL_MSG },
+  ABANDONED_CART: { id: env.DLT_ABANDONED_CART_ID, msg: env.DLT_ABANDONED_CART_MSG },
 }
 
 type SendSmsOptions = {
@@ -167,7 +169,12 @@ export const smsService = {
       ...(templateId ? { templateid: templateId } : {}),
     })
 
-    const res = await fetch(`${baseUrl}?${params.toString()}`, { method: "GET" })
+    const finalUrl = baseUrl.startsWith("https") ? baseUrl.replace("https", "http") : baseUrl
+    console.log(`[SMS Service] Sending to ${mobile} via ${finalUrl}`)
+    const res = await fetch(`${finalUrl}?${params.toString()}`, { 
+      method: "GET",
+      signal: AbortSignal.timeout(10000)
+    })
     const text = await res.text()
 
     console.log(`[SMS Gateway Response] Status: ${res.status}, Body: "${text}"`)
