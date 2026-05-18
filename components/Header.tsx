@@ -174,6 +174,40 @@ export default function Header() {
     }
   }, [loadMenuData])
 
+  // Automatically sync cart items to backend for logged-in users whenever the cart changes on ANY page
+  useEffect(() => {
+    // Check if they have a session
+    const hasSession = typeof window !== "undefined" ? !!window.localStorage.getItem("ziply5_refresh_token") : false;
+    let sessionKey = typeof window !== "undefined" ? window.localStorage.getItem("ziply5_session_key") : null;
+    
+    // Automatically generate and store session key if missing
+    if (!sessionKey && typeof window !== "undefined") {
+      sessionKey = "sess_" + Math.random().toString(36).substring(2, 15);
+      window.localStorage.setItem("ziply5_session_key", sessionKey);
+    }
+
+    if (!hasSession || !sessionKey || cartItems.length === 0) return;
+
+    const subTotal = cartItems.reduce((acc, item) => acc + item.price * item.quantity, 0);
+
+    // Let the global interceptor automatically inject the fresh Bearer token (handles silent refresh if expired)
+    void fetch("/api/checkout/start", {
+      method: "POST",
+      headers: { 
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        sessionKey,
+        items: cartItems,
+        total: subTotal,
+        meta: {
+          checkoutStage: "CART_SYNCHRONIZED",
+          lastVisitedPage: pathname || "/",
+        },
+      }),
+    }).catch(() => null);
+  }, [cartItems, pathname]);
+
   const cartCount = cartItems.reduce((sum, item) => sum + item.quantity, 0)
   const total = cartItems.reduce((sum, item) => sum + item.price * item.quantity, 0)
 

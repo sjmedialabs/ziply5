@@ -44,11 +44,11 @@ type LifecycleState =
 const DEFAULT_SETTINGS = {
   enabled: true,
   // Backwards compatible: previous single-threshold fallback.
-  abandonThresholdMinutes: 30,
+  abandonThresholdMinutes: 2,
   // Production thresholds by stage (minutes).
-  cartOnlyThresholdMinutes: 30,
-  checkoutStartedThresholdMinutes: 20,
-  paymentPendingThresholdMinutes: 10,
+  cartOnlyThresholdMinutes: 2,
+  checkoutStartedThresholdMinutes: 2,
+  paymentPendingThresholdMinutes: 2,
   maxRemindersPerCart: 4,
   stopAfterPurchase: true,
   respectOptOut: true,
@@ -58,10 +58,10 @@ const DEFAULT_SETTINGS = {
   attributionModel: "last_click",
   tokenExpiryMinutes: 1440,
   schedule: [
-    { stepNo: 1, delayMinutes: 30, channels: ["email", "whatsapp"], template: "abandon_r1", includeCoupon: false, active: true },
-    { stepNo: 2, delayMinutes: 360, channels: ["sms", "email"], template: "abandon_r2", includeCoupon: false, active: true },
-    { stepNo: 3, delayMinutes: 1440, channels: ["whatsapp"], template: "abandon_r3_coupon", includeCoupon: true, active: true },
-    { stepNo: 4, delayMinutes: 4320, channels: ["email"], template: "abandon_r4_final", includeCoupon: false, active: true },
+    { stepNo: 1, delayMinutes: 30, channels: ["email", "sms"], template: "abandon_r1", includeCoupon: false, active: true },
+    { stepNo: 2, delayMinutes: 120, channels: ["email", "sms"], template: "abandon_r2", includeCoupon: false, active: true },
+    { stepNo: 3, delayMinutes: 1440, channels: ["email", "sms"], template: "abandon_r3_coupon", includeCoupon: true, active: true },
+    { stepNo: 4, delayMinutes: 2880, channels: ["email", "sms"], template: "abandon_r4_final", includeCoupon: false, active: true },
   ],
 } as const
 
@@ -91,7 +91,7 @@ const normalizeEventType = (eventType: CartEventType): CartEventType => {
   return eventType
 }
 
-const ensureRecoveryTables = async () => {
+export const ensureRecoveryTables = async () => {
   await pgQuery(`
     ALTER TABLE "AbandonedCart"
       ADD COLUMN IF NOT EXISTS user_id text NULL,
@@ -263,7 +263,7 @@ export const saveRecoveryTemplate = async (input: {
 
 const buildResumeToken = async (cartId: string, ttlMinutes: number, meta: Record<string, unknown>) => {
   await ensureRecoveryTables()
-  const token = crypto.randomBytes(24).toString("base64url")
+  const token = crypto.randomBytes(8).toString("base64url")
   const tokenHash = sha256(token)
   await pgQuery(
     `INSERT INTO abandoned_cart_resume_tokens_v2 (cart_id, token_hash, expires_at, meta)
@@ -383,6 +383,10 @@ export const trackCartEvent = async (input: {
       includeCoupon?: boolean
       active?: boolean
     }>
+    // Force 1 minute for testing
+    schedule.forEach(s => {
+      if (s.stepNo === 1) s.delayMinutes = 1
+    })
     for (const step of schedule.filter((entry) => entry.active !== false)) {
       for (const channel of step.channels) {
         await pgQuery(
@@ -415,9 +419,9 @@ export const detectAbandonedCarts = async () => {
   const settings = await getSettings()
   if (!settings.enabled) return { scanned: 0, marked: 0, queued: 0 }
   const thresholds = {
-    cartOnlyMinutes: Math.max(1, Number((settings as any).cartOnlyThresholdMinutes ?? 30)),
-    checkoutStartedMinutes: Math.max(1, Number((settings as any).checkoutStartedThresholdMinutes ?? 20)),
-    paymentPendingMinutes: Math.max(1, Number((settings as any).paymentPendingThresholdMinutes ?? 10)),
+    cartOnlyMinutes: Math.max(1, Number((settings as any).cartOnlyThresholdMinutes ?? 2)),
+    checkoutStartedMinutes: Math.max(1, Number((settings as any).checkoutStartedThresholdMinutes ?? 2)),
+    paymentPendingMinutes: Math.max(1, Number((settings as any).paymentPendingThresholdMinutes ?? 2)),
   }
   const schedule = (Array.isArray(settings.schedule) ? settings.schedule : DEFAULT_SETTINGS.schedule) as Array<{
     stepNo: number
@@ -427,6 +431,10 @@ export const detectAbandonedCarts = async () => {
     includeCoupon?: boolean
     active?: boolean
   }>
+  // Force 1 minute for testing
+  schedule.forEach(s => {
+    if (s.stepNo === 1) s.delayMinutes = 1
+  })
   const candidates = await pgQuery<
     Array<{
       id: string
@@ -438,17 +446,39 @@ export const detectAbandonedCarts = async () => {
       items_json: unknown
       recovery_disabled: boolean
       ignored: boolean
+      user_id: string | null
+      email: string | null
+      mobile: string | null
+      customer_name: string | null
     }>
   >(
-    `SELECT id, status, "updatedAt" as updated_at, last_active_at, lifecycle_state, total, "itemsJson" as items_json, recovery_disabled, ignored
-     FROM "AbandonedCart"
-     WHERE status IN ('active', 'abandoned')
-       AND recovery_disabled = false
-       AND ignored = false`,
+    `SELECT 
+       c.id, 
+       c.status, 
+       c."updatedAt" as updated_at, 
+       c.last_active_at, 
+       c.lifecycle_state, 
+       c.total, 
+       c."itemsJson" as items_json, 
+       c.recovery_disabled, 
+       c.ignored,
+       c.user_id,
+       COALESCE(c.email, u.email) as email,
+       COALESCE(c.mobile, p.phone) as mobile,
+       COALESCE(c.customer_name, u.name) as customer_name
+     FROM "AbandonedCart" c
+     LEFT JOIN "User" u ON u.id = c.user_id
+     LEFT JOIN "UserProfile" p ON p."userId" = c.user_id
+     WHERE c.status = 'active'
+       AND c.recovery_disabled = false
+       AND c.ignored = false`,
   )
   let marked = 0
   let queued = 0
   for (const cart of candidates) {
+    // Only track abandoned carts for logged-in users
+    if (!cart.user_id) continue
+
     const items = Array.isArray(cart.items_json) ? cart.items_json : []
     if (!items.length) continue
     const lastActivity = cart.last_active_at ?? cart.updated_at
@@ -523,9 +553,14 @@ const renderMessage = async (input: {
   return { subject, body }
 }
 
-const sendWhatsapp = async (to: string, body: string) => {
+const sendWhatsapp = async (to: string, body: string, shortSmsLink?: string) => {
   // Reuse SMS adapter as a safe fallback if dedicated provider is absent.
-  await smsService.send({ to, body: `[WA] ${body}` })
+  await smsService.send({ 
+    mobile: to, 
+    templateKey: "ABANDONED_CART",
+    variables: ["there", shortSmsLink || "link"],
+    body: `[WA] ${body}` 
+  })
 }
 
 function normalizeVars(vars: Record<string, string | number | null | undefined>) {
@@ -600,8 +635,8 @@ export const processRecoveryQueue = async () => {
         q.channel,
         q.payload,
         q.status,
-        c.email,
-        c.mobile,
+        COALESCE(c.email, u.email) as email,
+        COALESCE(c.mobile, p.phone) as mobile,
         c.total,
         c."itemsJson" as items_json,
         c.coupon_code,
@@ -609,9 +644,12 @@ export const processRecoveryQueue = async () => {
         c.converted_at,
         c.recovery_disabled,
         c.ignored,
+        COALESCE(c.customer_name, u.name) as customer_name,
         c."sessionKey" as session_key
       FROM abandoned_cart_recovery_queue_v2 q
       JOIN "AbandonedCart" c ON c.id = q.cart_id
+      LEFT JOIN "User" u ON u.id = c.user_id
+      LEFT JOIN "UserProfile" p ON p."userId" = c.user_id
       WHERE q.status = 'pending'
         AND q.scheduled_at <= now()
       ORDER BY q.scheduled_at ASC
@@ -620,13 +658,14 @@ export const processRecoveryQueue = async () => {
   )
   const settings = await getSettings()
   const maxReminders = Math.max(1, Number(settings.maxRemindersPerCart ?? DEFAULT_SETTINGS.maxRemindersPerCart))
-  const checkoutBase = (process.env.NEXT_PUBLIC_APP_URL ?? "").replace(/\/$/, "")
+  const checkoutBase = (process.env.NEXT_PUBLIC_APP_URL || "https://ziply5.com").replace(/\/$/, "")
   let sent = 0
   let failed = 0
   let skipped = 0
   for (const row of rows) {
     try {
       if (row.converted_at || row.recovery_disabled || row.ignored || row.messages_sent >= maxReminders) {
+        console.log(`[ABANDONED CART JOB] Skipping cart ${row.cart_id}: converted=${!!row.converted_at}, disabled=${row.recovery_disabled}, ignored=${row.ignored}, sent=${row.messages_sent}/${maxReminders}`)
         await pgQuery(`UPDATE abandoned_cart_recovery_queue_v2 SET status='skipped' WHERE id = $1::uuid`, [row.id])
         skipped += 1
         continue
@@ -642,7 +681,7 @@ export const processRecoveryQueue = async () => {
       }
       const tokenTtl = Math.max(5, Number((settings as any).tokenExpiryMinutes ?? DEFAULT_SETTINGS.tokenExpiryMinutes))
       const resumeToken = await buildResumeToken(row.cart_id, tokenTtl, { source: "followup", channel: row.channel, stepNo: row.step_no })
-      const checkoutLink = `${checkoutBase}/cart/recover/${encodeURIComponent(resumeToken)}`
+      const checkoutLink = `${checkoutBase}/cart/recover?token=${encodeURIComponent(resumeToken)}`
       const templateKey = String((row.payload as any)?.template ?? `abandoned_step_${row.step_no}`)
       const msg = await renderMessage({
         name: "there",
@@ -656,9 +695,18 @@ export const processRecoveryQueue = async () => {
       if (row.channel === "email") {
         await enqueueEmail({ to, subject: msg.subject, html: msg.body })
       } else if (row.channel === "sms") {
-        await smsService.send({ to, body: msg.body })
+        const customerName = (row as any).customer_name || "there"
+        // Generate a 24-character short link to satisfy DLT 30-character limit
+        const shortSmsLink = `${checkoutBase.replace(/^https?:\/\//, "")}/c/${encodeURIComponent(resumeToken)}`
+        await smsService.send({ 
+          mobile: to, 
+          templateKey: "ABANDONED_CART", 
+          variables: [customerName, shortSmsLink],
+          body: msg.body 
+        })
       } else {
-        await sendWhatsapp(to, msg.body)
+        const shortSmsLink = `${checkoutBase.replace(/^https?:\/\//, "")}/c/${encodeURIComponent(resumeToken)}`
+        await sendWhatsapp(to, msg.body, shortSmsLink)
       }
       await pgTx(async (client) => {
         await client.query(
@@ -1055,4 +1103,34 @@ export const sendRecoveryTemplateTest = async (input: { templateKey: string; cha
   }
   return { sent: true }
 }
+
+// --- Background Job Emulator (for Testing/Development) ---
+if (typeof global !== "undefined") {
+  // Store the active function references on global so they hot-reload dynamically
+  ;(global as any)._detectAbandonedCarts = detectAbandonedCarts
+  ;(global as any)._processRecoveryQueue = processRecoveryQueue
+
+  if (!(global as any)._abandoned_cart_worker_started) {
+    ;(global as any)._abandoned_cart_worker_started = true
+    
+    const JOB_INTERVAL_MS = 60 * 1000 // Run every 60 seconds
+    
+    console.info(`[ABANDONED CART] Starting background job emulator (every ${JOB_INTERVAL_MS / 1000}s)`)
+    
+    setInterval(async () => {
+      try {
+        // Always invoke the latest hot-reloaded functions from the global scope
+        const detection = await (global as any)._detectAbandonedCarts()
+        const processing = await (global as any)._processRecoveryQueue()
+        
+        if (detection.marked > 0 || processing.sent > 0 || processing.failed > 0 || processing.skipped > 0) {
+          console.info(`[ABANDONED CART JOB] Detection: ${detection.marked} marked, ${detection.queued} queued. Processing: ${processing.sent} sent, ${processing.failed} failed, ${processing.skipped} skipped.`)
+        }
+      } catch (err) {
+        console.error("[ABANDONED CART JOB ERROR]", err)
+      }
+    }, JOB_INTERVAL_MS)
+  }
+}
+
 

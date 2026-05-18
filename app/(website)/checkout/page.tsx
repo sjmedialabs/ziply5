@@ -13,7 +13,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { authedFetch, authedPost, authedPatch } from "@/lib/dashboard-fetch"; // Utility functions for authenticated API calls
 import {
@@ -233,6 +233,8 @@ export default function CheckoutPage() {
     };
   }, [couponCode, loadAddresses]);
 
+
+
   // Pincode Lookup Logic
   useEffect(() => {
     const pin = billing.postalCode.trim();
@@ -425,6 +427,35 @@ export default function CheckoutPage() {
 
   const taxAmount = (subTotal - offerTotalDiscount) * (taxPercentage / 100);
   const total = baseTotal + taxAmount;
+
+  // Track landing on checkout page and contact capture for abandonment recovery
+  const trackedRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!sessionKey || items.length === 0) return;
+    const hash = JSON.stringify(items) + "|" + billing.email + "|" + billing.phone;
+    if (trackedRef.current === hash) return;
+    trackedRef.current = hash;
+
+    const timeout = setTimeout(() => {
+      fetch("/api/checkout/start", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sessionKey,
+          email: billing.email || null,
+          mobile: billing.phone || null,
+          items: items,
+          total: subTotal + taxAmount,
+          meta: {
+            checkoutStage: (billing.email || billing.phone) ? "CONTACT_CAPTURED" : "CHECKOUT_STARTED",
+            lastVisitedPage: "/checkout",
+          },
+        }),
+      }).catch(() => null);
+    }, 1500);
+
+    return () => clearTimeout(timeout);
+  }, [sessionKey, items, billing.email, billing.phone, subTotal, taxAmount]);
 
   const recalculateOffers = useCallback(
     async (incomingCoupon?: string) => {

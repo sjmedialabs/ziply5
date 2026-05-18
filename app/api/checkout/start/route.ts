@@ -17,7 +17,9 @@ export async function POST(request: NextRequest) {
   const auth = optionalAuth(request)
   const body = await request.json()
   const parsed = schema.safeParse(body)
-  if (!parsed.success) return fail("Validation failed", 422, parsed.error.flatten())
+  if (!parsed.success) {
+    return fail("Validation failed", 422, parsed.error.flatten())
+  }
   const row = await trackCartEvent({
     sessionKey: parsed.data.sessionKey,
     userId: auth?.role === "customer" ? auth.sub : null,
