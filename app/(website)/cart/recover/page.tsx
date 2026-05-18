@@ -1,12 +1,12 @@
 "use client"
 
-import { useEffect, useState } from "react"
-import { useParams, useRouter } from "next/navigation"
+import { useEffect, useState, Suspense } from "react"
+import { useSearchParams, useRouter } from "next/navigation"
 import { setCartItems, type CartItem } from "@/lib/cart"
 import { Loader2, ShoppingBag, CheckCircle2, AlertCircle, ArrowRight, Lock } from "lucide-react"
 
-export default function RecoverCartPage() {
-  const params = useParams<{ token: string }>()
+function RecoverCartContent() {
+  const searchParams = useSearchParams()
   const router = useRouter()
   const [status, setStatus] = useState<"loading" | "success" | "error">("loading")
   const [errorMessage, setErrorMessage] = useState("")
@@ -14,7 +14,7 @@ export default function RecoverCartPage() {
   const [cartTotal, setCartTotal] = useState<number>(0)
 
   useEffect(() => {
-    const token = params?.token
+    const token = searchParams.get("token")
     if (!token) {
       setStatus("error")
       setErrorMessage("Invalid recovery link.")
@@ -40,7 +40,7 @@ export default function RecoverCartPage() {
     }, 800)
 
     return () => clearTimeout(timer)
-  }, [params?.token])
+  }, [searchParams])
 
   return (
     <section className="flex min-h-[80vh] items-center justify-center bg-[#FAFAFA] px-4 py-16">
@@ -149,5 +149,13 @@ export default function RecoverCartPage() {
 
       </div>
     </section>
+  )
+}
+
+export default function RecoverCartPage() {
+  return (
+    <Suspense fallback={<div className="flex min-h-[70vh] items-center justify-center bg-[#FAFAFA]"><Loader2 className="h-8 w-8 animate-spin text-[#c9a96e]" /></div>}>
+      <RecoverCartContent />
+    </Suspense>
   )
 }
