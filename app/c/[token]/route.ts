@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 
-export async function GET(req: Request, { params }: { params: { token: string } }) {
-  const token = params.token
+export async function GET(req: Request, { params }: { params: Promise<{ token: string }> }) {
+  const { token } = await params
   const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "https://ziply5.com"
   
   // Redirect to the query-parameter-based recovery route
