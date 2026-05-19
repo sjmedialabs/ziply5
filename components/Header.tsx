@@ -174,13 +174,12 @@ export default function Header() {
     }
   }, [loadMenuData])
 
-  // Automatically sync cart items to backend for logged-in users whenever the cart changes on ANY page
+  // Sync cart for logged-in users only (avoids post-logout sync clearing abandon state / reminders).
   useEffect(() => {
-    // Check if they have a session
-    const hasSession = typeof window !== "undefined" ? !!window.localStorage.getItem("ziply5_refresh_token") : false;
+    const hasSession =
+      typeof window !== "undefined" ? !!window.localStorage.getItem("ziply5_refresh_token") : false;
     let sessionKey = typeof window !== "undefined" ? window.localStorage.getItem("ziply5_session_key") : null;
-    
-    // Automatically generate and store session key if missing
+
     if (!sessionKey && typeof window !== "undefined") {
       sessionKey = "sess_" + Math.random().toString(36).substring(2, 15);
       window.localStorage.setItem("ziply5_session_key", sessionKey);
@@ -193,15 +192,16 @@ export default function Header() {
     // Let the global interceptor automatically inject the fresh Bearer token (handles silent refresh if expired)
     void fetch("/api/checkout/start", {
       method: "POST",
-      headers: { 
-        "Content-Type": "application/json"
+      headers: {
+        "Content-Type": "application/json",
       },
       body: JSON.stringify({
         sessionKey,
         items: cartItems,
         total: subTotal,
+        eventType: "cart_updated",
         meta: {
-          checkoutStage: "CART_SYNCHRONIZED",
+          checkoutStage: "CART_ACTIVE",
           lastVisitedPage: pathname || "/",
         },
       }),

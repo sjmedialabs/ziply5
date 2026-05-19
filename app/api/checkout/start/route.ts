@@ -1,15 +1,22 @@
 import { NextRequest } from "next/server"
 import { fail, ok } from "@/src/server/core/http/response"
 import { optionalAuth } from "@/src/server/middleware/optionalAuth"
-import { trackCartEvent } from "@/src/server/modules/abandoned-carts/recovery.service"
+import { trackCartEvent, type CartEventType } from "@/src/server/modules/abandoned-carts/recovery.service"
 import { z } from "zod"
 
 const schema = z.object({
   sessionKey: z.string().min(4),
-  email: z.string().email().optional().nullable(),
-  mobile: z.string().optional().nullable(),
   items: z.array(z.unknown()).default([]),
   total: z.number().optional().nullable(),
+  eventType: z
+    .enum([
+      "cart_updated",
+      "cart_item_added",
+      "checkout_started",
+      "payment_page_opened",
+    ])
+    .optional()
+    .default("cart_updated"),
   meta: z.record(z.string(), z.any()).optional(),
 })
 
@@ -23,13 +30,10 @@ export async function POST(request: NextRequest) {
   const row = await trackCartEvent({
     sessionKey: parsed.data.sessionKey,
     userId: auth?.role === "customer" ? auth.sub : null,
-    email: parsed.data.email ?? null,
-    mobile: parsed.data.mobile ?? null,
     itemsJson: parsed.data.items,
     total: parsed.data.total ?? null,
-    eventType: "checkout_started",
+    eventType: parsed.data.eventType as CartEventType,
     meta: parsed.data.meta,
   })
-  return ok(row, "Checkout start recorded")
+  return ok(row, "Cart activity recorded")
 }
-

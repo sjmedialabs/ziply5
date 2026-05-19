@@ -32,7 +32,7 @@ export async function POST(request: NextRequest) {
       email: parsed.data.email ?? null,
       itemsJson: parsed.data.itemsJson,
       total: parsed.data.total ?? null,
-      eventType: "checkout_started",
+      eventType: "cart_updated",
     })
     const row = await upsertAbandonedCart({
       sessionKey: parsed.data.sessionKey,

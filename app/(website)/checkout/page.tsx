@@ -428,11 +428,11 @@ export default function CheckoutPage() {
   const taxAmount = (subTotal - offerTotalDiscount) * (taxPercentage / 100);
   const total = baseTotal + taxAmount;
 
-  // Track landing on checkout page and contact capture for abandonment recovery
+  // Track checkout page visit (contact comes from user profile on server, not billing form)
   const trackedRef = useRef<string | null>(null);
   useEffect(() => {
     if (!sessionKey || items.length === 0) return;
-    const hash = JSON.stringify(items) + "|" + billing.email + "|" + billing.phone;
+    const hash = JSON.stringify(items);
     if (trackedRef.current === hash) return;
     trackedRef.current = hash;
 
@@ -442,12 +442,11 @@ export default function CheckoutPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           sessionKey,
-          email: billing.email || null,
-          mobile: billing.phone || null,
           items: items,
           total: subTotal + taxAmount,
+          eventType: "checkout_started",
           meta: {
-            checkoutStage: (billing.email || billing.phone) ? "CONTACT_CAPTURED" : "CHECKOUT_STARTED",
+            checkoutStage: "CHECKOUT_STARTED",
             lastVisitedPage: "/checkout",
           },
         }),
@@ -455,7 +454,7 @@ export default function CheckoutPage() {
     }, 1500);
 
     return () => clearTimeout(timeout);
-  }, [sessionKey, items, billing.email, billing.phone, subTotal, taxAmount]);
+  }, [sessionKey, items, subTotal, taxAmount]);
 
   const recalculateOffers = useCallback(
     async (incomingCoupon?: string) => {
@@ -777,10 +776,9 @@ export default function CheckoutPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           sessionKey,
-          email: billing.email || null,
-          mobile: billing.phone || null,
           items: items,
           total,
+          eventType: "checkout_started",
           meta: {
             checkoutStage: "CHECKOUT_STARTED",
             couponCode: couponCode.trim() || null,
@@ -790,13 +788,12 @@ export default function CheckoutPage() {
         }),
       }).catch(() => null)
 
-      // Backwards-compatible: ensure the older abandoned cart endpoint gets a valid payload
+      // Backwards-compatible snapshot (items only — contact resolved server-side from profile)
       await fetch("/api/v1/abandoned-carts", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           sessionKey,
-          email: billing.email || null,
           itemsJson: items.map((item) => ({
             slug: item.slug,
             productId: item.productId,
