@@ -22,10 +22,30 @@ type CartRow = {
   updated_at: string;
   items_json: unknown;
   abandoned_at: string | null;
+  lifecycle_state: string | null;
+  abandon_reason: string | null;
+  steps_completed: number;
+  next_reminder_at: string | null;
+  next_reminder_step: number | null;
   messages_sent: number;
   last_message_at: string | null;
   converted_at: string | null;
   status: string;
+};
+
+const formatLifecycle = (row: CartRow) => {
+  if (row.converted_at) return "Converted";
+  const lc = String(row.lifecycle_state ?? row.status ?? "").toUpperCase();
+  if (lc === "RECOVERED" || row.status === "recovered") return "Recovered";
+  if (lc === "ABANDONED" || row.status === "abandoned" || row.abandoned_at) return "Abandoned";
+  if (lc === "PAYMENT_PENDING") return "Payment Pending";
+  if (lc === "CHECKOUT_STARTED") return "Checkout Started";
+  return "Active";
+};
+
+const formatAbandonReason = (reason: string | null) => {
+  if (!reason) return "—";
+  return reason.replace(/_/g, " ");
 };
 
 export default function AdminAbandonedCartsPage() {
@@ -246,10 +266,10 @@ export default function AdminAbandonedCartsPage() {
             </Select>
             <button type="button" onClick={() => load()} className="rounded bg-[#7B3010] px-3 py-2 text-xs font-semibold uppercase tracking-wide text-white">Apply Filters</button>
           </div>
-          <ConsoleTable headers={["Cart ID", "Customer", "Type", "Items", "Cart Value", "Last Active", "Since Abandoned", "Recovery", "Actions"]}>
+          <ConsoleTable headers={["Cart ID", "Customer", "State", "Reason", "Step", "Items", "Value", "Last Active", "Recovery", "Actions"]}>
             {rows.length === 0 ? (
               <tr>
-                <ConsoleTd className="py-8 text-center text-[#646464]" colSpan={9}>
+                <ConsoleTd className="py-8 text-center text-[#646464]" colSpan={10}>
                   No abandoned carts recorded.
                 </ConsoleTd>
               </tr>
@@ -261,17 +281,21 @@ export default function AdminAbandonedCartsPage() {
                     <div>{r.email ?? "No email"}</div>
                     <div className="text-[11px] text-[#646464]">{r.mobile ?? "No mobile"}</div>
                   </ConsoleTd>
-                  <ConsoleTd className="text-xs">{r.user_id ? "Registered" : "Guest"}</ConsoleTd>
+                  <ConsoleTd className="text-xs font-medium">{formatLifecycle(r)}</ConsoleTd>
+                  <ConsoleTd className="text-xs capitalize">{formatAbandonReason(r.abandon_reason)}</ConsoleTd>
+                  <ConsoleTd className="text-xs">
+                    <div>Done: {r.steps_completed ?? 0}/4</div>
+                    <div className="text-[11px] text-[#646464]">
+                      Next: {r.next_reminder_step != null ? `step ${r.next_reminder_step}` : "—"}
+                      {r.next_reminder_at ? ` @ ${new Date(r.next_reminder_at).toLocaleString()}` : ""}
+                    </div>
+                  </ConsoleTd>
                   <ConsoleTd className="text-xs">{Array.isArray(r.items_json) ? r.items_json.length : 0}</ConsoleTd>
                   <ConsoleTd>{r.total != null ? `Rs.${Number(r.total).toFixed(2)}` : "—"}</ConsoleTd>
                   <ConsoleTd className="text-xs">{new Date(r.updated_at).toLocaleString()}</ConsoleTd>
                   <ConsoleTd className="text-xs">
-                    {r.abandoned_at ? `${Math.floor((Date.now() - new Date(r.abandoned_at).getTime()) / 60000)} min` : "Not abandoned"}
-                  </ConsoleTd>
-                  <ConsoleTd className="text-xs">
-                    <div>{r.converted_at ? "Converted" : "Pending"}</div>
-                    <div className="text-[11px] text-[#646464]">Sent: {r.messages_sent}</div>
-                    <div className="text-[11px] text-[#646464]">Last: {r.last_message_at ? new Date(r.last_message_at).toLocaleString() : "—"}</div>
+                    <div>{r.converted_at ? "Converted" : r.abandoned_at ? "Abandoned" : "In funnel"}</div>
+                    <div className="text-[11px] text-[#646464]">Last msg: {r.last_message_at ? new Date(r.last_message_at).toLocaleString() : "—"}</div>
                   </ConsoleTd>
                   <ConsoleTd className="text-xs">
                     <div className="flex flex-wrap gap-1">

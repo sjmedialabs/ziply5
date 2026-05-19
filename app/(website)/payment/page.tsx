@@ -110,8 +110,6 @@ function PaymentPageInner() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           sessionKey,
-          email: billingAddress.email,
-          mobile: billingAddress.phone,
           items,
           total: payableAmount,
           eventType,

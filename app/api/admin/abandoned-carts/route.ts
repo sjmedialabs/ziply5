@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server"
 import { fail, ok } from "@/src/server/core/http/response"
 import { requireAuth } from "@/src/server/middleware/auth"
-import { detectAbandonedCarts, listAbandonedCartsDashboard, processRecoveryQueue } from "@/src/server/modules/abandoned-carts/recovery.service"
+import { listAbandonedCartsDashboard, runAbandonedCartJobs } from "@/src/server/modules/abandoned-carts/recovery.service"
 
 const ensureAdmin = (role: string) => role === "admin" || role === "super_admin"
 
@@ -26,9 +26,8 @@ export async function POST(request: NextRequest) {
   if (!ensureAdmin(auth.user.role)) return fail("Forbidden", 403)
   const body = (await request.json()) as { action?: "detect_now" }
   if (body.action === "detect_now") {
-    const detection = await detectAbandonedCarts()
-    const processing = await processRecoveryQueue()
-    return ok({ detection, processing }, "Detection and processing completed")
+    const result = await runAbandonedCartJobs()
+    return ok(result, "Detection and processing completed")
   }
   return fail("Unsupported action", 400)
 }
