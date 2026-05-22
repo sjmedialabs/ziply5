@@ -81,10 +81,13 @@ export default function CartPage() {
   );
   const shipping = cartItems.length === 0 ? 0 : 20;
 
-  // Track cart items for abandonment recovery
+  // Track cart for abandonment recovery (server skips save if no profile email/phone)
   useEffect(() => {
     const sessionKey = typeof window !== "undefined" ? window.localStorage.getItem("ziply5_session_key") : null;
+    const hasSession =
+      typeof window !== "undefined" ? !!window.localStorage.getItem("ziply5_refresh_token") : false;
     if (!sessionKey || cartItems.length === 0) return;
+    if (!hasSession) return;
 
     void fetch("/api/checkout/start", {
       method: "POST",
@@ -93,8 +96,9 @@ export default function CartPage() {
         sessionKey,
         items: cartItems,
         total: subTotal,
+        eventType: "cart_updated",
         meta: {
-          checkoutStage: "CART_VIEWED",
+          checkoutStage: "CART_ACTIVE",
           lastVisitedPage: "/cart",
         },
       }),

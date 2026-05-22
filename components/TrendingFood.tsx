@@ -38,7 +38,7 @@ const cardGradients = [
 export default function TrendingFood({ cmsData }: { cmsData?: any }) {
   const isLg = useIsLg()
   const router = useRouter()
-  const { products } = useStorefrontProducts(20)
+  const { products } = useStorefrontProducts(200)
   const [favoriteSlugs, setFavoriteSlugs] = useState<string[]>([])
   const [cartQtyBySlug, setCartQtyBySlug] = useState<Record<string, number>>({})
   const trending = products.filter((p) => p.isFeatured === true)
@@ -144,19 +144,22 @@ export default function TrendingFood({ cmsData }: { cmsData?: any }) {
         <SectionHeader title={sectionTitle} linkHref={buttonUrl} linkText={buttonText} />
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 md:gap-8 justify-items-center">
-          {visibleProducts.map((product, index) => (
-            <div
-              key={product.id}
-              className="card-smooth w-full cursor-pointer max-w-sm group bg-white rounded-[16px] overflow-hidden 
-              h-85
-              shadow-[0_10px_25px_rgba(0,0,0,0.08)] 
-              hover:shadow-[0_15px_35px_rgba(0,0,0,0.12)]
-              hover:ring-2 hover:ring-[#EF4444]"
-              onClick={() =>
-                router.push(`/product/${product.slug}`)}
-            >
-              {/* FLEX CONTAINER */}
-              <div className="flex flex-col h-full">
+          {visibleProducts.map((product, index) => {
+            const vegNonVegTag = product.tags?.find((t: any) => t?.tag?.name === "veg" || t?.tag?.name === "non-veg")
+            const tagName = vegNonVegTag?.tag?.name
+            return (
+              <div
+                key={product.id}
+                className="card-smooth w-full cursor-pointer max-w-sm group bg-white rounded-[16px] overflow-hidden 
+                h-85
+                shadow-[0_10px_25px_rgba(0,0,0,0.08)] 
+                hover:shadow-[0_15px_35px_rgba(0,0,0,0.12)]
+                hover:ring-2 hover:ring-[#EF4444]"
+                onClick={() =>
+                  router.push(`/product/${product.slug}`)}
+              >
+                {/* FLEX CONTAINER */}
+                <div className="flex flex-col h-full">
 
                 {/* IMAGE SECTION */}
                 <div
@@ -303,8 +306,8 @@ export default function TrendingFood({ cmsData }: { cmsData?: any }) {
                   </div>
                 </div>
               </div>
-            </div>
-          ))}
+              </div>
+            )})}
         </div>
       </div>
 

@@ -7,13 +7,13 @@ export async function GET(_request: NextRequest, context: { params: Promise<{ to
   if (!token) return fail("Invalid token", 400)
   const cart = await getRecoverableCartByTokenOrSession(token)
   if (!cart) return fail("Recovery cart not found", 404)
+  // Do not mark RECOVERED here — email clients may prefetch this URL and would cancel steps 2–4.
   await trackCartEvent({
     sessionKey: cart.sessionKey,
-    email: cart.email,
     itemsJson: cart.itemsJson,
     total: cart.total == null ? null : Number(cart.total),
-    eventType: "checkout_started",
-    meta: { source: "recovery_link" },
+    eventType: "cart_updated",
+    meta: { source: "recovery_link", lastVisitedPage: "/cart/recover" },
   })
   return ok(
     {

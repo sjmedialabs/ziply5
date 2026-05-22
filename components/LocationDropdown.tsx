@@ -1,119 +1,93 @@
 "use client"
 
-import { useState, useRef, useEffect } from "react"
-import { MapPin, ChevronDown } from "lucide-react"
-import { useLocations } from "../hooks/useLocations"
+import { useEffect, useRef } from "react"
+import { MapPin, ChevronDown, Navigation } from "lucide-react"
+import { LocationPermissionModal } from "@/components/location/LocationPermissionModal"
+import { useUserLocation } from "@/hooks/use-user-location"
 
 export default function LocationDropdown({
-  type = 'city',
-  value,
   onChange,
-  parentState,
 }: {
-  type?: 'warehouse' | 'state' | 'city'
+  type?: "warehouse" | "state" | "city"
   value?: string
   onChange?: (value: string, label: string) => void
   parentState?: string
 }) {
-  const [open, setOpen] = useState(false)
-  const [search, setSearch] = useState("")
-  const [selected, setSelected] = useState(value || `Select ${type}`)
+  const containerRef = useRef<HTMLDivElement>(null)
+  const {
+    mounted,
+    locationName,
+    permissionState,
+    modalOpen,
+    setModalOpen,
+    permanentlyBlocked,
+    enabling,
+    menuOpen,
+    setMenuOpen,
+    continueWithoutLocation,
+    handleEnableFromModal,
+    handleUseCurrentLocation,
+  } = useUserLocation({ onChange })
 
-  const ref = useRef<HTMLDivElement>(null)
-  const { data: locations, loading } = useLocations(type, parentState)
-
-  // Load initial value from local storage on mount
   useEffect(() => {
-    if (typeof window !== "undefined" && !value) {
-      try {
-        const saved = localStorage.getItem(`ziply5-location-${type}`)
-        if (saved) {
-          const { value: savedVal, label: savedLabel } = JSON.parse(saved)
-          if (savedLabel) {
-            setSelected(savedLabel)
-            if (onChange) onChange(savedVal, savedLabel)
-          }
-        }
-      } catch (e) {
-        console.error("Failed to parse saved location", e)
-      }
+    if (!menuOpen) return
+    const onPointerDown = (e: MouseEvent) => {
+      if (!containerRef.current?.contains(e.target as Node)) setMenuOpen(false)
     }
-  }, [type, value, onChange])
+    document.addEventListener("mousedown", onPointerDown)
+    return () => document.removeEventListener("mousedown", onPointerDown)
+  }, [menuOpen, setMenuOpen])
 
-  // Close on outside click
-  useEffect(() => {
-    function handleClickOutside(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) {
-        setOpen(false)
-      }
-    }
-    document.addEventListener("mousedown", handleClickOutside)
-    return () => document.removeEventListener("mousedown", handleClickOutside)
-  }, [])
-
-  const filtered = locations.filter((loc) =>
-    loc.label.toLowerCase().includes(search.toLowerCase())
-  )
+  const displayLabel = mounted ? locationName : "Detecting location..."
 
   return (
-    <div className="relative" ref={ref}>
-      
-      {/* BUTTON */}
-      <button
-        onClick={() => setOpen(!open)}
-        className="flex items-center gap-2 cursor-pointer rounded-full px-4 py-2 text-sm text-[#2A1810] bg-white border border-[#D9D9D1] hover:text-[#7B3010] hover:bg-[#FFFBF3] transition shadow-sm"
-      >
-        <MapPin size={16} />
-        <span className="truncate max-w-[150px]">{selected}</span>
-        <ChevronDown size={16} />
-      </button>
+    <>
+      <LocationPermissionModal
+        open={modalOpen}
+        onOpenChange={setModalOpen}
+        permanentlyBlocked={permanentlyBlocked}
+        enabling={enabling}
+        onEnableLocation={handleEnableFromModal}
+        onContinueWithout={continueWithoutLocation}
+      />
 
-      {/* DROPDOWN */}
-      {open && (
-        <div className="absolute right-0 left-0 lg:left-auto mt-3 w-64 bg-white border border-zinc-200 rounded-xl shadow-lg z-50">
-          
-          {/* SEARCH */}
-          <div className="p-3 border-b">
-            <input
-              type="text"
-              placeholder={`Search ${type}...`}
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:border-[#7B3010]"
-            />
-          </div>
+      <div ref={containerRef} className="relative">
+        <button
+          type="button"
+          onClick={() => setMenuOpen(!menuOpen)}
+          className="flex items-center gap-2 cursor-pointer hover:bg-zinc-50 rounded-full px-2 lg:px-4 py-2 text-sm text-inherit lg:text-[#2A1810] lg:bg-white lg:border lg:border-[#D9D9D1] transition shadow-none lg:shadow-sm"
+          title="Click to manage location"
+          aria-expanded={menuOpen}
+          aria-haspopup="menu"
+        >
+          <MapPin
+            size={16}
+            className={permissionState === "denied" ? "text-amber-500" : "text-current"}
+          />
+          <span className="truncate max-w-[150px] md:max-w-[200px] font-medium">{displayLabel}</span>
+          <ChevronDown
+            size={14}
+            className={`hidden lg:block shrink-0 opacity-60 transition-transform ${menuOpen ? "rotate-180" : ""}`}
+          />
+        </button>
 
-          {/* LIST */}
-          <div className="max-h-60 overflow-y-auto">
-            {loading ? (
-              <p className="px-4 py-3 text-sm text-zinc-500 text-center">Loading...</p>
-            ) : filtered.length > 0 ? (
-              filtered.map((loc) => (
-                <button
-                  key={loc.value}
-                  onClick={() => {
-                    setSelected(loc.label)
-                    if (typeof window !== "undefined") {
-                      localStorage.setItem(`ziply5-location-${type}`, JSON.stringify({ value: loc.value, label: loc.label }))
-                      window.dispatchEvent(new CustomEvent("ziply5:location-updated", { detail: { type, location: loc } }))
-                    }
-                    if (onChange) onChange(loc.value, loc.label)
-                    setOpen(false)
-                    setSearch("")
-                  }}
-                  className="w-full text-left px-4 py-2 text-sm hover:bg-[#7B3010] cursor-pointer hover:text-white transition"
-                >
-                  {loc.label}
-                </button>
-              ))
-            ) : (
-              <p className="px-4 py-3 text-sm text-zinc-500">
-                No {type} found
-              </p>
-            )}
+        {menuOpen ? (
+          <div
+            role="menu"
+            className="absolute left-0 top-full z-50 mt-1 min-w-[220px] rounded-lg border border-[#D9D9D1] bg-white py-1 shadow-lg lg:left-auto lg:right-0"
+          >
+            <button
+              type="button"
+              role="menuitem"
+              onClick={handleUseCurrentLocation}
+              className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm text-[#2A1810] hover:bg-zinc-50 transition-colors"
+            >
+              <Navigation size={16} className="shrink-0 text-[#601c10]" />
+              <span>Use Current Location</span>
+            </button>
           </div>
-        </div>
-      )}
-    </div>
+        ) : null}
+      </div>
+    </>
   )
 }

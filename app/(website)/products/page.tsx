@@ -23,7 +23,7 @@ import VegNonVegTag from "@/components/VegNonVegTag"
 type CategoryFilter = "all" | string
 type SortType = "popular" | "name-asc" | "name-desc" | "newest" | "price-low-high" | "price-high-low"
 type CategoryApi = { id: string; name: string; slug: string }
-type PreparationFilter = "all" | "ready_to_eat" | "ready_to_cook"
+type SpiceLevelFilter = "all" | string
 
 const PRODUCTS_PAGE_SIZE = 12
 
@@ -58,7 +58,7 @@ function ProductsPageContent() {
   const [mealTimeFilter, setMealTimeFilter] = useState<any>("all")
   const [bestSellerFilter, setBestSellerFilter] = useState<string>("all")
   const [featuredFilter, setFeaturedFilter] = useState<string>("all")
-  const [preparationTypeFilter, setPreparationTypeFilter] = useState<PreparationFilter>("all")
+  const [spiceLevelFilter, setSpiceLevelFilter] = useState<SpiceLevelFilter>("all")
   const [sortBy, setSortBy] = useState<SortType>("popular")
   const [favoriteSlugs, setFavoriteSlugs] = useState<string[]>([])
   const [cartQtyBySlug, setCartQtyBySlug] = useState<Record<string, number>>({})
@@ -81,7 +81,7 @@ function ProductsPageContent() {
   const productTypeParam = (searchParams.get("productType") || "").trim().toLowerCase()
   const categoryParam = (searchParams.get("category") || "").trim().toLowerCase()
   const tagParam = (searchParams.get("tag") || "").trim().toLowerCase()
-  const preparationTypeParam = (searchParams.get("preparationType") || "").trim().toLowerCase()
+  const spiceLevelParam = (searchParams.get("spiceLevel") || "").trim().toLowerCase()
   useEffect(() => {
     let cancelled = false
     fetch("/api/v1/categories")
@@ -142,13 +142,10 @@ function ProductsPageContent() {
         apply: (value: string) => setCategoryFilter(value || "all"),
       },
       {
-        key: "preparationType",
-        value: preparationTypeParam,
+        key: "spiceLevel",
+        value: spiceLevelParam,
         apply: (value: string) => {
-          if (value === "ready-to-eat") return setPreparationTypeFilter("ready_to_eat")
-          if (value === "ready-to-cook") return setPreparationTypeFilter("ready_to_cook")
-          if (value === "ready_to_eat" || value === "ready_to_cook") return setPreparationTypeFilter(value as PreparationFilter)
-          setPreparationTypeFilter("all")
+          setSpiceLevelFilter(value || "all")
         },
       },
       {
@@ -167,7 +164,7 @@ function ProductsPageContent() {
     ] as const
 
     queryFilterConfig.forEach((filter) => filter.apply(filter.value))
-  }, [categoryParam, preparationTypeParam, tagParam, tagOptions])
+  }, [categoryParam, spiceLevelParam, tagParam, tagOptions])
   useEffect(() => {
     const syncFavorites = () => setFavoriteSlugs(getFavoriteSlugs())
     syncFavorites()
@@ -254,6 +251,27 @@ function ProductsPageContent() {
     return [...base]
   }, [categoryOptions, products])
 
+  const spiceLevelOptions = useMemo(() => {
+    const levels = new Set<string>()
+    products.forEach((p) => {
+      if (p.spiceLevel) {
+        const trimmed = p.spiceLevel.trim()
+        if (trimmed) {
+          levels.add(trimmed)
+        }
+      }
+    })
+    return Array.from(levels).sort()
+  }, [products])
+
+  const formatSpiceLevel = (level: string) => {
+    return level
+      .replace(/_/g, " ")
+      .split(" ")
+      .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+      .join(" ")
+  }
+
   const filteredProducts = useMemo(() => {
     let items = products.filter((item) => {
       // Merged logic: filter matches either the category field OR the diet type field
@@ -269,8 +287,9 @@ function ProductsPageContent() {
         bestSellerFilter === "all" || (item as any).isBestSeller === true
       const featuredMatch =
         featuredFilter === "all" || (item as any).isFeatured === true
-      const preparationTypeMatch =
-        preparationTypeFilter === "all" || String((item as any).preparationType ?? "") === preparationTypeFilter
+      const spiceLevelMatch =
+        spiceLevelFilter === "all" ||
+        String((item as any).spiceLevel ?? "").trim().toLowerCase() === spiceLevelFilter.trim().toLowerCase()
 
       const tagMatch =
         selectedTagIds.length === 0 ||
@@ -278,7 +297,7 @@ function ProductsPageContent() {
           (item as any).tags?.some((t: any) => t.tag.id === selectedId)
         );
       return categoryMatch && packMatch && mealTimeMatch &&
-        bestSellerMatch && featuredMatch && preparationTypeMatch && tagMatch
+        bestSellerMatch && featuredMatch && spiceLevelMatch && tagMatch
     })
 
     if (searchTerm) {
@@ -301,7 +320,7 @@ function ProductsPageContent() {
     }
 
     return items
-  }, [products, categoryFilter, packFilter, mealTimeFilter, bestSellerFilter, featuredFilter, preparationTypeFilter, selectedTagIds, sortBy, searchTerm])
+  }, [products, categoryFilter, packFilter, mealTimeFilter, bestSellerFilter, featuredFilter, spiceLevelFilter, selectedTagIds, sortBy, searchTerm])
 
   const totalPages = Math.max(1, Math.ceil(filteredProducts.length / PRODUCTS_PAGE_SIZE))
   const pageFromQuery = parseInt(searchParams.get("page") || "1", 10)
@@ -428,11 +447,12 @@ function ProductsPageContent() {
                       setMealTimeFilter("all")
                       setBestSellerFilter("all")
                       setFeaturedFilter("all")
-                      setPreparationTypeFilter("all")
+                      setSpiceLevelFilter("all")
                       setSelectedTagIds([])
                       setSortBy("popular")
                       const params = new URLSearchParams(searchParams.toString())
                       params.delete("page")
+                      params.delete("spiceLevel")
                       const qs = params.toString()
                       router.push(qs ? `${pathname}?${qs}` : pathname)
                     }}
@@ -481,14 +501,17 @@ function ProductsPageContent() {
                     <SelectItem className="cursor-pointer" value="name-desc">Z to A</SelectItem>
                   </SelectContent>
                 </Select>
-                <Select value={preparationTypeFilter} onValueChange={(value) => setPreparationTypeFilter(value as PreparationFilter)}>
+                <Select value={spiceLevelFilter} onValueChange={(value) => setSpiceLevelFilter(value)}>
                   <SelectTrigger className="h-9 cursor-pointer rounded-full border-[#D9D9D1] bg-white px-4 text-xs font-medium">
-                    <SelectValue placeholder="Preparation Type" />
+                    <SelectValue placeholder="Spice Level" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem className="cursor-pointer" value="all">All Preparation Types</SelectItem>
-                    <SelectItem className="cursor-pointer" value="ready_to_eat">Ready to Eat</SelectItem>
-                    <SelectItem value="ready_to_cook">Ready to Cook</SelectItem>
+                    <SelectItem className="cursor-pointer" value="all">All Spice Levels</SelectItem>
+                    {spiceLevelOptions.map((level) => (
+                      <SelectItem className="cursor-pointer" key={level} value={level}>
+                        {formatSpiceLevel(level)}
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>
@@ -571,12 +594,13 @@ function ProductsPageContent() {
                 setCategoryFilter("all")
                 setPackFilter("all")
                 setMealTimeFilter("all")
-                setPreparationTypeFilter("all")
+                setSpiceLevelFilter("all")
                 setBestSellerFilter("all")
                 setFeaturedFilter("all")
                 setSelectedTagIds([])
                 const params = new URLSearchParams(searchParams.toString())
                 params.delete("page")
+                params.delete("spiceLevel")
                 const qs = params.toString()
                 router.push(qs ? `${pathname}?${qs}` : pathname)
               }}
@@ -605,6 +629,9 @@ function ProductsPageContent() {
               Boolean((product as any).isCombo) &&
               (product.image === FALLBACK_PRODUCT_IMAGE || !String(product.image ?? "").trim()) &&
               comboThumbs.length > 0
+
+            const vegNonVegTag = product.tags?.find((t: any) => t?.tag?.name === "veg" || t?.tag?.name === "non-veg")
+            const tagName = vegNonVegTag?.tag?.name
 
             return (
               <SlideUp key={`${product.id || product.slug || "product"}-${globalIdx}`} delay={Math.min(0.18, idx * 0.03)}>

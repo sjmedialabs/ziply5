@@ -158,7 +158,7 @@ export default function Footer({ cmsPayload = {} }: FooterProps) {
                       </svg> */}
                       <AiFillInstagram className="h-4 w-4 text-[#4A1D1F]" />
                     </a>
-                  )}
+                  )}  
                   {/* Facebook */}
                   {typeof cmsData.social3 === "string" && cmsData.social3.trim() && (
                     <a href={cmsData.social3} aria-label="Facebook"
@@ -207,7 +207,7 @@ export default function Footer({ cmsPayload = {} }: FooterProps) {
               />
 
               {/* Double Border Button */}
-              <Button 
+              <Button
                 disabled={loading}
                 className="relative cursor-pointer bg-white h-[40px] rounded-lg font-semibold text-[var(--primary-color)] border-2 border-yellow-400 hover:bg-yellow-400 transition disabled:opacity-70 disabled:cursor-not-allowed"
                 onClick={() => handleSubscribe()}>
