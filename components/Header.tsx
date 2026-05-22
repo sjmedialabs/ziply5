@@ -273,7 +273,7 @@ export default function Header() {
 
       {/* Navigation */}
       <nav className="bg-white w-full relative z-10">
-        <div className="w-full px-4 max-w-7xl mx-auto flex items-center justify-between py-2 md:py-0">
+        <div className="w-full px-4 max-w-7xl mx-auto flex items-center justify-between py-2 md:py-0 relative">
 
           {/* MOBILE SEARCH BUTTON */}
           <button
@@ -369,15 +369,15 @@ export default function Header() {
             </Link>
           </div>
 
-          <div className="flex-1 lg:flex-none flex justify-center">
-            <Link href="/" className="flex items-center">
+          <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 lg:static lg:translate-x-0 lg:translate-y-0 flex-none flex justify-center z-20 pointer-events-none lg:pointer-events-auto">
+            <Link href="/" className="flex items-center pointer-events-auto">
               <Image
                 src={cmsData?.logo || "/primaryLogo.png"}
                 alt="ZiPLY5 Logo"
                 width={180}
                 height={80}
                 priority
-                className="h-auto w-28 md:w-auto object-contain"
+                className="h-auto w-36 md:w-auto object-contain"
               />
             </Link>
           </div>
