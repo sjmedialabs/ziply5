@@ -78,10 +78,10 @@ export default function Header() {
           products:
             idx === 0
               ? products.map((p) => ({
-                  id: p.id as string,
-                  name: p.name as string,
-                  slug: p.slug as string,
-                }))
+                id: p.id as string,
+                name: p.name as string,
+                slug: p.slug as string,
+              }))
               : [],
         }))
       }
@@ -132,12 +132,8 @@ export default function Header() {
     const syncProfileHref = () => {
       const token = window.localStorage.getItem("ziply5_access_token")
       const role = window.localStorage.getItem("ziply5_user_role")
-      if (!token) {
+      if (!token || role === "admin" || role === "super_admin") {
         setProfileHref("/login")
-        return
-      }
-      if (role === "admin" || role === "super_admin") {
-        setProfileHref("/admin/dashboard")
         return
       }
       setProfileHref("/profile")
@@ -231,16 +227,27 @@ export default function Header() {
         </div>
       </div>
 
+      {/* Mobile Location & Profile Bar */}
+      <div className="bg-[#601c10] text-white lg:hidden px-4 py-0.5 flex items-center justify-between">
+        <div className="text-white [&_*]:text-white">
+          <LocationDropdown />
+        </div>
+        <Link href={profileHref} className="p-1 hover:bg-white/10 rounded-full transition-colors">
+          <User size={20} className="text-white" />
+        </Link>
+      </div>
+
       {/* Navigation */}
       <nav className="bg-white w-full relative z-10">
-        <div className="w-full px-4 max-w-7xl mx-auto flex items-center justify-between py-0">
+        <div className="w-full px-4 max-w-7xl mx-auto flex items-center justify-between py-2 md:py-0">
 
-          {/* MOBILE MENU BUTTON */}
+          {/* MOBILE SEARCH BUTTON */}
           <button
-            className="lg:hidden z-40"
-            onClick={() => setMenuOpen(!menuOpen)}
+            onClick={() => setSearchOpen(!searchOpen)}
+            className="lg:hidden flex items-center gap-2 bg-[#e6e6e6] px-3 py-1.5 rounded-lg w-[120px]"
           >
-            {menuOpen ? <X size={24} /> : <Menu size={24} />}
+            <Search size={16} className="text-[#601c10]" />
+            <span className="text-xs font-medium text-black">Search For</span>
           </button>
 
           <div className="hidden lg:flex items-center gap-8">
@@ -261,8 +268,8 @@ export default function Header() {
               }}
               onMouseLeave={() => setProductDropdownOpen(false)}
             >
-              <Link 
-                href="/products" 
+              <Link
+                href="/products"
                 onClick={() => setProductDropdownOpen(false)}
                 className="font-extrabold text-black hover:text-[#f97316] transition-colors text-[15px]"
               >
@@ -296,8 +303,8 @@ export default function Header() {
                             <ul className="space-y-3">
                               {category.products.slice(0, 8).map((product, idx) => (
                                 <li key={product.id}>
-                                  <Link 
-                                    href={`/product/${product.slug}`} 
+                                  <Link
+                                    href={`/product/${product.slug}`}
                                     onClick={() => setProductDropdownOpen(false)}
                                     className={`${pathname === `/product/${product.slug}` ? "text-orange-400 font-semibold" : "text-white"} hover:underline`}
                                   >
@@ -336,7 +343,7 @@ export default function Header() {
                 width={180}
                 height={80}
                 priority
-                className="h-auto w-auto object-contain"
+                className="h-auto w-40 md:w-auto object-contain"
               />
             </Link>
           </div>
@@ -349,7 +356,7 @@ export default function Header() {
 
             <button
               onClick={() => setSearchOpen(!searchOpen)}
-              className="p-2 hover:bg-zinc-50 cursor-pointer rounded-full transition-colors"
+              className="hidden lg:block p-2 hover:bg-zinc-50 cursor-pointer rounded-full transition-colors"
               title="Click and Search For Delicious meals.."
             >
               <Search size={20} className="text-zinc-700 hover:text-[#f97316]" />
@@ -360,36 +367,43 @@ export default function Header() {
               <Link href={profileHref} className="p-2 hover:bg-zinc-50 rounded-full transition-colors">
                 <User size={20} className="text-zinc-700 hover:text-[#f97316]" />
               </Link>
+            </div>
 
-              {/* CART WITH DROPDOWN */}
-              <div className="relative" onMouseEnter={openCart} onMouseLeave={closeCartWithDelay}>
-                <Link
-                  href="/cart"
-                  className="relative flex items-center justify-center w-8 h-8 rounded-full hover:bg-zinc-50 transition-colors"
-                >
-                  <ShoppingCart size={20} className="text-zinc-700 hover:text-[#f97316]" />
-                  {cartCount > 0 && (
-                    <m.span
-                      key={cartCount}
-                      initial={reduce ? undefined : { scale: 0.9 }}
-                      animate={reduce ? undefined : { scale: [1, 1.15, 1] }}
-                      transition={reduce ? undefined : { duration: 0.35, ease: "easeOut" }}
-                      className="absolute -top-1.5 -right-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-[#f97316] px-1 text-[10px] font-bold text-white"
-                    >
-                      {cartCount}
-                    </m.span>
-                  )}
-                </Link>
+            {/* MOBILE MENU BUTTON (Right Side) */}
+            <button
+              className="lg:hidden z-40 p-1"
+              onClick={() => setMenuOpen(!menuOpen)}
+            >
+              {menuOpen ? <X size={26} className="text-[#601c10]" /> : <Menu size={26} className="text-[#601c10]" />}
+            </button>
 
-                <CartDropdown
-                  items={cartItems}
-                  total={total}
-                  open={cartOpen}
-                  onIncrement={(id) => updateCartQuantity(id, 1)}
-                  onDecrement={(id) => updateCartQuantity(id, -1)}
-                />
+            {/* CART WITH DROPDOWN */}
+            <div className="relative" onMouseEnter={openCart} onMouseLeave={closeCartWithDelay}>
+              <Link
+                href="/cart"
+                className="relative flex items-center justify-center w-8 h-8 rounded-full hover:bg-zinc-50 transition-colors"
+              >
+                <ShoppingCart size={20} className="text-zinc-700 hover:text-[#f97316]" />
+                {cartCount > 0 && (
+                  <m.span
+                    key={cartCount}
+                    initial={reduce ? undefined : { scale: 0.9 }}
+                    animate={reduce ? undefined : { scale: [1, 1.15, 1] }}
+                    transition={reduce ? undefined : { duration: 0.35, ease: "easeOut" }}
+                    className="absolute -top-1.5 -right-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-[#f97316] px-1 text-[10px] font-bold text-white"
+                  >
+                    {cartCount}
+                  </m.span>
+                )}
+              </Link>
 
-              </div>
+              <CartDropdown
+                items={cartItems}
+                total={total}
+                open={cartOpen}
+                onIncrement={(id) => updateCartQuantity(id, 1)}
+                onDecrement={(id) => updateCartQuantity(id, -1)}
+              />
 
             </div>
 
@@ -424,11 +438,8 @@ export default function Header() {
             >
               {cmsData?.link2Title || "Combos"}
             </Link>
-            <Link href={profileHref} onClick={() => setMenuOpen(false)} className="block font-semibold text-black">
-              Profile
-            </Link>
-            <Link href="/cart" onClick={() => setMenuOpen(false)} className="block font-semibold text-black">
-              Cart
+            <Link href="/about" onClick={() => setMenuOpen(false)} className="block font-semibold text-black">
+              About
             </Link>
           </m.div>
         ) : null}
@@ -453,7 +464,7 @@ export default function Header() {
               exit={reduce ? { opacity: 0 } : { opacity: 0, scale: 0.98, y: 8 }}
               transition={reduce ? { duration: 0.12 } : { duration: 0.22, ease: "easeOut" }}
             >
-              <form onSubmit={handleSearch} className="flex gap-3">
+              <form onSubmit={handleSearch} className="flex flex-col sm:flex-row gap-3">
                 <input
                   type="text"
                   placeholder="Search for delicious meals..."
@@ -462,7 +473,7 @@ export default function Header() {
                   onChange={(e) => setSearchQuery(e.target.value)}
                   autoFocus
                 />
-                <button type="submit" className="px-6 py-3 bg-orange-500 text-white font-bold rounded-xl hover:bg-orange-600 transition-colors">
+                <button type="submit" className="w-full sm:w-auto px-6 py-3 bg-orange-500 text-white font-bold rounded-xl hover:bg-orange-600 transition-colors">
                   Search
                 </button>
               </form>

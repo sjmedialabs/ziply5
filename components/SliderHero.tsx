@@ -120,17 +120,38 @@ export default function Hero({ cmsData }: { cmsData?: any }) {
 
               return (
                 <div key={idx} className="h-full w-full flex-shrink-0 relative">
-                  <Image
-                    src={slide?.image || slide}
-                    alt={slide?.alt || `Hero Image ${idx}`}
-                    fill
-                    sizes="100vw"
-                    className="object-cover w-full h-full"
-                    priority={idx === 0}
-                  />
+                  {slide?.mobileImage ? (
+                    <>
+                      <Image
+                        src={slide.mobileImage}
+                        alt={slide?.alt || `Hero Image ${idx} Mobile`}
+                        fill
+                        sizes="100vw"
+                        className="object-cover w-full h-full block md:hidden"
+                        priority={idx === 0}
+                      />
+                      <Image
+                        src={slide?.image || slide}
+                        alt={slide?.alt || `Hero Image ${idx}`}
+                        fill
+                        sizes="100vw"
+                        className="object-cover w-full h-full hidden md:block"
+                        priority={idx === 0}
+                      />
+                    </>
+                  ) : (
+                    <Image
+                      src={slide?.image || slide}
+                      alt={slide?.alt || `Hero Image ${idx}`}
+                      fill
+                      sizes="100vw"
+                      className="object-cover w-full h-full"
+                      priority={idx === 0}
+                    />
+                  )}
 
                   {/* TEXT SLIDING WITH IMAGE */}
-                  <div className="absolute inset-0 z-20 flex items-start pt-32 md:pt-40 lg:pt-1 pointer-events-none">
+                  <div className="absolute inset-0 z-20 flex items-start -mt-10 md:pt-40 lg:pt-1 pointer-events-none">
                     <div className="w-full max-w-7xl mx-auto px-4 relative h-full">
                       <m.div
                         initial={{ opacity: 0, x: 50 }}
@@ -152,7 +173,7 @@ export default function Hero({ cmsData }: { cmsData?: any }) {
                             stagger={0.03}
                           />
                         </h1>
-                        <div className="mt-4">
+                        <div className="mt-1 md:mt-4">
                           <p className="font-heading text-lg md:text-2xl lg:text-4xl font-extrabold leading-snug text-primary uppercase drop-shadow-md whitespace-pre-line">
                             <SplitText
                               text={(() => {
