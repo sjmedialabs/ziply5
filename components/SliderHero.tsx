@@ -43,14 +43,14 @@ export default function Hero({ cmsData }: { cmsData?: any }) {
 
   useEffect(() => {
     let rafId: number
-    let nextSlideTime = Date.now() + 4000
+    let nextSlideTime = Date.now() + 5000
     let isPaused = false
 
     const tick = () => {
       const now = Date.now()
       if (!isPaused && now >= nextSlideTime) {
         setCurrentSlide((prev) => (prev + 1) % slides.length)
-        nextSlideTime = now + 4000
+        nextSlideTime = now + 5000
       }
       rafId = requestAnimationFrame(tick)
     }
