@@ -50,7 +50,7 @@ function ProductsPageContent() {
   const searchParams = useSearchParams()
   const { products, loading, error } = useStorefrontProducts(200)
   const [categoryOptions, setCategoryOptions] = useState<Array<{ slug: string; name: string }>>([])
-  const [tagOptions, setTagOptions] = useState<Array<{ slug: string; name: string, id: string }>>([])
+  const [tagOptions, setTagOptions] = useState<Array<{ slug: string; name: string, id: string, isActive: boolean }>>([])
   const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>("all")
   const [selectedTagIds, setSelectedTagIds] = useState<string[]>([])
   const [packFilter, setPackFilter] = useState<any>("all")
@@ -99,8 +99,9 @@ function ProductsPageContent() {
       .then((tagRes: { success?: boolean; data?: any }) => {
         if (cancelled) return
         const tags = ((tagRes.data as any[] | undefined) ?? [])
-          .map((t) => ({ slug: t.slug, name: t.name, id: t.id, }))
-        setTagOptions(tags)
+          .map((t) => ({ slug: t.slug, name: t.name, id: t.id, isActive: t.isActive }))
+        const activeTags = tags.filter((t: any) => t.isActive === true)
+        setTagOptions(activeTags)
       })
       .catch(() => null)
 
