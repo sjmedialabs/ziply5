@@ -278,10 +278,10 @@ export default function Header() {
           {/* MOBILE SEARCH BUTTON */}
           <button
             onClick={() => setSearchOpen(!searchOpen)}
-            className="lg:hidden flex items-center gap-2 bg-[#e6e6e6] px-3 py-1.5 rounded-lg w-[120px]"
+            className="lg:hidden flex items-center gap-2 bg-[#e6e6e6] px-3 py-1.5 rounded-lg w-auto"
           >
             <Search size={16} className="text-[#601c10]" />
-            <span className="text-xs font-medium text-black">Search For</span>
+
           </button>
 
           <div className="hidden lg:flex items-center gap-8">
@@ -377,7 +377,7 @@ export default function Header() {
                 width={180}
                 height={80}
                 priority
-                className="h-auto w-40 md:w-auto object-contain"
+                className="h-auto w-28 md:w-auto object-contain"
               />
             </Link>
           </div>
@@ -431,13 +431,15 @@ export default function Header() {
                 )}
               </Link>
 
-              <CartDropdown
-                items={cartItems}
-                total={total}
-                open={cartOpen}
-                onIncrement={(id) => updateCartQuantity(id, 1)}
-                onDecrement={(id) => updateCartQuantity(id, -1)}
-              />
+              <div className="hidden lg:block">
+                <CartDropdown
+                  items={cartItems}
+                  total={total}
+                  open={cartOpen}
+                  onIncrement={(id) => updateCartQuantity(id, 1)}
+                  onDecrement={(id) => updateCartQuantity(id, -1)}
+                />
+              </div>
 
             </div>
 
