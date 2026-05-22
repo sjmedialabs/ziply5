@@ -40,7 +40,7 @@ export default function ProductCategories({ cmsData }: { cmsData?: any }) {
           onUpdate={(swiper) => setNavLocked(swiper.isLocked)}
           onBreakpoint={(swiper) => setNavLocked(swiper.isLocked)}
           breakpoints={{
-            320: { slidesPerView: 2 },
+            320: { slidesPerView: 1 },
             480: { slidesPerView: 3 },
             768: { slidesPerView: 4 },
             1024: { slidesPerView: 5 },
@@ -51,7 +51,7 @@ export default function ProductCategories({ cmsData }: { cmsData?: any }) {
           {loading
             ? Array.from({ length: 7 }).map((_, i) => (
               <SwiperSlide key={`cat-skeleton-${i}`}>
-                <div className="bg-white/50 animate-pulse rounded-full overflow-hidden h-75 flex flex-col items-center justify-center px-3 shadow-sm border border-white/20">
+                <div className="bg-white/50 animate-pulse rounded-full overflow-hidden h-75 flex flex-col items-center justify-center px-3 shadow-sm border border-white/20 mx-auto max-w-[200px] md:max-w-none w-full">
                   <div className="w-[100px] h-[100px] md:w-[120px] md:h-[120px] shrink-0 rounded-full overflow-hidden bg-white/40 mb-4" />
                   <div className="h-4 w-24 bg-white/40 rounded mb-2" />
                   <div className="h-3 w-32 bg-white/40 rounded" />
@@ -62,7 +62,7 @@ export default function ProductCategories({ cmsData }: { cmsData?: any }) {
               <SwiperSlide key={product.id || i}>
                 <Link
                   href={`/product/${product.slug}`}
-                  className="group"
+                  className="group block mx-auto max-w-[200px] md:max-w-none w-full"
                 >
                   <div className="card-smooth bg-white rounded-full overflow-hidden h-75 flex flex-col items-center justify-center px-3 shadow-md hover:shadow-lg">
 
