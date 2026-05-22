@@ -60,13 +60,11 @@ export default function AboutFarmToPlate({
             {/* Heading */}
             <h2 className="text-3xl lg:text-5xl font-bold leading-[1.05] tracking-tight text-black">
 
-              Sourced from the{" "}
+              {title.split(" Heart of India's")[0]}
 
               <span className="text-[#B6402C]">
-                Heart of India's{" "}
+              {" "}  Heart of India's{title.split(" Heart of India's")[1]}
               </span>
-
-              Farms
 
             </h2>
 
@@ -87,8 +85,7 @@ export default function AboutFarmToPlate({
                 <MessageCircleMore className="w-6 h-6 text-[#B6402C] shrink-0 mt-1" />
 
                 <p className="text-[#5A3A35] italic text-base leading-[2rem]">
-                  Our sourcing team personally visits farms to monitor growing practices, ensuring only clean, chemical-free produce makes it into our kitchens.
-                </p>
+                 {descriptions[1]}</p>
 
               </div>
 
@@ -96,7 +93,7 @@ export default function AboutFarmToPlate({
 
             {/* Second Description */}
             <p className="mt-4 text-base leading-[2.2rem] text-[#555555]">
-              {descriptions[1]}
+              {descriptions[2]}
             </p>
 
             {/* Bottom Pills */}

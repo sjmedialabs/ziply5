@@ -12,7 +12,8 @@ interface AboutHeroProps {
     heroButtonLink?: string;
     heroVideo?: string;
     heroImage?: string;
-
+    cardTitle?: string;
+    cardDescription?: string;
     detailTitle?: string;
     detailDescription?: string;
 
@@ -49,10 +50,10 @@ export default function AboutHero({ data }: AboutHeroProps) {
     data?.heroImage || "/assets/AboutPage/aboutBanner.png";
 
   const detailTitle =
-    data?.detailTitle || "Where Flavour Meets Tradition";
+    data?.detailTitle || data?.cardTitle || "Where Flavour Meets Tradition";
 
   const detailDescription =
-    data?.detailDescription ||
+    data?.detailDescription || data?.cardDescription ||
     "At The Ziply5, we bring you wholesome, flavour-rich, and safe-to-eat ready meals crafted using top-quality ingredients and modern food technology. Every dish is a celebration of India's culinary heritage - from aromatic biryanis to comforting rice meals - prepared with the same love and care as a home-cooked feast, but ready to enjoy in just minutes.";
 
   const stat1Number =
