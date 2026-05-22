@@ -347,10 +347,10 @@ export default function CartPage() {
                   <span>-INR {formatMoney(offerTotalDiscount)}</span>
                 </div>
               ) : null}
-              <div className="flex justify-between">
+              {/* <div className="flex justify-between">
                 <span>Shipping</span>
                 <span>INR {formatMoney(offerAdjustedShipping ?? shipping)}</span>
-              </div>
+              </div> */}
             </div>
 
             <div className="my-4 border-t border-white" />
