@@ -158,7 +158,7 @@ export default function FooterSectionEditor({ value = {}, onChange }: FooterProp
               <Input value={value.social1 || ''} onChange={(e) => updateField('social1', e.target.value)} placeholder="Enter URL" className="h-8 text-sm" />
             </div>
             <div>
-              <Label className="text-xs font-semibold text-[#646464] mb-1 block">Social Media Link 2 (Twitter)</Label>
+              <Label className="text-xs font-semibold text-[#646464] mb-1 block">Social Media Link 2 (Instagram)</Label>
               <Input value={value.social2 || ''} onChange={(e) => updateField('social2', e.target.value)} placeholder="Enter URL" className="h-8 text-sm" />
             </div>
             <div>
