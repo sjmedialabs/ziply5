@@ -74,12 +74,12 @@ export default function AboutWhyChooseUs({
         <div className="text-center max-w-2xl mx-auto space-y-4 mb-16">
 
           {badge && (
-            <span className="inline-flex items-center px-5 py-2 rounded-full bg-[#F3E5E1] text-[11px] font-bold uppercase tracking-[0.22em] text-[#B6402C]">
+            <span className="inline-flex items-center px-5 py-2 rounded-full bg-[#F3E5E1] text-[11px] font-medium font-melon uppercase tracking-[0.22em] text-[#51282B]">
               {badge}
             </span>
           )}
 
-          <h2 className="text-3xl sm:text-5xl font-bold tracking-tight text-black leading-[1.1]">
+          <h2 className="text-3xl sm:text-5xl font-medium font-melon tracking-tight text-[#51282B] leading-[1.1]">
             {title}
           </h2>
 
@@ -112,7 +112,7 @@ export default function AboutWhyChooseUs({
             >
 
               {/* Top Red Section */}
-              <div className="relative h-[160px] bg-gradient-to-br from-[#B9331D] via-[#C53E26] to-[#D95433] overflow-hidden">
+              <div className="relative h-[160px] bg-[#51282B] overflow-hidden">
 
                 {/* Decorative Circles */}
                 <div className="absolute top-[-35px] right-[-35px] w-36 h-36 rounded-full bg-white/8" />
@@ -154,7 +154,7 @@ export default function AboutWhyChooseUs({
               <div className="relative px-7 pt-4 pb-4 min-h-[280px] flex flex-col">
 
                 {/* Title */}
-                <h3 className="text-[20px] leading-tight font-bold text-[#A12F1C] mb-5">
+                <h3 className="text-[20px] leading-tight font-medium font-melon text-[#51282B] mb-5">
                   {item.title}
                 </h3>
 
@@ -177,10 +177,10 @@ export default function AboutWhyChooseUs({
                           className="w-3.5 h-3.5 object-contain"
                         />
                       ) : (
-                        <div className="w-2 h-2 rounded-full bg-[#B6402C]" />
+                        <div className="w-2 h-2 rounded-full bg-[#51282B]" />
                       )}
 
-                      <span className="text-[#B6402C] uppercase tracking-[0.12em] text-[11px] font-bold">
+                      <span className="text-[#51282B] uppercase tracking-[0.12em] text-[11px] font-medium font-melon">
                         {item.badge}
                       </span>
 

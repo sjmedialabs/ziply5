@@ -124,18 +124,18 @@ export default function AboutWhoWeAre({
         <div className="max-w-4xl mx-auto text-center">
 
           {/* Badge */}
-          <div className="inline-flex items-center gap-2 px-5 py-2 rounded-full bg-[#A53722]/8 border border-[#A53722]/10 mb-3">
-            <span className="w-2 h-2 rounded-full bg-[#A53722]" />
+          <div className="inline-flex font-melon items-center gap-2 px-5 py-2 rounded-full bg-[#A53722]/8 border border-[#A53722]/10 mb-3">
+            <span className="w-2 h-2 rounded-full bg-[#51282B]" />
 
-            <span className="uppercase tracking-[0.25em] text-xs font-semibold text-[#A53722]">
+            <span className="uppercase tracking-[0.25em] text-xs font-medium text-[#51282B]">
               {badge}
             </span>
           </div>
 
           {/* Title */}
-          <h2 className="text-5xl sm:text-3xl lg:text-5xl leading-[1.05] font-semibold text-black whitespace-pre-line">
+          <h2 className="text-5xl sm:text-3xl lg:text-5xl leading-[1.05] font-medium font-melon text-black whitespace-pre-line">
             {title.split("Taste")[0]}
-            <span className="text-[#B5432A] italic">
+            <span className="text-[#51282B]">
               Taste
             </span>
           </h2>
@@ -180,7 +180,7 @@ export default function AboutWhoWeAre({
               </div>
 
               {/* Title */}
-              <h3 className="text-4xl font-semibold text-black leading-tight">
+              <h3 className="text-4xl font-semibold text-[#51282B] font-melon leading-tight">
                 {card.title}
               </h3>
 

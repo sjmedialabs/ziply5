@@ -81,15 +81,15 @@ export default function AboutHero({ data }: AboutHeroProps) {
             <div className="lg:col-span-6">
 
               {/* Badge */}
-              <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full border border-[#A44A3F]/20 bg-[#A44A3F]/5 mb-6">
-                <span className="w-2 h-2 rounded-full bg-[#A44A3F]" />
-                <span className="text-xs tracking-[0.18em] uppercase font-semibold text-[#7A2E23]">
+              <div className="inline-flex font-melon items-center gap-2 px-4 py-2 rounded-full border border-[#A44A3F]/20 bg-[#A44A3F]/5 mb-6">
+                <span className="w-2 h-2 rounded-full bg-[#51282B]" />
+                <span className="text-xs tracking-[0.18em] uppercase font-medium text-[#51282B]">
                   {badge}
                 </span>
               </div>
 
               {/* Heading */}
-              <h1 className="text-5xl sm:text-6xl lg:text-5xl leading-[0.95] font-melon text-[#111111]">
+              <h1 className="text-5xl font-melon sm:text-6xl lg:text-5xl leading-[0.95] text-[#51282B]">
                 {title}
               </h1>
 
@@ -103,7 +103,7 @@ export default function AboutHero({ data }: AboutHeroProps) {
 
                 <Link
                   href={buttonLink}
-                  className="group inline-flex items-center gap-2 px-8 py-4 rounded-full bg-[#A53722] text-white text-sm font-semibold hover:bg-[#8C2E1B] transition-all duration-300 shadow-xl"
+                  className="group inline-flex items-center gap-2 px-8 py-4 rounded-full bg-[#51282B] text-white text-sm font-medium hover:bg-[#8C2E1B] transition-all duration-300 shadow-xl"
                 >
                   {buttonLabel}
 
@@ -123,24 +123,24 @@ export default function AboutHero({ data }: AboutHeroProps) {
 
             {/* Right Stats */}
             <div className="lg:col-span-6 flex lg:justify-end">
-              <div className="grid grid-cols-2 gap-10 lg:gap-16">
+              <div className="grid grid-cols-2 font-melon gap-10 lg:gap-16">
 
                 <div>
-                  <h2 className="text-6xl lg:text-7xl font-semibold text-black">
-                    {stat1Number}
+                    <h2 className="text-6xl lg:text-7xl font-medium text-[#51282B]">
+                      {stat1Number}
                   </h2>
 
-                  <p className="mt-2 text-xl text-black">
+                  <p className="mt-2 text-xl text-[#51282B]">
                     {stat1Label}
                   </p>
                 </div>
 
                 <div>
-                  <h2 className="text-6xl lg:text-7xl font-semibold text-black">
+                  <h2 className="text-6xl lg:text-7xl font-medium text-[#51282B]">
                     {stat2Number}
                   </h2>
 
-                  <p className="mt-2 text-xl text-black">
+                  <p className="mt-2 text-xl text-[#51282B]">
                     {stat2Label}
                   </p>
                 </div>
@@ -174,23 +174,23 @@ export default function AboutHero({ data }: AboutHeroProps) {
         <div className="absolute inset-0 bg-gradient-to-t from-black/30 via-transparent to-transparent" />
 
         {/* Floating Detail Card */}
-        <div className="absolute top-[70%] right-4 left-4 lg:left-auto lg:right-16 z-20">
+        <div className="absolute top-[70%] right-4 left-4 lg:left-auto hidden md:block lg:right-16 z-20">
 
-          <div className="max-w-lg bg-[#A53722]/95 backdrop-blur-xl rounded-4xl p-7 lg:p-9 shadow-2xl border border-white/10">
+          <div className="max-w-lg bg-[#51282B] space-y-2 rounded-4xl p-7 lg:p-9 shadow-2xl border border-white/10">
 
             {/* Top */}
             {/* <div className="flex items-center gap-3 mb-3">
 
               <div className="w-14 h-14 rounded-full bg-[#F9E8D2] flex items-center justify-center shrink-0">
-                <Star className="w-6 h-6 text-[#A53722] fill-[#A53722]" />
+                <Star className="w-6 h-6 text-[#51282B] fill-[#51282B]" />
               </div>
 
               <div>
-                <p className="text-[#FFD9B8] uppercase text-xs tracking-[0.2em] font-semibold">
+                <p className="text-[#FFD9B8] uppercase text-xs tracking-[0.2em] font-medium">
                   Premium Indian Meals
                 </p>
 
-                <h3 className="text-white font-semibold text-lg">
+                <h3 className="text-white font-medium text-lg">
                   Chef Crafted Experience
                 </h3>
               </div>
@@ -198,7 +198,7 @@ export default function AboutHero({ data }: AboutHeroProps) {
             </div> */}
 
             {/* Content */}
-            <h3 className="text-2xl font-semibold text-white leading-tight">
+            <h3 className="text-2xl font-melon font-medium text-white leading-tight">
               {detailTitle}
             </h3>
 
