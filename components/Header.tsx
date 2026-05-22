@@ -457,9 +457,9 @@ export default function Header() {
             transition={reduce ? { duration: 0.12 } : { duration: 0.22, ease: "easeOut" }}
             className="lg:hidden bg-white border-t px-6 py-4 space-y-4 shadow-md"
           >
-            <div className="pb-4 border-b">
+            {/* <div className="pb-4 border-b">
               <LocationDropdown />
-            </div>
+            </div> */}
 
             <Link href="/products" onClick={() => setMenuOpen(false)} className="block font-semibold text-black">
               Products
