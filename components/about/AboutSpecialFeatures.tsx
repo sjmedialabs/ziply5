@@ -69,16 +69,16 @@ export default function AboutSpecialFeatures({
           {/* Badge */}
           <div className="inline-flex items-center gap-2 px-6 py-3 rounded-full border border-[#E5CFC7] bg-[#F5E9E6] mb-5">
 
-            <div className="w-2 h-2 rounded-full bg-[#B6402C]" />
+            <div className="w-2 h-2 rounded-full bg-[#51282B]" />
 
-            <span className="text-xs font-bold uppercase tracking-[0.25em] text-[#B6402C]">
+            <span className="text-xs font-medium font-melon uppercase tracking-[0.25em] text-[#51282B]">
               {badge}
             </span>
 
           </div>
 
           {/* Title */}
-          <h2 className="text-5xl lg:text-6xl font-bold tracking-tight text-black leading-[1.05]">
+          <h2 className="text-5xl lg:text-6xl font-medium font-melon tracking-tight text-[#51282B] leading-[1.05]">
             {title}
           </h2>
 
@@ -112,7 +112,7 @@ export default function AboutSpecialFeatures({
             >
 
               {/* TOP SECTION */}
-              <div className="relative h-[165px] bg-gradient-to-br from-[#B9331D] via-[#C53E26] to-[#D95433] overflow-hidden">
+              <div className="relative h-[165px] bg-[#51282B] overflow-hidden">
 
                 {/* Top Right Circle */}
                 <div className="absolute top-[-35px] right-[-35px] w-36 h-36 rounded-full bg-white/7" />
@@ -155,7 +155,7 @@ export default function AboutSpecialFeatures({
               <div className="relative px-7 pt-9 pb-8 min-h-[250px] flex flex-col">
 
                 {/* Title */}
-                <h3 className="text-[21px] leading-tight font-bold text-[#A12F1C] mb-5">
+                <h3 className="text-[21px] leading-tight font-medium font-melon text-[#51282B] mb-5">
                   {item.title}
                 </h3>
 
@@ -178,10 +178,10 @@ export default function AboutSpecialFeatures({
                           className="w-3.5 h-3.5 object-contain"
                         />
                       ) : (
-                        <div className="w-2 h-2 rounded-full bg-[#B6402C]" />
+                        <div className="w-2 h-2 rounded-full bg-[#51282B]" />
                       )}
 
-                      <span className="text-[#B6402C] uppercase tracking-[0.12em] text-[11px] font-bold">
+                      <span className="text-[#51282B] font-melon uppercase tracking-[0.12em] text-[11px] font-medium">
                         {item.badge}
                       </span>
 
