@@ -18,6 +18,7 @@ import { useStorefrontProducts } from "@/hooks/useStorefrontProducts"
 import { X, Heart } from "lucide-react"
 import { toast } from "@/lib/toast"
 import { SlideUp, ScaleHover, ModalAnimation } from "@/components/animations"
+import VegNonVegTag from "@/components/VegNonVegTag"
 
 type CategoryFilter = "all" | string
 type SortType = "popular" | "name-asc" | "name-desc" | "newest" | "price-low-high" | "price-high-low"
@@ -641,16 +642,20 @@ function ProductsPageContent() {
                   >
 
 
-                    {tagName && (
-                        <div className="absolute top-0  z-20 right-0 w-20 h-5 rounded-sm flex items-center justify-center">
-                          {
-                            tagName === "veg" ? (<span className="absolute top-4 right-0 bg-[#10B981] text-white text-[11px] font-medium px-3 py-1 border border-white rounded-l-sm z-10">
-                              {tagName.charAt(0).toUpperCase() + tagName.slice(1)}
-                            </span>) : (<span className="absolute top-4 right-0 bg-[#F97316] text-white text-[11px] font-medium px-3 py-1 rounded-l-sm border border-white z-10">
-                              {tagName.charAt(0).toUpperCase() + tagName.slice(1)}
-                            </span>)
-                          }
-                        </div>
+                    {product?.tags?.[0]?.tag?.name && 
+                      // product?.tags[0]?.tag?.name && (
+                      //   <div className="absolute top-0  z-20 right-0 w-20 h-5 rounded-sm flex items-center justify-center">
+                      //     {
+                      //       product.tags[0].tag.name === "veg" ? (<span className="absolute top-4 right-0 bg-[#10B981] text-white text-[11px] font-medium px-3 py-1 border border-white rounded-l-sm z-10">
+                      //         {product.tags[0].tag.name?.charAt(0).toUpperCase() + product.tags[0].tag.name.slice(1)}
+                      //       </span>) : (<span className="absolute top-4 right-0 bg-[#F97316] text-white text-[11px] font-medium px-3 py-1 rounded-l-sm border border-white z-10">
+                      //         {product.tags[0].tag.name?.charAt(0).toUpperCase() + product.tags[0].tag.name.slice(1)}
+                      //       </span>)
+                      //     }
+                      //   </div>
+                      // )
+                      (
+                        <VegNonVegTag type={product.tags[0].tag.name} />
                       )
                     }
                     <Link href={(product as any).isCombo ? `/combo/${product.slug}` : `/product/${product.slug}`} className="block">

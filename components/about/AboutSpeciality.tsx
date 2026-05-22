@@ -95,18 +95,18 @@ export default function AboutSpeciality({
             {/* Badge */}
             <div className="w-full rounded-full bg-[#EFE7E4] px-5 py-3 mb-8">
 
-              <span className="text-xs font-bold uppercase tracking-[0.25em] text-[#B6402C]">
+              <span className="text-xs font-medium font-melon uppercase tracking-[0.25em] text-[#51282B]">
                 {badge}
               </span>
 
             </div>
 
             {/* Title */}
-            <h2 className="text-3xl lg:text-5xl font-bold leading-[1.05] tracking-tight text-black">
+            <h2 className="text-3xl lg:text-5xl font-medium font-melon leading-[1.05] text-black">
 
               {title.split("Signature")[0]}
 
-              <span className="text-[#B6402C]">
+              <span className="text-[#51282B]">
                 Signature
               </span>
               {title.split("Signature")[1]}
@@ -138,7 +138,7 @@ export default function AboutSpeciality({
                       `}
                     >
 
-                      <h3 className="text-3xl font-bold text-[#B6402C] leading-none">
+                      <h3 className="text-3xl font-medium font-melon text-[#51282B] leading-none">
                         {item.stat}
                       </h3>
 
@@ -168,7 +168,7 @@ export default function AboutSpeciality({
                     className="flex items-start gap-3"
                   >
 
-                    <div className="w-2.5 h-2.5 rounded-full bg-[#B6402C] mt-3 shrink-0" />
+                    <div className="w-2.5 h-2.5 rounded-full bg-[#51282B] mt-3 shrink-0" />
 
                     <p className="text-[#2B2B2B] text-base font-semibold leading-[1.9rem]">
                       {point}
@@ -197,10 +197,11 @@ export default function AboutSpeciality({
                     px-10
                     py-5
                     rounded-full
-                    bg-[#B6402C]
+                    bg-[#51282B]
                     hover:bg-[#982F1E]
                     text-white
-                    font-semibold
+                    font-medium
+                    font-melon
                     text-lg
                     transition-all
                     duration-300

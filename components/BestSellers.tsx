@@ -8,6 +8,7 @@ import { getFavoriteSlugs, toggleFavoriteSlug } from "@/lib/favorites" // utilit
 import { useStorefrontProducts } from "@/hooks/useStorefrontProducts" // hook for getting api data for products
 import { X } from "lucide-react"
 import { toast } from "@/lib/toast"
+import VegNonVegTag from "./VegNonVegTag"
 
 export default function BestSellers({ cmsData }: { cmsData?: any }) {
   const { products } = useStorefrontProducts(200)
@@ -141,17 +142,9 @@ export default function BestSellers({ cmsData }: { cmsData?: any }) {
                   className="card-smooth rounded-2xl px-8 relative overflow-hidden transition-all duration-300 ease-out group-hover:ring-4 group-hover:ring-[#F36E21] group-hover:shadow-xl h-full flex flex-col"
                   style={{ backgroundColor: pickBg(product) }}
                 >
-                  {tagName ? (
-                    tagName === "veg" ? (
-                      <span className="absolute top-4 right-0 bg-[#10B981] text-white text-[11px] font-medium px-3 py-1 border border-white rounded-l-sm z-10">
-                        {tagName.charAt(0).toUpperCase() + tagName.slice(1)}
-                      </span>
-                    ) : (
-                      <span className="absolute top-4 right-0 bg-[#F97316] text-white text-[11px] font-medium px-3 py-1 rounded-l-sm border border-white z-10">
-                        {tagName.charAt(0).toUpperCase() + tagName.slice(1)}
-                      </span>
-                    )
-                  ) : null}
+                  {tagName &&(
+                    <VegNonVegTag type={tagName} />
+                  )}
                   {/* {product.type === "non-veg" && (
                   <span className="absolute top-4 right-0 bg-[#F97316] text-white text-[11px] font-medium px-3 py-1 rounded-l-sm border border-white z-10">
                     Non-veg
@@ -162,11 +155,11 @@ export default function BestSellers({ cmsData }: { cmsData?: any }) {
                     Pure-Veg
                   </span>
                 )} */}
-
+                  
                   <button
                     type="button"
                     onClick={(e) => handleToggleFavorite(e, product.slug)}
-                    className="absolute left-4 top-4 z-20 rounded-full bg-white/90 px-2 py-1 text-sm text-[#7a1e0e]"
+                    className="absolute left-4 top-4 pt-1 z-20 rounded-full bg-white/90 px-2 py-0.5 text-sm text-[#7a1e0e]"
                   >
                     {favoriteSlugs.includes(product.slug) ? "♥" : "♡"}
                   </button>

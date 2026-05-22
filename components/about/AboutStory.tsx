@@ -47,12 +47,12 @@ export default function AboutStory({ data }: AboutStoryProps) {
           {/* Floating Story Card */}
           <div className="absolute bottom-8 left-8 bg-white rounded-2xl px-6 py-5 shadow-2xl flex items-center gap-4">
 
-            <div className="w-14 h-14 rounded-full bg-[#C53B22] flex items-center justify-center">
+            <div className="w-14 h-14 rounded-full bg-[#51282B] flex items-center justify-center">
               <MessageCircleMore className="w-6 h-6 text-white" />
             </div>
 
             <div>
-              <p className="text-[#C53B22] text-sm font-bold uppercase tracking-wide">
+              <p className="text-[#51282B] text-sm font-medium font-melon uppercase tracking-wide">
                 Our Story
               </p>
 
@@ -71,20 +71,20 @@ export default function AboutStory({ data }: AboutStoryProps) {
           <div className="max-w-2xl w-full">
 
             {/* Badge */}
-            <div className="w-full rounded-full bg-[#EFE7E4] px-5 py-3 mb-8">
+            <div className="w-full rounded-full font-melon bg-[#EFE7E4] px-5 py-3 mb-8">
 
-              <span className="text-xs font-bold uppercase tracking-[0.25em] text-[#B6402C]">
+              <span className="text-xs font-medium uppercase tracking-[0.25em] text-[#51282B]">
                 {badge}
               </span>
 
             </div>
 
             {/* Title */}
-            <h2 className="text-3xl lg:text-5xl font-bold leading-[1.05] tracking-tight text-black">
+            <h2 className="text-3xl lg:text-5xl font-medium font-melon leading-[1.05] tracking-tight text-black">
 
               {title.split("Meets")[0]}
 
-              <span className="text-[#B6402C]">
+              <span className="text-[#51282B]">
                 Meets{title.split("Meets")[1]}
               </span>
 

@@ -10,6 +10,7 @@ import { useStorefrontProducts } from "@/hooks/useStorefrontProducts" // hook fo
 import { useRouter } from "next/navigation"
 import { X } from "lucide-react"
 import { toast } from "@/lib/toast"
+import VegNonVegTag from "./VegNonVegTag"
 
 function useIsLg() {
   const [isLg, setIsLg] = useState(false)
@@ -160,28 +161,56 @@ export default function TrendingFood({ cmsData }: { cmsData?: any }) {
                 {/* FLEX CONTAINER */}
                 <div className="flex flex-col h-full">
 
-                  {/* IMAGE SECTION */}
-                  <div
-                    className={`relative bg-gradient-to-b ${cardGradients[index % cardGradients.length]} 
-                    flex items-center justify-center 
-                    h-[280px] `}
-                  >
-                    {/* veg icon */}
-                    <div className="absolute top-2 z-20 right-0 w-20 h-5 rounded-sm flex items-center justify-center">
-                      {
-                        tagName && (
-                          <>
-                            {
-                              tagName === "veg" ? (<span className="absolute top-4 right-0 bg-[#10B981] text-white text-[11px] font-medium px-3 py-1 border border-white rounded-l-sm z-10">
-                                {tagName.charAt(0).toUpperCase() + tagName.slice(1)}
-                              </span>) : (<span className="absolute top-4 right-0 bg-[#F97316] text-white text-[11px] font-medium px-3 py-1 rounded-l-sm border border-white z-10">
-                                {tagName.charAt(0).toUpperCase() + tagName.slice(1)}
-                              </span>)
-                            }
-                          </>
-                        )
-                      }
-                    </div>
+                {/* IMAGE SECTION */}
+                <div
+                  className={`relative bg-gradient-to-b ${cardGradients[index % cardGradients.length]} 
+                  flex items-center justify-center 
+                  h-[280px] `}
+                >
+                  {/* veg icon */}
+                  {/* <div className="absolute top-2 z-20 right-0 w-10 h-10 flex items-center justify-center">
+                    {product.tags[0]?.tag?.name && (
+                      product.tags[0].tag.name === "veg" ? (
+                        <span className="block">
+                          <span style={{ display: 'inline-block', border: '2px solid #16A34A', borderRadius: 4, background: '#fff', width: 15, height: 15,  display: 'flex',
+                              flexDirection: 'row',
+                              justifyContent: 'center',
+                              alignItems: 'center', }}>
+                            <span style={{
+                             
+                              background: '#16A34A',
+                              borderRadius: '50%',
+                              width: 8,
+                              height: 8,
+                              
+                              
+                            }} />
+                          </span>
+                        </span>
+                      ) : (
+                        <span className="block">
+                          <span style={{ display: 'inline-block', border: '2px solid #DC2626', borderRadius: 4, background: '#fff', width: 20, height: 20,  display: 'flex',
+                              flexDirection: 'row',
+                              justifyContent: 'center',
+                              alignItems: 'center' }}>
+                            <span style={{
+                              
+                              background: '#DC2626',
+                              borderRadius: '50%',
+                              width: 8,
+                              height: 8,
+                             
+                            }} />
+                          </span>
+                        </span>
+                      )
+                    )}
+                  </div> */}
+                  {
+                    product.tags[0]?.tag?.name && (
+                      <VegNonVegTag type={product.tags[0].tag.name} />
+                    )
+                  }
                   <div className="relative h-full w-full transition-transform duration-300 hover:scale-90 ">
                     <Image
                       src={product.image}
