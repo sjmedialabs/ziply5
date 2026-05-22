@@ -71,7 +71,7 @@ export default function AboutHero({ data }: AboutHeroProps) {
     <section className="relative bg-[#F7F3EE]">
 
       {/* Top Content Area */}
-      <div className="relative z-20 py-8">
+      <div className="relative z-20 py-8 px-4">
         <div className="max-w-7xl mx-auto">
 
           <div className="grid lg:grid-cols-12 gap-12">
