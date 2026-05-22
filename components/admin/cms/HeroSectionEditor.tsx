@@ -10,6 +10,7 @@ import VideoUploader from './VideoUploader';
 
 interface HeroSlide {
   image: string;
+  mobileImage?: string;
   title: string;
   subtitle: string;
   alt: string;
@@ -54,24 +55,38 @@ export default function HeroSectionEditor({ value = { slides: [] }, onChange }: 
 
   const renderSlide = (slide: HeroSlide, index: number, actions: any) => (
     <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-start">
-      <div>
-        <Label className="text-xs font-semibold text-[#646464] mb-1 block">Slide Image</Label>
-        <ImageUploader
-          folder="cms/hero"
-          value={slide.image}
-          onChange={(image) => {
-            const newSlides = [...localValue.slides];
-            newSlides[index].image = image;
-            newSlides[index].alt = image ? `Hero slide ${index + 1}` : '';
-            updateSlides(newSlides);
-          }}
-          
-          onAltChange={(alt) => {
-            const newSlides = [...localValue.slides];
-            newSlides[index].alt = alt;
-            updateSlides(newSlides);
-          }}
-        />
+      <div className="space-y-4">
+        <div>
+          <Label className="text-xs font-semibold text-[#646464] mb-1 block">Desktop Slide Image</Label>
+          <ImageUploader
+            folder="cms/hero"
+            value={slide.image}
+            onChange={(image) => {
+              const newSlides = [...localValue.slides];
+              newSlides[index].image = image;
+              newSlides[index].alt = image ? `Hero slide ${index + 1}` : '';
+              updateSlides(newSlides);
+            }}
+            
+            onAltChange={(alt) => {
+              const newSlides = [...localValue.slides];
+              newSlides[index].alt = alt;
+              updateSlides(newSlides);
+            }}
+          />
+        </div>
+        <div>
+          <Label className="text-xs font-semibold text-[#646464] mb-1 block">Mobile Slide Image (Optional)</Label>
+          <ImageUploader
+            folder="cms/hero/mobile"
+            value={slide.mobileImage || ''}
+            onChange={(image) => {
+              const newSlides = [...localValue.slides];
+              newSlides[index].mobileImage = image;
+              updateSlides(newSlides);
+            }}
+          />
+        </div>
       </div>
       <div className="space-y-3">
         <div>
