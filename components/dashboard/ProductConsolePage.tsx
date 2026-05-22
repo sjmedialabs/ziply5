@@ -51,8 +51,6 @@ type ProductDetail = {
   taxIncluded?: boolean
   isActive?: boolean
   foodType?: string | null
-  isFeatured?: boolean
-  isBestSeller?: boolean
   amazonLink?: string | null
   allowReturn?: boolean
   thumbnail?: string | null
@@ -204,8 +202,6 @@ export function ProductConsolePage({
   const [spiceLevel, setSpiceLevel] = useState<"" | "mild" | "medium" | "hot" | "extra_hot">("")
   const [taxIncluded, setTaxIncluded] = useState(false)
   const [isActive, setIsActive] = useState(true)
-  const [isFeatured, setIsFeatured] = useState(false)
-  const [isBestSeller, setIsBestSeller] = useState(false)
   const [allowReturn, setAllowReturn] = useState(true)
   const [thumbnailUrls, setThumbnailUrls] = useState<string[]>([])
   const [metaTitle, setMetaTitle] = useState("")
@@ -401,8 +397,6 @@ export function ProductConsolePage({
       setSpiceLevel((p.spiceLevel ?? "") as "" | "mild" | "medium" | "hot" | "extra_hot")
       setTaxIncluded(p.taxIncluded ?? false)
       setIsActive(p.isActive ?? true)
-      setIsFeatured(p.isFeatured ?? false)
-      setIsBestSeller(p.isBestSeller ?? false)
       setAllowReturn(p.allowReturn ?? true)
       setThumbnailUrls(uniq([p.thumbnail ?? ""]))
       setMetaTitle(p.metaTitle ?? "")
@@ -547,17 +541,13 @@ export function ProductConsolePage({
       basePrice: toNumOrNull(basePrice),
       salePrice: toNumOrNull(salePrice),
       discountPercent: toNumOrNull(discountPercent),
-      weight: type === "simple" ? (simpleProductWeight.trim() || null) : null, // Include new weight field
+      weight: type === "simple" ? (parseWeight(simpleProductWeight).value ? simpleProductWeight.trim() : null) : null, // Include new weight field
       stockStatus,
       totalStock: derivedStock,
       shelfLife: shelfLife.trim() || null,
-      preparationType: preparationType || null,
       spiceLevel: spiceLevel || null,
       taxIncluded,
       isActive,
-      foodType,
-      isFeatured,
-      isBestSeller,
       allowReturn,
       amazonLink: amazonLink.trim() || null,
       thumbnail: uniq(thumbnailUrls)[0] ?? null,
@@ -589,8 +579,6 @@ export function ProductConsolePage({
     discountPercent,
     imageUrls,
     isActive,
-    isBestSeller,
-    isFeatured,
     allowReturn,
     metaDescription,
     metaTitle,
@@ -605,13 +593,11 @@ export function ProductConsolePage({
     amazonLink,
     status,
     stockStatus,
-    foodType,
     taxIncluded,
     thumbnailUrls,
     totalStock,
     type,
     variants,
-    preparationType,
     spiceLevel,
     sections,
   ])
@@ -686,10 +672,6 @@ export function ProductConsolePage({
         return
       }
       if (status === "published") {
-        if (!payload.foodType) {
-          setError("Food Type is required to publish")
-          return
-        }
         if (payload.price <= 0) {
           setError("Sale Price must be greater than 0 to publish")
           return
@@ -709,10 +691,6 @@ export function ProductConsolePage({
       }
       if (!payload.type) {
         setError("Product type is required")
-        return
-      }
-      if (!foodType) {
-        setError("Food type (Veg/Non-veg) is required")
         return
       }
       if (!payload.stockStatus) {
@@ -892,7 +870,7 @@ export function ProductConsolePage({
   const validatePublishable = (product: ProductDetail) => {
     const hasPrice = Number(product.price) > 0
     const hasDiscount = product.discountPercent != null
-    const hasWeight = product.type === "simple" ? Boolean(product.weight?.trim()) : true; // New validation
+    const hasWeight = product.type === "simple" ? Boolean(product.weight && parseWeight(product.weight).value) : true; // New validation
     const hasType = Boolean(product.type)
     const tagNames = (product.tags ?? []).map((x) => x.tag.name.toLowerCase())
     // const hasFoodType = product.foodType === "veg" || product.foodType === "non-veg"
@@ -1681,21 +1659,7 @@ export function ProductConsolePage({
                   </SelectContent>
                 </Select>
               </Field>
-              {/* Food Type */}
-              <Field label="Food Type" required={status !== "draft"}>
-                <Select value={foodType} onValueChange={(value) => setFoodType(value as "" | "veg" | "non-veg")}>
-                  <SelectTrigger className="rounded-lg border border-[#D9D9D1] px-3 py-2 text-sm">
-                    <SelectValue placeholder="Select veg/non-veg" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {foodTypes.map((item) => (
-                      <SelectItem key={item} value={item}>
-                        {item}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </Field>
+              {/* Food Type dropdown removed */}
               {/* Category breakfast, lunch and other */}
               <Field label="Category">
                 <Select value={categoryId || "none"} onValueChange={(value) => setCategoryId(value === "none" ? "" : value)}>
@@ -1825,21 +1789,7 @@ export function ProductConsolePage({
                   title="Shelf life in months"
                 />
               </Field>
-              {/* Preparation type ready-to-eat, reasdy-to-cook */}
-              <Field label="Preparation Type" required={status !== "draft"}>
-                <Select value={preparationType} onValueChange={(value) => setPreparationType(value as "" | "ready_to_eat" | "ready_to_cook")}>
-                  <SelectTrigger className="rounded-lg border border-[#D9D9D1] px-3 py-2 text-sm">
-                    <SelectValue placeholder="Select preparation type" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {preparationTypes.map((item) => (
-                      <SelectItem key={item} value={item}>
-                        {item.replace(/_/g, " ")}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </Field>
+              {/* Preparation Type dropdown removed */}
               {/* spice level */}
               <Field label="Spice Level" required={status !== "draft"}>
                 <Select value={spiceLevel} onValueChange={(value) => setSpiceLevel(value as "" | "mild" | "medium" | "hot" | "extra_hot")}>
@@ -2382,12 +2332,6 @@ export function ProductConsolePage({
                   </p>
                 )}
                 <label className="flex items-center gap-2">
-                  <Checkbox checked={isFeatured} onCheckedChange={(checked) => setIsFeatured(!!checked)} /> featured
-                </label>
-                <label className="flex items-center gap-2">
-                  <Checkbox checked={isBestSeller} onCheckedChange={(checked) => setIsBestSeller(!!checked)} /> best seller
-                </label>
-                <label className="flex items-center gap-2">
                   <Checkbox checked={allowReturn} onCheckedChange={(checked) => setAllowReturn(!!checked)} /> allow return
                 </label>
               </>
@@ -2395,8 +2339,6 @@ export function ProductConsolePage({
               <div className="flex gap-2 w-full">
                 <ViewField label="Tax Included" value={taxIncluded ? "Yes" : "No"} />
                 <ViewField label="Active" value={isActive ? "Yes" : "No"} />
-                <ViewField label="Featured" value={isFeatured ? "Yes" : "No"} />
-                <ViewField label="Best Seller" value={isBestSeller ? "Yes" : "No"} />
               </div>
             )}
         </div>
