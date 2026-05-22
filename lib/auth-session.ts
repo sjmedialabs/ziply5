@@ -68,6 +68,7 @@ export const persistSession = (input: {
   if (input.role) window.localStorage.setItem(ROLE_KEY, input.role)
   if (input.user !== undefined) window.localStorage.setItem(USER_KEY, JSON.stringify(input.user))
   window.dispatchEvent(new Event("storage"))
+  window.dispatchEvent(new CustomEvent("ziply5:auth-state-change", { detail: { event: "SESSION_PERSISTED" } }))
 }
 
 export const clearSession = (opts?: { silent?: boolean; redirectToLogin?: boolean }) => {

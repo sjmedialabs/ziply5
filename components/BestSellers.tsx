@@ -10,7 +10,7 @@ import { X } from "lucide-react"
 import { toast } from "@/lib/toast"
 
 export default function BestSellers({ cmsData }: { cmsData?: any }) {
-  const { products } = useStorefrontProducts(20)
+  const { products } = useStorefrontProducts(200)
   const [favoriteSlugs, setFavoriteSlugs] = useState<string[]>([])
   const [cartQtyBySlug, setCartQtyBySlug] = useState<Record<string, number>>({})
   const best = products.filter((p) => p.isBestSeller === true)
@@ -131,7 +131,8 @@ export default function BestSellers({ cmsData }: { cmsData?: any }) {
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 md:gap-8 justify-items-center">
           {bestSellers.map((product) => {
-            const tagName = product.tags?.[0]?.tag?.name
+            const vegNonVegTag = product.tags?.find((t: any) => t?.tag?.name === "veg" || t?.tag?.name === "non-veg")
+            const tagName = vegNonVegTag?.tag?.name
             return (
               <div key={product.id} className="w-full max-w-sm group cursor-pointer font-melon" onClick={() =>
                 router.push(`/product/${product.slug}`)

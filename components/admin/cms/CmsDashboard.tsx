@@ -21,11 +21,13 @@ import TermsAndConditionsSectionEditor from './TermsAndConditionsSectionEditor';
 import ReturnAndRefundSectionEditor from './ReturnAndRefundSectionEditor';
 import ShippingInfoSectionEditor from './ShippingInfoSectionEditor';
 import AboutHeroEditor from './AboutHeroEditor';
-import AboutJourneyEditor from './AboutJourneyEditor';
-import AboutMissionEditor from './AboutMissionEditor';
-import AboutStatsEditor from './AboutStatsEditor';
-import AboutTeamEditor from './AboutTeamEditor';
-import AboutSubscriptionEditor from './AboutSubscriptionEditor';
+import AboutWhoWeAreEditor from './AboutWhoWeAreEditor';
+import AboutStoryEditor from './AboutStoryEditor';
+import AboutFarmToPlateEditor from './AboutFarmToPlateEditor';
+import AboutSpecialFeaturesEditor from './AboutSpecialFeaturesEditor';
+import AboutSpecialityEditor from './AboutSpecialityEditor';
+import AboutRiceRangesEditor from './AboutRiceRangesEditor';
+import AboutWhyChooseUsEditor from './AboutWhyChooseUsEditor';
 import ContactUsSectionEditor from './ContactUsSectionEditor';
 import FaqSectionEditor from './FaqSectionEditor';
 import PromoSectionEditor from './PromoSectionEditor';
@@ -80,11 +82,13 @@ export default function CmsDashboard() {
 
   const aboutSections = [
     { type: 'about-hero', component: AboutHeroEditor, position: 0 },
-    { type: 'about-journey', component: AboutJourneyEditor, position: 1 },
-    { type: 'about-mission', component: AboutMissionEditor, position: 2 },
-    { type: 'about-stats', component: AboutStatsEditor, position: 3 },
-    { type: 'about-team', component: AboutTeamEditor, position: 4 },
-    { type: 'about-subscription', component: AboutSubscriptionEditor, position: 5 },
+    { type: 'about-who-we-are', component: AboutWhoWeAreEditor, position: 1 },
+    { type: 'about-story', component: AboutStoryEditor, position: 2 },
+    { type: 'about-farm-to-plate', component: AboutFarmToPlateEditor, position: 3 },
+    { type: 'about-special-features', component: AboutSpecialFeaturesEditor, position: 4 },
+    { type: 'about-specialities', component: AboutSpecialityEditor, position: 5 },
+    { type: 'about-rice-ranges', component: AboutRiceRangesEditor, position: 6 },
+    { type: 'about-why-choose-us', component: AboutWhyChooseUsEditor, position: 7 },
   ];
 
   const privacySections = [
