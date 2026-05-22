@@ -51,18 +51,18 @@ export default function AboutFarmToPlate({
             {/* Badge */}
             <div className="w-full rounded-full bg-[#EFE7E4] px-5 py-3 mb-8">
 
-              <span className="text-xs font-bold uppercase tracking-[0.25em] text-[#B6402C]">
+              <span className="text-xs font-medium font-melon uppercase tracking-[0.25em] text-[#51282B]">
                 {badge}
               </span>
 
             </div>
 
             {/* Heading */}
-            <h2 className="text-3xl lg:text-5xl font-bold leading-[1.05] tracking-tight text-black">
+            <h2 className="text-3xl lg:text-5xl font-medium font-melon leading-[1.05] tracking-tight text-black">
 
               {title.split(" Heart of India's")[0]}
 
-              <span className="text-[#B6402C]">
+              <span className="text-[#51282B]">
               {" "}  Heart of India's{title.split(" Heart of India's")[1]}
               </span>
 
@@ -78,11 +78,11 @@ export default function AboutFarmToPlate({
             </div>
 
             {/* Highlight Quote Box */}
-            <div className="mt-4 bg-[#F5E9E6] border-l-4 border-[#B6402C] rounded-r-2xl px-8 py-7">
+            <div className="mt-4 bg-[#F5E9E6] border-l-4 border-[#51282B] rounded-r-2xl px-8 py-7">
 
               <div className="flex gap-5">
 
-                <MessageCircleMore className="w-6 h-6 text-[#B6402C] shrink-0 mt-1" />
+                <MessageCircleMore className="w-6 h-6 text-[#51282B] shrink-0 mt-1" />
 
                 <p className="text-[#5A3A35] italic text-base leading-[2rem]">
                  {descriptions[1]}</p>
@@ -105,9 +105,9 @@ export default function AboutFarmToPlate({
                   className="inline-flex items-center gap-3 px-6 py-3 rounded-full border border-[#E6C9BF] bg-[#FAF1EE]"
                 >
 
-                  <Check className="w-4 h-4 text-[#B6402C]" />
+                  <Check className="w-4 h-4 text-[#51282B]" />
 
-                  <span className="text-[#B6402C] font-semibold">
+                  <span className="text-[#51282B] font-medium font-melon">
                     {point}
                   </span>
 
@@ -135,13 +135,13 @@ export default function AboutFarmToPlate({
           {/* Floating Card */}
           <div className="absolute bottom-8 left-8 bg-white rounded-2xl px-6 py-5 shadow-2xl flex items-center gap-4">
 
-            <div className="w-14 h-14 rounded-full bg-[#C53B22] flex items-center justify-center">
+            <div className="w-14 h-14 rounded-full bg-[#51282B] flex items-center justify-center">
               <MapPin className="w-6 h-6 text-white" />
             </div>
 
             <div>
 
-              <p className="text-[#C53B22] text-sm font-bold uppercase tracking-wide">
+              <p className="text-[#51282B] text-sm font-medium font-melon uppercase tracking-wide">
                 Farm Fresh
               </p>
 

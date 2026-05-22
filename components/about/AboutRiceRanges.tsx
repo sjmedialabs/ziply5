@@ -81,14 +81,14 @@ export default function AboutRiceRanges({
             {/* Badge */}
             <div className="w-full rounded-full bg-[#EEDFDA] px-4 py-2.5 mb-7">
 
-              <span className="text-[11px] font-bold uppercase tracking-[0.28em] text-[#B6402C]">
+              <span className="text-[11px] font-medium font-melon uppercase tracking-[0.28em] text-[#51282B]">
                 {badge}
               </span>
 
             </div>
 
             {/* Title */}
-            <h2 className="text-3xl lg:text-5xl font-bold leading-[1.12] tracking-tight text-black">
+            <h2 className="text-3xl lg:text-5xl font-medium font-melon leading-[1.12] tracking-tight text-black">
 {/* 
               Comfort in Every Grain —
 
@@ -99,7 +99,7 @@ export default function AboutRiceRanges({
             
               {title.split("Our Rice Meal")[0]}
 
-              <span className="text-[#B6402C]">
+              <span className="text-[#51282B]">
                 Our Rice Meal
               </span>
               {title.split("Our Rice Meal")[1]}
@@ -131,11 +131,11 @@ export default function AboutRiceRanges({
                       `}
                     >
 
-                      <h3 className="text-3xl font-bold text-[#B6402C] leading-none">
+                      <h3 className="text-3xl font-medium font-melon text-[#51282B] leading-none">
                         {item.stat}
                       </h3>
 
-                      <p className="mt-2 text-[10px] uppercase tracking-[0.16em] font-semibold text-[#666666]">
+                      <p className="mt-2 text-[10px] uppercase tracking-[0.16em] font-medium text-[#666666]">
                         {item.desciption}
                       </p>
 
@@ -161,9 +161,9 @@ export default function AboutRiceRanges({
                     className="flex items-start gap-3"
                   >
 
-                    <div className="w-2.5 h-2.5 rounded-full bg-[#B6402C] mt-3 shrink-0" />
+                    <div className="w-2.5 h-2.5 rounded-full bg-[#51282B] mt-3 shrink-0" />
 
-                    <p className="text-[#2B2B2B] text-[16px] font-semibold leading-[1.7rem]">
+                    <p className="text-[#2B2B2B] text-[16px] font-medium font-melon leading-[1.7rem]">
                       {point}
                     </p>
 
@@ -190,10 +190,11 @@ export default function AboutRiceRanges({
                     px-8
                     py-4
                     rounded-full
-                    bg-[#B6402C]
+                    bg-[#51282B]
+                    font-melon
                     hover:bg-[#982F1E]
                     text-white
-                    font-semibold
+                    font-medium
                     text-base
                     transition-all
                     duration-300
