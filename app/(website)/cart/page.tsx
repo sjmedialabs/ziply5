@@ -35,6 +35,8 @@ export default function CartPage() {
     }
   }, []);
 
+
+
   const persistCart = (next: CartItem[]) => {
     setLocalCartItems(next);
     setCartItems(next);
@@ -78,6 +80,30 @@ export default function CartPage() {
     0
   );
   const shipping = cartItems.length === 0 ? 0 : 20;
+
+  // Track cart for abandonment recovery (server skips save if no profile email/phone)
+  useEffect(() => {
+    const sessionKey = typeof window !== "undefined" ? window.localStorage.getItem("ziply5_session_key") : null;
+    const hasSession =
+      typeof window !== "undefined" ? !!window.localStorage.getItem("ziply5_refresh_token") : false;
+    if (!sessionKey || cartItems.length === 0) return;
+    if (!hasSession) return;
+
+    void fetch("/api/checkout/start", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        sessionKey,
+        items: cartItems,
+        total: subTotal,
+        eventType: "cart_updated",
+        meta: {
+          checkoutStage: "CART_ACTIVE",
+          lastVisitedPage: "/cart",
+        },
+      }),
+    }).catch(() => null);
+  }, [cartItems.length, subTotal]);
   const total = offerFinalTotal != null ? offerFinalTotal : subTotal + (offerAdjustedShipping ?? shipping);
 
   const recalculateOffers = useCallback(

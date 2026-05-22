@@ -33,12 +33,27 @@ export type CustomerOrderDetail = {
   trackingUrl?: string | null
   estimatedDeliveryDate?: string | null
   shipmentStatus?: string | null
+  shipmentDeliveredAt?: string | Date | null
   lastTrackingSyncAt?: string | null
   returnRequests: Array<{
     id: string
     status: string
     reason: string | null
     productId?: string | null
+    imageUrl?: string | null
+    description?: string | null
+    videoUrl?: string | null
+    images?: unknown
+    returnType?: string | null
+    refundMethod?: string | null
+    upiId?: string | null
+    bankDetails?: unknown
+    adminNote?: string | null
+    rejectionReason?: string | null
+    reverseAwb?: string | null
+    reverseCourier?: string | null
+    reverseTrackingUrl?: string | null
+    pickupScheduledAt?: string | Date | null
     items?: Array<{ id: string; orderItemId: string; requestedQty: number }>
     createdAt?: string | null
   }>

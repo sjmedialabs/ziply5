@@ -28,3 +28,9 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 package-lock.json
+
+# Local test and debug scripts
+test-db.js
+test-sms.ts
+test-fetch.js
+

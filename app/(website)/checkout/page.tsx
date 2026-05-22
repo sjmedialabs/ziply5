@@ -13,7 +13,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { authedFetch, authedPost, authedPatch } from "@/lib/dashboard-fetch"; // Utility functions for authenticated API calls
 import {
@@ -233,6 +233,8 @@ export default function CheckoutPage() {
     };
   }, [couponCode, loadAddresses]);
 
+
+
   // Pincode Lookup Logic
   useEffect(() => {
     const pin = billing.postalCode.trim();
@@ -255,14 +257,14 @@ export default function CheckoutPage() {
                 setState(matchedState.label);
               } else {
                 // Fallback to title case
-                const titleCaseState = fetchedState.toLowerCase().split(' ').map(w => w.charAt(0).toUpperCase() + w.substring(1)).join(' ');
+                const titleCaseState = fetchedState.toLowerCase().split(' ').map((w: any) => w.charAt(0).toUpperCase() + w.substring(1)).join(' ');
                 setState(titleCaseState);
               }
             }
 
             if (fetchedCity) {
               const normCity = normalizeStr(fetchedCity);
-              const titleCaseCity = fetchedCity.toLowerCase().split(' ').map(w => w.charAt(0).toUpperCase() + w.substring(1)).join(' ');
+              const titleCaseCity = fetchedCity.toLowerCase().split(' ').map((w: any) => w.charAt(0).toUpperCase() + w.substring(1)).join(' ');
 
               // We need to wait for state to update and cities to be available
               // or just set the city and hope the Select can handle it.
@@ -425,6 +427,34 @@ export default function CheckoutPage() {
 
   const taxAmount = (subTotal - offerTotalDiscount) * (taxPercentage / 100);
   const total = baseTotal + taxAmount;
+
+  // Track checkout page visit (contact comes from user profile on server, not billing form)
+  const trackedRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!sessionKey || items.length === 0) return;
+    const hash = JSON.stringify(items);
+    if (trackedRef.current === hash) return;
+    trackedRef.current = hash;
+
+    const timeout = setTimeout(() => {
+      fetch("/api/checkout/start", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sessionKey,
+          items: items,
+          total: subTotal + taxAmount,
+          eventType: "checkout_started",
+          meta: {
+            checkoutStage: "CHECKOUT_STARTED",
+            lastVisitedPage: "/checkout",
+          },
+        }),
+      }).catch(() => null);
+    }, 1500);
+
+    return () => clearTimeout(timeout);
+  }, [sessionKey, items, subTotal, taxAmount]);
 
   const recalculateOffers = useCallback(
     async (incomingCoupon?: string) => {
@@ -611,8 +641,14 @@ export default function CheckoutPage() {
         country: "India",
         phone: billing.phone.trim(),
       };
-      if (!payload.fullName || !payload.city || !payload.state || !payload.postalCode) {
-        const message = "Please complete billing address before payment."
+      if (!payload.fullName || !payload.email || !payload.line1 || !payload.city || !payload.state || !payload.postalCode || !payload.phone) {
+        const message = "Please complete all required fields before payment."
+        setOrderError(message);
+        toast.error(message);
+        return;
+      }
+      if (!/^[6-9]\d{9}$/.test(payload.phone)) {
+        const message = "Please enter a valid 10-digit Indian mobile number."
         setOrderError(message);
         toast.error(message);
         return;
@@ -740,10 +776,9 @@ export default function CheckoutPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           sessionKey,
-          email: billing.email || null,
-          mobile: billing.phone || null,
           items: items,
           total,
+          eventType: "checkout_started",
           meta: {
             checkoutStage: "CHECKOUT_STARTED",
             couponCode: couponCode.trim() || null,
@@ -753,13 +788,12 @@ export default function CheckoutPage() {
         }),
       }).catch(() => null)
 
-      // Backwards-compatible: ensure the older abandoned cart endpoint gets a valid payload
+      // Backwards-compatible snapshot (items only — contact resolved server-side from profile)
       await fetch("/api/v1/abandoned-carts", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           sessionKey,
-          email: billing.email || null,
           itemsJson: items.map((item) => ({
             slug: item.slug,
             productId: item.productId,
@@ -839,7 +873,7 @@ export default function CheckoutPage() {
 
                 {/* First Name */}
                 <div>
-                  <label className="text-[#646464] text-sm">First Name</label>
+                  <label className="text-[#646464] text-sm">First Name <span className="text-red-500">*</span></label>
                   <input
                     className="input mt-1"
                     placeholder="First name"
@@ -850,7 +884,7 @@ export default function CheckoutPage() {
 
                 {/* Last Name */}
                 <div>
-                  <label className="text-[#646464] text-sm">Last Name</label>
+                  <label className="text-[#646464] text-sm">Last Name <span className="text-red-500">*</span></label>
                   <input
                     className="input mt-1"
                     placeholder="Last name"
@@ -861,7 +895,7 @@ export default function CheckoutPage() {
 
                 {/* Email */}
                 <div className="">
-                  <label className="text-[#646464] text-sm">Email Address</label>
+                  <label className="text-[#646464] text-sm">Email Address <span className="text-red-500">*</span></label>
                   <input
                     className="input mt-1"
                     placeholder="Email address"
@@ -872,7 +906,7 @@ export default function CheckoutPage() {
 
                 {/* Address Line */}
                 <div className="">
-                  <label className="text-[#646464] text-sm">Address Line</label>
+                  <label className="text-[#646464] text-sm">Address Line <span className="text-red-500">*</span></label>
                   <input
                     className="input mt-1"
                     placeholder="House no, street, area"
@@ -883,7 +917,7 @@ export default function CheckoutPage() {
 
                 {/* State */}
                 <div>
-                  <label className="text-[#646464] text-sm">State</label>
+                  <label className="text-[#646464] text-sm">State <span className="text-red-500">*</span></label>
                   <Select value={state || undefined} onValueChange={(val) => {
                     setState(val);
                     setCity(""); // reset city
@@ -903,7 +937,7 @@ export default function CheckoutPage() {
 
                 {/* City */}
                 <div>
-                  <label className="text-[#646464] text-sm">City</label>
+                  <label className="text-[#646464] text-sm">City <span className="text-red-500">*</span></label>
                   <Select
                     value={city || undefined}
                     onValueChange={setCity}
@@ -927,9 +961,7 @@ export default function CheckoutPage() {
 
                 {/* Zip Code */}
                 <div className="">
-                  <label className="text-[#646464] text-sm">
-                    Zip / Postal Code
-                  </label>
+                  <label className="text-[#646464] text-sm">Zip / Postal Code <span className="text-red-500">*</span></label>
                   <input
                     className="input mt-1"
                     placeholder="Enter pincode"
@@ -949,12 +981,16 @@ export default function CheckoutPage() {
 
                 {/* Phone */}
                 <div className="">
-                  <label className="text-[#646464] text-sm">Phone (optional)</label>
+                  <label className="text-[#646464] text-sm">Phone <span className="text-red-500">*</span></label>
                   <input
                     className="input mt-1"
-                    placeholder="Phone number"
+                    placeholder="10-digit mobile number"
                     value={billing.phone}
-                    onChange={(e) => setBilling((prev) => ({ ...prev, phone: e.target.value }))}
+                    maxLength={10}
+                    onChange={(e) => {
+                      const val = e.target.value.replace(/\D/g, "");
+                      setBilling((prev) => ({ ...prev, phone: val }));
+                    }}
                   />
                 </div>
 

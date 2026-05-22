@@ -76,7 +76,7 @@ type ParsedTracking = {
   trackSection: Record<string, unknown>
 }
 
-const parseTrackingResponse = (payloadRaw: unknown): ParsedTracking => {
+export const parseTrackingResponse = (payloadRaw: unknown): ParsedTracking => {
   const root = unwrapTrackingPayload(payloadRaw)
   const track = (isRecord(root.tracking_data) ? root.tracking_data : root) as Record<string, unknown>
   const shipmentTrack = Array.isArray(track.shipment_track)
@@ -121,7 +121,7 @@ const parseTrackingResponse = (payloadRaw: unknown): ParsedTracking => {
   return parsed
 }
 
-const fetchTrackingByAwb = async (awbCode: string): Promise<unknown> => {
+export const fetchTrackingByAwb = async (awbCode: string): Promise<unknown> => {
   trackingConsole("tracking.fetch.start", { awbCode })
   const token = await getShiprocketToken()
   const baseUrl = (process.env.SHIPROCKET_BASE_URL ?? "https://apiv2.shiprocket.in/v1/external").replace(/\/+$/, "")
@@ -350,6 +350,48 @@ export const syncShipmentTracking = async (orderId: string) => {
 /** Public alias: refresh tracking timeline + snapshots for an order. */
 export const refreshShipmentTracking = async (orderId: string) => syncShipmentTracking(orderId)
 
+export const syncReturnRequestReverseTracking = async (returnRequestId: string) => {
+  const terminal = new Set(["rejected", "cancelled", "refunded", "completed"])
+  const rrRows = await pgQuery<Array<{ id: string; reverseAwb: string | null; status: string }>>(
+    `SELECT id, "reverseAwb", status FROM "ReturnRequest" WHERE id=$1 LIMIT 1`,
+    [returnRequestId],
+  )
+  const rr = rrRows[0]
+  if (!rr) throw new Error("Return request not found")
+  if (terminal.has(String(rr.status ?? "").toLowerCase())) {
+    trackingConsole("tracking.return.skip_terminal", { returnRequestId, status: rr.status })
+    return { skipped: true as const, status: rr.status }
+  }
+  if (!rr.reverseAwb?.trim()) throw new Error("Reverse AWB not available yet")
+  const raw = await fetchTrackingByAwb(rr.reverseAwb.trim())
+  const parsed = parseTrackingResponse(raw)
+  const s = parsed.shiprocketStatus.toLowerCase()
+  let next: string | null = null
+  if (s.includes("delivered")) next = "returned"
+  else if (s.includes("out_for") || s.includes("ofd")) next = "in_transit"
+  else if (s.includes("transit")) next = "in_transit"
+  else if (s.includes("picked")) next = "picked_up"
+
+  await pgQuery(
+    `
+    UPDATE "ReturnRequest"
+    SET "reverseTrackingData" = $2::jsonb,
+        "lastReverseTrackingSyncAt" = now(),
+        status = CASE WHEN $3::text IS NOT NULL THEN $3::text ELSE status END,
+        "updatedAt" = now()
+    WHERE id = $1
+    `,
+    [returnRequestId, JSON.stringify(parsed.trackSection ?? {}), next],
+  )
+  trackingConsole("tracking.return.updated", { returnRequestId, next, shiprocketStatus: parsed.shiprocketStatus })
+  return {
+    returnRequestId,
+    awbCode: rr.reverseAwb,
+    shiprocketStatus: parsed.shiprocketStatus,
+    mappedStatus: next,
+  }
+}
+
 export const syncAllActiveShipments = async () => {
   trackingConsole("tracking.sync_all.start")
   logger.info("shiprocket.sync.start", { mode: "cron_active_shipments" })
@@ -407,6 +449,33 @@ export const syncAllActiveShipments = async () => {
       trackingConsole("tracking.sync_all.failed", {
         orderId: row.orderId,
         awbCode: awb,
+        reason: error instanceof Error ? error.message : "unknown",
+      })
+    }
+  }
+  const returnRows = await pgQuery<Array<{ id: string; reverseAwb: string | null; status: string | null }>>(
+    `
+    SELECT id, "reverseAwb", status
+    FROM "ReturnRequest"
+    WHERE "reverseAwb" IS NOT NULL
+      AND LOWER(COALESCE(status, '')) NOT IN ('rejected', 'cancelled', 'refunded', 'completed', 'returned')
+    LIMIT 80
+    `,
+    [],
+  )
+  for (const r of returnRows) {
+    trackingConsole("tracking.sync_all.return_row", r)
+    try {
+      await syncReturnRequestReverseTracking(r.id)
+      results.push({ orderId: `return:${r.id}`, status: "synced" })
+    } catch (error) {
+      logger.error("shiprocket.return_sync.failed", {
+        returnRequestId: r.id,
+        reason: error instanceof Error ? error.message : "unknown",
+      })
+      results.push({
+        orderId: `return:${r.id}`,
+        status: "failed",
         reason: error instanceof Error ? error.message : "unknown",
       })
     }
