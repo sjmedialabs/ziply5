@@ -150,13 +150,26 @@ export default function Footer({ cmsPayload = {} }: FooterProps) {
                   )}
                   {/* Twitter / X */}
                   {typeof cmsData.social2 === "string" && cmsData.social2.trim() && (
-                    <a href={cmsData.social2} aria-label="Twitter"
-                      className="w-9 h-9 bg-white rounded-full flex items-center justify-center  transition-colors">
-                      <svg className="w-4 h-4 text-[#4A1D1F]" fill="currentColor" viewBox="0 0 24 24">
-                        <path d="M23.953 4.57a10 10 0 01-2.825.775 4.958 4.958 0 002.163-2.723c-.951.555-2.005.959-3.127 1.184a4.92 4.92 0 00-8.384 4.482C7.69 8.095 4.067 6.13 1.64 3.162a4.822 4.822 0 00-.666 2.475c0 1.71.87 3.213 2.188 4.096a4.904 4.904 0 01-2.228-.616v.06a4.923 4.923 0 003.946 4.827 4.996 4.996 0 01-2.212.085 4.936 4.936 0 004.604 3.417 9.867 9.867 0 01-6.102 2.105c-.39 0-.779-.023-1.17-.067a13.995 13.995 0 007.557 2.209c9.053 0 13.998-7.496 13.998-13.985 0-.21 0-.42-.015-.63A9.935 9.935 0 0024 4.59z" />
+                    <a
+                      href={cmsData.social2}
+                      aria-label="Instagram"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="w-9 h-9 bg-white rounded-full flex items-center justify-center transition-colors"
+                    >
+                      <svg
+                        className="w-4 h-4 text-[#4A1D1F]"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        viewBox="0 0 24 24"
+                      >
+                        <rect x="3" y="3" width="18" height="18" rx="5" ry="5" />
+                        <path d="M16 11.37a4 4 0 1 1-7.999.001A4 4 0 0 1 16 11.37z" />
+                        <line x1="17.5" y1="6.5" x2="17.51" y2="6.5" />
                       </svg>
                     </a>
-                  )}
+                  )}  
                   {/* Facebook */}
                   {typeof cmsData.social3 === "string" && cmsData.social3.trim() && (
                     <a href={cmsData.social3} aria-label="Facebook"
@@ -205,7 +218,7 @@ export default function Footer({ cmsPayload = {} }: FooterProps) {
               />
 
               {/* Double Border Button */}
-              <Button 
+              <Button
                 disabled={loading}
                 className="relative cursor-pointer bg-white h-[40px] rounded-lg font-semibold text-[var(--primary-color)] border-2 border-yellow-400 hover:bg-yellow-400 transition disabled:opacity-70 disabled:cursor-not-allowed"
                 onClick={() => handleSubscribe()}>

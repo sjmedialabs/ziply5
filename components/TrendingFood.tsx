@@ -37,7 +37,7 @@ const cardGradients = [
 export default function TrendingFood({ cmsData }: { cmsData?: any }) {
   const isLg = useIsLg()
   const router = useRouter()
-  const { products } = useStorefrontProducts(20)
+  const { products } = useStorefrontProducts(200)
   const [favoriteSlugs, setFavoriteSlugs] = useState<string[]>([])
   const [cartQtyBySlug, setCartQtyBySlug] = useState<Record<string, number>>({})
   const trending = products.filter((p) => p.isFeatured === true)
@@ -143,42 +143,45 @@ export default function TrendingFood({ cmsData }: { cmsData?: any }) {
         <SectionHeader title={sectionTitle} linkHref={buttonUrl} linkText={buttonText} />
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 md:gap-8 justify-items-center">
-          {visibleProducts.map((product, index) => (
-            <div
-              key={product.id}
-              className="card-smooth w-full cursor-pointer max-w-sm group bg-white rounded-[16px] overflow-hidden 
-              h-85
-              shadow-[0_10px_25px_rgba(0,0,0,0.08)] 
-              hover:shadow-[0_15px_35px_rgba(0,0,0,0.12)]
-              hover:ring-2 hover:ring-[#EF4444]"
-              onClick={() =>
-                router.push(`/product/${product.slug}`)}
-            >
-              {/* FLEX CONTAINER */}
-              <div className="flex flex-col h-full">
+          {visibleProducts.map((product, index) => {
+            const vegNonVegTag = product.tags?.find((t: any) => t?.tag?.name === "veg" || t?.tag?.name === "non-veg")
+            const tagName = vegNonVegTag?.tag?.name
+            return (
+              <div
+                key={product.id}
+                className="card-smooth w-full cursor-pointer max-w-sm group bg-white rounded-[16px] overflow-hidden 
+                h-85
+                shadow-[0_10px_25px_rgba(0,0,0,0.08)] 
+                hover:shadow-[0_15px_35px_rgba(0,0,0,0.12)]
+                hover:ring-2 hover:ring-[#EF4444]"
+                onClick={() =>
+                  router.push(`/product/${product.slug}`)}
+              >
+                {/* FLEX CONTAINER */}
+                <div className="flex flex-col h-full">
 
-                {/* IMAGE SECTION */}
-                <div
-                  className={`relative bg-gradient-to-b ${cardGradients[index % cardGradients.length]} 
-                  flex items-center justify-center 
-                  h-[280px] `}
-                >
-                  {/* veg icon */}
-                  <div className="absolute top-2 z-20 right-0 w-20 h-5 rounded-sm flex items-center justify-center">
-                    {
-                      product.tags[0]?.tag?.name && (
-                        <>
-                          {
-                            product.tags[0].tag.name === "veg" ? (<span className="absolute top-4 right-0 bg-[#10B981] text-white text-[11px] font-medium px-3 py-1 border border-white rounded-l-sm z-10">
-                              {product.tags[0].tag.name?.charAt(0).toUpperCase() + product.tags[0].tag.name.slice(1)}
-                            </span>) : (<span className="absolute top-4 right-0 bg-[#F97316] text-white text-[11px] font-medium px-3 py-1 rounded-l-sm border border-white z-10">
-                              {product.tags[0].tag.name?.charAt(0).toUpperCase() + product.tags[0].tag.name.slice(1)}
-                            </span>)
-                          }
-                        </>
-                      )
-                    }
-                  </div>
+                  {/* IMAGE SECTION */}
+                  <div
+                    className={`relative bg-gradient-to-b ${cardGradients[index % cardGradients.length]} 
+                    flex items-center justify-center 
+                    h-[280px] `}
+                  >
+                    {/* veg icon */}
+                    <div className="absolute top-2 z-20 right-0 w-20 h-5 rounded-sm flex items-center justify-center">
+                      {
+                        tagName && (
+                          <>
+                            {
+                              tagName === "veg" ? (<span className="absolute top-4 right-0 bg-[#10B981] text-white text-[11px] font-medium px-3 py-1 border border-white rounded-l-sm z-10">
+                                {tagName.charAt(0).toUpperCase() + tagName.slice(1)}
+                              </span>) : (<span className="absolute top-4 right-0 bg-[#F97316] text-white text-[11px] font-medium px-3 py-1 rounded-l-sm border border-white z-10">
+                                {tagName.charAt(0).toUpperCase() + tagName.slice(1)}
+                              </span>)
+                            }
+                          </>
+                        )
+                      }
+                    </div>
                   <div className="relative h-full w-full transition-transform duration-300 hover:scale-90 ">
                     <Image
                       src={product.image}
@@ -274,8 +277,8 @@ export default function TrendingFood({ cmsData }: { cmsData?: any }) {
                   </div>
                 </div>
               </div>
-            </div>
-          ))}
+              </div>
+            )})}
         </div>
       </div>
 
