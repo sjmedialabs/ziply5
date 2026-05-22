@@ -30,7 +30,7 @@ export default function AboutSpeciality({
 
   const title =
     data?.title ||
-    "The Taste Company's Signature Biryani Range";
+    "The Ziply5's Signature Biryani Range";
 
   const description =
     data?.description ||
@@ -104,13 +104,12 @@ export default function AboutSpeciality({
             {/* Title */}
             <h2 className="text-3xl lg:text-5xl font-bold leading-[1.05] tracking-tight text-black">
 
-              The Taste Company's{" "}
+              {title.split("Signature")[0]}
 
               <span className="text-[#B6402C]">
-                Signature {" "}
+                Signature
               </span>
-              Biryani Range
-
+              {title.split("Signature")[1]}
             </h2>
 
             {/* Description */}

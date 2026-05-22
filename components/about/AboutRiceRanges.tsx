@@ -89,14 +89,20 @@ export default function AboutRiceRanges({
 
             {/* Title */}
             <h2 className="text-3xl lg:text-5xl font-bold leading-[1.12] tracking-tight text-black">
-
+{/* 
               Comfort in Every Grain —
 
               <span className="text-[#B6402C]">
                 {" "}Our Rice Meal {" "}
               </span>
-              Collection
+              Collection */}
+            
+              {title.split("Our Rice Meal")[0]}
 
+              <span className="text-[#B6402C]">
+                Our Rice Meal
+              </span>
+              {title.split("Our Rice Meal")[1]}
             </h2>
 
             {/* Description */}
