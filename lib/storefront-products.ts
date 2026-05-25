@@ -10,6 +10,7 @@ export type StorefrontProduct = {
   stock?: number
   description: string
   image: string
+  status: string
   gallery: string[]
   amazonLink: string | null
   videoUrl: string | null
@@ -51,6 +52,7 @@ type ApiProduct = {
   isBestSeller?: boolean
   amazonLink?: string | null
   isFeatured?: boolean
+  status?: string
   images?: Array<{ url: string }>
   type?: "simple" | "variant"
   saleName?: string | null
@@ -143,6 +145,7 @@ export const toStorefrontProduct = (p: ApiProduct): StorefrontProduct => {
     id,
     name,
     slug,
+    status: p.status ?? "published",
     sku,
     productKind: p.type ?? (variants.length ? "variant" : "simple"),
     price: sale || 0,
