@@ -539,19 +539,21 @@ function ProductsPageContent() {
           {/* Tags + highlights — scroll with page (not fixed) */}
           <div className="rounded-3xl mt-2">
             <div className="flex flex-wrap gap-2">
-              {tagOptions.map((tag) => (
-                <button
-                  key={tag.id}
-                  type="button"
-                  onClick={() => toggleTag(tag.id)}
-                  className={`rounded-full border cursor-pointer px-3 py-1 text-[10px] font-bold uppercase transition-all ${selectedTagIds.includes(tag.id)
-                    ? "border-primary bg-primary text-white shadow-sm"
-                    : "border-gray-200 bg-white text-gray-500 hover:border-primary"
-                    }`}
-                >
-                  {tag.name}
-                </button>
-              ))}
+              {tagOptions
+                .filter(tag => !["ready to cook", "ready to eat"].includes(tag.name.toLowerCase().trim()))
+                .map((tag) => (
+                  <button
+                    key={tag.id}
+                    type="button"
+                    onClick={() => toggleTag(tag.id)}
+                    className={`rounded-full border cursor-pointer px-3 py-1 text-[10px] font-bold uppercase transition-all ${selectedTagIds.includes(tag.id)
+                      ? "border-primary bg-primary text-white shadow-sm"
+                      : "border-gray-200 bg-white text-gray-500 hover:border-primary"
+                      }`}
+                  >
+                    {tag.name}
+                  </button>
+                ))}
               <button
                 type="button"
                 onClick={() => setBestSellerFilter(bestSellerFilter === "all" ? "true" : "all")}
@@ -642,22 +644,9 @@ function ProductsPageContent() {
                   >
 
 
-                    {product?.tags?.[0]?.tag?.name && 
-                      // product?.tags[0]?.tag?.name && (
-                      //   <div className="absolute top-0  z-20 right-0 w-20 h-5 rounded-sm flex items-center justify-center">
-                      //     {
-                      //       product.tags[0].tag.name === "veg" ? (<span className="absolute top-4 right-0 bg-[#10B981] text-white text-[11px] font-medium px-3 py-1 border border-white rounded-l-sm z-10">
-                      //         {product.tags[0].tag.name?.charAt(0).toUpperCase() + product.tags[0].tag.name.slice(1)}
-                      //       </span>) : (<span className="absolute top-4 right-0 bg-[#F97316] text-white text-[11px] font-medium px-3 py-1 rounded-l-sm border border-white z-10">
-                      //         {product.tags[0].tag.name?.charAt(0).toUpperCase() + product.tags[0].tag.name.slice(1)}
-                      //       </span>)
-                      //     }
-                      //   </div>
-                      // )
-                      (
-                        <VegNonVegTag type={product.tags[0].tag.name} />
-                      )
-                    }
+                    {tagName && (
+                      <VegNonVegTag type={tagName} />
+                    )}
                     <Link href={(product as any).isCombo ? `/combo/${product.slug}` : `/product/${product.slug}`} className="block">
 
 
@@ -693,11 +682,11 @@ function ProductsPageContent() {
                         <p className="mt-1 text-[10px] uppercase tracking-wide text-white/90">
                           Home style meal | Net wt. {product.weight}
                         </p>
-                        {product.productKind === "simple" && product.stock && product.stock > 0 && product.stock <= 5 && (
+                        {product.productKind === "simple" && typeof product.stock === "number" && product.stock > 0 && product.stock <= 5 ? (
                           <p className="mt-1 text-[11px] font-medium text-orange-200">
                             Hurry up only {product.stock} left
                           </p>
-                        )}
+                        ) : null}
                         <p className="mt-1 text-sm font-melon text-[#FFF5C5]">Rs. {product.price.toFixed(2)}</p>
                       </div>
                     </Link>

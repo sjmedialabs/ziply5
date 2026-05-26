@@ -88,7 +88,7 @@ export default function AboutSpeciality({
         </div>
 
         {/* RIGHT CONTENT */}
-        <div className="flex items-center px-6 py-12 lg:px-16">
+        <div className="flex items-center px-4 sm:px-6 py-12 lg:px-16">
 
           <div className="max-w-2xl w-full">
 
@@ -120,17 +120,17 @@ export default function AboutSpeciality({
             {/* Stats Box */}
             {stats.length > 0 && (
 
-              <div className="mt-4 bg-white rounded-[2rem] border border-[#ECE1DA] p-4 shadow-sm">
+              <div className="mt-4 bg-white rounded-[2rem] border border-[#ECE1DA] p-3 sm:p-4 shadow-sm">
 
-                <div className="grid grid-cols-3">
+                <div className="grid grid-cols-3 justify-between">
 
                   {stats.map((item, idx) => (
 
                     <div
                       key={idx}
                       className={`
-                        text-center
-                        px-4
+                        text-center 
+                        px-1 sm:px-2 md:px-4
                         ${idx !== stats.length - 1
                           ? "border-r border-[#E7D8D1]"
                           : ""
@@ -138,11 +138,11 @@ export default function AboutSpeciality({
                       `}
                     >
 
-                      <h3 className="text-3xl font-medium font-melon text-[#51282B] leading-none">
+                      <h3 className="text-xl lg:text-3xl font-medium font-melon text-[#51282B] leading-none">
                         {item.stat}
                       </h3>
 
-                      <p className="mt-2 text-xs uppercase tracking-[0.18em] font-semibold text-[#666666] leading-relaxed">
+                      <p className="mt-2 text-[9px] sm:text-[10px] lg:text-xs uppercase tracking-[0.05em] sm:tracking-[0.18em] font-semibold text-[#666666] leading-relaxed break-words">
                         {item.desciption}
                       </p>
 

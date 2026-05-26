@@ -383,11 +383,11 @@ export default function ProductPage() {
               <span className="rounded-full bg-[#F0ECE2] px-3 py-1 text-[12px] font-medium text-[#8D8D8D]">{sku}</span>
               <span className="rounded-full bg-[#DFE8D8] px-3 py-1 text-[12px] font-medium text-[#86917B] capitalize">
                 {product.stockStatus?.replace("_", " ")}:
-                {product.productKind === "simple" && product.stock && product?.stock > 0 && (
+                {product.productKind === "simple" && typeof product.stock === "number" && product.stock > 0 ? (
                   <span className="ml-1">
-                    {product?.stock < 5 ? `Hurry up only ${product.stock} left` : `${product.stock} available`}
+                    {product.stock < 5 ? `Hurry up only ${product.stock} left` : `${product.stock} available`}
                   </span>
-                )}
+                ) : null}
                 {activeVariant && activeVariant.stock > 0 && (
                   <> {activeVariant.stock <= 5 ? "Hurry, only a few left!" : `${activeVariant.stock} available`}</>
                 )}
