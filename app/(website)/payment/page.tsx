@@ -553,6 +553,24 @@ const handleOnlinePayment = async () => {
           setError("Payment was not completed. Please retry.");
           setProcessingGateway(null);
           void postCartEvent("payment_cancelled", { source: "razorpay_modal_dismiss" });
+
+          // Cancel the pending order on the server so it doesn't remain as pending
+          if (orderId) {
+            const token = window.localStorage.getItem("ziply5_access_token");
+            if (token) {
+              fetch(`/api/v1/orders/${orderId}/actions`, {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                  Authorization: `Bearer ${token}`,
+                },
+                body: JSON.stringify({ action: "cancel_pending", reason: "Payment cancelled by user" }),
+              }).catch((e) => console.error("Auto-cancel order failed", e));
+            }
+          }
+          // Clear order ID from state and localStorage so next click creates a fresh order
+          setCreatedOrderId(null);
+          window.localStorage.removeItem("ziply5_pending_order_id");
         },
       },
     });

@@ -113,6 +113,7 @@ const createRazorpayOrder = async (input: { orderId: string; amount: number; cur
   if (!env.RAZORPAY_KEY_ID || !env.RAZORPAY_KEY_SECRET) {
     throw new Error("Razorpay keys are not configured")
   }
+  console.log("amount in razorpay", amountToMinor(input.amount))
   const auth = Buffer.from(`${env.RAZORPAY_KEY_ID}:${env.RAZORPAY_KEY_SECRET}`).toString("base64")
   const res = await fetch("https://api.razorpay.com/v1/orders", {
     method: "POST",
@@ -165,7 +166,7 @@ export const createPaymentIntent = async (input: {
   const amount = Number(order.total)
 
   let externalId = randomId(provider)
-
+  console.log("oder amount = ", amount, input.orderId)
   if (provider === "razorpay") {
     externalId = await createRazorpayOrder({
       orderId: input.orderId,

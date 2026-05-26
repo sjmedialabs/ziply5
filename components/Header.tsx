@@ -1,8 +1,8 @@
 "use client"
 
 import Link from "next/link"
-import { usePathname } from "next/navigation"
-import { Menu, X } from "lucide-react"
+import { usePathname, useRouter } from "next/navigation"
+import { Heart, Menu, X } from "lucide-react"
 import { useState, useRef, useEffect, useCallback, Fragment } from "react"
 import Image from "next/image"
 import CartDropdown from "./CartDropdown"
@@ -11,6 +11,7 @@ import LocationDropdown from "./LocationDropdown"
 import { Search, User, ShoppingCart } from "lucide-react"
 import { getCartItems, setCartItems, type CartItem } from "@/lib/cart"
 import { AnimatePresence, m, useReducedMotion } from "framer-motion"
+import { clearSession } from "@/lib/auth-session"
 
 type MenuCategory = {
   id: string
@@ -29,12 +30,16 @@ type ApiProduct = {
 
 export default function Header() {
   const pathname = usePathname()
+  const router = useRouter()
   const reduce = useReducedMotion()
   const [menuOpen, setMenuOpen] = useState(false)
   const { searchOpen, setSearchOpen, searchQuery, setSearchQuery, searchResults, handleSearch } = useSearch()
   const [cartItems, setLocalCartItems] = useState<CartItem[]>([])
   const [cartOpen, setCartOpen] = useState(false)
   const [profileHref, setProfileHref] = useState("/login")
+  const [isLoggedIn, setIsLoggedIn] = useState(false)
+  const [userDropdownOpen, setUserDropdownOpen] = useState(false)
+  const userDropdownRef = useRef<HTMLDivElement>(null)
   const [menuCategories, setMenuCategories] = useState<MenuCategory[]>([])
   const closeCartTimeoutRef = useRef<number | null>(null)
   const [cmsData, setCmsData] = useState<any>(null)
@@ -127,11 +132,48 @@ export default function Header() {
     }, 180)
   }
 
+  const handleLogout = async () => {
+    const refreshToken = window.localStorage.getItem("ziply5_refresh_token")
+
+    try {
+      if (refreshToken) {
+        await fetch("/api/v1/auth/logout", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ refreshToken }),
+        })
+      }
+    } catch {
+      // Ignore network/logout API errors and continue local logout.
+    } finally {
+      clearSession({ silent: true })
+      setUserDropdownOpen(false)
+      setIsLoggedIn(false)
+      setProfileHref("/login")
+      
+      // Notify other components/tabs
+      window.dispatchEvent(new Event("storage"))
+      
+      router.push("/login")
+    }
+  }
+
+  useEffect(() => {
+    const handleOutsideClick = (e: MouseEvent) => {
+      if (userDropdownRef.current && !userDropdownRef.current.contains(e.target as Node)) {
+        setUserDropdownOpen(false)
+      }
+    }
+    document.addEventListener("mousedown", handleOutsideClick)
+    return () => document.removeEventListener("mousedown", handleOutsideClick)
+  }, [])
+
   useEffect(() => {
     const syncCart = () => setLocalCartItems(getCartItems())
     const syncProfileHref = () => {
       const token = window.localStorage.getItem("ziply5_access_token")
       const role = window.localStorage.getItem("ziply5_user_role")
+      setIsLoggedIn(Boolean(token))
       if (!token || role === "admin" || role === "super_admin") {
         setProfileHref("/login")
         return
@@ -217,7 +259,7 @@ export default function Header() {
             100% { transform: translateX(-50%); }
           }
           .animate-seamless-marquee {
-            animation: seamless-marquee 25s linear infinite;
+            animation: seamless-marquee 40s linear infinite;
             will-change: transform;
           }
           .animate-seamless-marquee:hover {
@@ -397,10 +439,59 @@ export default function Header() {
             </button>
 
             <div className="hidden lg:flex items-center gap-6">
-
-              <Link href={profileHref} className="p-2 hover:bg-zinc-50 rounded-full transition-colors">
-                <User size={20} className="text-zinc-700 hover:text-[#f97316]" />
+              <Link href="/profile?tab=favorite" onClick={() => setMenuOpen(false)} className="font-extrabold text-black hover:text-[#f97316] transition-colors text-[15px]" title="Go to whishlist">
+                <Heart size={20} className="text-zinc-700 hover:text-[#f97316]" />
               </Link>
+              <div className="relative" ref={userDropdownRef}>
+                <button
+                  onClick={() => setUserDropdownOpen(!userDropdownOpen)}
+                  className="p-2 hover:bg-zinc-50 rounded-full transition-colors cursor-pointer flex items-center justify-center"
+                  title="User Options"
+                >
+                  <User size={20} className="text-zinc-700 hover:text-[#f97316]" />
+                </button>
+
+                {/* Dropdown Menu */}
+                {userDropdownOpen && (
+                  <div className="absolute right-0 mt-2 w-48 rounded-2xl bg-white border border-[#E8DCC8] p-2 shadow-xl z-[110] animate-in fade-in slide-in-from-top-2 duration-200">
+                    {isLoggedIn ? (
+                      <>
+                        <Link
+                          href={profileHref}
+                          onClick={() => setUserDropdownOpen(false)}
+                          className="flex w-full items-center px-4 py-2.5 text-sm font-semibold text-zinc-700 hover:bg-[#FFFBF3] hover:text-[#7B3010] rounded-xl transition-colors"
+                        >
+                          My Profile
+                        </Link>
+                        <Link
+                          href="/profile?tab=orders"
+                          onClick={() => setUserDropdownOpen(false)}
+                          className="flex w-full items-center px-4 py-2.5 text-sm font-semibold text-zinc-700 hover:bg-[#FFFBF3] hover:text-[#7B3010] rounded-xl transition-colors"
+                        >
+                          My Orders
+                        </Link>
+                        <div className="my-1 border-t border-black/5" />
+                        <button
+                          onClick={() => {
+                            void handleLogout()
+                          }}
+                          className="flex w-full items-center px-4 py-2.5 text-sm font-semibold text-red-600 hover:bg-red-50 rounded-xl transition-colors text-left"
+                        >
+                          Logout
+                        </button>
+                      </>
+                    ) : (
+                      <Link
+                        href="/login"
+                        onClick={() => setUserDropdownOpen(false)}
+                        className="flex w-full items-center px-4 py-2.5 text-sm font-semibold text-zinc-700 hover:bg-[#FFFBF3] hover:text-[#7B3010] rounded-xl transition-colors"
+                      >
+                        Login
+                      </Link>
+                    )}
+                  </div>
+                )}
+              </div>
             </div>
 
             {/* MOBILE MENU BUTTON (Right Side) */}

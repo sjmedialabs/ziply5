@@ -97,18 +97,21 @@ export default function AboutWhyChooseUs({
             <div
               key={idx}
               className="
-                relative
-                rounded-[2rem]
-                overflow-hidden
-                bg-[#FBF7F3]
-                border
-                border-[#E8D8D2]
-                shadow-[0_8px_30px_rgba(0,0,0,0.05)]
-                hover:shadow-[0_14px_40px_rgba(0,0,0,0.08)]
-                transition-all
-                duration-300
-                group
-              "
+              relative
+              rounded-[2rem]
+              overflow-hidden
+              bg-[#FBF7F3]
+              border
+              border-[#E8D8D2]
+              shadow-[0_8px_30px_rgba(0,0,0,0.05)]
+              hover:shadow-[0_14px_40px_rgba(0,0,0,0.08)]
+              transition-all
+              duration-300
+              group
+              flex
+              flex-col
+              h-full
+            "
             >
 
               {/* Top Red Section */}
@@ -151,23 +154,23 @@ export default function AboutWhyChooseUs({
               </div>
 
               {/* Content */}
-              <div className="relative px-7 pt-4 pb-4 min-h-[280px] flex flex-col">
+              <div className="px-7 pt-4 pb-4 flex flex-col flex-1">
 
-                {/* Title */}
-                <h3 className="text-[20px] leading-tight font-medium font-melon text-[#51282B] mb-5">
-                  {item.title}
-                </h3>
+                <div>
+                  {/* Title */}
+                  <h3 className="text-[20px] leading-tight font-medium font-melon text-[#51282B] mb-5">
+                    {item.title}
+                  </h3>
 
-                {/* Description */}
-                <p className="text-[#666666] text-[15px] line-clamp-6 leading-[2rem] flex-1">
-                  {item.description}
-                </p>
+                  {/* Description */}
+                  <p className="text-[#666666] text-[15px] line-clamp-6 leading-[2rem]">
+                    {item.description}
+                  </p>
+                </div>
 
                 {/* Badge */}
                 {item.badge && (
-
-                  <div className="">
-
+                  <div className="mt-auto pt-6">
                     <div className="inline-flex items-center gap-2 px-5 py-2 rounded-full border border-[#E5BFB5] bg-[#FAEEE9]">
 
                       {item.badgeicon ? (
@@ -185,11 +188,8 @@ export default function AboutWhyChooseUs({
                       </span>
 
                     </div>
-
                   </div>
-
                 )}
-
               </div>
 
             </div>
