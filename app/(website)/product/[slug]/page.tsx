@@ -88,7 +88,8 @@ export default function ProductPage() {
             : ((list.data as { items?: unknown[] } | undefined)?.items ?? [])
               .map((x) => toStorefrontProduct(x as never))
               .filter((x) => x.id !== item.id)
-        setRelatedProducts(rel)
+        const related = rel.filter((p) => p.status === "published")
+        setRelatedProducts(related)
       })
       .catch(() => {
         if (!cancelled) setError("Could not load product")
