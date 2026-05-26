@@ -7,13 +7,17 @@ import { upsertSettingSchema } from "@/src/server/modules/settings/settings.vali
 import { listSettings, upsertSetting } from "@/src/server/modules/settings/settings.service"
 
 export async function GET(request: NextRequest) {
-  const auth = requireAuth(request)
-  if ("status" in auth) return auth
+  const group = request.nextUrl.searchParams.get("group") ?? undefined
+
+  const isPublicGroup = group === "TAX" || group === "CART" || group === "seo";
+  if (!isPublicGroup) {
+    const auth = requireAuth(request)
+    if ("status" in auth) return auth
+  }
 
   // const forbidden = requirePermission(auth.user.role, "settings.read")
   // if (forbidden) return forbidden
 
-  const group = request.nextUrl.searchParams.get("group") ?? undefined
   const items = await listSettings(group ?? undefined)
   return ok(items, "Settings fetched")
 }

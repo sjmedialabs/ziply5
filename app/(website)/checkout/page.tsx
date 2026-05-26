@@ -111,6 +111,7 @@ export default function CheckoutPage() {
   const [offerFinalTotal, setOfferFinalTotal] = useState<number | null>(null);
   const [taxPercentage, setTaxPercentage] = useState(0);
   const [appliedCouponId, setAppliedCouponId] = useState<string | null>(null);
+  const [minCartValue, setMinCartValue] = useState<number>(250);
 
   useEffect(() => {
     fetch("/api/v1/settings?group=TAX")
@@ -124,6 +125,20 @@ export default function CheckoutPage() {
         }
       })
       .catch((err) => console.error("Tax setting fetch failed", err));
+  }, []);
+
+  useEffect(() => {
+    fetch("/api/v1/settings?group=CART")
+      .then((res) => res.json())
+      .then((payload: any) => {
+        if (payload.success && Array.isArray(payload.data)) {
+          const row = payload.data.find((r: any) => r.key === "min_order_value");
+          if (row && row.valueJson != null) {
+            setMinCartValue(Number(row.valueJson));
+          }
+        }
+      })
+      .catch((err) => console.error("Cart setting fetch failed", err));
   }, []);
 
   const couponApplied = !!couponCode.trim() && offerBreakdown.some((entry) => entry.type === "coupon");
@@ -1132,12 +1147,12 @@ export default function CheckoutPage() {
                 <p className="text-center text-sm text-red-600 mb-4">{orderError}</p>
               )}
 
-              {items.length > 0 && total < 250 && (
+              {items.length > 0 && total < minCartValue && (
                 <div className="rounded-2xl bg-white/60 p-3 text-center border border-red-200/50 mb-2">
                   <p className="text-xs font-medium text-red-700">
-                    Add INR {(250 - total).toFixed(2)} more to place order.
+                    Add INR {(minCartValue - total).toFixed(2)} more to place order.
                     <br />
-                    <span className="text-[10px] opacity-70">(Minimum order: INR 250.00)</span>
+                    <span className="text-[10px] opacity-70">(Minimum order: INR {minCartValue.toFixed(2)})</span>
                   </p>
                 </div>
               )}
@@ -1146,7 +1161,7 @@ export default function CheckoutPage() {
               <button
                 type="button"
                 onClick={() => void goToPayment()}
-                disabled={placing || items.length === 0 || total < 250 || (deliveryCheck.data?.status === "not_deliverable" && deliveryCheck.lastOk)}
+                disabled={placing || items.length === 0 || total < minCartValue || (deliveryCheck.data?.status === "not_deliverable" && deliveryCheck.lastOk)}
                 className="bg-[#7B3010] shadow-2xl tracking-wide font-medium text-white w-full py-4 rounded-full font-melon disabled:opacity-60 disabled:cursor-not-allowed transition-all"
               >
                 {placing ? "Please wait…" : "Place Order →"}

@@ -44,7 +44,7 @@ export default function AdminSettingsPage() {
   const [rows, setRows] = useState<SettingRow[]>([]);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<"generic" | "locations" | "master_data" | "seo" | "tax">("generic");
+  const [activeTab, setActiveTab] = useState<"generic" | "locations" | "master_data" | "seo" | "tax" | "cart">("generic");
   const [seoForm, setSeoForm] = useState<StorefrontSeoForm>(emptySeoForm);
   const [seoLoading, setSeoLoading] = useState(false);
   const [seoSaving, setSeoSaving] = useState(false);
@@ -54,6 +54,11 @@ export default function AdminSettingsPage() {
   const [taxLoading, setTaxLoading] = useState(false);
   const [taxSaving, setTaxSaving] = useState(false);
   const [taxError, setTaxError] = useState("");
+
+  const [cartMinOrderValue, setCartMinOrderValue] = useState<number | string>("");
+  const [cartLoading, setCartLoading] = useState(false);
+  const [cartSaving, setCartSaving] = useState(false);
+  const [cartError, setCartError] = useState("");
 
   const { data: warehouses, refetch: refetchWarehouses, loading: loadingWarehouses } = useLocations("warehouse", undefined);
   const { data: states, refetch: refetchStates, loading: loadingStates } = useLocations("state", undefined);
@@ -154,6 +159,51 @@ export default function AdminSettingsPage() {
     }
   };
 
+  useEffect(() => {
+    if (activeTab !== "cart") return;
+    let cancelled = false;
+    setCartLoading(true);
+    setCartError("");
+    authedFetch<SettingRow[]>("/api/v1/settings?group=CART")
+      .then((list) => {
+        if (cancelled) return;
+        const row = list.find((r) => r.key === "min_order_value");
+        if (row && row.valueJson != null) {
+          setCartMinOrderValue(String(row.valueJson));
+        }
+      })
+      .catch((e: Error) => {
+        if (!cancelled) setCartError(e.message);
+      })
+      .finally(() => {
+        if (!cancelled) setCartLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [activeTab]);
+
+  const saveCartSettings = async () => {
+    const val = Number(cartMinOrderValue);
+    if (cartMinOrderValue === "" || isNaN(val) || val < 0) {
+      setCartError("Minimum cart value must be a valid number greater than or equal to 0");
+      return;
+    }
+    setCartSaving(true);
+    setCartError("");
+    try {
+      await authedPost("/api/v1/settings", {
+        group: "CART",
+        key: "min_order_value",
+        valueJson: val,
+      });
+    } catch (e: unknown) {
+      setCartError(e instanceof Error ? e.message : "Save failed");
+    } finally {
+      setCartSaving(false);
+    }
+  };
+
   const saveStorefrontSeo = async () => {
     setSeoSaving(true);
     setSeoError("");
@@ -249,6 +299,12 @@ export default function AdminSettingsPage() {
           onClick={() => setActiveTab('tax')}
         >
           Tax Settings
+        </button>
+        <button
+          className={`pb-2 text-sm font-semibold cursor-pointer transition-colors ${activeTab === 'cart' ? 'border-b-2 border-[#7B3010] text-[#7B3010]' : 'text-[#646464] hover:text-[#2A1810]'}`}
+          onClick={() => setActiveTab('cart')}
+        >
+          Cart Settings
         </button>
         {/* <button
           className={`pb-2 text-sm font-semibold cursor-pointer transition-colors ${activeTab === 'master_data' ? 'border-b-2 border-[#7B3010] text-[#7B3010]' : 'text-[#646464] hover:text-[#2A1810]'}`}
@@ -499,6 +555,46 @@ export default function AdminSettingsPage() {
                 className="border-[#E8DCC8]"
               />
               <p className="text-xs text-[#646464]">Enter a value between 0 and 100.</p>
+            </div>
+          )}
+        </div>
+      )}
+      {!loading && activeTab === 'cart' && (
+        <div className="rounded-2xl border border-[#E8DCC8] bg-white p-6 shadow-sm space-y-6">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h2 className="font-melon text-xl font-bold text-[#4A1D1F]">Cart Settings</h2>
+              <p className="mt-1 max-w-2xl text-sm text-[#646464]">
+                Configure the minimum order/cart value required for customers to proceed to checkout.
+              </p>
+            </div>
+            <Button
+              type="button"
+              onClick={() => void saveCartSettings()}
+              disabled={cartSaving || cartLoading}
+              className="gap-2 rounded-full bg-[#7B3010] hover:bg-[#5c240c]"
+            >
+              {cartSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+              {cartSaving ? "Saving…" : "Save"}
+            </Button>
+          </div>
+          {cartError ? <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-800">{cartError}</p> : null}
+          {cartLoading ? (
+            <p className="text-sm text-[#646464]">Loading cart settings…</p>
+          ) : (
+            <div className="max-w-xs space-y-2">
+              <Label htmlFor="min-cart-value">Minimum Cart Value (INR)</Label>
+              <Input
+                id="min-cart-value"
+                type="number"
+                min="0"
+
+                value={cartMinOrderValue}
+                onChange={(e) => setCartMinOrderValue(e.target.value)}
+                placeholder="0"
+                className="border-[#E8DCC8]"
+              />
+              <p className="text-xs text-[#646464]">Customers must have at least this amount in their cart to checkout.</p>
             </div>
           )}
         </div>
