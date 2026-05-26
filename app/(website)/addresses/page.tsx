@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { authedDelete, authedFetch, authedPost, authedPatch } from "@/lib/dashboard-fetch";
@@ -49,8 +49,9 @@ export default function AddressesPage() {
   const [phone, setPhone] = useState("");
   const [label, setLabel] = useState("");
   const [fetchingPincode, setFetchingPincode] = useState(false);
+  const loadedPostalCodeRef = useRef("");
 
-  const normalizeStr = (str: string) => 
+  const normalizeStr = (str: string) =>
     str.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
 
   const { data: states } = useLocations("state");
@@ -63,7 +64,7 @@ export default function AddressesPage() {
       .then((data) => {
         if (data?.cities) setCityMap(data.cities);
       })
-      .catch(() => {});
+      .catch(() => { });
   }, []);
 
   const availableCities = cities?.filter((c: any) => {
@@ -109,6 +110,9 @@ export default function AddressesPage() {
   useEffect(() => {
     const pin = postalCode.trim();
     if (pin.length === 6 && /^\d{6}$/.test(pin)) {
+      if (loadedPostalCodeRef.current === pin) {
+        return;
+      }
       const controller = new AbortController();
       const runLookup = async () => {
         setFetchingPincode(true);
@@ -117,12 +121,12 @@ export default function AddressesPage() {
           const payload = await res.json();
           if (payload.success && payload.data) {
             const { city: fetchedCity, state: fetchedState } = payload.data;
-            
+
             // Case-insensitive & accent-insensitive state matching
             if (fetchedState && states) {
               const normState = normalizeStr(fetchedState);
               const matchedState = states.find(s => normalizeStr(s.label) === normState);
-              
+
               if (matchedState) {
                 setState(matchedState.label);
               } else {
@@ -219,13 +223,14 @@ export default function AddressesPage() {
     setLine2(a.line2 || "");
     setCity(a.city);
     setState(a.state);
+    loadedPostalCodeRef.current = a.postalCode;
     setPostalCode(a.postalCode);
     setPhone(a.phone || "");
   };
 
   return (
     <div className="mx-auto max-w-3xl px-4 py-12">
-        {/* heading and back link */}
+      {/* heading and back link */}
       <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="font-melon text-2xl font-bold text-[#4A1D1F]">Saved addresses</h1>
@@ -295,7 +300,7 @@ export default function AddressesPage() {
               ))
             )}
           </ul>
-            {/* Add address form */}
+          {/* Add address form */}
           <div className="rounded-2xl border border-[#E8DCC8] bg-[#FFFBF3]/40 p-6">
             <h2 className="font-melon text-lg font-semibold text-[#4A1D1F]">
               {editingId ? "Edit address" : "Add address"}
@@ -354,42 +359,65 @@ export default function AddressesPage() {
               </label>
               <label className="text-xs font-semibold uppercase text-[#646464]">
                 State
-                <Select required value={state || undefined} onValueChange={(val) => {
-                  setState(val);
-                  setCity("");
-                }}>
-                  <SelectTrigger className="mt-1 !h-[38px] w-full rounded-lg border border-[#D9D9D1] bg-white px-3 py-2 text-sm shadow-none focus:border-[#7B3010] focus:ring-0 focus-visible:ring-0">
-                    <SelectValue placeholder="Select State" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {states?.map((s) => (
-                      <SelectItem key={s.value} value={s.label}>{s.label}</SelectItem>
+                <div className="relative mt-1">
+                  <select
+                    required
+                    value={state}
+                    onChange={(e) => {
+                      setState(e.target.value);
+                      setCity("");
+                    }}
+                    className="h-[38px] w-full rounded-lg border border-[#D9D9D1] bg-white pl-3 pr-8 py-2 text-sm shadow-none focus:border-[#7B3010] focus:ring-0 focus-visible:ring-0 outline-none appearance-none"
+                  >
+                    <option value="" disabled>Select State</option>
+                    {state && !states?.some(s => s.label === state) && (
+                      <option value={state}>{state}</option>
+                    )}
+                    {(states || []).map((s) => (
+                      <option key={s.value} value={s.label}>{s.label}</option>
                     ))}
-                  </SelectContent>
-                </Select>
+                  </select>
+                  <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-3">
+                    <svg className="h-4 w-4 text-[#646464] opacity-50" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </div>
+                </div>
               </label>
               <label className="text-xs font-semibold uppercase text-[#646464]">
                 City
-                <Select required disabled={!state} value={city || undefined} onValueChange={setCity}>
-                  <SelectTrigger className="mt-1 !h-[38px] w-full rounded-lg border border-[#D9D9D1] bg-white px-3 py-2 text-sm shadow-none focus:border-[#7B3010] focus:ring-0 focus-visible:ring-0">
-                    <SelectValue placeholder={!state ? "Select state first" : "Select City"} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {availableCities?.map((c) => (
-                      <SelectItem key={c.value} value={c.label}>{c.label}</SelectItem>
-                    ))}
-                    {city && !availableCities.find(c => c.label === city) && (
-                      <SelectItem value={city}>{city}</SelectItem>
+                <div className="relative mt-1">
+                  <select
+                    required
+                    disabled={!state}
+                    value={city}
+                    onChange={(e) => setCity(e.target.value)}
+                    className="h-[38px] w-full rounded-lg border border-[#D9D9D1] bg-white pl-3 pr-8 py-2 text-sm shadow-none focus:border-[#7B3010] focus:ring-0 focus-visible:ring-0 outline-none appearance-none disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    <option value="" disabled>{!state ? "Select state first" : "Select City"}</option>
+                    {city && !availableCities?.some(c => c.label === city) && (
+                      <option value={city}>{city}</option>
                     )}
-                  </SelectContent>
-                </Select>
+                    {(availableCities || []).map((c) => (
+                      <option key={c.value} value={c.label}>{c.label}</option>
+                    ))}
+                  </select>
+                  <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-3">
+                    <svg className="h-4 w-4 text-[#646464] opacity-50" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </div>
+                </div>
               </label>
               <label className="text-xs font-semibold uppercase text-[#646464]">
                 Postal code
                 <input
                   required
                   value={postalCode}
-                  onChange={(e) => setPostalCode(e.target.value)}
+                  onChange={(e) => {
+                    loadedPostalCodeRef.current = "";
+                    setPostalCode(e.target.value);
+                  }}
                   disabled={fetchingPincode}
                   className="mt-1 w-full rounded-lg border border-[#D9D9D1] bg-white px-3 py-2 text-sm"
                 />

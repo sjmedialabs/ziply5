@@ -142,7 +142,7 @@ export default function BestSellers({ cmsData }: { cmsData?: any }) {
                   className="card-smooth rounded-2xl px-8 relative overflow-hidden transition-all duration-300 ease-out group-hover:ring-4 group-hover:ring-[#F36E21] group-hover:shadow-xl h-full flex flex-col"
                   style={{ backgroundColor: pickBg(product) }}
                 >
-                  {tagName &&(
+                  {tagName && (
                     <VegNonVegTag type={tagName} />
                   )}
                   {/* {product.type === "non-veg" && (
@@ -155,7 +155,7 @@ export default function BestSellers({ cmsData }: { cmsData?: any }) {
                     Pure-Veg
                   </span>
                 )} */}
-                  
+
                   <button
                     type="button"
                     onClick={(e) => handleToggleFavorite(e, product.slug)}

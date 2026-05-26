@@ -74,7 +74,7 @@ export default function AboutRiceRanges({
       <div className="grid lg:grid-cols-2 items-stretch">
 
         {/* LEFT CONTENT */}
-        <div className="flex items-center px-6 lg:px-14 py-16">
+        <div className="flex items-center px-4 sm:px-6 lg:px-14 py-16">
 
           <div className="max-w-2xl w-full">
 
@@ -113,7 +113,7 @@ export default function AboutRiceRanges({
             {/* Stats */}
             {stats.length > 0 && (
 
-              <div className="mt-4 bg-white rounded-[1.7rem] border border-[#E7D9D3] p-4 shadow-sm">
+              <div className="mt-4 bg-white rounded-[1.7rem] border border-[#E7D9D3] p-3 sm:p-4 shadow-sm">
 
                 <div className="grid grid-cols-3">
 
@@ -123,7 +123,7 @@ export default function AboutRiceRanges({
                       key={idx}
                       className={`
                         text-center
-                        px-3
+                        px-1 sm:px-2 md:px-3
                         ${idx !== stats.length - 1
                           ? "border-r border-[#E8DCD6]"
                           : ""
@@ -131,11 +131,11 @@ export default function AboutRiceRanges({
                       `}
                     >
 
-                      <h3 className="text-3xl font-medium font-melon text-[#51282B] leading-none">
+                      <h3 className="text-2xl sm:text-3xl font-medium font-melon text-[#51282B] leading-none">
                         {item.stat}
                       </h3>
 
-                      <p className="mt-2 text-[10px] uppercase tracking-[0.16em] font-medium text-[#666666]">
+                      <p className="mt-2 text-[9px] sm:text-[10px] uppercase tracking-[0.05em] sm:tracking-[0.16em] font-medium text-[#666666] break-words">
                         {item.desciption}
                       </p>
 

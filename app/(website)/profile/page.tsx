@@ -71,9 +71,9 @@ const profileReturnEligibilityReason = (order: ApiOrderRow): string | null => {
     : order.shipmentDeliveredAt
       ? new Date(order.shipmentDeliveredAt as string | Date)
       : (() => {
-          const hit = order.statusHistory?.find((h) => h.toStatus.toLowerCase() === "delivered")
-          return hit?.changedAt ? new Date(hit.changedAt) : null
-        })()
+        const hit = order.statusHistory?.find((h) => h.toStatus.toLowerCase() === "delivered")
+        return hit?.changedAt ? new Date(hit.changedAt) : null
+      })()
   const latestLifecycle = deriveLatestLifecycleToStatus(order.statusHistory ?? [], order.status)
   return (
     getReturnIneligibilityReason({
@@ -284,11 +284,11 @@ function ProfilePageContent() {
       const bankDetails =
         returnMeta.refundMethod === "bank" && returnMeta.bankAccountNumber.trim()
           ? {
-              accountName: returnMeta.bankAccountName.trim() || undefined,
-              accountNumber: returnMeta.bankAccountNumber.trim(),
-              ifsc: returnMeta.bankIfsc.trim(),
-              bankName: returnMeta.bankName.trim() || undefined,
-            }
+            accountName: returnMeta.bankAccountName.trim() || undefined,
+            accountNumber: returnMeta.bankAccountNumber.trim(),
+            ifsc: returnMeta.bankIfsc.trim(),
+            bankName: returnMeta.bankName.trim() || undefined,
+          }
           : undefined
 
       const res = await fetch(`/api/v1/returns`, {
@@ -482,8 +482,18 @@ function ProfilePageContent() {
         headers: { Authorization: `Bearer ${token}` },
       })
       const payload = (await res.json()) as { success?: boolean; data?: { items: ApiOrderRow[] }; message?: string }
-      if (!res.ok || !payload.success || !payload.data) throw new Error(payload.message ?? "Could not load orders.")
-      return payload.data.items
+      const allItems = payload.data.items ?? []
+      const filtered = allItems.filter((order) => {
+        const isOnline = order.paymentMethod?.toLowerCase() === "razorpay"
+        const isPaid =
+          order.paymentStatus?.toLowerCase() === "paid" ||
+          order.paymentStatus?.toLowerCase() === "success" ||
+          order.transactions?.some((tx) =>
+            ["paid", "success", "captured"].includes(tx.status?.toLowerCase())
+          )
+        return !isOnline || isPaid
+      })
+      return filtered
     },
   })
 
@@ -1045,11 +1055,11 @@ function ProfilePageContent() {
                           </div>
                           <div className="flex flex-col items-end gap-1">
                             <span className="rounded-full bg-[#FDF0E6] px-2.5 py-1 text-[10px] font-semibold uppercase text-[#7B3010]">
-                              {order.status}
+                              Order Status: {order.status}
                             </span>
-                            <span className="rounded-full bg-indigo-50 px-2.5 py-1 text-[10px] font-semibold uppercase text-indigo-700">
+                            {/* <span className="rounded-full bg-indigo-50 px-2.5 py-1 text-[10px] font-semibold uppercase text-indigo-700">
                               {shippingStatus.replaceAll("_", " ")}
-                            </span>
+                            </span> */}
                           </div>
                         </div>
 
@@ -1409,7 +1419,7 @@ function ProfilePageContent() {
                           className="flex-1 rounded-xl bg-red-600 py-3 text-xs font-bold uppercase tracking-widest text-white shadow-md hover:bg-red-700 transition-all disabled:opacity-50"
                         >
                           {orderActionBusy === `${selectedOrderForCancel.id}:cancel_request` ||
-                          orderActionBusy === `${selectedOrderForCancel.id}:cancel_pending`
+                            orderActionBusy === `${selectedOrderForCancel.id}:cancel_pending`
                             ? "Processing…"
                             : "Confirm"}
                         </button>

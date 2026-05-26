@@ -380,29 +380,35 @@ export default function ProductPage() {
 
             <h1 className="font-heading mt-3 text-4xl leading-none text-[#201A1A]">{product.name}</h1>
 
-            <div className="mt-2 flex items-center gap-2">
-              <span className="rounded-full bg-[#F0ECE2] px-3 py-1 text-[12px] font-medium text-[#8D8D8D]">{sku}</span>
-              <span className="rounded-full bg-[#DFE8D8] px-3 py-1 text-[12px] font-medium text-[#86917B] capitalize">
-                {product.stockStatus?.replace("_", " ")}:
+            <div className="mt-2 grid grid-cols-2 gap-2 md:flex md:items-center md:gap-2">
+              <span className="rounded-full bg-[#F0ECE2] px-3 py-1 text-[12px] font-medium text-[#8D8D8D] text-center">{sku}</span>
+              <span className="rounded-full bg-[#DFE8D8] px-3 py-1 text-[12px] font-medium text-[#86917B] capitalize text-center">
+                {((product.productKind === "simple" ? (product.stock ?? 0) : (activeVariant?.stock ?? 0)) > 5) ? (
+                  product.stockStatus?.replace("_", " ") + ":"
+                ) : (
+                  (product.productKind === "simple" ? (product.stock ?? 0) : (activeVariant?.stock ?? 0)) <= 0 ? (
+                    product.stockStatus?.replace("_", " ")
+                  ) : null
+                )}
                 {product.productKind === "simple" && product.stock && product?.stock > 0 && (
                   <span className="ml-1">
-                    {product?.stock < 5 ? `Hurry up only ${product.stock} left` : `${product.stock} available`}
+                    {product.stock < 5 ? `Hurry up only ${product.stock} left` : `${product.stock} available`}
                   </span>
-                )}
+                ) : null}
                 {activeVariant && activeVariant.stock > 0 && (
                   <> {activeVariant.stock <= 5 ? "Hurry, only a few left!" : `${activeVariant.stock} available`}</>
                 )}
               </span>
               {salePercent && salePercent > 0 && (
-                <span className="rounded-md bg-[#2E84CF] px-2 py-1 text-[11px] font-semibold text-white">SALE {salePercent}% Off</span>
+                <span className="rounded-md bg-[#2E84CF] px-2 py-1 text-[11px] font-semibold text-white text-center">SALE {salePercent}% Off</span>
               )}
               {product.labels.slice(0, 2).map((label, idx) => (
-                <span key={`${label.label || "label"}-${idx}`} className="rounded-md px-2 py-1 text-[11px] font-semibold text-white" style={{ backgroundColor: label.color ?? "#A32424" }}>
+                <span key={`${label.label || "label"}-${idx}`} className="rounded-md px-2 py-1 text-[11px] font-semibold text-white text-center" style={{ backgroundColor: label.color ?? "#A32424" }}>
                   {label.label}
                 </span>
               ))}
               <span
-                className={`rounded-md px-2 py-1 text-[11px] font-semibold text-white ${product.type === "veg" ? "bg-[#2EA852]" : "bg-[#A32424]"
+                className={`rounded-md px-2 py-1 text-[11px] font-semibold text-white text-center ${product.type === "veg" ? "bg-[#2EA852]" : "bg-[#A32424]"
                   }`}
               >
                 {product.type === "veg" ? "Vegetarian" : "Non-Vegetarian"}
