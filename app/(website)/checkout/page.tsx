@@ -140,6 +140,7 @@ export default function CheckoutPage() {
   });
 
   const [fetchingPincode, setFetchingPincode] = useState(false);
+  const loadedPostalCodeRef = useRef("");
 
   const normalizeStr = (str: string) =>
     str.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
@@ -153,6 +154,37 @@ export default function CheckoutPage() {
     try {
       const data = await authedFetch<Addr[]>("/api/v1/me/addresses");
       setSavedAddresses(data);
+
+      const savedCheckout = readCheckoutStorage();
+      if (savedCheckout && savedCheckout.billingAddress) {
+        const [firstName, ...last] = (savedCheckout.billingAddress.fullName || "").split(" ");
+        const fn = firstName ?? "";
+        const ln = last.join(" ");
+        const em = savedCheckout.billingAddress.email ?? "";
+        const l1 = savedCheckout.billingAddress.addressLine1 ?? "";
+        const pc = savedCheckout.billingAddress.postalCode ?? "";
+        const ph = savedCheckout.billingAddress.phone ?? "";
+        const st = savedCheckout.billingAddress.state ?? "";
+        const ct = savedCheckout.billingAddress.city ?? "";
+
+        const match = data.find((a) => {
+          return (
+            (a.firstName || "") === fn &&
+            (a.lastName || "") === ln &&
+            (a.email || "") === em &&
+            a.line1 === l1 &&
+            a.city === ct &&
+            a.state === st &&
+            a.postalCode === pc &&
+            (a.phone || "") === ph
+          );
+        });
+
+        if (match) {
+          setSelectedAddressId(match.id);
+          setOriginalAddress(match);
+        }
+      }
     } catch { }
   }, [router]);
 
@@ -172,6 +204,7 @@ export default function CheckoutPage() {
     if (savedCheckout) {
       if (savedCheckout.billingAddress) {
         const [firstName, ...last] = (savedCheckout.billingAddress.fullName || "").split(" ");
+        loadedPostalCodeRef.current = savedCheckout.billingAddress.postalCode ?? "";
         setBilling((prev) => ({
           ...prev,
           firstName: firstName ?? "",
@@ -239,6 +272,9 @@ export default function CheckoutPage() {
   useEffect(() => {
     const pin = billing.postalCode.trim();
     if (pin.length === 6 && /^\d{6}$/.test(pin)) {
+      if (loadedPostalCodeRef.current === pin) {
+        return;
+      }
       const controller = new AbortController();
       const runLookup = async () => {
         setFetchingPincode(true);
@@ -341,6 +377,14 @@ export default function CheckoutPage() {
   }, [items, products]);
 
   const subTotal = validatedItems.reduce((acc, item) => acc + item.price * item.quantity, 0);
+  const totalProductSavings = useMemo(() => {
+    return validatedItems.reduce((acc, item) => {
+      if (item.basePrice && item.basePrice > item.price) {
+        return acc + (item.basePrice - item.price) * item.quantity;
+      }
+      return acc;
+    }, 0);
+  }, [validatedItems]);
   const hasValidationErrors = validatedItems.some(i => i.variantError || i.stock < i.quantity);
 
   const totalPacksForShipping = useMemo(
@@ -594,6 +638,7 @@ export default function CheckoutPage() {
 
     const addr = savedAddresses.find((a) => a.id === id);
     if (addr) {
+      loadedPostalCodeRef.current = addr.postalCode;
       setBilling((prev) => ({
         firstName: addr.firstName || prev.firstName,
         lastName: addr.lastName || prev.lastName,
@@ -744,22 +789,37 @@ export default function CheckoutPage() {
           }
         }
       } else if (selectedAddressId === "manual") {
-        const save = window.confirm("Would you like to save this address for future use?");
-        if (save) {
-          try {
-            await authedPost("/api/v1/me/addresses", {
-              label: billing.firstName ? `${billing.firstName}'s Home` : "New Address",
-              firstName: billing.firstName,
-              lastName: billing.lastName,
-              email: billing.email,
-              line1: billing.line1,
-              city: city,
-              state: state,
-              postalCode: billing.postalCode,
-              country: "India",
-              phone: billing.phone || null,
-            });
-          } catch { }
+        const alreadyExists = savedAddresses.some((a) => {
+          return (
+            (a.firstName || "") === billing.firstName &&
+            (a.lastName || "") === billing.lastName &&
+            (a.email || "") === billing.email &&
+            a.line1 === billing.line1 &&
+            a.city === city &&
+            a.state === state &&
+            a.postalCode === billing.postalCode &&
+            (a.phone || "") === (billing.phone || "")
+          );
+        });
+
+        if (!alreadyExists) {
+          const save = window.confirm("Would you like to save this address for future use?");
+          if (save) {
+            try {
+              await authedPost("/api/v1/me/addresses", {
+                label: billing.firstName ? `${billing.firstName}'s Home` : "New Address",
+                firstName: billing.firstName,
+                lastName: billing.lastName,
+                email: billing.email,
+                line1: billing.line1,
+                city: city,
+                state: state,
+                postalCode: billing.postalCode,
+                country: "India",
+                phone: billing.phone || null,
+              });
+            } catch { }
+          }
         }
       }
 
@@ -926,7 +986,10 @@ export default function CheckoutPage() {
                       <SelectValue placeholder="Select State" />
                     </SelectTrigger>
                     <SelectContent>
-                      {states?.map((s) => (
+                      {state && (
+                        <SelectItem key="fallback-state" value={state}>{state}</SelectItem>
+                      )}
+                      {(states || []).filter((s) => s.label !== state).map((s) => (
                         <SelectItem key={s.value} value={s.label}>
                           {s.label}
                         </SelectItem>
@@ -947,14 +1010,14 @@ export default function CheckoutPage() {
                       <SelectValue placeholder={!state ? "Select state first" : "Select City"} />
                     </SelectTrigger>
                     <SelectContent>
-                      {availableCities?.map((c) => (
+                      {city && (
+                        <SelectItem key="fallback-city" value={city}>{city}</SelectItem>
+                      )}
+                      {(availableCities || []).filter((c) => c.label !== city).map((c) => (
                         <SelectItem key={c.value} value={c.label}>
                           {c.label}
                         </SelectItem>
                       ))}
-                      {city && !availableCities.find(c => c.label === city) && (
-                        <SelectItem value={city}>{city}</SelectItem>
-                      )}
                     </SelectContent>
                   </Select>
                 </div>
@@ -966,7 +1029,10 @@ export default function CheckoutPage() {
                     className="input mt-1"
                     placeholder="Enter pincode"
                     value={billing.postalCode}
-                    onChange={(e) => setBilling((prev) => ({ ...prev, postalCode: e.target.value }))}
+                    onChange={(e) => {
+                      loadedPostalCodeRef.current = "";
+                      setBilling((prev) => ({ ...prev, postalCode: e.target.value }));
+                    }}
                     disabled={fetchingPincode}
                     onBlur={(e) => {
                       const value = e.target.value;
@@ -1113,7 +1179,7 @@ export default function CheckoutPage() {
 
                     <span className="text-[#C03621] font-medium font-melon tracking-wide">
                       {item.basePrice && item.basePrice > item.price && (
-                        <span className="text-[10px] line-through mr-1 opacity-50">Rs.{item.basePrice.toFixed(2)}</span>
+                        <span className="text-[10px] line-through mr-1 opacity-50">Rs.{(item.basePrice * item.quantity).toFixed(2)}</span>
                       )}
                       Rs.{(item.price * item.quantity).toFixed(2)}
                     </span>
@@ -1149,7 +1215,7 @@ export default function CheckoutPage() {
               ))}
             <div className="flex justify-between text-[#C03621] font-medium font-melon tracking-wide mt-2">
               <span>Total Savings</span>
-              <span>-Rs.{offerTotalDiscount.toFixed(2)}</span>
+              <span>-Rs.{(totalProductSavings + offerTotalDiscount).toFixed(2)}</span>
             </div>
             {taxPercentage > 0 && (
               <div className="flex justify-between text-[#C03621] font-medium font-melon tracking-wide mt-2">

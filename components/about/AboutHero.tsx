@@ -126,8 +126,8 @@ export default function AboutHero({ data }: AboutHeroProps) {
               <div className="grid grid-cols-2 font-melon gap-10 lg:gap-16">
 
                 <div>
-                    <h2 className="text-6xl lg:text-7xl font-medium text-[#51282B]">
-                      {stat1Number}
+                  <h2 className="text-4xl lg:text-7xl font-medium text-[#51282B]">
+                    {stat1Number}
                   </h2>
 
                   <p className="mt-2 text-xl text-[#51282B]">
@@ -136,7 +136,7 @@ export default function AboutHero({ data }: AboutHeroProps) {
                 </div>
 
                 <div>
-                  <h2 className="text-6xl lg:text-7xl font-medium text-[#51282B]">
+                  <h2 className="text-4xl lg:text-7xl font-medium text-[#51282B]">
                     {stat2Number}
                   </h2>
 
