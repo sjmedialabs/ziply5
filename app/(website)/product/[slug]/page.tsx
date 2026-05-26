@@ -88,7 +88,8 @@ export default function ProductPage() {
             : ((list.data as { items?: unknown[] } | undefined)?.items ?? [])
               .map((x) => toStorefrontProduct(x as never))
               .filter((x) => x.id !== item.id)
-        setRelatedProducts(rel)
+        const related = rel.filter((p) => p.status === "published")
+        setRelatedProducts(related)
       })
       .catch(() => {
         if (!cancelled) setError("Could not load product")
@@ -391,9 +392,9 @@ export default function ProductPage() {
                 )}
                 {product.productKind === "simple" && product.stock && product?.stock > 0 && (
                   <span className="ml-1">
-                    {product?.stock < 5 ? `Hurry up only ${product.stock} left` : `${product.stock} available`}
+                    {product.stock < 5 ? `Hurry up only ${product.stock} left` : `${product.stock} available`}
                   </span>
-                )}
+                ) : null}
                 {activeVariant && activeVariant.stock > 0 && (
                   <> {activeVariant.stock <= 5 ? "Hurry, only a few left!" : `${activeVariant.stock} available`}</>
                 )}
