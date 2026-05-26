@@ -4,18 +4,19 @@ import { z } from "zod"
 
 const sendOtpSchema = z.object({
   mobile: z.string().min(8), // Allow various formats, let service normalize
-  purpose: z.enum(["LOGIN", "REGISTER", "RESET_PASSWORD", "TRANSACTION"])
+  purpose: z.enum(["LOGIN", "REGISTER", "RESET_PASSWORD", "TRANSACTION"]),
+  email: z.string().email().optional(),
 })
 
 export async function POST(req: Request) {
   try {
     const body = await req.json()
-    const { mobile, purpose } = sendOtpSchema.parse(body)
+    const { mobile, purpose, email } = sendOtpSchema.parse(body)
 
     if (purpose === "LOGIN") {
       await otpAuthService.requestLoginOtp(mobile)
     } else if (purpose === "REGISTER") {
-      await otpAuthService.requestRegistrationOtp(mobile)
+      await otpAuthService.requestRegistrationOtp(mobile, email)
     } else if (purpose === "RESET_PASSWORD") {
       await otpAuthService.requestPasswordResetOtp(mobile)
     }

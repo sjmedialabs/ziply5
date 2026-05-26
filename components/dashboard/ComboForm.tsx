@@ -5,7 +5,7 @@ import { authedFetch, authedPost, authedPut } from "@/lib/dashboard-fetch"
 import { uploadAdminImage } from "@/lib/admin-upload"
 import { Loader2 } from "lucide-react"
 
-type ProductLite = { id: string; name: string; slug: string; thumbnail?: string | null }
+type ProductLite = { id: string; name: string; slug: string; thumbnail?: string | null; price: number }
 
 type ComboFormProps = {
   bundleId?: string
@@ -51,7 +51,13 @@ export function ComboForm({ bundleId, onSaved }: ComboFormProps) {
         const rows = (productsRes as any)?.items ?? (productsRes as any)?.data?.items ?? []
         const lite = (Array.isArray(rows) ? rows : [])
           .filter((p) => p?.id && p?.name && p?.slug && p?.status === "published" && p?.isActive !== false)
-          .map((p) => ({ id: String(p.id), name: String(p.name), slug: String(p.slug), thumbnail: p.thumbnail ? String(p.thumbnail) : null }))
+          .map((p) => ({
+            id: String(p.id),
+            name: String(p.name),
+            slug: String(p.slug),
+            thumbnail: p.thumbnail ? String(p.thumbnail) : null,
+            price: Number(p.price ?? 0)
+          }))
         setProducts(lite)
         if (bundleRes) {
           setName(bundleRes.name ?? "")
@@ -92,6 +98,19 @@ export function ComboForm({ bundleId, onSaved }: ComboFormProps) {
     return products.filter((p) => p.name.toLowerCase().includes(q) || p.slug.toLowerCase().includes(q))
   }, [products, search])
 
+  const sumOfSelectedPrices = useMemo(() => {
+    return selectedProductIds.reduce((sum, id) => {
+      const prod = products.find((p) => p.id === id)
+      return sum + (prod?.price ?? 0)
+    }, 0)
+  }, [selectedProductIds, products])
+
+  const isPriceTooHigh = useMemo(() => {
+    if (pricingMode !== "fixed" || selectedProductIds.length === 0 || !comboPrice) return false
+    const priceNum = Number(comboPrice)
+    return priceNum >= sumOfSelectedPrices
+  }, [pricingMode, selectedProductIds, comboPrice, sumOfSelectedPrices])
+
   const canSave = useMemo(() => {
     if (name.trim().length < 2) return false
     if (!slug || !/^[a-z0-9_-]+$/.test(slug)) return false
@@ -99,9 +118,10 @@ export function ComboForm({ bundleId, onSaved }: ComboFormProps) {
     if (pricingMode === "fixed") {
       const n = Number(comboPrice)
       if (!Number.isFinite(n) || n <= 0) return false
+      if (n >= sumOfSelectedPrices) return false
     }
     return true
-  }, [name, slug, selectedProductIds, pricingMode, comboPrice])
+  }, [name, slug, selectedProductIds, pricingMode, comboPrice, sumOfSelectedPrices])
 
   const toggleProduct = (productId: string) => {
     setSelectedProductIds((prev) => {
@@ -159,10 +179,22 @@ export function ComboForm({ bundleId, onSaved }: ComboFormProps) {
             <option value="dynamic">Dynamic</option>
           </select>
         </label>
-        <label className="block text-sm">
-          <span className="text-xs font-semibold uppercase tracking-wide text-[#7A7A7A]">Combo price</span>
-          <input className="mt-1 w-full rounded border px-3 py-2 text-sm disabled:bg-gray-50" type="number" min={1} step="0.01" value={comboPrice} disabled={pricingMode !== "fixed"} onChange={(e) => setComboPrice(e.target.value)} />
-        </label>
+        <div className="space-y-1">
+          <label className="block text-sm">
+            <span className="text-xs font-semibold uppercase tracking-wide text-[#7A7A7A]">Combo price</span>
+            <input className="mt-1 w-full rounded border px-3 py-2 text-sm disabled:bg-gray-50" type="number" min={1} step="0.01" value={comboPrice} disabled={pricingMode !== "fixed"} onChange={(e) => setComboPrice(e.target.value)} />
+          </label>
+          {pricingMode === "fixed" && selectedProductIds.length > 0 && (
+            <p className="text-[11px] text-[#646464]">
+              Total price of selected products: <span className="font-semibold text-black">Rs.{sumOfSelectedPrices.toFixed(2)}</span>
+            </p>
+          )}
+          {isPriceTooHigh && (
+            <p className="text-xs text-red-600 font-medium">
+              the price of the combo should be less than the total price of all products in that combo
+            </p>
+          )}
+        </div>
         <label className="flex items-center gap-2 pt-6 text-sm">
           <input type="checkbox" checked={isActive} onChange={(e) => setIsActive(e.target.checked)} />
           Active
@@ -224,10 +256,19 @@ export function ComboForm({ bundleId, onSaved }: ComboFormProps) {
                 type="button"
                 onClick={() => toggleProduct(p.id)}
                 disabled={blocked}
-                className={`rounded border px-3 py-2 text-left text-sm ${checked ? "border-[#7B3010] bg-[#FFFBF3]" : "border-[#E8DCC8]"} disabled:opacity-50`}
+                className={`rounded border px-3 py-2 text-left text-sm flex justify-between items-center transition-all ${
+                  checked ? "border-[#7B3010] bg-[#FFFBF3] shadow-sm" : "border-[#E8DCC8] hover:border-[#7B3010]/50"
+                } disabled:opacity-50`}
               >
-                <p className="font-semibold text-[#4A1D1F]">{p.name}</p>
-                <p className="text-xs text-[#646464]">{p.slug}</p>
+                <div>
+                  <p className="font-semibold text-[#4A1D1F]">{p.name}</p>
+                  <p className="text-xs text-[#646464]">{p.slug}</p>
+                </div>
+                <div className="ml-2 flex-shrink-0 text-right">
+                  <span className="rounded-full bg-[#F0ECE2] px-2 py-0.5 text-[11px] font-semibold text-[#7B3010]">
+                    Rs.{p.price.toFixed(2)}
+                  </span>
+                </div>
               </button>
             )
           })}

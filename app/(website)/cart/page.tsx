@@ -27,12 +27,27 @@ export default function CartPage() {
   const [offerAdjustedShipping, setOfferAdjustedShipping] = useState<number | null>(null);
   const [offerFinalTotal, setOfferFinalTotal] = useState<number | null>(null);
   const [couponError, setCouponError] = useState("");
+  const [minCartValue, setMinCartValue] = useState<number>(250);
 
   useEffect(() => {
     setLocalCartItems(getCartItems());
     if (typeof window !== "undefined") {
       setCouponCode(window.localStorage.getItem("ziply5_coupon_code") ?? "");
     }
+  }, []);
+
+  useEffect(() => {
+    fetch("/api/v1/settings?group=CART")
+      .then((res) => res.json())
+      .then((payload: any) => {
+        if (payload.success && Array.isArray(payload.data)) {
+          const row = payload.data.find((r: any) => r.key === "min_order_value");
+          if (row && row.valueJson != null) {
+            setMinCartValue(Number(row.valueJson));
+          }
+        }
+      })
+      .catch((err) => console.error("Cart setting fetch failed", err));
   }, []);
 
 
@@ -79,7 +94,7 @@ export default function CartPage() {
     (acc, item) => acc + item.price * item.quantity,
     0
   );
-  const shipping = cartItems.length === 0 ? 0 : 20;
+  const shipping = cartItems.length === 0 ? 0 : 0;
 
   // Track cart for abandonment recovery (server skips save if no profile email/phone)
   useEffect(() => {
@@ -374,17 +389,17 @@ export default function CartPage() {
               </div>
             ) : null}
 
-            {cartItems.length > 0 && total < 250 && (
+            {cartItems.length > 0 && total < minCartValue && (
               <div className="mt-4 rounded-2xl bg-white/60 p-3 text-center border border-red-200/50">
                 <p className="text-xs font-medium text-red-700">
-                  Add INR {formatMoney(250 - total)} more to checkout.
+                  Add INR {formatMoney(minCartValue - total)} more to checkout.
                   <br />
-                  <span className="text-[10px] opacity-70">(Minimum order: INR 250.00)</span>
+                  <span className="text-[10px] opacity-70">(Minimum order: INR {formatMoney(minCartValue)})</span>
                 </p>
               </div>
             )}
 
-            {cartItems.length > 0 && total >= 250 ? (
+            {cartItems.length > 0 && total >= minCartValue ? (
               <Link href="/checkout">
                 <button className="mt-6 w-full rounded-xl bg-primary py-3 font-melon font-medium tracking-wide text-white transition-all hover:bg-primary/90">
                   Proceed to checkout →
