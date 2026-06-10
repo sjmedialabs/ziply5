@@ -6,12 +6,12 @@ if (!databaseUrl) {
   throw new Error("DATABASE_URL is missing")
 }
 
+const isLocalDb = databaseUrl.includes("localhost") || databaseUrl.includes("127.0.0.1")
+
 export const pg = new Pool({
   connectionString: databaseUrl,
 
-  ssl: {
-    rejectUnauthorized: false,
-  },
+  ...(isLocalDb ? {} : { ssl: { rejectUnauthorized: false } }),
 
   max: 20,
   idleTimeoutMillis: 30000,
