@@ -24,14 +24,37 @@ const defaultTitle = "ZIPLY5 - Nothing Artificial. Everything Delicious."
 const defaultDescription =
   "Taste the authentic flavors of home-cooked meals. Ready-to-eat Indian food made with love and zero artificial ingredients."
 
+const isTransientDbError = (error: unknown): boolean => {
+  if (!error) return false
+  if (error instanceof AggregateError && Array.isArray(error.errors)) {
+    return error.errors.some((e) => isTransientDbError(e))
+  }
+  const anyErr = error as { code?: string; message?: string }
+  const code = typeof anyErr.code === "string" ? anyErr.code : undefined
+  const message = typeof anyErr.message === "string" ? anyErr.message : ""
+  if (code === "ECONNREFUSED" || code === "ECONNRESET" || code === "ETIMEDOUT" || code === "ENOTFOUND") {
+    return true
+  }
+  if (message.includes("ECONNREFUSED") || message.includes("password authentication failed")) return true
+  return false
+}
+
 async function getSettingValue(group: string, key: string): Promise<unknown | null> {
-  const rows = await pgQuery<Array<{ valueJson: unknown }>>(
-    `SELECT "valueJson" FROM "Setting" WHERE "group" = $1 AND key = $2 LIMIT 1`,
-    [group, key],
-  )
-  const raw = rows[0]?.valueJson
-  if (raw == null) return null
-  return raw
+  try {
+    const rows = await pgQuery<Array<{ valueJson: unknown }>>(
+      `SELECT "valueJson" FROM "Setting" WHERE "group" = $1 AND key = $2 LIMIT 1`,
+      [group, key],
+    )
+    const raw = rows[0]?.valueJson
+    if (raw == null) return null
+    return raw
+  } catch (error) {
+    if (isTransientDbError(error)) {
+      console.warn(`Settings DB unavailable for ${group}/${key}. Using defaults.`)
+      return null
+    }
+    throw error
+  }
 }
 
 function asRecord(v: unknown): Record<string, unknown> | null {
