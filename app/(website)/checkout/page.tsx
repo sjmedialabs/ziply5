@@ -143,6 +143,7 @@ export default function CheckoutPage() {
 
   const couponApplied = !!couponCode.trim() && offerBreakdown.some((entry) => entry.type === "coupon");
   const [savedAddresses, setSavedAddresses] = useState<Addr[]>([]);
+  const [loadingAddresses, setLoadingAddresses] = useState(true);
   const [selectedAddressId, setSelectedAddressId] = useState<string>("manual");
   const [originalAddress, setOriginalAddress] = useState<Addr | null>(null);
   const [billing, setBilling] = useState({
@@ -166,41 +167,75 @@ export default function CheckoutPage() {
       router.replace(`/login?next=${encodeURIComponent("/checkout")}`);
       return;
     }
+    setLoadingAddresses(true);
     try {
       const data = await authedFetch<Addr[]>("/api/v1/me/addresses");
       setSavedAddresses(data);
 
-      const savedCheckout = readCheckoutStorage();
-      if (savedCheckout && savedCheckout.billingAddress) {
-        const [firstName, ...last] = (savedCheckout.billingAddress.fullName || "").split(" ");
-        const fn = firstName ?? "";
-        const ln = last.join(" ");
-        const em = savedCheckout.billingAddress.email ?? "";
-        const l1 = savedCheckout.billingAddress.addressLine1 ?? "";
-        const pc = savedCheckout.billingAddress.postalCode ?? "";
-        const ph = savedCheckout.billingAddress.phone ?? "";
-        const st = savedCheckout.billingAddress.state ?? "";
-        const ct = savedCheckout.billingAddress.city ?? "";
+      let initialSelectedId = "manual";
+      let initialAddr: Addr | null = null;
 
-        const match = data.find((a) => {
-          return (
-            (a.firstName || "") === fn &&
-            (a.lastName || "") === ln &&
-            (a.email || "") === em &&
-            a.line1 === l1 &&
-            a.city === ct &&
-            a.state === st &&
-            a.postalCode === pc &&
-            (a.phone || "") === ph
-          );
-        });
+      const defaultAddr = data.find((a) => a.isDefault);
+      if (defaultAddr) {
+        initialSelectedId = defaultAddr.id;
+        initialAddr = defaultAddr;
+      } else {
+        const savedCheckout = readCheckoutStorage();
+        if (savedCheckout && savedCheckout.billingAddress) {
+          const [firstName, ...last] = (savedCheckout.billingAddress.fullName || "").split(" ");
+          const fn = firstName ?? "";
+          const ln = last.join(" ");
+          const em = savedCheckout.billingAddress.email ?? "";
+          const l1 = savedCheckout.billingAddress.addressLine1 ?? "";
+          const pc = savedCheckout.billingAddress.postalCode ?? "";
+          const ph = savedCheckout.billingAddress.phone ?? "";
+          const st = savedCheckout.billingAddress.state ?? "";
+          const ct = savedCheckout.billingAddress.city ?? "";
 
-        if (match) {
-          setSelectedAddressId(match.id);
-          setOriginalAddress(match);
+          const match = data.find((a) => {
+            return (
+              (a.firstName || "") === fn &&
+              (a.lastName || "") === ln &&
+              (a.email || "") === em &&
+              a.line1 === l1 &&
+              a.city === ct &&
+              a.state === st &&
+              a.postalCode === pc &&
+              (a.phone || "") === ph
+            );
+          });
+
+          if (match) {
+            initialSelectedId = match.id;
+            initialAddr = match;
+          }
+        }
+
+        if (initialSelectedId === "manual" && data.length > 0) {
+          initialSelectedId = data[0].id;
+          initialAddr = data[0];
         }
       }
-    } catch { }
+
+      if (initialAddr) {
+        setSelectedAddressId(initialSelectedId);
+        loadedPostalCodeRef.current = initialAddr.postalCode;
+        setBilling({
+          firstName: initialAddr.firstName || "",
+          lastName: initialAddr.lastName || "",
+          email: initialAddr.email || "",
+          line1: initialAddr.line1,
+          postalCode: initialAddr.postalCode,
+          phone: initialAddr.phone || "",
+        });
+        setState(initialAddr.state);
+        setCity(initialAddr.city);
+        setOriginalAddress(initialAddr);
+      }
+    } catch {
+    } finally {
+      setLoadingAddresses(false);
+    }
   }, [router]);
 
   useEffect(() => {
@@ -905,7 +940,7 @@ export default function CheckoutPage() {
         <div className="max-w-7xl mx-auto px-4 grid lg:grid-cols-3 gap-10">
 
           {/* LEFT FORM */}
-          <div className="lg:col-span-2 flex flex-col gap-4">
+          <div className="lg:col-span-2 flex flex-col gap-4 order-2 lg:order-1">
 
             {/* Back Button */}
             <div>
@@ -922,158 +957,64 @@ export default function CheckoutPage() {
                 Billing Address:
               </h2>
 
-              {savedAddresses.length > 0 && (
-                <div className="mb-6">
-                  <label className="text-[#646464] text-xs font-semibold uppercase block mb-1">Select from saved addresses</label>
-                  <Select value={selectedAddressId} onValueChange={handleAddressSelect}>
-                    <SelectTrigger className="input">
-                      <SelectValue placeholder="Choose a saved address" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="manual">Add new address...</SelectItem>
-                      {savedAddresses.map((a) => (
-                        <SelectItem key={a.id} value={a.id}>
-                          {a.label || a.line1} ({a.city})
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <p className="mt-2 text-[10px] text-[#646464]">
-                    Fields will autofill based on selection. You can still edit them manually.
-                  </p>
+              {loadingAddresses ? (
+                <div className="flex items-center justify-center p-8 rounded-2xl border border-[#E8DCC8] bg-white mb-4">
+                  <div className="flex items-center gap-2 text-[#7B3010]">
+                    <Loader2 className="h-5 w-5 animate-spin" />
+                    <span className="text-sm font-semibold">Loading saved addresses...</span>
+                  </div>
+                </div>
+              ) : savedAddresses.length > 0 ? (
+                <div className="grid sm:grid-cols-2 gap-4 mb-4">
+                  {savedAddresses.map((a) => (
+                    <div
+                      key={a.id}
+                      onClick={() => handleAddressSelect(a.id)}
+                      className={`cursor-pointer rounded-2xl border p-4 transition-all duration-200 relative ${
+                        selectedAddressId === a.id
+                          ? "border-[#7B3010] bg-[#FFFBF3] ring-1 ring-[#7B3010]"
+                          : "border-[#E8DCC8] bg-white hover:border-[#7B3010]/50"
+                      }`}
+                    >
+                      <div className="flex justify-between items-start">
+                        <div>
+                          {a.label && (
+                            <span className="inline-block rounded-full bg-[#7B3010]/10 px-2.5 py-0.5 text-[10px] font-bold uppercase text-[#7B3010] mb-2">
+                              {a.label}
+                            </span>
+                          )}
+                          <p className="font-melon font-bold text-[#4A1D1F]">
+                            {a.firstName} {a.lastName}
+                          </p>
+                          <p className="text-sm text-[#333] mt-1">{a.line1}</p>
+                          {a.line2 && <p className="text-sm text-[#333]">{a.line2}</p>}
+                          <p className="text-sm text-[#646464] font-medium">
+                            {a.city}, {a.state} {a.postalCode}
+                          </p>
+                          {a.phone && <p className="text-xs text-[#646464] mt-1 font-semibold">📞 {a.phone}</p>}
+                        </div>
+                        {selectedAddressId === a.id && (
+                          <div className="h-5 w-5 rounded-full bg-[#7B3010] flex items-center justify-center text-white text-xs font-bold shrink-0">
+                            ✓
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="rounded-2xl border border-[#E8DCC8] bg-white p-6 text-center text-sm text-[#646464] mb-4">
+                  No saved addresses found. Please add a billing address to proceed.
                 </div>
               )}
 
-              <div className="grid md:grid-cols-2 gap-4">
-
-                {/* First Name */}
-                <div>
-                  <label className="text-[#646464] text-sm">First Name <span className="text-red-500">*</span></label>
-                  <input
-                    className="input mt-1"
-                    placeholder="First name"
-                    value={billing.firstName}
-                    onChange={(e) => setBilling((prev) => ({ ...prev, firstName: e.target.value }))}
-                  />
-                </div>
-
-                {/* Last Name */}
-                <div>
-                  <label className="text-[#646464] text-sm">Last Name <span className="text-red-500">*</span></label>
-                  <input
-                    className="input mt-1"
-                    placeholder="Last name"
-                    value={billing.lastName}
-                    onChange={(e) => setBilling((prev) => ({ ...prev, lastName: e.target.value }))}
-                  />
-                </div>
-
-                {/* Email */}
-                <div className="">
-                  <label className="text-[#646464] text-sm">Email Address <span className="text-red-500">*</span></label>
-                  <input
-                    className="input mt-1"
-                    placeholder="Email address"
-                    value={billing.email}
-                    onChange={(e) => setBilling((prev) => ({ ...prev, email: e.target.value }))}
-                  />
-                </div>
-
-                {/* Address Line */}
-                <div className="">
-                  <label className="text-[#646464] text-sm">Address Line <span className="text-red-500">*</span></label>
-                  <input
-                    className="input mt-1"
-                    placeholder="House no, street, area"
-                    value={billing.line1}
-                    onChange={(e) => setBilling((prev) => ({ ...prev, line1: e.target.value }))}
-                  />
-                </div>
-
-                {/* State */}
-                <div>
-                  <label className="text-[#646464] text-sm">State <span className="text-red-500">*</span></label>
-                  <Select value={state || undefined} onValueChange={(val) => {
-                    setState(val);
-                    setCity(""); // reset city
-                  }}>
-                    <SelectTrigger className="input mt-1">
-                      <SelectValue placeholder="Select State" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {state && (
-                        <SelectItem key="fallback-state" value={state}>{state}</SelectItem>
-                      )}
-                      {(states || []).filter((s) => s.label !== state).map((s) => (
-                        <SelectItem key={s.value} value={s.label}>
-                          {s.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                {/* City */}
-                <div>
-                  <label className="text-[#646464] text-sm">City <span className="text-red-500">*</span></label>
-                  <Select
-                    value={city || undefined}
-                    onValueChange={setCity}
-                    disabled={!state}
-                  >
-                    <SelectTrigger className="input mt-1">
-                      <SelectValue placeholder={!state ? "Select state first" : "Select City"} />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {city && (
-                        <SelectItem key="fallback-city" value={city}>{city}</SelectItem>
-                      )}
-                      {(availableCities || []).filter((c) => c.label !== city).map((c) => (
-                        <SelectItem key={c.value} value={c.label}>
-                          {c.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                {/* Zip Code */}
-                <div className="">
-                  <label className="text-[#646464] text-sm">Zip / Postal Code <span className="text-red-500">*</span></label>
-                  <input
-                    className="input mt-1"
-                    placeholder="Enter pincode"
-                    value={billing.postalCode}
-                    onChange={(e) => {
-                      loadedPostalCodeRef.current = "";
-                      setBilling((prev) => ({ ...prev, postalCode: e.target.value }));
-                    }}
-                    disabled={fetchingPincode}
-                    onBlur={(e) => {
-                      const value = e.target.value;
-
-                      if (!/^\d{6}$/.test(value)) {
-                        toast.error("Invalid Pincode (must be 6 digits)");
-                      }
-                    }}
-                  />
-                  {fetchingPincode && <p className="text-[10px] text-primary animate-pulse mt-1">Fetching location details...</p>}
-                </div>
-
-                {/* Phone */}
-                <div className="">
-                  <label className="text-[#646464] text-sm">Phone <span className="text-red-500">*</span></label>
-                  <input
-                    className="input mt-1"
-                    placeholder="10-digit mobile number"
-                    value={billing.phone}
-                    maxLength={10}
-                    onChange={(e) => {
-                      const val = e.target.value.replace(/\D/g, "");
-                      setBilling((prev) => ({ ...prev, phone: val }));
-                    }}
-                  />
-                </div>
+              <div className="mb-6">
+                <Link href="/addresses/manage?next=/checkout">
+                  <button className="flex items-center gap-2 rounded-xl border border-[#7B3010] bg-white px-5 py-2.5 text-sm font-semibold text-[#7B3010] hover:bg-[#FFFBF3] transition-colors cursor-pointer">
+                    + Add New Address
+                  </button>
+                </Link>
+              </div>
 
                 {/* Delivery validation (Shiprocket serviceability — pricing is Ziply5 slabs only) */}
                 {billing.postalCode.trim().length >= 6 && validatedItems.length > 0 && (
@@ -1131,7 +1072,6 @@ export default function CheckoutPage() {
                   </div>
                 )}
 
-              </div>
             </div>
             <div className="mt-4 flex flex-col gap-4">
               {/* Terms */}
@@ -1170,14 +1110,20 @@ export default function CheckoutPage() {
           </div>
 
           {/* RIGHT SUMMARY */}
-          <div className="bg-[#FFC222] rounded-3xl p-4 md:p-8 h-fit">
+          <div className="bg-[#FFC222] rounded-3xl p-4 md:p-8 h-fit order-1 lg:order-2">
 
             <div className="flex justify-between font-melon ">
               <span>Items</span>
               <span>Price</span>
             </div>
             <div className="w-full h-0.5 bg-black mt-4"></div>
-            <div className="space-y-4 py-8">
+            <div 
+              className="space-y-4 py-4 max-h-[320px] overflow-y-auto pr-2"
+              style={{
+                scrollbarWidth: 'thin',
+                scrollbarColor: '#7B3010 rgba(0,0,0,0.1)'
+              }}
+            >
               {validatedItems.map((item) => (
                 <div key={item.id}>
                   <div className="flex justify-between text-sm pb-2">

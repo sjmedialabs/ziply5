@@ -169,10 +169,10 @@ export default function Header() {
       setUserDropdownOpen(false)
       setIsLoggedIn(false)
       setProfileHref("/login")
-      
+
       // Notify other components/tabs
       window.dispatchEvent(new Event("storage"))
-      
+
       router.push("/login")
     }
   }
@@ -374,7 +374,7 @@ export default function Header() {
               {/* DROPDOWN */}
               <div className={`absolute left-0 top-[calc(100%+16px)] w-[100vw] flex justify-start ${productDropdownOpen ? "opacity-100 visible" : "opacity-0 invisible"} transition-all duration-300`}>
 
-                <div className="relative w-full max-w-7xl">
+                <div className="relative w-auto max-w-7xl">
 
                   {/*  DYNAMIC ARROW */}
                   {/* <div
@@ -387,8 +387,8 @@ export default function Header() {
                     }}
                   /> */}
 
-                  <div className="bg-[#7a1e0e] text-white rounded-2xl shadow-xl py-10 px-8">
-                    <div className="grid grid-cols-4 gap-10">
+                  <div className="bg-[#7a1e0e] text-white rounded-2xl shadow-xl py-10 px-6">
+                    <div className="grid grid-cols-4 gap-5">
                       {menuCategories.length === 0 ? (
                         <div className="col-span-4 text-sm text-white/80">No categories with products yet.</div>
                       ) : (
@@ -438,7 +438,7 @@ export default function Header() {
                 width={180}
                 height={80}
                 priority
-                className="h-auto w-36 md:w-auto object-contain"
+                className="h-auto w-36 lg:w-auto object-contain"
               />
             </Link>
           </div>
