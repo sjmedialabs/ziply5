@@ -394,7 +394,7 @@ export default function ProductPage() {
                   <span className="ml-1">
                     {product.stock < 5 ? `Hurry up only ${product.stock} left` : `${product.stock} available`}
                   </span>
-                ) : null}
+                )}
                 {activeVariant && activeVariant.stock > 0 && (
                   <> {activeVariant.stock <= 5 ? "Hurry, only a few left!" : `${activeVariant.stock} available`}</>
                 )}

@@ -48,6 +48,25 @@ export default function Header() {
   const [productDropdownOpen, setProductDropdownOpen] = useState(false)
   const [arrowLeft, setArrowLeft] = useState(0)
 
+  useEffect(() => {
+    if (!pathname) return
+
+    const excludedPaths = [
+      "/login",
+      "/signup",
+      "/forgotPassword",
+      "/reset-password",
+      "/resetPassword",
+    ]
+
+    const isExcluded = excludedPaths.some((p) => pathname.startsWith(p)) || pathname.startsWith("/api")
+
+    if (!isExcluded) {
+      const fullPath = pathname + window.location.search
+      window.sessionStorage.setItem("ziply5_last_visited", fullPath)
+    }
+  }, [pathname])
+
   const loadMenuData = useCallback(async () => {
     try {
       const [catsRes, productsRes] = await Promise.all([
