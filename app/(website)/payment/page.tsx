@@ -110,8 +110,6 @@ function PaymentPageInner() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           sessionKey,
-          email: billingAddress.email,
-          mobile: billingAddress.phone,
           items,
           total: payableAmount,
           eventType,
@@ -401,6 +399,15 @@ const handleOnlinePayment = async () => {
     setError(message);
     toast.error(message);
     setProcessingGateway(null);
+
+    // Delete the order if it was successfully created but payment failed to initiate
+    const token = window.localStorage.getItem("ziply5_access_token");
+    const pendingOrderId = createdOrderId || window.localStorage.getItem("ziply5_pending_order_id");
+    if (pendingOrderId) {
+      void deleteUnpaidOrder(token, pendingOrderId);
+      setCreatedOrderId(null);
+      window.localStorage.removeItem("ziply5_pending_order_id");
+    }
   }
 };
   useEffect(() => {
@@ -475,6 +482,24 @@ const handleOnlinePayment = async () => {
     document.body.appendChild(script);
   }, []);
 
+  const deleteUnpaidOrder = async (token: string | null, orderId: string | null) => {
+    if (!orderId) return;
+    const activeToken = token ?? window.localStorage.getItem("ziply5_access_token");
+    if (!activeToken) return;
+    try {
+      await fetch(`/api/v1/orders/${orderId}/actions`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${activeToken}`,
+        },
+        body: JSON.stringify({ action: "delete_unpaid" }),
+      });
+    } catch (e) {
+      console.error("Failed to delete unpaid order:", e);
+    }
+  };
+
   const askLogin = () => {
     router.push(`/login?next=${encodeURIComponent("/payment")}`);
   };
@@ -547,6 +572,11 @@ const handleOnlinePayment = async () => {
           setError(message)
           toast.error(message)
           void postCartEvent("payment_failed", { reason: error instanceof Error ? error.message : "verify_failed" })
+
+          // Delete unpaid order since payment verification was not successful
+          void deleteUnpaidOrder(token, orderId);
+          setCreatedOrderId(null);
+          window.localStorage.removeItem("ziply5_pending_order_id");
         }
       },
       modal: {
@@ -555,6 +585,13 @@ const handleOnlinePayment = async () => {
           setError("Payment was not completed. Please retry.");
           setProcessingGateway(null);
           void postCartEvent("payment_cancelled", { source: "razorpay_modal_dismiss" });
+
+          // Delete unpaid order completely from DB
+          void deleteUnpaidOrder(token, orderId);
+
+          // Clear order ID from state and localStorage so next click creates a fresh order
+          setCreatedOrderId(null);
+          window.localStorage.removeItem("ziply5_pending_order_id");
         },
       },
     });

@@ -10,6 +10,7 @@ export type StorefrontProduct = {
   stock?: number
   description: string
   image: string
+  status: string
   gallery: string[]
   amazonLink: string | null
   videoUrl: string | null
@@ -51,9 +52,11 @@ type ApiProduct = {
   isBestSeller?: boolean
   amazonLink?: string | null
   isFeatured?: boolean
+  status?: string
   images?: Array<{ url: string }>
   type?: "simple" | "variant"
   saleName?: string | null
+  weight?: string | null
     spiceLevel: string | null
   preparationType: string | null
   variants?: Array<{ id: string; name: string; weight?: string | null; price: string | number; sku: string; stock: number; isDefault?: boolean; discountPercent?: number | null; mrp?: number | null; promotion?: { name: string; kind: string } | null }>
@@ -142,6 +145,7 @@ export const toStorefrontProduct = (p: ApiProduct): StorefrontProduct => {
     id,
     name,
     slug,
+    status: p.status ?? "published",
     sku,
     productKind: p.type ?? (variants.length ? "variant" : "simple"),
     price: sale || 0,
@@ -155,7 +159,9 @@ export const toStorefrontProduct = (p: ApiProduct): StorefrontProduct => {
     image: normalizedThumb ?? normalizedGallery[0] ?? DEFAULT_IMAGE,
     gallery: normalizedGallery ?? [DEFAULT_IMAGE],
     videoUrl: p.videoUrl ?? null,
-    weight: firstVariant?.weight ?? firstVariant?.name ?? "250g",
+    weight: (p.type ?? (variants.length ? "variant" : "simple")) === "variant"
+      ? (firstVariant?.weight ?? firstVariant?.name ?? "")
+      : (p.weight ?? ""),
     type: isVeg ? "veg" : "non-veg",
     category: categorySlug,
     labels: p.labels ?? [],

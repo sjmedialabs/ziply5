@@ -1,9 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { User, Mail, Phone, Lock, Shield, Eye, EyeOff } from "lucide-react";
+import { User, Mail, Phone, Lock, Shield, Eye, EyeOff, CheckCircle2 } from "lucide-react";
 import { OtpVerification } from "./otp/OtpVerification";
 import { toast } from "sonner";
 import { persistSession } from "@/lib/auth-session";
@@ -11,18 +11,35 @@ import { persistSession } from "@/lib/auth-session";
 export default function AuthSignupCard() {
   const router = useRouter();
   const [mode, setMode] = useState<"email" | "mobile">("email");
-  const [step, setStep] = useState<"form" | "otp">("form");
+  const [step, setStep] = useState<"form" | "otp" | "success">("form");
   const [showPassword, setShowPassword] = useState(false);
-  
+  const [countdown, setCountdown] = useState(5);
+
   const [formData, setFormData] = useState({
     name: "",
     email: "",
     phone: "",
     password: "",
   });
-  
+
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+
+  useEffect(() => {
+    if (step !== "success") return;
+
+    const interval = setInterval(() => {
+      setCountdown((prev) => prev - 1);
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [step]);
+
+  useEffect(() => {
+    if (step === "success" && countdown <= 0) {
+      router.push("/login");
+    }
+  }, [countdown, step, router]);
 
   const handleEmailSignup = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -44,9 +61,9 @@ export default function AuthSignupCard() {
       if (!response.ok || !data.success) {
         throw new Error(data.message || "Signup failed");
       }
-      
+
       toast.success("Account created successfully!");
-      router.push("/login");
+      setStep("success");
     } catch (err: any) {
       setError(err.message);
       toast.error(err.message);
@@ -62,11 +79,12 @@ export default function AuthSignupCard() {
     try {
       const res = await fetch("/api/auth/otp/send", {
         method: "POST",
-        body: JSON.stringify({ mobile: formData.phone, purpose: "REGISTER" }),
+        body: JSON.stringify({ mobile: formData.phone, email: formData.email, purpose: "REGISTER" }),
       });
       const data = await res.json();
+      console.log("Signup response data::::", data);
       if (!data.success) throw new Error(data.message);
-      
+
       setStep("otp");
       toast.success("Verification code sent to your mobile");
     } catch (err: any) {
@@ -102,7 +120,9 @@ export default function AuthSignupCard() {
       });
 
       toast.success("Account created successfully!");
-      router.push("/profile");
+
+      setStep("success");
+
     } catch (err: any) {
       setError(err.message);
       toast.error(err.message);
@@ -115,147 +135,184 @@ export default function AuthSignupCard() {
     <div className="relative min-h-screen overflow-hidden bg-[#F7F8FB] px-4 py-10">
       <div className="mx-auto flex w-full max-w-[520px] items-center justify-center">
         <div className="w-full rounded-3xl bg-white p-6 shadow-[0_18px_60px_rgba(15,23,42,0.10)] ring-1 ring-black/5 md:p-10">
-          <div className="mx-auto mb-5 flex h-14 w-14 items-center justify-center rounded-2xl bg-[#FFC222]/20 text-[#7B3010]">
-            <Shield className="h-7 w-7" />
-          </div>
-          <h1 className="text-center font-melon text-3xl font-bold text-[#111827]">
-            {step === "form" ? "Create Account" : "Verify Mobile"}
-          </h1>
-          
-          {step === "form" && (
-            <div className="mt-6 flex gap-2 rounded-2xl bg-[#F3F4F6] p-1">
+          {step === "success" ? (
+            <div className="flex flex-col items-center text-center py-4 animate-in fade-in zoom-in duration-300">
+              <div className="relative mb-6 flex h-20 w-20 items-center justify-center rounded-full bg-[#FFC222]/20 text-[#7B3010] ring-8 ring-[#FFC222]/10">
+                <CheckCircle2 className="h-10 w-10 animate-pulse text-[#7B3010]" />
+              </div>
+              
+              <h1 className="font-melon text-3xl font-bold text-[#111827] mb-3">
+                Account Created!
+              </h1>
+              
+              <p className="text-sm text-[#6B7280] leading-relaxed max-w-sm mb-8">
+                Welcome, <span className="font-semibold text-[#111827]">{formData.name || 'User'}</span>! Your registration was successful. You can now log in to access your dashboard.
+              </p>
+              
+              {/* Progress countdown visual */}
+              <div className="w-full bg-[#F3F4F6] rounded-full h-1.5 mb-2 overflow-hidden">
+                <div 
+                  className="bg-[#FFC222] h-1.5 rounded-full transition-all duration-1000 ease-linear"
+                  style={{ width: `${(Math.max(0, Math.min(5, countdown)) / 5) * 100}%` }}
+                ></div>
+              </div>
+              
+              <p className="mb-6 text-xs text-[#9CA3AF] self-end">
+                Redirecting in <span className="font-semibold text-[#6B7280]">{Math.max(0, countdown)}s</span>...
+              </p>
+              
               <button
-                onClick={() => { setMode("email"); setError(""); }}
-                className={`flex-1 rounded-xl py-2 text-sm font-medium transition ${mode === "email" ? "bg-white text-[#111827] shadow-sm" : "text-[#6B7280]"}`}
+                onClick={() => router.push("/login")}
+                className="h-12 w-full rounded-2xl bg-[#FFC222] font-semibold text-[#7B3010] shadow-sm transition hover:brightness-95 flex items-center justify-center gap-2"
               >
-                E-mail
-              </button>
-              <button
-                onClick={() => { setMode("mobile"); setError(""); }}
-                className={`flex-1 rounded-xl py-2 text-sm font-medium transition ${mode === "mobile" ? "bg-white text-[#111827] shadow-sm" : "text-[#6B7280]"}`}
-              >
-                Mobile No.
+                Go to Login
               </button>
             </div>
-          )}
+          ) : (
+            <>
+              <div className="mx-auto mb-5 flex h-14 w-14 items-center justify-center rounded-2xl bg-[#FFC222]/20 text-[#7B3010]">
+                <Shield className="h-7 w-7" />
+              </div>
+              <h1 className="text-center font-melon text-3xl font-bold text-[#111827]">
+                {step === "form" ? "Create Account" : "Verify Mobile"}
+              </h1>
 
-          {step === "form" ? (
-            mode === "email" ? (
-              <form className="mt-8 flex flex-col gap-4" onSubmit={handleEmailSignup}>
-                <div className="relative">
-                  <User className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-[#9CA3AF]" />
-                  <input
-                    required
-                    placeholder="Full Name"
-                    value={formData.name}
-                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                    className="h-12 w-full rounded-2xl border border-[#E5E7EB] bg-white pl-12 pr-4 text-sm outline-none transition focus:border-[#FFC222]"
-                  />
-                </div>
-                <div className="relative">
-                  <Mail className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-[#9CA3AF]" />
-                  <input
-                    required
-                    type="email"
-                    placeholder="Email Address"
-                    value={formData.email}
-                    onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                    className="h-12 w-full rounded-2xl border border-[#E5E7EB] bg-white pl-12 pr-4 text-sm outline-none transition focus:border-[#FFC222]"
-                  />
-                </div>
-                <div className="relative">
-                  <Lock className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-[#9CA3AF]" />
-                  <input
-                    required
-                    type={showPassword ? "text" : "password"}
-                    placeholder="Password"
-                    value={formData.password}
-                    onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                    className="h-12 w-full rounded-2xl border border-[#E5E7EB] bg-white pl-12 pr-12 text-sm outline-none transition focus:border-[#FFC222]"
-                  />
+              {step === "form" && (
+                <div className="mt-6 flex gap-2 rounded-2xl bg-[#F3F4F6] p-1">
                   <button
-                    type="button"
-                    onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 rounded-lg p-2 text-[#6B7280]"
+                    onClick={() => { setMode("email"); setError(""); }}
+                    className={`flex-1 rounded-xl py-2 text-sm font-medium transition ${mode === "email" ? "bg-white text-[#111827] shadow-sm" : "text-[#6B7280]"}`}
                   >
-                    {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+                    E-mail
+                  </button>
+                  <button
+                    onClick={() => { setMode("mobile"); setError(""); }}
+                    className={`flex-1 rounded-xl py-2 text-sm font-medium transition ${mode === "mobile" ? "bg-white text-[#111827] shadow-sm" : "text-[#6B7280]"}`}
+                  >
+                    Mobile No.
                   </button>
                 </div>
-                {error && <p className="text-sm text-red-500">{error}</p>}
-                <button
-                  type="submit"
-                  disabled={loading}
-                  className="mt-4 h-12 w-full rounded-2xl bg-[#FFC222] font-semibold text-[#7B3010] shadow-sm transition hover:brightness-95 disabled:opacity-60"
-                >
-                  {loading ? "CREATING..." : "CREATE ACCOUNT"}
-                </button>
-              </form>
-            ) : (
-              <form className="mt-8 flex flex-col gap-4" onSubmit={handleSendOtp}>
-                <div className="relative">
-                  <User className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-[#9CA3AF]" />
-                  <input
-                    required
-                    placeholder="Full Name"
-                    value={formData.name}
-                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                    className="h-12 w-full rounded-2xl border border-[#E5E7EB] bg-white pl-12 pr-4 text-sm outline-none transition focus:border-[#FFC222]"
-                  />
-                </div>
-                <div className="relative">
-                  <Mail className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-[#9CA3AF]" />
-                  <input
-                    required
-                    type="email"
-                    placeholder="Email Address"
-                    value={formData.email}
-                    onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                    className="h-12 w-full rounded-2xl border border-[#E5E7EB] bg-white pl-12 pr-4 text-sm outline-none transition focus:border-[#FFC222]"
-                  />
-                </div>
-                <div className="relative">
-                  <Phone className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-[#9CA3AF]" />
-                  <input
-                    required
-                    placeholder="Mobile Number"
-                    value={formData.phone}
-                    onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                    className="h-12 w-full rounded-2xl border border-[#E5E7EB] bg-white pl-12 pr-4 text-sm outline-none transition focus:border-[#FFC222]"
-                  />
-                </div>
-                {error && <p className="text-sm text-red-500">{error}</p>}
-                <button
-                  type="submit"
-                  disabled={loading}
-                  className="mt-4 h-12 w-full rounded-2xl bg-[#FFC222] font-semibold text-[#7B3010] shadow-sm transition hover:brightness-95 disabled:opacity-60"
-                >
-                  {loading ? "SENDING CODE..." : "REGISTER WITH OTP"}
-                </button>
-              </form>
-            )
-          ) : (
-            <div className="mt-8">
-              <OtpVerification
-                mobile={formData.phone}
-                onVerify={handleVerifyOtp}
-                onResend={async () => {
-                  await fetch("/api/auth/otp/send", {
-                    method: "POST",
-                    body: JSON.stringify({ mobile: formData.phone, purpose: "REGISTER" }),
-                  });
-                }}
-                isLoading={loading}
-                errorMessage={error}
-              />
-            </div>
-          )}
+              )}
 
-          <div className="mt-6 text-center text-sm text-[#6B7280]">
-            Already have an account?{" "}
-            <Link href="/login" className="font-semibold text-[#111827] hover:underline">
-              Login
-            </Link>
-          </div>
+              {step === "form" ? (
+                mode === "email" ? (
+                  <form className="mt-8 flex flex-col gap-4" onSubmit={handleEmailSignup}>
+                    <div className="relative">
+                      <User className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-[#9CA3AF]" />
+                      <input
+                        required
+                        placeholder="Full Name"
+                        value={formData.name}
+                        onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                        className="h-12 w-full rounded-2xl border border-[#E5E7EB] bg-white pl-12 pr-4 text-sm outline-none transition focus:border-[#FFC222]"
+                      />
+                    </div>
+                    <div className="relative">
+                      <Mail className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-[#9CA3AF]" />
+                      <input
+                        required
+                        type="email"
+                        placeholder="Email Address"
+                        value={formData.email}
+                        onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                        className="h-12 w-full rounded-2xl border border-[#E5E7EB] bg-white pl-12 pr-4 text-sm outline-none transition focus:border-[#FFC222]"
+                      />
+                    </div>
+                    <div className="relative">
+                      <Lock className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-[#9CA3AF]" />
+                      <input
+                        required
+                        type={showPassword ? "text" : "password"}
+                        placeholder="Password"
+                        value={formData.password}
+                        onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                        className="h-12 w-full rounded-2xl border border-[#E5E7EB] bg-white pl-12 pr-12 text-sm outline-none transition focus:border-[#FFC222]"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowPassword(!showPassword)}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 rounded-lg p-2 text-[#6B7280]"
+                      >
+                        {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+                      </button>
+                    </div>
+                    {error && <p className="text-sm text-red-500">{error}</p>}
+                    <button
+                      type="submit"
+                      disabled={loading}
+                      className="mt-4 h-12 w-full rounded-2xl bg-[#FFC222] font-semibold text-[#7B3010] shadow-sm transition hover:brightness-95 disabled:opacity-60"
+                    >
+                      {loading ? "CREATING..." : "CREATE ACCOUNT"}
+                    </button>
+                  </form>
+                ) : (
+                  <form className="mt-8 flex flex-col gap-4" onSubmit={handleSendOtp}>
+                    <div className="relative">
+                      <User className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-[#9CA3AF]" />
+                      <input
+                        required
+                        placeholder="Full Name"
+                        value={formData.name}
+                        onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                        className="h-12 w-full rounded-2xl border border-[#E5E7EB] bg-white pl-12 pr-4 text-sm outline-none transition focus:border-[#FFC222]"
+                      />
+                    </div>
+                    <div className="relative">
+                      <Mail className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-[#9CA3AF]" />
+                      <input
+                        required
+                        type="email"
+                        placeholder="Email Address"
+                        value={formData.email}
+                        onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                        className="h-12 w-full rounded-2xl border border-[#E5E7EB] bg-white pl-12 pr-4 text-sm outline-none transition focus:border-[#FFC222]"
+                      />
+                    </div>
+                    <div className="relative">
+                      <Phone className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-[#9CA3AF]" />
+                      <input
+                        required
+                        placeholder="Mobile Number"
+                        value={formData.phone}
+                        onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                        className="h-12 w-full rounded-2xl border border-[#E5E7EB] bg-white pl-12 pr-4 text-sm outline-none transition focus:border-[#FFC222]"
+                      />
+                    </div>
+                    {error && <p className="text-sm text-red-500">{error}</p>}
+                    <button
+                      type="submit"
+                      disabled={loading}
+                      className="mt-4 h-12 w-full rounded-2xl bg-[#FFC222] font-semibold text-[#7B3010] shadow-sm transition hover:brightness-95 disabled:opacity-60"
+                    >
+                      {loading ? "SENDING CODE..." : "REGISTER WITH OTP"}
+                    </button>
+                  </form>
+                )
+              ) : (
+                <div className="mt-8">
+                  <OtpVerification
+                    mobile={formData.phone}
+                    onVerify={handleVerifyOtp}
+                    onResend={async () => {
+                      await fetch("/api/auth/otp/send", {
+                        method: "POST",
+                        body: JSON.stringify({ mobile: formData.phone, purpose: "REGISTER" }),
+                      });
+                    }}
+                    isLoading={loading}
+                    errorMessage={error}
+                  />
+                </div>
+              )}
+
+              <div className="mt-6 text-center text-sm text-[#6B7280]">
+                Already have an account?{" "}
+                <Link href="/login" className="font-semibold text-[#111827] hover:underline">
+                  Login
+                </Link>
+              </div>
+            </>
+          )}
         </div>
       </div>
     </div>

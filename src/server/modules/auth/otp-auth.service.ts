@@ -31,17 +31,25 @@ export const otpAuthService = {
     return d.length === 10 ? `91${d}` : d;
   },
 
-  async requestRegistrationOtp(mobileInput: string) {
+  async requestRegistrationOtp(mobileInput: string, email: string) {
     const mobile = this.normalize(mobileInput);
+    console.log("Register with otp:::::::::")
     // Check if user exists
     const existing = await pgQuery(`SELECT id FROM "UserProfile" WHERE phone = $1`, [mobile])
+    console.log("Otp register existing::::::::::", existing);
+
     if (existing.length > 0) throw new Error("Mobile number already registered")
 
+    // Check if email exists
+    const existingEmail = await pgQuery(`SELECT id FROM "User" WHERE lower(email) = lower($1) LIMIT 1`, [email])
+    console.log("Otp register existingEmail::::::::::", existingEmail);
+    if (existingEmail.length > 0) throw new Error("Email already registered")
+
     const code = await otpService.generate(mobile, "REGISTER")
-    
+
     await smsService.send({
       mobile,
-      templateKey: "OTP_VERIFY", 
+      templateKey: "OTP_VERIFY",
       variables: [code],
       body: `Welcome! Your OTP for mobile verification is ${code}. This code is valid for 5 minutes only. - Ziply5`
     })
@@ -87,7 +95,7 @@ export const otpAuthService = {
 
     // 4. Send Welcome Notifications
     const customerName = input.name || "Customer";
-    
+
     // Send SMS (Dual-notification logic will also try to send a simple email)
     await smsService.send({
       mobile,
@@ -124,8 +132,8 @@ export const otpAuthService = {
       ],
     )
 
-    return { 
-      success: true, 
+    return {
+      success: true,
       user: {
         id: user.userId,
         email: input.email,
@@ -145,7 +153,7 @@ export const otpAuthService = {
     if (existing.length === 0) throw new Error("Mobile number not found. Please register first.")
 
     const code = await otpService.generate(mobile, "LOGIN")
-    
+
     await smsService.send({
       mobile,
       templateKey: "LOGIN_OTP",
@@ -173,7 +181,7 @@ export const otpAuthService = {
     if (userRows.length === 0) throw new Error("User data inconsistent")
 
     const user = userRows[0]
-    
+
     // Issue Tokens
     const accessToken = signAccessToken({
       sub: user.id,
@@ -195,8 +203,8 @@ export const otpAuthService = {
       ],
     )
 
-    return { 
-      success: true, 
+    return {
+      success: true,
       user,
       accessToken,
       refreshToken
@@ -209,7 +217,7 @@ export const otpAuthService = {
     if (existing.length === 0) throw new Error("Mobile number not found")
 
     const code = await otpService.generate(mobile, "RESET_PASSWORD")
-    
+
     await smsService.send({
       mobile,
       templateKey: "PASSWORD_RESET",

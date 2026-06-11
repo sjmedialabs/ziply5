@@ -10,6 +10,7 @@ import { useStorefrontProducts } from "@/hooks/useStorefrontProducts" // hook fo
 import { useRouter } from "next/navigation"
 import { X } from "lucide-react"
 import { toast } from "@/lib/toast"
+import VegNonVegTag from "./VegNonVegTag"
 
 function useIsLg() {
   const [isLg, setIsLg] = useState(false)
@@ -37,7 +38,7 @@ const cardGradients = [
 export default function TrendingFood({ cmsData }: { cmsData?: any }) {
   const isLg = useIsLg()
   const router = useRouter()
-  const { products } = useStorefrontProducts(20)
+  const { products } = useStorefrontProducts(200)
   const [favoriteSlugs, setFavoriteSlugs] = useState<string[]>([])
   const [cartQtyBySlug, setCartQtyBySlug] = useState<Record<string, number>>({})
   const trending = products.filter((p) => p.isFeatured === true)
@@ -143,139 +144,171 @@ export default function TrendingFood({ cmsData }: { cmsData?: any }) {
         <SectionHeader title={sectionTitle} linkHref={buttonUrl} linkText={buttonText} />
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 md:gap-8 justify-items-center">
-          {visibleProducts.map((product, index) => (
-            <div
-              key={product.id}
-              className="card-smooth w-full cursor-pointer max-w-sm group bg-white rounded-[16px] overflow-hidden 
-              h-85
-              shadow-[0_10px_25px_rgba(0,0,0,0.08)] 
-              hover:shadow-[0_15px_35px_rgba(0,0,0,0.12)]
-              hover:ring-2 hover:ring-[#EF4444]"
-              onClick={() =>
-                router.push(`/product/${product.slug}`)}
-            >
-              {/* FLEX CONTAINER */}
-              <div className="flex flex-col h-full">
+          {visibleProducts.map((product, index) => {
+            const vegNonVegTag = product.tags?.find((t: any) => t?.tag?.name === "veg" || t?.tag?.name === "non-veg")
+            const tagName = vegNonVegTag?.tag?.name
+            return (
+              <div
+                key={product.id}
+                className="card-smooth w-full cursor-pointer max-w-sm group bg-white rounded-[16px] overflow-hidden 
+                h-85
+                shadow-[0_10px_25px_rgba(0,0,0,0.08)] 
+                hover:shadow-[0_15px_35px_rgba(0,0,0,0.12)]
+                hover:ring-2 hover:ring-[#EF4444]"
+                onClick={() =>
+                  router.push(`/product/${product.slug}`)}
+              >
+                {/* FLEX CONTAINER */}
+                <div className="flex flex-col h-full">
 
-                {/* IMAGE SECTION */}
-                <div
-                  className={`relative bg-gradient-to-b ${cardGradients[index % cardGradients.length]} 
+                  {/* IMAGE SECTION */}
+                  <div
+                    className={`relative bg-gradient-to-b ${cardGradients[index % cardGradients.length]} 
                   flex items-center justify-center 
                   h-[280px] `}
-                >
-                  {/* veg icon */}
-                  <div className="absolute top-2 z-20 right-0 w-20 h-5 rounded-sm flex items-center justify-center">
+                  >
+                    {/* veg icon */}
+                    {/* <div className="absolute top-2 z-20 right-0 w-10 h-10 flex items-center justify-center">
+                    {product.tags[0]?.tag?.name && (
+                      product.tags[0].tag.name === "veg" ? (
+                        <span className="block">
+                          <span style={{ display: 'inline-block', border: '2px solid #16A34A', borderRadius: 4, background: '#fff', width: 15, height: 15,  display: 'flex',
+                              flexDirection: 'row',
+                              justifyContent: 'center',
+                              alignItems: 'center', }}>
+                            <span style={{
+                             
+                              background: '#16A34A',
+                              borderRadius: '50%',
+                              width: 8,
+                              height: 8,
+                              
+                              
+                            }} />
+                          </span>
+                        </span>
+                      ) : (
+                        <span className="block">
+                          <span style={{ display: 'inline-block', border: '2px solid #DC2626', borderRadius: 4, background: '#fff', width: 20, height: 20,  display: 'flex',
+                              flexDirection: 'row',
+                              justifyContent: 'center',
+                              alignItems: 'center' }}>
+                            <span style={{
+                              
+                              background: '#DC2626',
+                              borderRadius: '50%',
+                              width: 8,
+                              height: 8,
+                             
+                            }} />
+                          </span>
+                        </span>
+                      )
+                    )}
+                  </div> */}
                     {
                       product.tags[0]?.tag?.name && (
-                        <>
-                          {
-                            product.tags[0].tag.name === "veg" ? (<span className="absolute top-4 right-0 bg-[#10B981] text-white text-[11px] font-medium px-3 py-1 border border-white rounded-l-sm z-10">
-                              {product.tags[0].tag.name?.charAt(0).toUpperCase() + product.tags[0].tag.name.slice(1)}
-                            </span>) : (<span className="absolute top-4 right-0 bg-[#F97316] text-white text-[11px] font-medium px-3 py-1 rounded-l-sm border border-white z-10">
-                              {product.tags[0].tag.name?.charAt(0).toUpperCase() + product.tags[0].tag.name.slice(1)}
-                            </span>)
-                          }
-                        </>
+                        <VegNonVegTag type={product.tags[0].tag.name} />
                       )
                     }
-                  </div>
-                  <div className="relative h-full w-full transition-transform duration-300 hover:scale-90 ">
-                    <Image
-                      src={product.image}
-                      alt={product.name}
-                      fill
-                      className="object-contain p-4"
-                      sizes="(max-width: 768px) 100vw, 320px"
-                    />
-                  </div>
-                </div>
-
-                {/* CONTENT SECTION */}
-                <div className="flex flex-col px-4 font-melon  py-4">
-                  <div className="flex flex-row justify-between items-center">
-
-                    <div className="px-2 overflow-hidden">
-                      {/* TITLE */}
-                      <h3 className="font-medium uppercase text-primary  text-[14px] mb-1 truncate">
-                        {product.name}
-                      </h3>
-
-                      {/* SUBTITLE */}
-                      <p
-                        className={`text-[12px] font-medium capitalize truncate bg-gradient-to-r ${cardGradients[index % cardGradients.length]} bg-clip-text text-transparent`}
-                      >
-                        {product.description}
-                      </p>
+                    <div className="relative h-full w-full transition-transform duration-300 hover:scale-90 ">
+                      <Image
+                        src={product.image}
+                        alt={product.name}
+                        fill
+                        className="object-contain p-4"
+                        sizes="(max-width: 768px) 100vw, 320px"
+                      />
                     </div>
-                    <button
-                      type="button"
-                      onClick={(e) => handleToggleFavorite(e, product.slug)}
-                      className="border-2 border-[#EF4444] cursor-pointer px-2.5 py-1 rounded-lg text-[12px] font-medium hover:bg-[#EF4444] hover:text-white transition-colors"
-                    >
-                      {favoriteSlugs.includes(product.slug) ? "♥" : "♡"}
-                    </button>
                   </div>
 
-                  <div className="mt-2 flex max-h-0 flex-col gap-2 overflow-hidden opacity-0 transition-all duration-300 group-hover:max-h-24 group-hover:opacity-100">
-                    <span className="font-medium text-[#F97316] text-[16px]">Rs. {product.price.toFixed(2)}</span>
-                    <div className="flex items-center justify-between gap-2">
+                  {/* CONTENT SECTION */}
+                  <div className="flex flex-col px-4 font-melon  py-4">
+                    <div className="flex flex-row justify-between items-center">
 
-                      {(cartQtyBySlug[product.slug] ?? 0) > 0 && product.productKind === "simple" ? (
-                        <div className="flex items-center rounded-md border border-[#d5c4b8] px-1 py-0.5">
+                      <div className="px-2 overflow-hidden">
+                        {/* TITLE */}
+                        <h3 className="font-medium uppercase text-primary  text-[14px] mb-1 truncate">
+                          {product.name}
+                        </h3>
+
+                        {/* SUBTITLE */}
+                        <p
+                          className={`text-[12px] font-medium capitalize truncate bg-gradient-to-r ${cardGradients[index % cardGradients.length]} bg-clip-text text-transparent`}
+                        >
+                          {product.description}
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={(e) => handleToggleFavorite(e, product.slug)}
+                        className="border-2 border-[#EF4444] cursor-pointer px-2.5 py-1 rounded-lg text-[12px] font-medium hover:bg-[#EF4444] hover:text-white transition-colors"
+                      >
+                        {favoriteSlugs.includes(product.slug) ? "♥" : "♡"}
+                      </button>
+                    </div>
+
+                    <div className="mt-2 flex max-h-0 flex-col gap-2 overflow-hidden opacity-0 transition-all duration-300 group-hover:max-h-24 group-hover:opacity-100">
+                      <span className="font-medium text-[#F97316] text-[16px]">Rs. {product.price.toFixed(2)}</span>
+                      <div className="flex items-center justify-between gap-2">
+
+                        {(cartQtyBySlug[product.slug] ?? 0) > 0 && product.productKind === "simple" ? (
+                          <div className="flex items-center rounded-md border border-[#d5c4b8] px-1 py-0.5">
+                            <button
+                              type="button"
+                              onClick={() => setCartItemQuantity(product, Math.max(0, (cartQtyBySlug[product.slug] ?? 0) - 1))}
+                              className="h-6 w-6 rounded text-sm font-bold text-[#5A272A] hover:bg-[#f4efec]"
+                            >
+                              -
+                            </button>
+                            <span className="min-w-5 text-center text-xs font-bold text-[#5A272A]">{cartQtyBySlug[product.slug] ?? 0}</span>
+                            <button
+                              type="button"
+                              onClick={() => setCartItemQuantity(product, (cartQtyBySlug[product.slug] ?? 0) + 1)}
+                              className="h-6 w-6 rounded text-sm font-bold text-[#5A272A] hover:bg-[#f4efec]"
+                            >
+                              +
+                            </button>
+                          </div>
+                        ) : (
                           <button
                             type="button"
-                            onClick={() => setCartItemQuantity(product, Math.max(0, (cartQtyBySlug[product.slug] ?? 0) - 1))}
-                            className="h-6 w-6 rounded text-sm font-bold text-[#5A272A] hover:bg-[#f4efec]"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (product.productKind === "variant") {
+                                setSelectedProduct(product);
+                              } else {
+                                setCartItemQuantity(product, 1);
+                              }
+                            }}
+                            className="rounded-lg border cursor-pointer border-primary tracking-wide px-4 py-1.5 text-[12px] font-light text-primary hover:bg-primary hover:text-white transition-all "
                           >
-                            -
+                            Add to Cart
                           </button>
-                          <span className="min-w-5 text-center text-xs font-bold text-[#5A272A]">{cartQtyBySlug[product.slug] ?? 0}</span>
-                          <button
-                            type="button"
-                            onClick={() => setCartItemQuantity(product, (cartQtyBySlug[product.slug] ?? 0) + 1)}
-                            className="h-6 w-6 rounded text-sm font-bold text-[#5A272A] hover:bg-[#f4efec]"
-                          >
-                            +
-                          </button>
-                        </div>
-                      ) : (
+                        )}
                         <button
-                          type="button"
                           onClick={(e) => {
                             e.stopPropagation();
                             if (product.productKind === "variant") {
                               setSelectedProduct(product);
                             } else {
-                              setCartItemQuantity(product, 1);
+                              if ((cartQtyBySlug[product.slug] ?? 0) === 0) {
+                                setCartItemQuantity(product, 1);
+                              }
+                              router.push("/checkout");
                             }
                           }}
-                          className="rounded-lg border cursor-pointer border-primary tracking-wide px-4 py-1.5 text-[12px] font-light text-primary hover:bg-primary hover:text-white transition-all "
+                          className="rounded-md bg-primary px-3 cursor-pointer tracking-wide py-1.5 text-[12px] font-light text-white hover:bg-[#3a1517]"
                         >
-                          Add to Cart
+                          Buy Now
                         </button>
-                      )}
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          if (product.productKind === "variant") {
-                            setSelectedProduct(product);
-                          } else {
-                            if ((cartQtyBySlug[product.slug] ?? 0) === 0) {
-                              setCartItemQuantity(product, 1);
-                            }
-                            router.push("/checkout");
-                          }
-                        }}
-                        className="rounded-md bg-primary px-3 cursor-pointer tracking-wide py-1.5 text-[12px] font-light text-white hover:bg-[#3a1517]"
-                      >
-                        Buy Now
-                      </button>
+                      </div>
                     </div>
                   </div>
                 </div>
               </div>
-            </div>
-          ))}
+            )
+          })}
         </div>
       </div>
 

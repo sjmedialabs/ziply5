@@ -1,8 +1,8 @@
 "use client"
 
 import Link from "next/link"
-import { usePathname } from "next/navigation"
-import { Menu, X } from "lucide-react"
+import { usePathname, useRouter } from "next/navigation"
+import { Heart, Menu, X } from "lucide-react"
 import { useState, useRef, useEffect, useCallback, Fragment } from "react"
 import Image from "next/image"
 import CartDropdown from "./CartDropdown"
@@ -11,6 +11,7 @@ import LocationDropdown from "./LocationDropdown"
 import { Search, User, ShoppingCart } from "lucide-react"
 import { getCartItems, setCartItems, type CartItem } from "@/lib/cart"
 import { AnimatePresence, m, useReducedMotion } from "framer-motion"
+import { clearSession } from "@/lib/auth-session"
 
 type MenuCategory = {
   id: string
@@ -29,12 +30,16 @@ type ApiProduct = {
 
 export default function Header() {
   const pathname = usePathname()
+  const router = useRouter()
   const reduce = useReducedMotion()
   const [menuOpen, setMenuOpen] = useState(false)
   const { searchOpen, setSearchOpen, searchQuery, setSearchQuery, searchResults, handleSearch } = useSearch()
   const [cartItems, setLocalCartItems] = useState<CartItem[]>([])
   const [cartOpen, setCartOpen] = useState(false)
   const [profileHref, setProfileHref] = useState("/login")
+  const [isLoggedIn, setIsLoggedIn] = useState(false)
+  const [userDropdownOpen, setUserDropdownOpen] = useState(false)
+  const userDropdownRef = useRef<HTMLDivElement>(null)
   const [menuCategories, setMenuCategories] = useState<MenuCategory[]>([])
   const closeCartTimeoutRef = useRef<number | null>(null)
   const [cmsData, setCmsData] = useState<any>(null)
@@ -78,10 +83,10 @@ export default function Header() {
           products:
             idx === 0
               ? products.map((p) => ({
-                  id: p.id as string,
-                  name: p.name as string,
-                  slug: p.slug as string,
-                }))
+                id: p.id as string,
+                name: p.name as string,
+                slug: p.slug as string,
+              }))
               : [],
         }))
       }
@@ -127,17 +132,50 @@ export default function Header() {
     }, 180)
   }
 
+  const handleLogout = async () => {
+    const refreshToken = window.localStorage.getItem("ziply5_refresh_token")
+
+    try {
+      if (refreshToken) {
+        await fetch("/api/v1/auth/logout", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ refreshToken }),
+        })
+      }
+    } catch {
+      // Ignore network/logout API errors and continue local logout.
+    } finally {
+      clearSession({ silent: true })
+      setUserDropdownOpen(false)
+      setIsLoggedIn(false)
+      setProfileHref("/login")
+      
+      // Notify other components/tabs
+      window.dispatchEvent(new Event("storage"))
+      
+      router.push("/login")
+    }
+  }
+
+  useEffect(() => {
+    const handleOutsideClick = (e: MouseEvent) => {
+      if (userDropdownRef.current && !userDropdownRef.current.contains(e.target as Node)) {
+        setUserDropdownOpen(false)
+      }
+    }
+    document.addEventListener("mousedown", handleOutsideClick)
+    return () => document.removeEventListener("mousedown", handleOutsideClick)
+  }, [])
+
   useEffect(() => {
     const syncCart = () => setLocalCartItems(getCartItems())
     const syncProfileHref = () => {
       const token = window.localStorage.getItem("ziply5_access_token")
       const role = window.localStorage.getItem("ziply5_user_role")
-      if (!token) {
+      setIsLoggedIn(Boolean(token))
+      if (!token || role === "admin" || role === "super_admin") {
         setProfileHref("/login")
-        return
-      }
-      if (role === "admin" || role === "super_admin") {
-        setProfileHref("/admin/dashboard")
         return
       }
       setProfileHref("/profile")
@@ -174,6 +212,40 @@ export default function Header() {
     }
   }, [loadMenuData])
 
+  // Sync cart for logged-in users only (avoids post-logout sync clearing abandon state / reminders).
+  useEffect(() => {
+    const hasSession =
+      typeof window !== "undefined" ? !!window.localStorage.getItem("ziply5_refresh_token") : false;
+    let sessionKey = typeof window !== "undefined" ? window.localStorage.getItem("ziply5_session_key") : null;
+
+    if (!sessionKey && typeof window !== "undefined") {
+      sessionKey = "sess_" + Math.random().toString(36).substring(2, 15);
+      window.localStorage.setItem("ziply5_session_key", sessionKey);
+    }
+
+    if (!hasSession || !sessionKey || cartItems.length === 0) return;
+
+    const subTotal = cartItems.reduce((acc, item) => acc + item.price * item.quantity, 0);
+
+    // Let the global interceptor automatically inject the fresh Bearer token (handles silent refresh if expired)
+    void fetch("/api/checkout/start", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        sessionKey,
+        items: cartItems,
+        total: subTotal,
+        eventType: "cart_updated",
+        meta: {
+          checkoutStage: "CART_ACTIVE",
+          lastVisitedPage: pathname || "/",
+        },
+      }),
+    }).catch(() => null);
+  }, [cartItems, pathname]);
+
   const cartCount = cartItems.reduce((sum, item) => sum + item.quantity, 0)
   const total = cartItems.reduce((sum, item) => sum + item.price * item.quantity, 0)
 
@@ -187,7 +259,7 @@ export default function Header() {
             100% { transform: translateX(-50%); }
           }
           .animate-seamless-marquee {
-            animation: seamless-marquee 25s linear infinite;
+            animation: seamless-marquee 40s linear infinite;
             will-change: transform;
           }
           .animate-seamless-marquee:hover {
@@ -231,16 +303,27 @@ export default function Header() {
         </div>
       </div>
 
+      {/* Mobile Location & Profile Bar */}
+      <div className="bg-[#601c10] text-white lg:hidden px-4 py-0.5 flex items-center justify-between">
+        <div className="text-white [&_*]:text-white">
+          <LocationDropdown />
+        </div>
+        <Link href={profileHref} className="p-1 hover:bg-white/10 rounded-full transition-colors">
+          <User size={20} className="text-white" />
+        </Link>
+      </div>
+
       {/* Navigation */}
       <nav className="bg-white w-full relative z-10">
-        <div className="w-full px-4 max-w-7xl mx-auto flex items-center justify-between py-0">
+        <div className="w-full px-4 max-w-7xl mx-auto flex items-center justify-between py-2 md:py-0 relative">
 
-          {/* MOBILE MENU BUTTON */}
+          {/* MOBILE SEARCH BUTTON */}
           <button
-            className="lg:hidden z-40"
-            onClick={() => setMenuOpen(!menuOpen)}
+            onClick={() => setSearchOpen(!searchOpen)}
+            className="lg:hidden flex items-center gap-2 bg-[#e6e6e6] px-3 py-1.5 rounded-lg w-auto"
           >
-            {menuOpen ? <X size={24} /> : <Menu size={24} />}
+            <Search size={16} className="text-[#601c10]" />
+
           </button>
 
           <div className="hidden lg:flex items-center gap-8">
@@ -261,8 +344,8 @@ export default function Header() {
               }}
               onMouseLeave={() => setProductDropdownOpen(false)}
             >
-              <Link 
-                href="/products" 
+              <Link
+                href="/products"
                 onClick={() => setProductDropdownOpen(false)}
                 className="font-extrabold text-black hover:text-[#f97316] transition-colors text-[15px]"
               >
@@ -296,8 +379,8 @@ export default function Header() {
                             <ul className="space-y-3">
                               {category.products.slice(0, 8).map((product, idx) => (
                                 <li key={product.id}>
-                                  <Link 
-                                    href={`/product/${product.slug}`} 
+                                  <Link
+                                    href={`/product/${product.slug}`}
                                     onClick={() => setProductDropdownOpen(false)}
                                     className={`${pathname === `/product/${product.slug}` ? "text-orange-400 font-semibold" : "text-white"} hover:underline`}
                                   >
@@ -328,15 +411,15 @@ export default function Header() {
             </Link>
           </div>
 
-          <div className="flex-1 lg:flex-none flex justify-center">
-            <Link href="/" className="flex items-center">
+          <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 lg:static lg:translate-x-0 lg:translate-y-0 flex-none flex justify-center z-20 pointer-events-none lg:pointer-events-auto">
+            <Link href="/" className="flex items-center pointer-events-auto">
               <Image
                 src={cmsData?.logo || "/primaryLogo.png"}
                 alt="ZiPLY5 Logo"
                 width={180}
                 height={80}
                 priority
-                className="h-auto w-auto object-contain"
+                className="h-auto w-36 md:w-auto object-contain"
               />
             </Link>
           </div>
@@ -349,38 +432,97 @@ export default function Header() {
 
             <button
               onClick={() => setSearchOpen(!searchOpen)}
-              className="p-2 hover:bg-zinc-50 cursor-pointer rounded-full transition-colors"
+              className="hidden lg:block p-2 hover:bg-zinc-50 cursor-pointer rounded-full transition-colors"
               title="Click and Search For Delicious meals.."
             >
               <Search size={20} className="text-zinc-700 hover:text-[#f97316]" />
             </button>
 
             <div className="hidden lg:flex items-center gap-6">
+              <Link href="/profile?tab=favorite" onClick={() => setMenuOpen(false)} className="font-extrabold text-black hover:text-[#f97316] transition-colors text-[15px]" title="Go to whishlist">
+                <Heart size={20} className="text-zinc-700 hover:text-[#f97316]" />
+              </Link>
+              <div className="relative" ref={userDropdownRef}>
+                <button
+                  onClick={() => setUserDropdownOpen(!userDropdownOpen)}
+                  className="p-2 hover:bg-zinc-50 rounded-full transition-colors cursor-pointer flex items-center justify-center"
+                  title="User Options"
+                >
+                  <User size={20} className="text-zinc-700 hover:text-[#f97316]" />
+                </button>
 
-              <Link href={profileHref} className="p-2 hover:bg-zinc-50 rounded-full transition-colors">
-                <User size={20} className="text-zinc-700 hover:text-[#f97316]" />
+                {/* Dropdown Menu */}
+                {userDropdownOpen && (
+                  <div className="absolute right-0 mt-2 w-48 rounded-2xl bg-white border border-[#E8DCC8] p-2 shadow-xl z-[110] animate-in fade-in slide-in-from-top-2 duration-200">
+                    {isLoggedIn ? (
+                      <>
+                        <Link
+                          href={profileHref}
+                          onClick={() => setUserDropdownOpen(false)}
+                          className="flex w-full items-center px-4 py-2.5 text-sm font-semibold text-zinc-700 hover:bg-[#FFFBF3] hover:text-[#7B3010] rounded-xl transition-colors"
+                        >
+                          My Profile
+                        </Link>
+                        <Link
+                          href="/profile?tab=orders"
+                          onClick={() => setUserDropdownOpen(false)}
+                          className="flex w-full items-center px-4 py-2.5 text-sm font-semibold text-zinc-700 hover:bg-[#FFFBF3] hover:text-[#7B3010] rounded-xl transition-colors"
+                        >
+                          My Orders
+                        </Link>
+                        <div className="my-1 border-t border-black/5" />
+                        <button
+                          onClick={() => {
+                            void handleLogout()
+                          }}
+                          className="flex w-full items-center px-4 py-2.5 text-sm font-semibold text-red-600 hover:bg-red-50 rounded-xl transition-colors text-left"
+                        >
+                          Logout
+                        </button>
+                      </>
+                    ) : (
+                      <Link
+                        href="/login"
+                        onClick={() => setUserDropdownOpen(false)}
+                        className="flex w-full items-center px-4 py-2.5 text-sm font-semibold text-zinc-700 hover:bg-[#FFFBF3] hover:text-[#7B3010] rounded-xl transition-colors"
+                      >
+                        Login
+                      </Link>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* MOBILE MENU BUTTON (Right Side) */}
+            <button
+              className="lg:hidden z-40 p-1"
+              onClick={() => setMenuOpen(!menuOpen)}
+            >
+              {menuOpen ? <X size={26} className="text-[#601c10]" /> : <Menu size={26} className="text-[#601c10]" />}
+            </button>
+
+            {/* CART WITH DROPDOWN */}
+            <div className="relative" onMouseEnter={openCart} onMouseLeave={closeCartWithDelay}>
+              <Link
+                href="/cart"
+                className="relative flex items-center justify-center w-8 h-8 rounded-full hover:bg-zinc-50 transition-colors"
+              >
+                <ShoppingCart size={20} className="text-zinc-700 hover:text-[#f97316]" />
+                {cartCount > 0 && (
+                  <m.span
+                    key={cartCount}
+                    initial={reduce ? undefined : { scale: 0.9 }}
+                    animate={reduce ? undefined : { scale: [1, 1.15, 1] }}
+                    transition={reduce ? undefined : { duration: 0.35, ease: "easeOut" }}
+                    className="absolute -top-1.5 -right-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-[#f97316] px-1 text-[10px] font-bold text-white"
+                  >
+                    {cartCount}
+                  </m.span>
+                )}
               </Link>
 
-              {/* CART WITH DROPDOWN */}
-              <div className="relative" onMouseEnter={openCart} onMouseLeave={closeCartWithDelay}>
-                <Link
-                  href="/cart"
-                  className="relative flex items-center justify-center w-8 h-8 rounded-full hover:bg-zinc-50 transition-colors"
-                >
-                  <ShoppingCart size={20} className="text-zinc-700 hover:text-[#f97316]" />
-                  {cartCount > 0 && (
-                    <m.span
-                      key={cartCount}
-                      initial={reduce ? undefined : { scale: 0.9 }}
-                      animate={reduce ? undefined : { scale: [1, 1.15, 1] }}
-                      transition={reduce ? undefined : { duration: 0.35, ease: "easeOut" }}
-                      className="absolute -top-1.5 -right-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-[#f97316] px-1 text-[10px] font-bold text-white"
-                    >
-                      {cartCount}
-                    </m.span>
-                  )}
-                </Link>
-
+              <div className="hidden lg:block">
                 <CartDropdown
                   items={cartItems}
                   total={total}
@@ -388,7 +530,6 @@ export default function Header() {
                   onIncrement={(id) => updateCartQuantity(id, 1)}
                   onDecrement={(id) => updateCartQuantity(id, -1)}
                 />
-
               </div>
 
             </div>
@@ -407,9 +548,9 @@ export default function Header() {
             transition={reduce ? { duration: 0.12 } : { duration: 0.22, ease: "easeOut" }}
             className="lg:hidden bg-white border-t px-6 py-4 space-y-4 shadow-md"
           >
-            <div className="pb-4 border-b">
+            {/* <div className="pb-4 border-b">
               <LocationDropdown />
-            </div>
+            </div> */}
 
             <Link href="/products" onClick={() => setMenuOpen(false)} className="block font-semibold text-black">
               Products
@@ -424,11 +565,8 @@ export default function Header() {
             >
               {cmsData?.link2Title || "Combos"}
             </Link>
-            <Link href={profileHref} onClick={() => setMenuOpen(false)} className="block font-semibold text-black">
-              Profile
-            </Link>
-            <Link href="/cart" onClick={() => setMenuOpen(false)} className="block font-semibold text-black">
-              Cart
+            <Link href="/about" onClick={() => setMenuOpen(false)} className="block font-semibold text-black">
+              About
             </Link>
           </m.div>
         ) : null}
@@ -453,7 +591,7 @@ export default function Header() {
               exit={reduce ? { opacity: 0 } : { opacity: 0, scale: 0.98, y: 8 }}
               transition={reduce ? { duration: 0.12 } : { duration: 0.22, ease: "easeOut" }}
             >
-              <form onSubmit={handleSearch} className="flex gap-3">
+              <form onSubmit={handleSearch} className="flex flex-col sm:flex-row gap-3">
                 <input
                   type="text"
                   placeholder="Search for delicious meals..."
@@ -462,7 +600,7 @@ export default function Header() {
                   onChange={(e) => setSearchQuery(e.target.value)}
                   autoFocus
                 />
-                <button type="submit" className="px-6 py-3 bg-orange-500 text-white font-bold rounded-xl hover:bg-orange-600 transition-colors">
+                <button type="submit" className="w-full sm:w-auto px-6 py-3 bg-orange-500 text-white font-bold rounded-xl hover:bg-orange-600 transition-colors">
                   Search
                 </button>
               </form>

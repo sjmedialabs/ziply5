@@ -15,11 +15,13 @@ import {
 import { createRefund } from "@/src/server/modules/extended/extended.service"
 import { triggerRazorpayRefund } from "@/src/server/modules/payments/payments.service"
 import { env } from "@/src/server/core/config/env"
+import { getSupabaseAdmin } from "@/src/lib/supabase/admin"
 
 const schema = z.object({
   action: z.enum([
     "cancel_request",
     "cancel_pending",
+    "delete_unpaid",
     "return_request",
     "approve_order",
     "reject_order",
@@ -87,6 +89,29 @@ export async function POST(request: NextRequest, ctx: { params: Promise<{ id: st
       })
 
       return ok(updated ?? { id: order.id }, "Pending order cancelled")
+    }
+    if (parsed.data.action === "delete_unpaid") {
+      const paymentStatus = normalizePaymentStatus(order.paymentStatus)
+      if (paymentStatus === "SUCCESS") {
+        return fail("Cannot delete a paid order", 400)
+      }
+
+      // Prohibit deleting COD orders
+      const paymentMethod = String(order.paymentMethod ?? "").trim().toLowerCase()
+      if (paymentMethod === "cod") {
+        return fail("Cannot delete a Cash on Delivery order", 400)
+      }
+
+      const client = getSupabaseAdmin()
+      const orderId = order.id
+
+      // Clean up all related rows to prevent foreign key violations
+      await client.from("OrderItem").delete().eq("orderId", orderId)
+      await client.from("Transaction").delete().eq("orderId", orderId)
+      await client.from("OrderStatusHistory").delete().eq("orderId", orderId)
+      await client.from("Order").delete().eq("id", orderId)
+
+      return ok({ id: orderId }, "Unpaid order deleted successfully")
     }
     if (parsed.data.action === "return_request") {
       if (lifecycleStatus !== "delivered") return fail("Return is allowed only for delivered orders", 422)

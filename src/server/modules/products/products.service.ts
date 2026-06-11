@@ -14,6 +14,7 @@ import {
   updateProductSupabase,
 } from "@/src/lib/db/products"
 import { logger } from "@/lib/logger"
+import { pgQuery } from "@/src/server/db/pg"
 
 export type ListProductsScope = "public" | "admin"
 
@@ -37,8 +38,6 @@ type CreateProductInput = {
   preparationType?: "ready_to_eat" | "ready_to_cook" | null
   spiceLevel?: "mild" | "medium" | "hot" | "extra_hot" | null
   isActive?: boolean
-  isFeatured?: boolean
-  isBestSeller?: boolean
   thumbnail?: string | null
   metaTitle?: string | null
   metaDescription?: string | null
@@ -84,8 +83,6 @@ type UpdateProductInput = Partial<{
   preparationType: "ready_to_eat" | "ready_to_cook" | null
   spiceLevel: "mild" | "medium" | "hot" | "extra_hot" | null
   isActive: boolean
-  isFeatured: boolean
-  isBestSeller: boolean
   allowReturn?: boolean
   thumbnail: string | null
   metaTitle: string | null
@@ -471,6 +468,133 @@ export function applyPromotionToProduct(product: any) {
 
 }
 
+let cachedRankings: {
+  bestSellerIds: Set<string>
+  trendingIds: Set<string>
+  updatedAt: number
+} | null = null
+
+const RANKINGS_CACHE_TTL = 5 * 60 * 1000 // 5 minutes
+
+export async function getDynamicRankings() {
+  const now = Date.now()
+  if (cachedRankings && (now - cachedRankings.updatedAt < RANKINGS_CACHE_TTL)) {
+    return cachedRankings
+  }
+
+  const bestSellerIds = new Set<string>()
+  const trendingIds = new Set<string>()
+
+  try {
+    // 1. Calculate Bestsellers: top completed/delivered orders volume/quantity in last 90 days.
+    // Completed/Delivered orders are status NOT IN ('cancelled', 'pending')
+    const bestSellersRes = await pgQuery<{ productId: string; total_qty: string }>(`
+      SELECT oi."productId", SUM(oi.quantity) as total_qty
+      FROM "OrderItem" oi
+      JOIN "Order" o ON oi."orderId" = o.id
+      WHERE o.status NOT IN ('cancelled', 'pending')
+        AND o."createdAt" >= NOW() - INTERVAL '90 days'
+      GROUP BY oi."productId"
+      ORDER BY total_qty DESC
+      LIMIT 10
+    `)
+
+    bestSellersRes.forEach(row => {
+      if (row.productId) bestSellerIds.add(row.productId)
+    })
+
+    // 2. Calculate Trending: sales momentum (recent growth last 14 days vs prev 14 days)
+    // plus boost for new products
+    const trendingRes = await pgQuery<{ productId: string; qty_recent: string; qty_prev: string }>(`
+      SELECT 
+        oi."productId",
+        SUM(CASE WHEN o."createdAt" >= NOW() - INTERVAL '14 days' THEN oi.quantity ELSE 0 END) as qty_recent,
+        SUM(CASE WHEN o."createdAt" < NOW() - INTERVAL '14 days' AND o."createdAt" >= NOW() - INTERVAL '28 days' THEN oi.quantity ELSE 0 END) as qty_prev
+      FROM "OrderItem" oi
+      JOIN "Order" o ON oi."orderId" = o.id
+      WHERE o.status NOT IN ('cancelled', 'pending')
+        AND o."createdAt" >= NOW() - INTERVAL '28 days'
+      GROUP BY oi."productId"
+    `)
+
+    // We also fetch all active published products to compute their score including the new product boost
+    const activeProducts = await pgQuery<{ id: string; createdAt: string }>(`
+      SELECT id, "createdAt" 
+      FROM "Product" 
+      WHERE status = 'published' AND "isActive" = true
+    `)
+
+    const trendingScores = new Map<string, number>()
+    
+    // Initialize scores for active products
+    const nowTime = new Date()
+    activeProducts.forEach(p => {
+      const createdDate = new Date(p.createdAt)
+      const diffDays = (nowTime.getTime() - createdDate.getTime()) / (1000 * 60 * 60 * 24)
+      // New product boost: if created in the last 30 days, give a boost score of 3.0
+      const isNew = diffDays <= 30
+      trendingScores.set(p.id, isNew ? 3.0 : 0.0)
+    })
+
+    // Add sales momentum to the score
+    trendingRes.forEach(row => {
+      if (!row.productId) return
+      const recent = Number(row.qty_recent || 0)
+      const prev = Number(row.qty_prev || 0)
+      
+      const currentScore = trendingScores.get(row.productId) ?? 0
+      // momentum score = recent * 1.5 + (recent - prev) * 1.0
+      const momentum = recent * 1.5 + (recent - prev) * 1.0
+      trendingScores.set(row.productId, currentScore + momentum)
+    })
+
+    // Sort by score descending and take top 10
+    const sortedTrending = Array.from(trendingScores.entries())
+      .filter(([_, score]) => score > 0)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 10)
+
+    sortedTrending.forEach(([id]) => {
+      trendingIds.add(id)
+    })
+
+    // 3. Fallbacks: If we have fewer than 10 best sellers or trending, fill them up with the most recent published products.
+    // Ensure we do not assign the same fallback product to both lists.
+    const fallbackProducts = await pgQuery<{ id: string }>(`
+      SELECT id 
+      FROM "Product" 
+      WHERE status = 'published' AND "isActive" = true
+      ORDER BY "createdAt" DESC
+      LIMIT 50
+    `)
+
+    for (const p of fallbackProducts) {
+      if (bestSellerIds.size >= 10 && trendingIds.size >= 10) {
+        break
+      }
+      if (bestSellerIds.size < 10 && !bestSellerIds.has(p.id) && !trendingIds.has(p.id)) {
+        bestSellerIds.add(p.id)
+        continue
+      }
+      if (trendingIds.size < 10 && !trendingIds.has(p.id) && !bestSellerIds.has(p.id)) {
+        trendingIds.add(p.id)
+        continue
+      }
+    }
+
+  } catch (error) {
+    logger.error("Error computing dynamic product rankings:", error)
+  }
+
+  cachedRankings = {
+    bestSellerIds,
+    trendingIds,
+    updatedAt: now
+  }
+
+  return cachedRankings
+}
+
 export const listProducts = async (
   page = 1,
   limit = 20,
@@ -492,6 +616,14 @@ export const listProducts = async (
     return true
   })
   const hydrated = await hydrateProductsForListSupabase(items as any[])
+  
+  // Inject dynamic ranking flags
+  const { bestSellerIds, trendingIds } = await getDynamicRankings()
+  hydrated.forEach((product: any) => {
+    product.isBestSeller = bestSellerIds.has(product.id)
+    product.isFeatured = trendingIds.has(product.id)
+  })
+
   return { items: hydrated, total: payload.total, page: payload.page, limit: payload.limit }
 }
 
@@ -499,7 +631,13 @@ export const getProductById = async (id: string) => {
   if (process.env.SUPABASE_PRODUCTS_READ_ENABLED !== "true") {
     throw new Error("SUPABASE_PRODUCTS_READ_ENABLED must be true")
   }
-  return (await getProductByIdSupabaseHydrated(id)) as any
+  const product = (await getProductByIdSupabaseHydrated(id)) as any
+  if (product) {
+    const { bestSellerIds, trendingIds } = await getDynamicRankings()
+    product.isBestSeller = bestSellerIds.has(product.id)
+    product.isFeatured = trendingIds.has(product.id)
+  }
+  return product
 }
 
 export const getProductBySlug = async (slug: string) => {
@@ -507,8 +645,18 @@ export const getProductBySlug = async (slug: string) => {
     throw new Error("SUPABASE_PRODUCTS_READ_ENABLED must be true")
   }
   const id = await getProductIdBySlugSupabase(slug)
-  if (id) return (await getProductByIdSupabaseHydrated(id)) as any
-  return (await getProductBySlugSupabaseBasic(slug)) as any
+  let product: any = null
+  if (id) {
+    product = (await getProductByIdSupabaseHydrated(id)) as any
+  } else {
+    product = (await getProductBySlugSupabaseBasic(slug)) as any
+  }
+  if (product) {
+    const { bestSellerIds, trendingIds } = await getDynamicRankings()
+    product.isBestSeller = bestSellerIds.has(product.id)
+    product.isFeatured = trendingIds.has(product.id)
+  }
+  return product
 }
 export const canAccessProduct = (
   product: { status: string },
@@ -547,8 +695,8 @@ export const createProduct = async (input: CreateProductInput) => {
       preparationType: input.preparationType ?? null,
       spiceLevel: input.spiceLevel ?? null,
       isActive: input.isActive ?? true,
-      isFeatured: input.isFeatured ?? false,
-      isBestSeller: input.isBestSeller ?? false,
+      isFeatured: false,
+      isBestSeller: false,
       amazonLink: input.amazonLink ?? null,
       allowReturn: input.allowReturn ?? true,
       thumbnail: input.thumbnail ?? input.images?.[0] ?? null,
@@ -691,8 +839,8 @@ export const updateProduct = async (
       ...("preparationType" in input ? { preparationType: input.preparationType } : {}),
       ...("spiceLevel" in input ? { spiceLevel: input.spiceLevel } : {}),
       ...("isActive" in input && input.isActive !== undefined ? { isActive: input.isActive } : {}),
-      ...("isFeatured" in input && input.isFeatured !== undefined ? { isFeatured: input.isFeatured } : {}),
-      ...("isBestSeller" in input && input.isBestSeller !== undefined ? { isBestSeller: input.isBestSeller } : {}),
+      isFeatured: false,
+      isBestSeller: false,
       ...("allowReturn" in input && input.allowReturn !== undefined ? { allowReturn: input.allowReturn } : {}),
       ...("thumbnail" in input ? { thumbnail: input.thumbnail } : {}),
       ...("metaTitle" in input ? { metaTitle: input.metaTitle } : {}),

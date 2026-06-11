@@ -96,9 +96,10 @@ export default function ComboDetailPage({ params }: { params: Promise<{ slug: st
           <h1 className="font-melon text-3xl font-bold text-[#4A1D1F]">{bundle.name}</h1>
           <p className="text-sm text-[#646464]">{bundle.description || "Combo bundle of selected products."}</p>
           <div className="rounded-xl border border-[#E8DCC8] bg-[#FFFBF3] p-3 text-sm">
-            <p>Price: Rs.{Number(bundle.effectivePrice).toFixed(2)}</p>
-            <p>Regular total: Rs.{Number(bundle.dynamicPrice).toFixed(2)}</p>
-            <p className="font-semibold text-[#7B3010]">Savings: Rs.{Number(bundle.savings).toFixed(2)}</p>
+
+            <p>Regular Price: Rs.{Number(bundle.dynamicPrice).toFixed(2)}</p>
+            <p>Offer Price: Rs.{Number(bundle.effectivePrice).toFixed(2)}</p>
+            <p className="font-semibold text-[#7B3010]">Savings: Rs.{Number(bundle.dynamicPrice - bundle.effectivePrice).toFixed(2)}</p>
           </div>
           <div className="flex gap-2">
             <button onClick={addCombo} className="rounded-full bg-[#7B3010] px-5 py-2 text-xs font-semibold uppercase tracking-wide text-white">
@@ -106,21 +107,20 @@ export default function ComboDetailPage({ params }: { params: Promise<{ slug: st
             </button>
             {qty > 0 ? (
               <button
-                onClick={() =>
-                  {
-                    if (!bundle.isAvailable || Number(bundle.maxPurchasableQty ?? 0) <= 0) {
-                      toast.error("Combo product is no longer available.")
-                      return
-                    }
-                    if (qty + 1 > Number(bundle.maxPurchasableQty ?? 0)) {
-                      toast.error("Product is out of stock.", "Requested quantity is not available for this combo.")
-                      return
-                    }
-                    setCartItemQuantity(
-                      { slug: bundle.slug, name: bundle.name, variantId: null, price: Number(bundle.effectivePrice), image: bundle.image || FALLBACK_PRODUCT_IMAGE, weight: `${bundle.products.length} items` },
-                      qty + 1,
-                    )
+                onClick={() => {
+                  if (!bundle.isAvailable || Number(bundle.maxPurchasableQty ?? 0) <= 0) {
+                    toast.error("Combo product is no longer available.")
+                    return
                   }
+                  if (qty + 1 > Number(bundle.maxPurchasableQty ?? 0)) {
+                    toast.error("Product is out of stock.", "Requested quantity is not available for this combo.")
+                    return
+                  }
+                  setCartItemQuantity(
+                    { slug: bundle.slug, name: bundle.name, variantId: null, price: Number(bundle.effectivePrice), image: bundle.image || FALLBACK_PRODUCT_IMAGE, weight: `${bundle.products.length} items` },
+                    qty + 1,
+                  )
+                }
                 }
                 className="rounded-full border border-[#E8DCC8] px-4 py-2 text-xs font-semibold uppercase tracking-wide"
               >

@@ -98,6 +98,8 @@ async function hydrateBundles(baseRows: BundleRow[]) {
         productId: string
         productStatus: string
         productIsActive: boolean | null
+        productType: string | null
+        productStock: number | null
         variantId: string | null
         variantStock: number | null
       }>(
@@ -107,6 +109,8 @@ async function hydrateBundles(baseRows: BundleRow[]) {
             bp."productId" as "productId",
             p.status as "productStatus",
             p."isActive" as "productIsActive",
+            p.type as "productType",
+            p."totalStock" as "productStock",
             pv.id as "variantId",
             pv.stock as "variantStock"
           FROM "BundleProduct" bp
@@ -146,14 +150,25 @@ async function hydrateBundles(baseRows: BundleRow[]) {
         blockedReason = "product_inactive"
         break
       }
-      const validVariant = productRows
-        .filter((row) => Boolean(row.variantId) && Number(row.variantStock ?? 0) > 0)
-        .sort((a, b) => Number(b.variantStock ?? 0) - Number(a.variantStock ?? 0))[0]
-      if (!validVariant) {
-        blockedReason = "variant_unavailable"
-        break
+      const hasVariants = productRows.some((row) => Boolean(row.variantId))
+      const isSimple = first.productType === "simple" || (!hasVariants && first.productType !== "variant")
+      if (isSimple) {
+        const stock = Math.floor(Number(first.productStock ?? 0))
+        if (stock <= 0) {
+          blockedReason = "variant_unavailable"
+          break
+        }
+        stockCaps.push(stock)
+      } else {
+        const validVariant = productRows
+          .filter((row) => Boolean(row.variantId) && Number(row.variantStock ?? 0) > 0)
+          .sort((a, b) => Number(b.variantStock ?? 0) - Number(a.variantStock ?? 0))[0]
+        if (!validVariant) {
+          blockedReason = "variant_unavailable"
+          break
+        }
+        stockCaps.push(Math.floor(Number(validVariant.variantStock ?? 0)))
       }
-      stockCaps.push(Math.floor(Number(validVariant.variantStock ?? 0)))
     }
     const maxPurchasableQty = blockedReason ? 0 : Math.min(...stockCaps)
     availabilityByBundle.set(bundleId, {
