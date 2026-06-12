@@ -829,10 +829,13 @@ export const createUserAddress = (
     isDefault?: boolean
   },
 ) =>
-  createUserAddressSupabase(userId, data).catch((error) => {
+  createUserAddressSupabase(userId, data).catch(async (error) => {
     logger.warn("addresses.create.supabase_pg_fallback", {
       error: error instanceof Error ? error.message : "unknown",
     })
+    if (data.isDefault) {
+      await pgQuery(`UPDATE "UserAddress" SET "isDefault" = false WHERE "userId" = $1`, [userId]).catch(() => null)
+    }
     return pgQuery(
       `INSERT INTO "UserAddress" (id, "userId", label, "firstName", "lastName", email, line1, line2, city, state, "postalCode", country, phone, "isDefault", "createdAt", "updatedAt")
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,now(),now())
@@ -884,6 +887,9 @@ export const updateUserAddress = async (
   }
   const found = await pgQuery<Array<{ id: string }>>(`SELECT id FROM "UserAddress" WHERE id=$1 AND "userId"=$2 LIMIT 1`, [id, userId])
   if (!found[0]) return { count: 0 }
+  if (data.isDefault) {
+    await pgQuery(`UPDATE "UserAddress" SET "isDefault" = false WHERE "userId" = $1`, [userId]).catch(() => null)
+  }
   const sets: string[] = []
   const values: any[] = []
   for (const [k, v] of Object.entries(data)) {

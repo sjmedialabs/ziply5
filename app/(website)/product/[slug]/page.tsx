@@ -390,11 +390,11 @@ export default function ProductPage() {
                     product.stockStatus?.replace("_", " ")
                   ) : null
                 )}
-                {product.productKind === "simple" && product.stock && product?.stock > 0 ? (
+                {product.productKind === "simple" && product.stock && product?.stock > 0 && (
                   <span className="ml-1">
                     {product.stock < 5 ? `Hurry up only ${product.stock} left` : `${product.stock} available`}
                   </span>
-                ) : null}
+                )}
                 {activeVariant && activeVariant.stock > 0 && (
                   <> {activeVariant.stock <= 5 ? "Hurry, only a few left!" : `${activeVariant.stock} available`}</>
                 )}
