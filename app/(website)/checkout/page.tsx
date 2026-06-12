@@ -970,20 +970,19 @@ export default function CheckoutPage() {
                     <div
                       key={a.id}
                       onClick={() => handleAddressSelect(a.id)}
-                      className={`cursor-pointer rounded-2xl border p-4 transition-all duration-200 relative ${
-                        selectedAddressId === a.id
+                      className={`cursor-pointer rounded-2xl border p-4 transition-all duration-200 relative ${selectedAddressId === a.id
                           ? "border-[#7B3010] bg-[#FFFBF3] ring-1 ring-[#7B3010]"
                           : "border-[#E8DCC8] bg-white hover:border-[#7B3010]/50"
-                      }`}
+                        }`}
                     >
                       <div className="flex justify-between items-start">
                         <div>
                           {a.label && (
-                            <span className="inline-block rounded-full bg-[#7B3010]/10 px-2.5 py-0.5 text-[10px] font-bold uppercase text-[#7B3010] mb-2">
+                            <span className="inline-block rounded-full bg-[#7B3010]/10 px-2.5 py-0.5 text-[10px] font-medium uppercase text-[#7B3010] mb-2">
                               {a.label}
                             </span>
                           )}
-                          <p className="font-melon font-bold text-[#4A1D1F]">
+                          <p className="font-melon font-medium text-[#4A1D1F]">
                             {a.firstName} {a.lastName}
                           </p>
                           <p className="text-sm text-[#333] mt-1">{a.line1}</p>
@@ -1016,61 +1015,61 @@ export default function CheckoutPage() {
                 </Link>
               </div>
 
-                {/* Delivery validation (Shiprocket serviceability — pricing is Ziply5 slabs only) */}
-                {billing.postalCode.trim().length >= 6 && validatedItems.length > 0 && (
-                  <div className="md:col-span-2 rounded-xl border border-[#e8e0d4] bg-white/80 p-3 text-sm text-[#646464]">
-                    {deliveryCheck.loading && (
-                      <p className="flex items-center gap-2">
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                        Checking delivery for this pincode…
-                      </p>
-                    )}
-                    {!deliveryCheck.loading && deliveryCheck.error && (
-                      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                        <span className="text-amber-800">{deliveryCheck.error}</span>
-                        <button
-                          type="button"
-                          className="rounded-full border border-[#7B3010] px-3 py-1 text-xs font-semibold text-[#7B3010]"
-                          onClick={() => void runDeliveryCheck()}
-                        >
-                          Retry
-                        </button>
-                      </div>
-                    )}
-                    {!deliveryCheck.loading && !deliveryCheck.error && deliveryCheck.data?.status === "deliverable" && (
-                      <p className="text-emerald-800">
-                        Deliverable
-                        {deliveryCheck.data.estimatedDeliveryDaysMin != null && (
-                          <span className="ml-1">
-                            · Est. {deliveryCheck.data.estimatedDeliveryDaysMin}
-                            {deliveryCheck.data.estimatedDeliveryDaysMax != null &&
-                              deliveryCheck.data.estimatedDeliveryDaysMax !== deliveryCheck.data.estimatedDeliveryDaysMin
-                              ? `–${deliveryCheck.data.estimatedDeliveryDaysMax}`
-                              : ""}{" "}
-                            day(s)
-                          </span>
-                        )}
-                      </p>
-                    )}
-                    {!deliveryCheck.loading && !deliveryCheck.error && deliveryCheck.data?.status === "limited_service" && (
-                      <p className="text-amber-900">
-                        Limited service for this pincode (fewer courier options or longer transit). You can continue with prepaid;
-                        COD may be restricted for this destination.
-                      </p>
-                    )}
-                    {!deliveryCheck.loading && !deliveryCheck.error && deliveryCheck.data?.status === "not_deliverable" && (
-                      <p className="text-red-700 font-medium">
-                        Not deliverable to this pincode. Please update your address to continue.
-                      </p>
-                    )}
-                    {!deliveryCheck.loading && !deliveryCheck.error && deliveryCheck.data?.status === "api_unavailable" && (
-                      <p className="text-amber-900">
-                        {deliveryCheck.data.message ??
-                          "We could not verify delivery with the carrier right now. You may still place your order; we will confirm before dispatch."}
-                      </p>
-                    )}
-                  </div>
-                )}
+              {/* Delivery validation (Shiprocket serviceability — pricing is Ziply5 slabs only) */}
+              {billing.postalCode.trim().length >= 6 && validatedItems.length > 0 && (
+                <div className="md:col-span-2 rounded-xl border border-[#e8e0d4] bg-white/80 p-3 text-sm text-[#646464]">
+                  {deliveryCheck.loading && (
+                    <p className="flex items-center gap-2">
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Checking delivery for this pincode…
+                    </p>
+                  )}
+                  {!deliveryCheck.loading && deliveryCheck.error && (
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                      <span className="text-amber-800">{deliveryCheck.error}</span>
+                      <button
+                        type="button"
+                        className="rounded-full border border-[#7B3010] px-3 py-1 text-xs font-semibold text-[#7B3010]"
+                        onClick={() => void runDeliveryCheck()}
+                      >
+                        Retry
+                      </button>
+                    </div>
+                  )}
+                  {!deliveryCheck.loading && !deliveryCheck.error && deliveryCheck.data?.status === "deliverable" && (
+                    <p className="text-emerald-800">
+                      Deliverable
+                      {deliveryCheck.data.estimatedDeliveryDaysMin != null && (
+                        <span className="ml-1">
+                          · Est. {deliveryCheck.data.estimatedDeliveryDaysMin}
+                          {deliveryCheck.data.estimatedDeliveryDaysMax != null &&
+                            deliveryCheck.data.estimatedDeliveryDaysMax !== deliveryCheck.data.estimatedDeliveryDaysMin
+                            ? `–${deliveryCheck.data.estimatedDeliveryDaysMax}`
+                            : ""}{" "}
+                          day(s)
+                        </span>
+                      )}
+                    </p>
+                  )}
+                  {!deliveryCheck.loading && !deliveryCheck.error && deliveryCheck.data?.status === "limited_service" && (
+                    <p className="text-amber-900">
+                      Limited service for this pincode (fewer courier options or longer transit). You can continue with prepaid;
+                      COD may be restricted for this destination.
+                    </p>
+                  )}
+                  {!deliveryCheck.loading && !deliveryCheck.error && deliveryCheck.data?.status === "not_deliverable" && (
+                    <p className="text-red-700 font-medium">
+                      Not deliverable to this pincode. Please update your address to continue.
+                    </p>
+                  )}
+                  {!deliveryCheck.loading && !deliveryCheck.error && deliveryCheck.data?.status === "api_unavailable" && (
+                    <p className="text-amber-900">
+                      {deliveryCheck.data.message ??
+                        "We could not verify delivery with the carrier right now. You may still place your order; we will confirm before dispatch."}
+                    </p>
+                  )}
+                </div>
+              )}
 
             </div>
             <div className="mt-4 flex flex-col gap-4">
@@ -1117,7 +1116,7 @@ export default function CheckoutPage() {
               <span>Price</span>
             </div>
             <div className="w-full h-0.5 bg-black mt-4"></div>
-            <div 
+            <div
               className="space-y-4 py-4 max-h-[320px] overflow-y-auto pr-2"
               style={{
                 scrollbarWidth: 'thin',
