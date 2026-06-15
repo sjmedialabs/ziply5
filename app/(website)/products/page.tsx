@@ -124,10 +124,13 @@ function ProductsPageContent() {
       typeParam === "combo" ||
       comboParam === "true" ||
       productTypeParam === "combo"
-    if (wantsCombo) setPackFilter("combo-pack")
-    else if (packParam === "limited-offers") setPackFilter("limited-offers")
-    // else do not override user selection
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    if (wantsCombo) {
+      setPackFilter("combo-pack")
+    } else if (packParam === "limited-offers") {
+      setPackFilter("limited-offers")
+    } else {
+      setPackFilter("all")
+    }
   }, [packParam, typeParam, comboParam, productTypeParam])
 
   useEffect(() => {

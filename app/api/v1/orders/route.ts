@@ -52,6 +52,7 @@ export async function POST(request: NextRequest) {
       discount: parsed.data.discount,
       tax: parsed.data.tax,
       total: parsed.data.total,
+      savingAmount: parsed.data.savingAmount ?? 0,
 
       // 🔥 NEW FIELDS
       billingAddress: parsed.data.billingAddress,

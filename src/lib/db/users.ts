@@ -55,6 +55,16 @@ export const createUserAddressSupabase = async (
   },
 ): Promise<UserAddressRow> => {
   const client = getSupabaseAdmin()
+  if (data.isDefault) {
+    for (const table of ADDRESS_TABLES) {
+      try {
+        await client.from(table).update({ isDefault: false } as any).eq("userId", userId)
+      } catch {}
+      try {
+        await client.from(table).update({ is_default: false } as any).eq("user_id", userId)
+      } catch {}
+    }
+  }
   return insertIntoCandidateTables<UserAddressRow>(
     client,
     ADDRESS_TABLES,
@@ -87,6 +97,16 @@ export const updateUserAddressSupabase = async (
   }>,
 ): Promise<{ count: number }> => {
   const client = getSupabaseAdmin()
+  if (data.isDefault) {
+    for (const table of ADDRESS_TABLES) {
+      try {
+        await client.from(table).update({ isDefault: false } as any).eq("userId", userId)
+      } catch {}
+      try {
+        await client.from(table).update({ is_default: false } as any).eq("user_id", userId)
+      } catch {}
+    }
+  }
   for (const table of ADDRESS_TABLES) {
     const { data: row, error: readError } = await client
       .from(table)

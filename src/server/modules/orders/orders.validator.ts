@@ -24,6 +24,7 @@ export const createOrderSchema = z.object({
   discount: z.number().nonnegative().optional(),
   tax: z.number().nonnegative().optional(),
   total: z.number().nonnegative().optional(),
+  savingAmount: z.number().nonnegative().optional(),
   gateway: z.string().min(1),
 
   // 🔥 NEW FIELDS

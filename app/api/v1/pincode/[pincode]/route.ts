@@ -51,6 +51,41 @@ export async function GET(
     );
   }
 
+  // 1. Try fetching from the external postal pincode API
+  try {
+    const apiRes = await fetch(`https://api.postalpincode.in/pincode/${pincode}`, {
+      next: { revalidate: 86400 }, // Cache for 24 hours
+    });
+    if (apiRes.ok) {
+      const payload = await apiRes.json();
+      if (
+        Array.isArray(payload) &&
+        payload[0]?.Status === "Success" &&
+        Array.isArray(payload[0]?.PostOffice) &&
+        payload[0].PostOffice.length > 0
+      ) {
+        const postOfficeList = payload[0].PostOffice;
+        const names = Array.from(new Set(postOfficeList.map((po: any) => cleanCityName(po.Name)).filter(Boolean))) as string[];
+        const postOffice = postOfficeList[0];
+        return NextResponse.json({
+          success: true,
+          source: "postal_pincode_in_api",
+          data: {
+            city: postOffice.District || postOffice.Block || postOffice.Name,
+            district: postOffice.District,
+            state: postOffice.State,
+            office: postOffice.Name,
+            taluk: postOffice.Block,
+            names: names,
+          },
+        });
+      }
+    }
+  } catch (error) {
+    console.warn(`[Pincode API] Failed to fetch external pincode data for ${pincode}, falling back to local:`, error);
+  }
+
+  // 2. Local fallback if external API is down or doesn't find the pincode
   const records = getPincodeData();
   if (records) {
     const pinNum = parseInt(pincode, 10);
@@ -77,6 +112,7 @@ export async function GET(
       // For Andhra Pradesh/Telangana, Taluk is often the Mandal. 
       // If the Office Name is more specific, we use a cleaned version of it.
       const exactCity = cleanCityName(matched.officeName) || matched.taluk;
+      const names = Array.from(new Set(pinRecords.map((r) => cleanCityName(r.officeName)).filter(Boolean))) as string[];
 
       return NextResponse.json({
         success: true,
@@ -86,7 +122,8 @@ export async function GET(
           district: matched.districtName,
           state: matched.stateName,
           office: matched.officeName,
-          taluk: matched.taluk
+          taluk: matched.taluk,
+          names: names
         }
       });
     }

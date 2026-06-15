@@ -44,6 +44,46 @@ export default function AuthLoginCard({
   const [phone, setPhone] = useState("");
   const [otpStep, setOtpStep] = useState<"phone" | "verify">("phone");
 
+  const getRedirectUrl = () => {
+    const next = searchParams.get("next");
+    if (portal === "website" && next && next.startsWith("/")) {
+      return next;
+    }
+
+    if (typeof window !== "undefined") {
+      const lastVisited = window.sessionStorage.getItem("ziply5_last_visited");
+      if (lastVisited && lastVisited.startsWith("/")) {
+        return lastVisited;
+      }
+
+      if (document.referrer) {
+        try {
+          const referrerUrl = new URL(document.referrer);
+          if (referrerUrl.origin === window.location.origin) {
+            const path = referrerUrl.pathname;
+            // Exclude authentication-related pages to avoid loops/invalid redirects
+            const excludedPaths = [
+              "/login",
+              "/signup",
+              "/forgotPassword",
+              "/reset-password",
+              "/resetPassword",
+            ];
+            const isExcluded = excludedPaths.some((p) => path.startsWith(p)) || path.startsWith("/api");
+
+            if (!isExcluded) {
+              return referrerUrl.pathname + referrerUrl.search + referrerUrl.hash;
+            }
+          }
+        } catch {
+          // ignore parsing errors
+        }
+      }
+    }
+
+    return "/profile";
+  };
+
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
@@ -72,12 +112,7 @@ export default function AuthLoginCard({
       if (payload.data.user.role === "admin" || payload.data.user.role === "super_admin") {
         router.push("/admin/dashboard");
       } else {
-        const next = searchParams.get("next");
-        if (portal === "website" && next && next.startsWith("/")) {
-          router.push(next);
-        } else {
-          router.push("/profile");
-        }
+        router.push(getRedirectUrl());
       }
     } catch {
       setError("Unable to login. Please try again.");
@@ -122,7 +157,12 @@ export default function AuthLoginCard({
         role: data.user.role,
         user: data.user,
       });
-      router.push("/profile");
+
+      if (data.user.role === "admin" || data.user.role === "super_admin") {
+        router.push("/admin/dashboard");
+      } else {
+        router.push(getRedirectUrl());
+      }
     } catch (err: any) {
       setError(err.message);
     } finally {

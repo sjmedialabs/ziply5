@@ -3,7 +3,7 @@
 import BannerSection from "@/components/BannerSection";
 import { getCartItems, setCartItems, type CartItem } from "@/lib/cart"; // utils to manage cart items in localStorage
 import { getFavoriteSlugs, setFavoriteSlugs } from "@/lib/favorites";
-import { ArrowLeft, Heart, Minus, Plus, ShieldCheck, ShieldHalf, X } from "lucide-react";
+import { ArrowLeft, Heart, Minus, Plus, ShieldCheck, ShieldHalf, X, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { toggleFavoriteSlug } from "@/lib/favorites"
@@ -30,10 +30,22 @@ export default function CartPage() {
   const [minCartValue, setMinCartValue] = useState<number>(250);
 
   useEffect(() => {
-    setLocalCartItems(getCartItems());
+    const syncCart = () => {
+      setLocalCartItems(getCartItems());
+    };
+    syncCart();
+
     if (typeof window !== "undefined") {
       setCouponCode(window.localStorage.getItem("ziply5_coupon_code") ?? "");
     }
+
+    window.addEventListener("ziply5:cart-updated", syncCart);
+    window.addEventListener("storage", syncCart);
+
+    return () => {
+      window.removeEventListener("ziply5:cart-updated", syncCart);
+      window.removeEventListener("storage", syncCart);
+    };
   }, []);
 
   useEffect(() => {
@@ -267,11 +279,25 @@ export default function CartPage() {
 
                         <div className="flex w-fit items-center overflow-hidden rounded-full border">
                           <button
-                            className="border-r px-3 py-1"
-                            onClick={() => updateQuantity(item.id, -1)}
-                            aria-label={`Decrease quantity for ${item.name}`}
+                            className="border-r px-3 py-1 flex items-center justify-center cursor-pointer"
+                            onClick={() => {
+                              if (item.quantity === 1) {
+                                removeItem(item.id)
+                              } else {
+                                updateQuantity(item.id, -1)
+                              }
+                            }}
+                            aria-label={
+                              item.quantity === 1
+                                ? `Remove ${item.name} from cart`
+                                : `Decrease quantity for ${item.name}`
+                            }
                           >
-                            <Minus size={14} />
+                            {item.quantity === 1 ? (
+                              <Trash2 size={14} className="text-red-500 hover:text-red-600 transition-colors" />
+                            ) : (
+                              <Minus size={14} />
+                            )}
                           </button>
                           <span className="px-4">{item.quantity}</span>
                           <button

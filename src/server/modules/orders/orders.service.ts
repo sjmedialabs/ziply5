@@ -527,6 +527,7 @@ export const createOrderFromCheckout = async (input: {
   tax?: number
   total?: number
   appliedCouponId?: string | null
+  savingAmount?: number
 
   // 🔥 ADD THIS
   billingAddress?: {
@@ -679,6 +680,7 @@ export const createOrderFromCheckout = async (input: {
     shipping, // Keeping both for backward/forward compatibility
     total,
     totalItemsUsedForShipping,
+    savingAmount: input.savingAmount ?? 0,
   };
 
   const itemRows = lines.map((l) => ({

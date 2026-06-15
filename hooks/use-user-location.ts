@@ -32,6 +32,7 @@ export function useUserLocation({ onChange }: UseUserLocationOptions = {}) {
   const [permanentlyBlocked, setPermanentlyBlocked] = useState(false)
   const [enabling, setEnabling] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
+  const [shouldHide, setShouldHide] = useState(true)
 
   const initStarted = useRef(false)
   const loginPulse = useRef(false)
@@ -45,6 +46,46 @@ export function useUserLocation({ onChange }: UseUserLocationOptions = {}) {
     },
     [onChange],
   )
+
+  const syncUserAddressLocation = useCallback(async () => {
+    const token = typeof window !== "undefined" ? window.localStorage.getItem("ziply5_access_token") : null;
+    if (!token) {
+      setShouldHide(true)
+      return true
+    }
+
+    try {
+      const res = await fetch("/api/v1/me/addresses", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) {
+        setShouldHide(true)
+        return true
+      }
+      const payload = await res.json();
+      const addresses = Array.isArray(payload) ? payload : payload.data;
+      if (!Array.isArray(addresses) || addresses.length === 0) {
+        setShouldHide(true)
+        return true
+      }
+
+      setShouldHide(false)
+      const defaultAddress = addresses.find((a: any) => a.isDefault);
+      if (defaultAddress && defaultAddress.city) {
+        applyLocation(defaultAddress.city);
+        return true;
+      }
+      const firstAddress = addresses[0];
+      if (firstAddress && firstAddress.city) {
+        applyLocation(firstAddress.city);
+        return true;
+      }
+    } catch (e) {
+      console.error("Failed to sync user address location:", e);
+    }
+    setShouldHide(true)
+    return true
+  }, [applyLocation])
 
   const showErrorToast = useCallback((title: string, description?: string) => {
     toast.error(title, description)
@@ -204,6 +245,9 @@ export function useUserLocation({ onChange }: UseUserLocationOptions = {}) {
 
   /** Page refresh / mount: cache + IP/address only — no GPS, no permission modal. */
   const runSilentInit = useCallback(async () => {
+    const handled = await syncUserAddressLocation()
+    if (handled) return
+
     const perm = await queryGeolocationPermission()
     setPermissionState(perm)
     if (perm === "denied") setPermanentlyBlocked(true)
@@ -216,11 +260,18 @@ export function useUserLocation({ onChange }: UseUserLocationOptions = {}) {
     }
 
     await applyFallbackLocation({ notify: false, gpsBlocked: perm === "denied" })
-  }, [applyFallbackLocation, onChange])
+  }, [applyFallbackLocation, onChange, syncUserAddressLocation])
 
   /** After login: try GPS and show modal if still blocked. */
   const runLoginLocationFlow = useCallback(async () => {
     loginPulse.current = true
+
+    const handled = await syncUserAddressLocation()
+    if (handled) {
+      setModalOpen(false)
+      setEnabling(false)
+      return
+    }
 
     const perm = await queryGeolocationPermission()
     setPermissionState(perm)
@@ -244,7 +295,7 @@ export function useUserLocation({ onChange }: UseUserLocationOptions = {}) {
       if (!gotFallback) setLocationName(LOCATION_DENIED_LABEL)
       maybeOpenPermissionModal()
     }
-  }, [applyFallbackLocation, maybeOpenPermissionModal, onChange, requestCurrentLocation])
+  }, [applyFallbackLocation, maybeOpenPermissionModal, onChange, requestCurrentLocation, syncUserAddressLocation])
 
   useEffect(() => {
     abortRef.current = false
@@ -283,6 +334,15 @@ export function useUserLocation({ onChange }: UseUserLocationOptions = {}) {
       }
     })
   }, [mounted, applyFallbackLocation])
+
+  useEffect(() => {
+    if (!mounted) return
+    const handleStorageChange = () => {
+      void runSilentInit()
+    }
+    window.addEventListener("storage", handleStorageChange)
+    return () => window.removeEventListener("storage", handleStorageChange)
+  }, [mounted, runSilentInit])
 
   const handleEnableFromModal = useCallback(() => {
     setModalOpen(false)
@@ -328,5 +388,6 @@ export function useUserLocation({ onChange }: UseUserLocationOptions = {}) {
     continueWithoutLocation,
     handleEnableFromModal,
     handleUseCurrentLocation,
+    shouldHide,
   }
 }
