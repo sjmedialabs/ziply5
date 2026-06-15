@@ -203,7 +203,7 @@ export function OrderShipmentPanel(props: Props) {
         ) : null}
       </div>
 
-      <div className="rounded-2xl border border-[#E8DCC8] bg-white p-4 shadow-sm">
+      {/* <div className="rounded-2xl border border-[#E8DCC8] bg-white p-4 shadow-sm">
         <h2 className="mb-2 text-sm font-semibold uppercase tracking-[0.15em] text-[#4A1D1F]">Delivery estimates</h2>
         <ul className="space-y-1 text-sm text-[#646464]">
           <li>
@@ -218,7 +218,7 @@ export function OrderShipmentPanel(props: Props) {
             <li className="text-amber-800">This shipment appears delayed versus the estimated delivery date.</li>
           ) : null}
         </ul>
-      </div>
+      </div> */}
 
       {(shipment?.origin || shipment?.destination) && (
         <div className="rounded-2xl border border-[#E8DCC8] bg-white p-4 shadow-sm">
@@ -234,7 +234,7 @@ export function OrderShipmentPanel(props: Props) {
         </div>
       )}
 
-      <div className="rounded-2xl border border-[#E8DCC8] bg-white p-4 shadow-sm">
+      {/* <div className="rounded-2xl border border-[#E8DCC8] bg-white p-4 shadow-sm">
         <h2 className="mb-3 text-sm font-semibold uppercase tracking-[0.15em] text-[#4A1D1F]">Tracking timeline</h2>
         {tracking.activities.length === 0 ? (
           <p className="text-sm text-[#646464]">No tracking history yet.</p>
@@ -263,7 +263,7 @@ export function OrderShipmentPanel(props: Props) {
             Load more
           </button>
         ) : null}
-      </div>
+      </div> */}
     </div>
   )
 }

@@ -1276,7 +1276,7 @@ export const getOrderByIdSupabaseBasic = async (orderId: string) => {
         PRODUCT_TABLES,
         "id",
         productIds,
-        "id,name,slug,sku,weight,thumbnail",
+        "id,name,slug,sku,weight,thumbnail,price",
       )
       const productById = new Map<string, Record<string, unknown>>()
       for (const product of productRows) {

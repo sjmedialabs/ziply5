@@ -101,10 +101,10 @@ export default function Footer({ cmsPayload = {} }: FooterProps) {
         <div className="max-w-7xl mx-auto px-4">
 
           {/* Grid */}
-          <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-5 gap-5 lg:gap-10">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-5 lg:gap-10">
 
             {/* Contact Card */}
-            <div className="col-span-2 sm:col-span-1 lg:col-span-1">
+            <div className="col-span-1 sm:col-span-1 lg:col-span-1">
               <div className="bg-yellow-400 rounded-2xl p-5 text-[#4A1D1F]">
 
                 {/* Logo as styled text */}
@@ -158,7 +158,7 @@ export default function Footer({ cmsPayload = {} }: FooterProps) {
                       </svg> */}
                       <AiFillInstagram className="h-4 w-4 text-[#4A1D1F]" />
                     </a>
-                  )}  
+                  )}
                   {/* Facebook */}
                   {typeof cmsData.social3 === "string" && cmsData.social3.trim() && (
                     <a href={cmsData.social3} aria-label="Facebook" target="_blank" rel="noopener noreferrer"
@@ -269,7 +269,7 @@ function FooterColumn({
 
             <Link
               href={link.href}
-              className="group flex items-center gap-2 text-[#000] hover:text-[#f97316] transition-all duration-300 ease-in-out hover:translate-x-1 text-xs"
+              className="group flex items-center gap-2 text-[#000] hover:text-foreground hover:underline transition-all duration-300 ease-in-out hover:translate-x-1 text-sm"
             >
 
               {/* Arrow color follows the group hover, not its own hover */}

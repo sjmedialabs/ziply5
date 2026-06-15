@@ -114,6 +114,7 @@ export function ComboForm({ bundleId, onSaved }: ComboFormProps) {
   const canSave = useMemo(() => {
     if (name.trim().length < 2) return false
     if (!slug || !/^[a-z0-9_-]+$/.test(slug)) return false
+    if (!image || image.trim().length === 0) return false
     if (selectedProductIds.length < 1 || selectedProductIds.length > 3) return false
     if (pricingMode === "fixed") {
       const n = Number(comboPrice)
@@ -121,7 +122,7 @@ export function ComboForm({ bundleId, onSaved }: ComboFormProps) {
       if (n >= sumOfSelectedPrices) return false
     }
     return true
-  }, [name, slug, selectedProductIds, pricingMode, comboPrice, sumOfSelectedPrices])
+  }, [name, slug, image, selectedProductIds, pricingMode, comboPrice, sumOfSelectedPrices])
 
   const toggleProduct = (productId: string) => {
     setSelectedProductIds((prev) => {
@@ -202,7 +203,7 @@ export function ComboForm({ bundleId, onSaved }: ComboFormProps) {
       </div>
       <div className="grid gap-3 md:grid-cols-2">
         <label className="block text-sm">
-          <span className="text-xs font-semibold uppercase tracking-wide text-[#7A7A7A]">Combo image</span>
+          <span className="text-xs font-semibold uppercase tracking-wide text-[#7A7A7A]">Combo image <span className="text-red-500">*</span></span>
           <div className="mt-1 flex flex-wrap items-center gap-3 rounded border border-[#E8DCC8] bg-[#FFFBF3]/30 px-3 py-2">
             {image ? (
               <img src={image} alt="" className="h-16 w-16 rounded object-cover border border-[#E8DCC8]" />

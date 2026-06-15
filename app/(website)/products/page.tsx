@@ -436,12 +436,12 @@ function ProductsPageContent() {
       {/* Fixed below global header — Framer FadeIn was breaking sticky; fixed pins to viewport */}
       <div
         ref={filterBarRef}
-        className="fixed left-0 right-0 z-[90] bg-[#F3F0DC]/75 backdrop-blur-sm pt-3"
+        className="fixed left-0 right-0 z-[90] bg-[#F3F0DC]/75 backdrop-blur-sm py-2 pt-5"
       >
-        <div className="mx-auto w-full max-w-7xl px-4 sm:px-6 lg:px-8">
-          <div className="rounded-3xl bg-white/40 p-3 md:p-4">
-            <div className="flex flex-col gap-4">
-              {/* <div className="flex items-center justify-between">
+        <div className="mx-auto w-full max-w-7xl px-4">
+
+          <div className="flex flex-col gap-4">
+            {/* <div className="flex items-center justify-between">
                   <p className="text-xs font-bold uppercase tracking-wide text-[#1F1F1C]">Filtered Products By</p>
                   <button
                     type="button"
@@ -466,66 +466,65 @@ function ProductsPageContent() {
                   </button>
                 </div> */}
 
-              <div className="grid grid-cols-2 items-center gap-3 md:grid-cols-3 lg:grid-cols-4">
-                <Select value={categoryFilter} onValueChange={(value) => setCategoryFilter(value as CategoryFilter)}>
-                  <SelectTrigger className="h-9 cursor-pointer rounded-full border-[#D9D9D1] bg-white px-4 text-xs font-medium">
-                    <SelectValue placeholder="Category & Type" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem className="cursor-pointer" value="all">All Categories</SelectItem>
-                    {categories.map((cat, idx) => (
-                      <SelectItem className="cursor-pointer" key={`${cat.slug || "cat"}-${idx}`} value={cat.slug}>
-                        {cat.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+            <div className="grid grid-cols-2 items-center gap-3 md:grid-cols-3 lg:grid-cols-4">
+              <Select value={categoryFilter} onValueChange={(value) => setCategoryFilter(value as CategoryFilter)}>
+                <SelectTrigger className="!h-8 !py-1 cursor-pointer rounded-full border-[#D9D9D1] bg-white px-4 text-xs font-medium">
+                  <SelectValue placeholder="Category & Type" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem className="cursor-pointer" value="all">All Categories</SelectItem>
+                  {categories.map((cat, idx) => (
+                    <SelectItem className="cursor-pointer" key={`${cat.slug || "cat"}-${idx}`} value={cat.slug}>
+                      {cat.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
 
-                <Select value={packFilter} onValueChange={(value) => setPackFilter(value as any)}>
-                  <SelectTrigger className="h-9 cursor-pointer rounded-full border-[#D9D9D1] bg-white px-4 text-xs font-medium">
-                    <SelectValue placeholder="Packs & Deals" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem className="cursor-pointer" value="all">All Packs</SelectItem>
-                    <SelectItem className="cursor-pointer" value="combo-pack">Combo Pack</SelectItem>
-                    <SelectItem className="cursor-pointer" value="limited-offers">Limited Deals</SelectItem>
-                  </SelectContent>
-                </Select>
+              <Select value={packFilter} onValueChange={(value) => setPackFilter(value as any)}>
+                <SelectTrigger className="!h-8 !py-1 cursor-pointer rounded-full border-[#D9D9D1] bg-white px-4 text-xs font-medium">
+                  <SelectValue placeholder="Packs & Deals" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem className="cursor-pointer" value="all">All Packs</SelectItem>
+                  <SelectItem className="cursor-pointer" value="combo-pack">Combo Pack</SelectItem>
+                  <SelectItem className="cursor-pointer" value="limited-offers">Limited Deals</SelectItem>
+                </SelectContent>
+              </Select>
 
-                <Select value={sortBy} onValueChange={(value) => setSortBy(value as SortType)}>
-                  <SelectTrigger className="h-9 cursor-pointer rounded-full border-[#D9D9D1] bg-white px-4 text-xs font-medium">
-                    <SelectValue placeholder="Sort by" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem className="cursor-pointer" value="popular">Popular</SelectItem>
-                    <SelectItem className="cursor-pointer" value="newest">Newest</SelectItem>
-                    <SelectItem className="cursor-pointer" value="price-low-high">Price: Low to High</SelectItem>
-                    <SelectItem className="cursor-pointer" value="price-high-low">Price: High to Low</SelectItem>
-                    <SelectItem className="cursor-pointer" value="name-asc">A to Z</SelectItem>
-                    <SelectItem className="cursor-pointer" value="name-desc">Z to A</SelectItem>
-                  </SelectContent>
-                </Select>
-                <Select value={spiceLevelFilter} onValueChange={(value) => setSpiceLevelFilter(value)}>
-                  <SelectTrigger className="h-9 cursor-pointer rounded-full border-[#D9D9D1] bg-white px-4 text-xs font-medium">
-                    <SelectValue placeholder="Spice Level" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem className="cursor-pointer" value="all">All Spice Levels</SelectItem>
-                    {spiceLevelOptions.map((level) => (
-                      <SelectItem className="cursor-pointer" key={level} value={level}>
-                        {formatSpiceLevel(level)}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
+              <Select value={sortBy} onValueChange={(value) => setSortBy(value as SortType)}>
+                <SelectTrigger className="!h-8 !py-1 cursor-pointer rounded-full border-[#D9D9D1] bg-white px-4 text-xs font-medium">
+                  <SelectValue placeholder="Sort by" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem className="cursor-pointer" value="popular">Popular</SelectItem>
+                  <SelectItem className="cursor-pointer" value="newest">Newest</SelectItem>
+                  <SelectItem className="cursor-pointer" value="price-low-high">Price: Low to High</SelectItem>
+                  <SelectItem className="cursor-pointer" value="price-high-low">Price: High to Low</SelectItem>
+                  <SelectItem className="cursor-pointer" value="name-asc">A to Z</SelectItem>
+                  <SelectItem className="cursor-pointer" value="name-desc">Z to A</SelectItem>
+                </SelectContent>
+              </Select>
+              <Select value={spiceLevelFilter} onValueChange={(value) => setSpiceLevelFilter(value)}>
+                <SelectTrigger className="!h-8 !py-1 cursor-pointer rounded-full border-[#D9D9D1] bg-white px-4 text-xs font-medium">
+                  <SelectValue placeholder="Spice Level" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem className="cursor-pointer" value="all">All Spice Levels</SelectItem>
+                  {spiceLevelOptions.map((level) => (
+                    <SelectItem className="cursor-pointer" key={level} value={level}>
+                      {formatSpiceLevel(level)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
           </div>
         </div>
       </div>
 
-      <div className="mx-auto w-full max-w-7xl px-4 sm:px-6 lg:px-8">
-        {error && <p className="mb-4 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-800">{error}</p>}
+      <div className="mx-auto w-full max-w-7xl px-4">
+        {error && <p className="mb-4 rounded-lg bg-red-50 px-3 py-1 text-sm text-red-800">{error}</p>}
         <div className="mb-6 flex flex-col gap-4">
           {searchTerm && (
             <p className="text-sm font-medium text-[#5A272A]">
@@ -541,7 +540,7 @@ function ProductsPageContent() {
           />
 
           {/* Tags + highlights — scroll with page (not fixed) */}
-          <div className="rounded-3xl mt-2">
+          <div className="rounded-3xl">
             <div className="flex flex-wrap gap-2">
               {tagOptions
                 .filter(tag => !["ready to cook", "ready to eat"].includes(tag.name.toLowerCase().trim()))

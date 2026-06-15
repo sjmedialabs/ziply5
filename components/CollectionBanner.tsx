@@ -85,7 +85,7 @@ export default function CollectionBanner({ cmsData }: { cmsData?: any }) {
       <div className="max-w-7xl mx-auto px-4">
         <div className="grid grid-cols-12 md:gap-10 items-stretch">
           {/* LEFT BIG IMAGE — no border radius / border; icon not clipped */}
-          <div className="relative lg:col-span-7 col-span-12 h-[300px] md:h-[700px] lg:h-[630px]">
+          <div className="hidden lg:block relative lg:col-span-7 col-span-12 h-[300px] md:h-[700px] lg:h-[630px]">
             <div className="relative h-full flex items-end justify-center">
               {loading ? (
                 <div className="w-full h-full bg-gray-100 animate-pulse" />
