@@ -154,9 +154,9 @@ export default function OrderDetailPage() {
       : order.shipmentDeliveredAt
         ? new Date(order.shipmentDeliveredAt as string | Date)
         : (() => {
-            const hit = order.statusHistory.find((h) => h.toStatus.toLowerCase() === "delivered")
-            return hit?.changedAt ? new Date(hit.changedAt) : null
-          })()
+          const hit = order.statusHistory.find((h) => h.toStatus.toLowerCase() === "delivered")
+          return hit?.changedAt ? new Date(hit.changedAt) : null
+        })()
     const ineligible = getReturnIneligibilityReason({
       orderStatus: order.status.toLowerCase(),
       latestLifecycle,
@@ -223,11 +223,11 @@ export default function OrderDetailPage() {
       const bankDetails =
         returnMeta.refundMethod === "bank" && returnMeta.bankAccountNumber.trim()
           ? {
-              accountName: returnMeta.bankAccountName.trim() || undefined,
-              accountNumber: returnMeta.bankAccountNumber.trim(),
-              ifsc: returnMeta.bankIfsc.trim(),
-              bankName: returnMeta.bankName.trim() || undefined,
-            }
+            accountName: returnMeta.bankAccountName.trim() || undefined,
+            accountNumber: returnMeta.bankAccountNumber.trim(),
+            ifsc: returnMeta.bankIfsc.trim(),
+            bankName: returnMeta.bankName.trim() || undefined,
+          }
           : undefined
 
       const res = await fetch(`/api/v1/returns`, {
@@ -349,17 +349,17 @@ export default function OrderDetailPage() {
   const trackingShipment = trackingQuery.data?.shipment
   const canShowCustomerCancel = Boolean(
     order &&
-      shouldRenderCustomerCancelOrderButton({
-        latestLifecycle,
-        shipmentStatus:
-          trackingShipment?.shipmentStatus ??
-          order.shipmentStatus ??
-          order.shipments?.[0]?.shipmentStatus ??
-          null,
-        shippingStatus: trackingShipment?.shippingStatus ?? null,
-        orderStatusLower: order.status.toLowerCase(),
-        cancelRequested,
-      }),
+    shouldRenderCustomerCancelOrderButton({
+      latestLifecycle,
+      shipmentStatus:
+        trackingShipment?.shipmentStatus ??
+        order.shipmentStatus ??
+        order.shipments?.[0]?.shipmentStatus ??
+        null,
+      shippingStatus: trackingShipment?.shippingStatus ?? null,
+      orderStatusLower: order.status.toLowerCase(),
+      cancelRequested,
+    }),
   )
   const returnRequested = historySet.has("return_requested")
   const paymentStatus =
@@ -470,15 +470,15 @@ export default function OrderDetailPage() {
             extraActions={
               <>
                 {canShowCustomerCancel && (
-                    <button
-                      type="button"
-                      onClick={() => setIsCancelModalOpen(true)}
-                      disabled={actionBusy === "cancel_request"}
-                      className="rounded-md border border-[#D1D5DB] bg-white px-3 py-1.5 text-xs font-medium text-[#111827] hover:bg-[#F9FAFB] disabled:opacity-40"
-                    >
-                      {actionBusy === "cancel_request" ? "Submitting…" : "Request cancel"}
-                    </button>
-                  )}
+                  <button
+                    type="button"
+                    onClick={() => setIsCancelModalOpen(true)}
+                    disabled={actionBusy === "cancel_request"}
+                    className="rounded-md border border-[#D1D5DB] bg-white px-3 py-1.5 text-xs font-medium text-[#111827] hover:bg-[#F9FAFB] disabled:opacity-40"
+                  >
+                    {actionBusy === "cancel_request" ? "Submitting…" : "Cancel"}
+                  </button>
+                )}
                 {paymentStatus.toLowerCase() === "pending" &&
                   order.status.toLowerCase() !== "delivered" &&
                   order.status.toLowerCase() !== "cancelled" && (
@@ -505,7 +505,7 @@ export default function OrderDetailPage() {
             </div>
           )}
 
-          <div className="rounded-xl border border-[#E5E7EB] bg-white p-4 shadow-sm">
+          {/* <div className="rounded-xl border border-[#E5E7EB] bg-white p-4 shadow-sm">
             <h2 className="mb-3 text-sm font-semibold text-[#111827]">Order lifecycle</h2>
             <div className="grid gap-2 sm:grid-cols-2 md:grid-cols-3">
               {timeline.map((step) => {
@@ -517,7 +517,7 @@ export default function OrderDetailPage() {
                 )
               })}
             </div>
-          </div>
+          </div> */}
 
           <div id="shipment-tracking" className="scroll-mt-20">
             <OrderShipmentPanel
@@ -619,13 +619,13 @@ export default function OrderDetailPage() {
               <p className="mt-2 text-[#6B7280]">{order.user?.email ?? "—"}</p>
             </div>
             <div className="rounded-xl border border-[#E5E7EB] bg-white p-4 text-sm shadow-sm">
-              <p className="mb-2 font-semibold text-[#111827]">Payment</p>
-              <p className="text-[#111827]">{(order.paymentMethod ?? "Not specified").toUpperCase()}</p>
-              <p className="text-[#6B7280]">
-                Status: <span className="font-semibold uppercase">{paymentStatus}</span>
+              <p className="mb-2 font-semibold text-[#111827]">Payment Mode :  <span className="text-[#6B7280]">{(order.paymentMethod ?? "Not specified").toUpperCase()}</span> </p>
+              {/* <p className="text-[#111827]">{(order.paymentMethod ?? "Not specified").toUpperCase()}</p> */}
+              <p className="text-[#111827] font-semibold">
+                Payment Status: <span className=" text-[#6B7280] uppercase">{paymentStatus}</span>
               </p>
               <p className="mt-2 font-semibold text-[#111827]">
-                Total: {order.currency} {Number(order.total).toFixed(2)}
+                Total: <span className="text-[#6B7280]">{order.currency} {Number(order.total).toFixed(2)}</span>
               </p>
             </div>
           </div>
@@ -703,9 +703,20 @@ export default function OrderDetailPage() {
               <p>
                 Tax: <span className="font-semibold text-[#111827]">{order.currency} {Number(order.tax ?? 0).toFixed(2)}</span>
               </p>
-              <p>
-                Discount: <span className="font-semibold text-red-600">- {order.currency} {Number(order.discount ?? 0).toFixed(2)}</span>
-              </p>
+              {(() => {
+                const totalProductSavings = order.items.reduce((sum, item) => {
+                  // @ts-ignore - product.price might not be typed in CustomerOrderDetail but is present in the API response
+                  const msrp = Number(item.product?.price ?? item.unitPrice)
+                  return sum + Math.max(0, (msrp - Number(item.unitPrice)) * Number(item.quantity))
+                }, 0)
+                const totalSavings = totalProductSavings + Number(order.discount ?? 0)
+                
+                return (
+                  <p>
+                    Total Savings: <span className="font-semibold text-red-600">- {order.currency} {totalSavings.toFixed(2)}</span>
+                  </p>
+                )
+              })()}
               <p>
                 Shipping: <span className="font-semibold text-[#111827]">{order.currency} {Number(order.shipping ?? 0).toFixed(2)}</span>
               </p>
@@ -873,9 +884,9 @@ export default function OrderDetailPage() {
                             <div>
                               <p className="text-sm font-semibold text-gray-900">{item.product?.name ?? "Product"}</p>
                               <p className="text-xs text-gray-500">Qty: {item.quantity}</p>
-                                  {returnedProductIds.has(String(item.productId ?? "").trim()) ? (
-                                    <p className="text-[11px] font-semibold text-amber-700">Return already requested for this product.</p>
-                                  ) : null}
+                              {returnedProductIds.has(String(item.productId ?? "").trim()) ? (
+                                <p className="text-[11px] font-semibold text-amber-700">Return already requested for this product.</p>
+                              ) : null}
                             </div>
                           </div>
 

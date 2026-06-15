@@ -90,7 +90,17 @@ export default function ComboDetailPage({ params }: { params: Promise<{ slug: st
       </Link>
       <div className="grid gap-6 rounded-2xl border border-[#E8DCC8] bg-white p-5 md:grid-cols-[300px_1fr]">
         <div className="relative h-72 overflow-hidden rounded-xl bg-[#FFFBF3]">
-          <Image src={bundle.image || bundle.products[0]?.thumbnail || FALLBACK_PRODUCT_IMAGE} alt={bundle.name} fill className="object-contain p-3" />
+          {bundle.image ? (
+            <Image src={bundle.image} alt={bundle.name} fill className="object-contain p-3" />
+          ) : (
+            <div className="flex h-full w-full items-center justify-center gap-4 p-4">
+              {bundle.products.map((p) => (
+                <div key={p.productId} className="relative h-full w-full flex-1">
+                  <Image src={p.thumbnail || FALLBACK_PRODUCT_IMAGE} alt={p.name} fill className="object-contain drop-shadow-sm" />
+                </div>
+              ))}
+            </div>
+          )}
         </div>
         <div className="space-y-3">
           <h1 className="font-melon text-3xl font-bold text-[#4A1D1F]">{bundle.name}</h1>
@@ -134,9 +144,14 @@ export default function ComboDetailPage({ params }: { params: Promise<{ slug: st
         <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-[#7A7A7A]">Included products</h2>
         <div className="grid gap-3 md:grid-cols-3">
           {bundle.products.map((p) => (
-            <Link key={p.productId} href={`/product/${p.slug}`} className="rounded-lg border border-[#E8DCC8] p-3 hover:bg-[#FFFBF3]">
-              <p className="font-semibold text-[#4A1D1F]">{p.name}</p>
-              <p className="text-xs text-[#646464]">Rs.{Number(p.price).toFixed(2)}</p>
+            <Link key={p.productId} href={`/product/${p.slug}`} className="rounded-lg border border-[#E8DCC8] p-3 hover:bg-[#FFFBF3] flex items-center gap-3">
+              <div className="relative h-12 w-12 shrink-0 overflow-hidden rounded bg-white border border-[#E8DCC8]">
+                <Image src={p.thumbnail || FALLBACK_PRODUCT_IMAGE} alt={p.name} fill className="object-contain p-1" />
+              </div>
+              <div>
+                <p className="font-semibold text-[#4A1D1F] line-clamp-1">{p.name}</p>
+                <p className="text-xs text-[#646464]">Rs.{Number(p.price).toFixed(2)}</p>
+              </div>
             </Link>
           ))}
         </div>

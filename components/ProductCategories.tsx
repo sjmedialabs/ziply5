@@ -20,7 +20,7 @@ export default function ProductCategories({ cmsData }: { cmsData?: any }) {
 
   return (
     <section className="w-full bg-[#F97316] py-12 relative">
-      <div className="max-w-7xl mx-auto px-4 relative">
+      <div className="max-w-7xl mx-auto px-12 relative">
 
         <h2 className="text-center font-melon text-white text-3xl font-extrabold mb-8 whitespace-pre-line uppercase">
           {sectionTitle}
@@ -43,10 +43,10 @@ export default function ProductCategories({ cmsData }: { cmsData?: any }) {
             320: { slidesPerView: 1 },
             480: { slidesPerView: 3 },
             768: { slidesPerView: 4 },
-            1024: { slidesPerView: 5 },
+            1024: { slidesPerView: 4 },
             1280: { slidesPerView: 7 },
           }}
-          style={{ padding: "10px 12px" }}
+          style={{ padding: "10px 15px" }}
         >
           {loading
             ? Array.from({ length: 7 }).map((_, i) => (
@@ -93,11 +93,11 @@ export default function ProductCategories({ cmsData }: { cmsData?: any }) {
         {/* Custom Arrows - Hidden if navigation is locked (insufficient slides) */}
         {/* {!navLocked && (
           <> */}
-        <button className="custom-prev cursor-pointer absolute left-0 xl:-left-8 mt-8 top-1/2 -translate-y-1/2 z-10 w-10 h-10 bg-white rounded-full shadow flex items-center justify-center">
+        <button className="custom-prev cursor-pointer absolute left-2 xl:-left-2 mt-8 top-1/2 -translate-y-1/2 z-10 w-10 h-10 bg-white rounded-full shadow flex items-center justify-center">
           <svg className="w-4 h-4 text-zinc-700" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
         </button>
 
-        <button className="custom-next cursor-pointer absolute right-0 xl:-right-8 mt-8 top-1/2 -translate-y-1/2 z-10 w-10 h-10 bg-white rounded-full shadow flex items-center justify-center">
+        <button className="custom-next cursor-pointer absolute right-2 xl:-right-2 mt-8 top-1/2 -translate-y-1/2 z-10 w-10 h-10 bg-white rounded-full shadow flex items-center justify-center">
           <svg className="w-4 h-4 text-zinc-700" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
         </button>
         {/* </>
