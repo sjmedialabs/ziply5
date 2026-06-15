@@ -704,7 +704,7 @@ export default function OrderDetailPage() {
                 Tax: <span className="font-semibold text-[#111827]">{order.currency} {Number(order.tax ?? 0).toFixed(2)}</span>
               </p>
               <p>
-                Discount: <span className="font-semibold text-red-600">- {order.currency} {Number(order.discount ?? 0).toFixed(2)}</span>
+                Total Saving: <span className="font-semibold text-red-600">- {order.currency} {Number(order.savingAmount ?? 0).toFixed(2)}</span>
               </p>
               <p>
                 Shipping: <span className="font-semibold text-[#111827]">{order.currency} {Number(order.shipping ?? 0).toFixed(2)}</span>

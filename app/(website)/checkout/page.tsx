@@ -801,6 +801,7 @@ export default function CheckoutPage() {
         shippingCharge: Number((offerAdjustedShipping ?? shipping).toFixed(2)),
         totalItemsUsedForShipping: totalPacksForShipping,
         total: Number(total.toFixed(2)),
+        savingAmount: Number((totalProductSavings + offerTotalDiscount).toFixed(2)),
         updatedAt: new Date().toISOString(),
       });
       const token =
