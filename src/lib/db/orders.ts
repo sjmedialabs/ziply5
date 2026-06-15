@@ -67,6 +67,7 @@ export type SupabaseOrderRecord = {
   discount?: number | null
   tax?: number | null
   shippingCharge?: number | null
+  savingAmount?: number | null
   coupon?: { id: string; code: string; discountType: string; discountValue: number } | null
   [key: string]: unknown
 }
@@ -1488,6 +1489,7 @@ export const getOrderByIdSupabaseBasic = async (orderId: string) => {
         discount: Number(row.discount ?? 0),
         tax: Number(row.tax ?? 0),
         shippingCharge: Number(row.shippingCharge ?? row.shipping_charge ?? row.shipping ?? 0),
+        savingAmount: Number(row.savingAmount ?? row.saving_amount ?? 0),
         totalItemsUsedForShipping:
           row.totalItemsUsedForShipping != null || row.total_items_used_for_shipping != null
             ? Number(row.totalItemsUsedForShipping ?? row.total_items_used_for_shipping ?? 0)

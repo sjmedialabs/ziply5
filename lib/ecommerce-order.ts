@@ -53,6 +53,7 @@ export type EcommerceCheckoutState = {
   /** Sum of line quantities used for Ziply5 slab shipping at checkout. */
   totalItemsUsedForShipping?: number
   total: number
+  savingAmount?: number
   updatedAt: string
 }
 
@@ -151,6 +152,7 @@ export const readCheckoutStorage = (): EcommerceCheckoutState | null => {
           ? undefined
           : Math.max(0, Math.floor(toFinite(parsed?.totalItemsUsedForShipping, 0))),
       total: Math.max(0, toFinite(parsed?.total, 0)),
+      savingAmount: parsed?.savingAmount == null ? undefined : Math.max(0, toFinite(parsed?.savingAmount, 0)),
       updatedAt: String(parsed?.updatedAt ?? new Date().toISOString()),
     }
   } catch {

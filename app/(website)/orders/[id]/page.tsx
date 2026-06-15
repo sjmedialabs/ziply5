@@ -703,20 +703,9 @@ export default function OrderDetailPage() {
               <p>
                 Tax: <span className="font-semibold text-[#111827]">{order.currency} {Number(order.tax ?? 0).toFixed(2)}</span>
               </p>
-              {(() => {
-                const totalProductSavings = order.items.reduce((sum, item) => {
-                  // @ts-ignore - product.price might not be typed in CustomerOrderDetail but is present in the API response
-                  const msrp = Number(item.product?.price ?? item.unitPrice)
-                  return sum + Math.max(0, (msrp - Number(item.unitPrice)) * Number(item.quantity))
-                }, 0)
-                const totalSavings = totalProductSavings + Number(order.discount ?? 0)
-                
-                return (
-                  <p>
-                    Total Savings: <span className="font-semibold text-red-600">- {order.currency} {totalSavings.toFixed(2)}</span>
-                  </p>
-                )
-              })()}
+              <p>
+                Total Saving: <span className="font-semibold text-red-600">- {order.currency} {Number(order.savingAmount ?? 0).toFixed(2)}</span>
+              </p>
               <p>
                 Shipping: <span className="font-semibold text-[#111827]">{order.currency} {Number(order.shipping ?? 0).toFixed(2)}</span>
               </p>

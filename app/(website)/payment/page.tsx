@@ -200,6 +200,7 @@ function PaymentPageInner() {
           discount: snap?.discount ?? 0,
           tax: snap?.tax ?? 0,
           total: snap?.total ?? calculatedTotalInner,
+          savingAmount: snap?.savingAmount ?? 0,
           couponCode:
             snap?.coupon?.code ||
             window.localStorage.getItem("ziply5_coupon_code") ||

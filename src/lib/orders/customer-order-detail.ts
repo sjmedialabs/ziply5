@@ -8,6 +8,7 @@ export type CustomerOrderDetail = {
   subtotal?: string | number
   tax?: string | number
   discount?: string | number
+  savingAmount?: string | number
   shipping?: string | number
   total: string | number
   createdAt: string

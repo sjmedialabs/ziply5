@@ -1,4 +1,4 @@
-import { Pool } from "pg"
+import { Pool, type PoolConfig } from "pg"
 
 const databaseUrl = process.env.DATABASE_URL
 
@@ -6,13 +6,22 @@ if (!databaseUrl) {
   throw new Error("DATABASE_URL is missing")
 }
 
-const isLocalDb = databaseUrl.includes("localhost") || databaseUrl.includes("127.0.0.1")
+function pgSslConfig(connectionString: string): PoolConfig["ssl"] {
+  try {
+    const normalized = connectionString.replace(/^postgresql:/i, "http:").replace(/^postgres:/i, "http:")
+    const u = new URL(normalized)
+    const host = u.hostname.toLowerCase()
+    if (host === "localhost" || host === "127.0.0.1" || host === "::1") return false
+    if (u.searchParams.get("sslmode")?.toLowerCase() === "disable") return false
+  } catch {
+    /* use SSL for unparseable remote URLs */
+  }
+  return { rejectUnauthorized: false }
+}
 
 export const pg = new Pool({
   connectionString: databaseUrl,
-
-  ...(isLocalDb ? {} : { ssl: { rejectUnauthorized: false } }),
-
+  ssl: pgSslConfig(databaseUrl),
   max: 20,
   idleTimeoutMillis: 30000,
   connectionTimeoutMillis: 10000,

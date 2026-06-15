@@ -575,9 +575,11 @@ function ProfilePageContent() {
     { icon: "G", link: "https://google.com" },
   ]
 
-  const removeFavorite = async (slug: string) => {
+  const removeFavorite = async (slug: string, isMovingToCart = false) => {
     await toggleFavoriteSlug(slug)
-    toast.info("Removed from wishlist", "The item has been removed from your favorites list.")
+    if (!isMovingToCart) {
+      toast.info("Removed from wishlist", "The item has been removed from your favorites list.")
+    }
     setFavoriteSlugs(getFavoriteSlugs())
   }
 
@@ -589,7 +591,8 @@ function ProfilePageContent() {
 
   const moveFavoriteToCart = (product: (typeof favoriteProducts)[number]) => {
     setCartItemQuantity(toCartProduct(product), 1)
-    removeFavorite(product.slug)
+    removeFavorite(product.slug, true)
+    toast.success("Added to Cart", `${product.name} has been moved to your cart.`)
   }
 
   const updateCartQty = (product: (typeof favoriteProducts)[number], delta: number) => {
@@ -639,7 +642,7 @@ function ProfilePageContent() {
     activeTab === "about"
       ? "Personal Information"
       : activeTab === "favorite"
-        ? "wishlist"
+        ? "Wishlist"
         : "My orders"
 
   return (
@@ -692,13 +695,15 @@ function ProfilePageContent() {
                   <p className="text-base font-semibold text-[#111827]">{sectionTitle}</p>
                   <p className="mt-0.5 text-xs text-[#6B7280]">Manage your account details and preferences.</p>
                 </div>
-                <button
-                  type="button"
-                  onClick={handleLogout}
-                  className="h-10 rounded-xl bg-[#5A272A] px-4 text-xs font-semibold uppercase tracking-wide text-white hover:bg-[#451f21]"
-                >
-                  Logout
-                </button>
+                {activeTab === "about" && (
+                  <button
+                    type="button"
+                    onClick={() => setIsManageModalOpen(true)}
+                    className="h-10 rounded-xl bg-[#5A272A] px-4 text-xs font-semibold uppercase tracking-wide text-white hover:bg-[#451f21]"
+                  >
+                    Edit
+                  </button>
+                )}
               </div>
 
               <div className="p-5">
@@ -748,12 +753,12 @@ function ProfilePageContent() {
                 </Link>
               </div> */}
                     <div className="flex justify-between items-center w-full">
-                      <button
+                      {/* <button
                         onClick={() => setIsManageModalOpen(true)}
                         className="mt-4 text-xs font-bold text-primary underline uppercase tracking-widest"
                       >
                         Manage Profile
-                      </button>
+                      </button> */}
                       <div className="">
                         {/* <button
               type="button"
@@ -882,8 +887,9 @@ function ProfilePageContent() {
                             onClick={() => {
                               favoriteProducts.forEach((p) => {
                                 setCartItemQuantity(toCartProduct(p), 1)
-                                removeFavorite(p.slug)
+                                removeFavorite(p.slug, true)
                               })
+                              toast.success("Added to Cart", "All items have been moved to your cart.")
                             }}
                             className="rounded-md border border-[#D1D5DB] bg-white px-4 py-2 text-xs font-medium text-[#111827] hover:bg-[#F9FAFB]"
                           >
@@ -891,7 +897,7 @@ function ProfilePageContent() {
                           </button>
                         </div>
 
-                        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 max-h-[50vh] overflow-y-auto ">
                           {favoriteProducts.map((product) => {
                             const comboProducts = ((product as any).bundleProducts ?? []) as Array<{
                               thumbnail?: string | null
