@@ -13,6 +13,7 @@
     "start": "next start",
     "prepare": "husky || true",
     "seed:auth": "node scripts/seed-auth.mjs",
+    "db:migrate": "node --env-file=.env scripts/apply-supabase-migrations.mjs",
     "workers:email": "node --env-file=.env scripts/email-worker.mjs",
     "test": "node --import tsx --test"
   },
