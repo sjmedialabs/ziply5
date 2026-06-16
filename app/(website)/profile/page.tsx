@@ -451,14 +451,15 @@ function ProfilePageContent() {
 
   useEffect(() => {
     const fetchDbFavorites = async () => {
-      if (!authSnapshot.token) return;
+      const token = window.localStorage.getItem("ziply5_access_token");
+      if (!token) return;
       const userId = JSON.parse(window.localStorage.getItem("ziply5_user") || "{}").id;
       if (!userId) return;
 
       try {
         const res = await fetch("/api/v1/favorites", {
           headers: {
-            Authorization: `Bearer ${authSnapshot.token}`,
+            Authorization: `Bearer ${token}`,
             "x-user-id": userId
           },
         });
@@ -470,7 +471,7 @@ function ProfilePageContent() {
       } catch (e) { /* ignore */ }
     };
     fetchDbFavorites();
-  }, [authSnapshot.token]);
+  }, []);
 
   const ordersQuery = useQuery({
     queryKey: ["profile-orders"],

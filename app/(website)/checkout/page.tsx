@@ -143,6 +143,13 @@ export default function CheckoutPage() {
 
   const couponApplied = !!couponCode.trim() && offerBreakdown.some((entry) => entry.type === "coupon");
   const [savedAddresses, setSavedAddresses] = useState<Addr[]>([]);
+  const sortedAddresses = useMemo(() => {
+    return [...savedAddresses].sort((a, b) => {
+      if (a.isDefault && !b.isDefault) return -1;
+      if (!a.isDefault && b.isDefault) return 1;
+      return 0;
+    });
+  }, [savedAddresses]);
   const [loadingAddresses, setLoadingAddresses] = useState(true);
   const [selectedAddressId, setSelectedAddressId] = useState<string>("manual");
   const [originalAddress, setOriginalAddress] = useState<Addr | null>(null);
@@ -967,22 +974,29 @@ export default function CheckoutPage() {
                 </div>
               ) : savedAddresses.length > 0 ? (
                 <div className="grid sm:grid-cols-2 gap-4 mb-4">
-                  {savedAddresses.map((a) => (
+                  {sortedAddresses.map((a) => (
                     <div
                       key={a.id}
                       onClick={() => handleAddressSelect(a.id)}
                       className={`cursor-pointer rounded-2xl border p-4 transition-all duration-200 relative ${selectedAddressId === a.id
-                          ? "border-[#7B3010] bg-[#FFFBF3] ring-1 ring-[#7B3010]"
-                          : "border-[#E8DCC8] bg-white hover:border-[#7B3010]/50"
+                        ? "border-[#7B3010] bg-[#FFFBF3] ring-1 ring-[#7B3010]"
+                        : "border-[#E8DCC8] bg-white hover:border-[#7B3010]/50"
                         }`}
                     >
                       <div className="flex justify-between items-start">
                         <div>
-                          {a.label && (
-                            <span className="inline-block rounded-full bg-[#7B3010]/10 px-2.5 py-0.5 text-[10px] font-medium uppercase text-[#7B3010] mb-2">
-                              {a.label}
-                            </span>
-                          )}
+                          <div className="flex flex-wrap gap-2 mb-2">
+                            {a.isDefault && (
+                              <span className="inline-block rounded-full bg-emerald-600/10 px-2.5 py-0.5 text-[10px] font-semibold uppercase text-emerald-700">
+                                Primary
+                              </span>
+                            )}
+                            {a.label && (
+                              <span className="inline-block rounded-full bg-[#7B3010]/10 px-2.5 py-0.5 text-[10px] font-semibold uppercase text-[#7B3010]">
+                                {a.label}
+                              </span>
+                            )}
+                          </div>
                           <p className="font-melon font-medium text-[#4A1D1F]">
                             {a.firstName} {a.lastName}
                           </p>
