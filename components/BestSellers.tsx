@@ -93,11 +93,9 @@ export default function BestSellers({ cmsData }: { cmsData?: any }) {
     const token = window.localStorage.getItem("ziply5_access_token");
 
     if (!token) {
-      const wantLogin = confirm("Would you like to log in to save your favorites permanently across your devices? Cancel to save locally for this session.");
-      if (wantLogin) {
-        router.push("/login");
-        return;
-      }
+      window.localStorage.setItem("ziply5_pending_wishlist_slug", slug);
+      router.push(`/login?next=${encodeURIComponent(window.location.pathname + window.location.search)}`);
+      return;
     }
 
     const isAdded = await toggleFavoriteSlug(slug);
