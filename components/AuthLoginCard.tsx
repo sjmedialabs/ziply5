@@ -4,6 +4,8 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useState } from "react";
 import { persistSession } from "@/lib/auth-session";
+import { toggleFavoriteSlug, getFavoriteSlugs } from "@/lib/favorites";
+import { toast } from "@/lib/toast";
 import { Lock, Mail, Shield, Eye, EyeOff } from "lucide-react";
 import { OtpVerification } from "./otp/OtpVerification";
 
@@ -109,6 +111,20 @@ export default function AuthLoginCard({
         user: payload.data.user,
       });
 
+      const pendingSlug = window.localStorage.getItem("ziply5_pending_wishlist_slug");
+      if (pendingSlug) {
+        try {
+          const favorites = getFavoriteSlugs();
+          if (!favorites.includes(pendingSlug)) {
+            await toggleFavoriteSlug(pendingSlug);
+            toast.success("Added to favorites", "Product added to your wishlist.");
+          }
+          window.localStorage.removeItem("ziply5_pending_wishlist_slug");
+        } catch (e) {
+          console.error("Failed to add pending wishlist item:", e);
+        }
+      }
+
       if (payload.data.user.role === "admin" || payload.data.user.role === "super_admin") {
         router.push("/admin/dashboard");
       } else {
@@ -157,6 +173,20 @@ export default function AuthLoginCard({
         role: data.user.role,
         user: data.user,
       });
+
+      const pendingSlug = window.localStorage.getItem("ziply5_pending_wishlist_slug");
+      if (pendingSlug) {
+        try {
+          const favorites = getFavoriteSlugs();
+          if (!favorites.includes(pendingSlug)) {
+            await toggleFavoriteSlug(pendingSlug);
+            toast.success("Added to favorites", "Product added to your wishlist.");
+          }
+          window.localStorage.removeItem("ziply5_pending_wishlist_slug");
+        } catch (e) {
+          console.error("Failed to add pending wishlist item:", e);
+        }
+      }
 
       if (data.user.role === "admin" || data.user.role === "super_admin") {
         router.push("/admin/dashboard");

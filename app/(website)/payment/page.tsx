@@ -401,13 +401,9 @@ const handleOnlinePayment = async () => {
     toast.error(message);
     setProcessingGateway(null);
 
-    // Delete the order if it was successfully created but payment failed to initiate
-    const token = window.localStorage.getItem("ziply5_access_token");
     const pendingOrderId = createdOrderId || window.localStorage.getItem("ziply5_pending_order_id");
     if (pendingOrderId) {
-      void deleteUnpaidOrder(token, pendingOrderId);
-      setCreatedOrderId(null);
-      window.localStorage.removeItem("ziply5_pending_order_id");
+      router.push(`/payment-failed?orderId=${pendingOrderId}&reason=${encodeURIComponent(message)}`);
     }
   }
 };
@@ -574,10 +570,7 @@ const handleOnlinePayment = async () => {
           toast.error(message)
           void postCartEvent("payment_failed", { reason: error instanceof Error ? error.message : "verify_failed" })
 
-          // Delete unpaid order since payment verification was not successful
-          void deleteUnpaidOrder(token, orderId);
-          setCreatedOrderId(null);
-          window.localStorage.removeItem("ziply5_pending_order_id");
+          router.push(`/payment-failed?orderId=${orderId}&reason=${encodeURIComponent(message)}`);
         }
       },
       modal: {
@@ -587,15 +580,17 @@ const handleOnlinePayment = async () => {
           setProcessingGateway(null);
           void postCartEvent("payment_cancelled", { source: "razorpay_modal_dismiss" });
 
-          // Delete unpaid order completely from DB
-          void deleteUnpaidOrder(token, orderId);
-
-          // Clear order ID from state and localStorage so next click creates a fresh order
-          setCreatedOrderId(null);
-          window.localStorage.removeItem("ziply5_pending_order_id");
+          router.push(`/payment-failed?orderId=${orderId}&reason=User%20cancelled%20payment`);
         },
       },
     });
+
+    razorpay.on('payment.failed', function (response: any) {
+      setProcessingGateway(null);
+      void postCartEvent("payment_failed", { reason: response.error.description });
+      router.push(`/payment-failed?orderId=${orderId}&reason=${encodeURIComponent(response.error.description)}`);
+    });
+
     razorpay.open();
   };
 

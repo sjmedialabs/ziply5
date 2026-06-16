@@ -12,6 +12,7 @@ import { Search, User, ShoppingCart } from "lucide-react"
 import { getCartItems, setCartItems, type CartItem } from "@/lib/cart"
 import { AnimatePresence, m, useReducedMotion } from "framer-motion"
 import { clearSession } from "@/lib/auth-session"
+import { getFavoriteSlugs } from "@/lib/favorites"
 
 type MenuCategory = {
   id: string
@@ -43,6 +44,7 @@ export default function Header() {
   const [menuCategories, setMenuCategories] = useState<MenuCategory[]>([])
   const closeCartTimeoutRef = useRef<number | null>(null)
   const [cmsData, setCmsData] = useState<any>(null)
+  const [wishlistCount, setWishlistCount] = useState(0)
 
   const productRef = useRef<HTMLDivElement>(null)
   const [productDropdownOpen, setProductDropdownOpen] = useState(false)
@@ -189,6 +191,7 @@ export default function Header() {
 
   useEffect(() => {
     const syncCart = () => setLocalCartItems(getCartItems())
+    const syncWishlist = () => setWishlistCount(getFavoriteSlugs().length)
     const syncProfileHref = () => {
       const token = window.localStorage.getItem("ziply5_access_token")
       const role = window.localStorage.getItem("ziply5_user_role")
@@ -214,20 +217,25 @@ export default function Header() {
     }
 
     syncCart()
+    syncWishlist()
     syncProfileHref()
     void loadMenuData()
     void fetchCmsData()
 
     window.addEventListener("ziply5:cart-updated", syncCart)
+    window.addEventListener("ziply5:favorites-updated", syncWishlist)
     window.addEventListener("storage", syncProfileHref)
     window.addEventListener("storage", syncCart)
+    window.addEventListener("storage", syncWishlist)
     return () => {
       if (closeCartTimeoutRef.current) {
         window.clearTimeout(closeCartTimeoutRef.current)
       }
       window.removeEventListener("ziply5:cart-updated", syncCart)
+      window.removeEventListener("ziply5:favorites-updated", syncWishlist)
       window.removeEventListener("storage", syncProfileHref)
       window.removeEventListener("storage", syncCart)
+      window.removeEventListener("storage", syncWishlist)
     }
   }, [loadMenuData])
 
@@ -387,8 +395,8 @@ export default function Header() {
                     }}
                   /> */}
 
-                  <div className="bg-[#7a1e0e] text-white rounded-2xl shadow-xl py-10 px-6">
-                    <div className="grid grid-cols-4 gap-5">
+                  <div className="bg-[#7a1e0e] text-white rounded-2xl shadow-xl p-10">
+                    <div className="grid grid-cols-3 gap-5">
                       {menuCategories.length === 0 ? (
                         <div className="col-span-4 text-sm text-white/80">No categories with products yet.</div>
                       ) : (
@@ -458,8 +466,24 @@ export default function Header() {
             </button>
 
             <div className="hidden lg:flex items-center gap-6">
-              <Link href="/profile?tab=favorite" onClick={() => setMenuOpen(false)} className="font-extrabold text-black hover:text-[#f97316] transition-colors text-[15px]" title="Go to whishlist">
+              <Link
+                href="/profile?tab=favorite"
+                onClick={() => setMenuOpen(false)}
+                className="relative flex items-center justify-center w-8 h-8 rounded-full hover:bg-zinc-50 transition-colors"
+                title="Go to wishlist"
+              >
                 <Heart size={20} className="text-zinc-700 hover:text-[#f97316]" />
+                {wishlistCount > 0 && (
+                  <m.span
+                    key={wishlistCount}
+                    initial={reduce ? undefined : { scale: 0.9 }}
+                    animate={reduce ? undefined : { scale: [1, 1.15, 1] }}
+                    transition={reduce ? undefined : { duration: 0.35, ease: "easeOut" }}
+                    className="absolute -top-1.5 -right-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-[#f97316] px-1 text-[10px] font-bold text-white"
+                  >
+                    {wishlistCount}
+                  </m.span>
+                )}
               </Link>
               <div className="relative" ref={userDropdownRef}>
                 <button

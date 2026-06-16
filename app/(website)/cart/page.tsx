@@ -87,10 +87,9 @@ export default function CartPage() {
     e.stopPropagation();
     const token = window.localStorage.getItem("ziply5_access_token");
     if (!token) {
-      if (confirm("Log in to sync favorites across devices? Cancel to save locally.")) {
-        router.push("/login");
-        return;
-      }
+      window.localStorage.setItem("ziply5_pending_wishlist_slug", slug);
+      router.push(`/login?next=${encodeURIComponent(window.location.pathname + window.location.search)}`);
+      return;
     }
     const isNowFav = await toggleFavoriteSlug(slug);
     if (isNowFav) {
@@ -222,7 +221,7 @@ export default function CartPage() {
             <div className="mb-4 flex items-center justify-between border-b pb-3 font-melon tracking-wide">
               <h2 className="text-lg font-medium text-black">Shopping Cart</h2>
               <span className="font-medium text-black">
-                ({cartItems.length.toString().padStart(2, "0")} Items)
+                ({cartItems.length.toString().padStart(2, "0")} - Items)
               </span>
             </div>
 
@@ -240,20 +239,21 @@ export default function CartPage() {
               <>
                 <div className="overflow-x-auto">
                   <div className="min-w-[700px]">
-                    <div className="mb-6 grid grid-cols-4 border-b pb-3 text-center text-sm text-[#787878]">
-                      <span>Product Details</span>
-                      <span>Price</span>
-                      <span>Quantity</span>
-                      <span>Total</span>
+                    <div className="mb-2 grid grid-cols-6 gap-10 border-b pb-1 text-sm text-[#787878]">
+                      <span className="col-span-2 text-left">Product Details</span>
+                      <span className="text-left">Price</span>
+                      <span className="text-left">Quantity</span>
+                      <span className="text-left">Total</span>
+                      <span></span>
                     </div>
 
                     {cartItems.map((item) => (
                       <div
                         key={item.id}
-                        className="grid grid-cols-4 items-center border-b py-6 text-center"
+                        className="grid grid-cols-6 gap-10 items-center border-b py-6"
                       >
-                        <div className="flex items-center gap-4 text-start">
-                          <div className="flex h-20 w-20 items-center justify-center rounded-xl border border-[#E0E0E0] shadow-sm">
+                        <div className="col-span-2 flex items-center gap-4 text-start">
+                          <div >
                             <img
                               src={item.image || "/placeholder.svg"}
                               alt={item.name}
@@ -273,7 +273,7 @@ export default function CartPage() {
                           </div>
                         </div>
 
-                        <p className="font-melon font-medium tracking-wide text-primary">
+                        <p className=" font-melon font-medium tracking-wide text-primary">
                           Rs.{formatMoney(item.price)}
                         </p>
 
@@ -309,38 +309,36 @@ export default function CartPage() {
                           </button>
                         </div>
 
-                        <div className="flex items-center justify-between">
-                          <span className="font-melon font-medium tracking-wide text-black">
-                            Rs.{formatMoney(item.price * item.quantity)}
-                          </span>
-                          <div className="flex items-center gap-2">
-                            <TooltipProvider>
-                              <Tooltip>
-                                <TooltipTrigger asChild>
-                                  <button
-                                    className="rounded-full border border-[#D1D5DB] h-8 w-8 flex items-center justify-center text-xs text-[#374151] cursor-pointer"
-                                    onClick={(e) =>
-                                      handleToggleFavorite(e, item.slug, item.id)
-                                    }
-                                    aria-label={`Move ${item.name} to wishlist`}
-                                  >
-                                    <Heart size={16} />
-                                  </button>
-                                </TooltipTrigger>
+                        <span className=" font-melon font-medium tracking-wide text-black">
+                          Rs.{formatMoney(item.price * item.quantity)}
+                        </span>
+                        <div className="flex items-center justify-end gap-2">
+                          <TooltipProvider>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <button
+                                  className="rounded-full border border-[#D1D5DB] h-8 w-8 flex items-center justify-center text-xs text-[#374151] cursor-pointer"
+                                  onClick={(e) =>
+                                    handleToggleFavorite(e, item.slug, item.id)
+                                  }
+                                  aria-label={`Move ${item.name} to wishlist`}
+                                >
+                                  <Heart size={16} />
+                                </button>
+                              </TooltipTrigger>
 
-                                <TooltipContent side="top">
-                                  Move the product to wishlist
-                                </TooltipContent>
-                              </Tooltip>
-                            </TooltipProvider>
-                            <button
-                              className="flex h-8 w-8 items-center justify-center rounded-full border border-red-400 text-red-500"
-                              onClick={() => removeItem(item.id)}
-                              aria-label={`Remove ${item.name} from cart`}
-                            >
-                              <X size={14} />
-                            </button>
-                          </div>
+                              <TooltipContent side="top">
+                                Move the product to wishlist
+                              </TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
+                          <button
+                            className="flex h-8 w-8 items-center justify-center rounded-full border border-red-400 text-red-500"
+                            onClick={() => removeItem(item.id)}
+                            aria-label={`Remove ${item.name} from cart`}
+                          >
+                            <X size={14} />
+                          </button>
                         </div>
                       </div>
                     ))}

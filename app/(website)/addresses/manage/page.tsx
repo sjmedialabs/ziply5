@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState, Suspense } from "react";
+import { useCallback, useEffect, useRef, useState, Suspense, useMemo } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { authedFetch, authedPost, authedPatch } from "@/lib/dashboard-fetch";
@@ -49,6 +49,11 @@ function ManageAddressContent() {
   const [pincodeCities, setPincodeCities] = useState<string[]>([]);
   const loadedPostalCodeRef = useRef("");
 
+  // States and refs for searchable city dropdown
+  const cityDropdownRef = useRef<HTMLDivElement>(null);
+  const [isCityDropdownOpen, setIsCityDropdownOpen] = useState(false);
+  const [citySearchQuery, setCitySearchQuery] = useState("");
+
   const normalizeStr = (str: string) =>
     str.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
 
@@ -85,6 +90,43 @@ function ManageAddressContent() {
     return Object.keys(cityMap).length === 0;
   });
 
+  // Click outside listener for searchable city dropdown
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (cityDropdownRef.current && !cityDropdownRef.current.contains(event.target as Node)) {
+        setIsCityDropdownOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, []);
+
+  const allCityOptions = useMemo(() => {
+    let options: string[] = [];
+    if (pincodeCities.length > 0) {
+      options = [...pincodeCities];
+      if (city && !options.includes(city)) {
+        options.unshift(city);
+      }
+    } else if (availableCities && availableCities.length > 0) {
+      options = availableCities.map((c: any) => c.label);
+      if (city && !options.includes(city)) {
+        options.unshift(city);
+      }
+    } else if (city) {
+      options = [city];
+    }
+    return Array.from(new Set(options));
+  }, [pincodeCities, availableCities, city]);
+
+  const filteredCityOptions = useMemo(() => {
+    const query = citySearchQuery.trim().toLowerCase();
+    if (!query) return allCityOptions;
+    return allCityOptions.filter(opt => opt.toLowerCase().includes(query));
+  }, [allCityOptions, citySearchQuery]);
+
   // Load address if in edit mode
   useEffect(() => {
     if (!id) return;
@@ -120,6 +162,63 @@ function ManageAddressContent() {
     };
     void loadAddress();
   }, [id, next, router]);
+
+  // Prefill user profile info when adding a new address
+  useEffect(() => {
+    if (id) return;
+
+    const token = typeof window !== "undefined" ? window.localStorage.getItem("ziply5_access_token") : null;
+    const userStr = typeof window !== "undefined" ? window.localStorage.getItem("ziply5_user") : null;
+    if (!token || !userStr) return;
+
+    let userId = "";
+    try {
+      const user = JSON.parse(userStr);
+      if (user) {
+        userId = user.id || "";
+        if (user.name) {
+          const parts = user.name.split(" ");
+          setFirstName(parts[0] || "");
+          setLastName(parts.slice(1).join(" ") || "");
+        }
+        if (user.email) {
+          setEmail(user.email);
+        }
+      }
+    } catch (err) {
+      console.error("Failed to parse user session info in manage address page", err);
+    }
+
+    if (!userId) return;
+
+    const fetchProfile = async () => {
+      try {
+        const res = await fetch(`/api/v1/profile?userId=${encodeURIComponent(userId)}`, {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "x-user-id": userId
+          },
+        });
+        const payload = await res.json();
+        if (payload.success && payload.data) {
+          if (payload.data.name) {
+            const parts = payload.data.name.split(" ");
+            setFirstName(parts[0] || "");
+            setLastName(parts.slice(1).join(" ") || "");
+          }
+          if (payload.data.email) {
+            setEmail(payload.data.email);
+          }
+          if (payload.data.profile?.phone) {
+            setPhone(payload.data.profile.phone);
+          }
+        }
+      } catch (err) {
+        console.error("Failed to fetch profile in manage address page", err);
+      }
+    };
+    void fetchProfile();
+  }, [id]);
 
   // Pincode Lookup Logic
   useEffect(() => {
@@ -178,11 +277,37 @@ function ManageAddressContent() {
               setPincodeCities([]);
               loadedPostalCodeRef.current = "";
             }
+          } else {
+            toast.error(
+              "Pincode not found",
+              "We couldn't find details for this pincode. Please select your State and City manually."
+            );
+            setState("");
+            setCity("");
+            setPincodeCities([]);
+            loadedPostalCodeRef.current = "";
           }
+        } else {
+          toast.error(
+            "Pincode not found",
+            "We couldn't find details for this pincode. Please select your State and City manually."
+          );
+          setState("");
+          setCity("");
+          setPincodeCities([]);
+          loadedPostalCodeRef.current = "";
         }
       } catch (err) {
         if ((err as any).name !== "AbortError") {
           console.error("Pincode lookup failed:", err);
+          toast.error(
+            "Pincode lookup failed",
+            "Could not verify pincode. Please select your State and City manually."
+          );
+          setState("");
+          setCity("");
+          setPincodeCities([]);
+          loadedPostalCodeRef.current = "";
         }
       } finally {
         setFetchingPincode(false);
@@ -395,6 +520,8 @@ function ManageAddressContent() {
                 onChange={(e) => {
                   setState(e.target.value);
                   setCity("");
+                  setIsCityDropdownOpen(false);
+                  setCitySearchQuery("");
                 }}
                 className="h-[38px] w-full rounded-lg border border-[#D9D9D1] bg-white pl-3 pr-8 py-2 text-sm shadow-none focus:border-[#7B3010] focus:ring-0 focus-visible:ring-0 outline-none appearance-none"
               >
@@ -413,44 +540,69 @@ function ManageAddressContent() {
               </div>
             </div>
           </label>
-          <label className="text-xs font-semibold uppercase text-[#646464]">
+          <div className="text-xs font-semibold uppercase text-[#646464] relative" ref={cityDropdownRef}>
             City
             <div className="relative mt-1">
-              <select
-                required
+              <button
+                type="button"
                 disabled={!state}
-                value={city}
-                onChange={(e) => setCity(e.target.value)}
-                className="h-[38px] w-full rounded-lg border border-[#D9D9D1] bg-white pl-3 pr-8 py-2 text-sm shadow-none focus:border-[#7B3010] focus:ring-0 focus-visible:ring-0 outline-none appearance-none disabled:opacity-50 disabled:cursor-not-allowed"
+                onClick={() => setIsCityDropdownOpen(!isCityDropdownOpen)}
+                className="h-[38px] w-full text-left rounded-lg border border-[#D9D9D1] bg-white pl-3 pr-8 py-2 text-sm shadow-none focus:border-[#7B3010] focus:outline-none focus:ring-1 focus:ring-[#7B3010] disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-between"
               >
-                <option value="" disabled>{!state ? "Select state first" : "Select City"}</option>
-                {pincodeCities.length > 0 ? (
-                  <>
-                    {city && !pincodeCities.includes(city) && (
-                      <option value={city}>{city}</option>
+                <span className={city ? "text-black" : "text-gray-400"}>
+                  {city || (!state ? "Select state first" : "Select City")}
+                </span>
+                <div className="pointer-events-none flex items-center">
+                  <svg className="h-4 w-4 text-[#646464] opacity-50" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
+                  </svg>
+                </div>
+              </button>
+
+              <input
+                required
+                value={city}
+                onChange={() => {}}
+                className="absolute inset-x-0 bottom-0 h-0 w-0 opacity-0 pointer-events-none"
+                tabIndex={-1}
+              />
+
+              {isCityDropdownOpen && (
+                <div className="absolute left-0 right-0 z-50 mt-1 max-h-60 overflow-y-auto rounded-lg border border-[#D9D9D1] bg-white p-2 shadow-lg">
+                  <input
+                    type="text"
+                    value={citySearchQuery}
+                    onChange={(e) => setCitySearchQuery(e.target.value)}
+                    placeholder="Search city..."
+                    className="w-full mb-2 rounded border border-[#D9D9D1] px-2 py-1.5 text-xs outline-none focus:border-[#7B3010]"
+                    onClick={(e) => e.stopPropagation()}
+                    autoFocus
+                  />
+                  <div className="space-y-0.5">
+                    {filteredCityOptions.length > 0 ? (
+                      filteredCityOptions.map((cName) => (
+                        <div
+                          key={cName}
+                          onClick={() => {
+                            setCity(cName);
+                            setIsCityDropdownOpen(false);
+                            setCitySearchQuery("");
+                          }}
+                          className={`cursor-pointer rounded px-2.5 py-1.5 text-sm hover:bg-[#FFFBF3] hover:text-[#7B3010] ${
+                            city === cName ? "bg-[#FFFBF3] text-[#7B3010] font-medium" : "text-gray-700"
+                          }`}
+                        >
+                          {cName}
+                        </div>
+                      ))
+                    ) : (
+                      <div className="px-2 py-1.5 text-xs text-gray-400 italic">No cities found</div>
                     )}
-                    {pincodeCities.map((cName) => (
-                      <option key={cName} value={cName}>{cName}</option>
-                    ))}
-                  </>
-                ) : (
-                  <>
-                    {city && !availableCities?.some(c => c.label === city) && (
-                      <option value={city}>{city}</option>
-                    )}
-                    {(availableCities || []).map((c) => (
-                      <option key={c.value} value={c.label}>{c.label}</option>
-                    ))}
-                  </>
-                )}
-              </select>
-              <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-3">
-                <svg className="h-4 w-4 text-[#646464] opacity-50" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
-                </svg>
-              </div>
+                  </div>
+                </div>
+              )}
             </div>
-          </label>
+          </div>
           <label className="text-xs font-semibold uppercase text-[#646464] sm:col-span-2">
             Phone
             <input
