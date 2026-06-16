@@ -395,8 +395,8 @@ export default function Header() {
                     }}
                   /> */}
 
-                  <div className="bg-[#7a1e0e] text-white rounded-2xl shadow-xl py-10 px-6">
-                    <div className="grid grid-cols-4 gap-5">
+                  <div className="bg-[#7a1e0e] text-white rounded-2xl shadow-xl p-10">
+                    <div className="grid grid-cols-3 gap-5">
                       {menuCategories.length === 0 ? (
                         <div className="col-span-4 text-sm text-white/80">No categories with products yet.</div>
                       ) : (
